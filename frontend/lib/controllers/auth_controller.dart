@@ -100,6 +100,8 @@ class AuthController extends GetxController {
 
   final RxList<LoginLogEntry> auditLogs = <LoginLogEntry>[].obs;
 
+  final RxInt annualPasswordResetCount = 0.obs;
+
   static const List<String> availableRoles = [
     'Student',
     'Teacher',
@@ -114,6 +116,68 @@ class AuthController extends GetxController {
     super.onInit();
     _loadSessionFromDisk();
     _loadAuditLogsFromDisk();
+    loadResetQuotaFromDisk();
+  }
+
+  Future<File> _getResetQuotaFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final year = DateTime.now().year;
+    final userId = currentUser.value?.id ?? 0;
+    return File('${dir.path}/password_resets_${userId}_$year.json');
+  }
+
+  Future<void> loadResetQuotaFromDisk() async {
+    try {
+      final file = await _getResetQuotaFile();
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final Map<String, dynamic> data = jsonDecode(content);
+        annualPasswordResetCount.value = data['count'] ?? 0;
+      } else {
+        annualPasswordResetCount.value = 0;
+      }
+    } catch (_) {
+      annualPasswordResetCount.value = 0;
+    }
+  }
+
+  Future<void> _saveResetQuotaToDisk() async {
+    try {
+      final file = await _getResetQuotaFile();
+      final data = {
+        'year': DateTime.now().year,
+        'count': annualPasswordResetCount.value,
+      };
+      await file.writeAsString(jsonEncode(data));
+    } catch (_) {}
+  }
+
+  bool canResetPassword() {
+    final role = currentUser.value?.role ?? 'Student';
+    // College Admin, Principal, and Dev Admin have NO restrictions
+    if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer') {
+      return true;
+    }
+    // Students, Teachers, and HoDs have a 5 reset limit per year
+    return annualPasswordResetCount.value < 5;
+  }
+
+  Future<bool> resetPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final role = currentUser.value?.role ?? 'Student';
+    final isRestrictedRole = role == 'Student' || role == 'Teacher' || role == 'HoD';
+
+    if (isRestrictedRole && !canResetPassword()) {
+      return false;
+    }
+
+    if (isRestrictedRole) {
+      annualPasswordResetCount.value++;
+      await _saveResetQuotaToDisk();
+    }
+    return true;
   }
 
   Future<File> _getSessionFile() async {

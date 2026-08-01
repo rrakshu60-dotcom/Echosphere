@@ -1,16 +1,12 @@
 import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:provider/provider.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -21,304 +17,370 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final authController = Get.find<AuthController>();
-  List<dynamic> auditLogs = [];
-  bool isLoadingLogs = false;
+
+  final currentPasswordCtrl = TextEditingController();
+  final newPasswordCtrl = TextEditingController();
+  final confirmPasswordCtrl = TextEditingController();
+
+  bool isObscureCurrent = true;
+  bool isObscureNew = true;
+  bool isObscureConfirm = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAuditLogs();
+    authController.loadResetQuotaFromDisk();
   }
 
-  Future<void> _loadAuditLogs() async {
-    final role = authController.currentUser.value?.role;
-    if (role == 'Developer' || role == 'College Admin' || role == 'Principal') {
-      if (mounted) setState(() => isLoadingLogs = true);
-      try {
-        final logs = await EchosphereApiService().getAuditLogs();
-        if (mounted) {
-          setState(() {
-            auditLogs = logs;
-            isLoadingLogs = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) setState(() => isLoadingLogs = false);
-      }
+  @override
+  void dispose() {
+    currentPasswordCtrl.dispose();
+    newPasswordCtrl.dispose();
+    confirmPasswordCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleResetPassword() async {
+    final current = currentPasswordCtrl.text.trim();
+    final newPass = newPasswordCtrl.text.trim();
+    final confirmPass = confirmPasswordCtrl.text.trim();
+
+    if (current.isEmpty || newPass.isEmpty || confirmPass.isEmpty) {
+      errorSnackBar('Please fill in all password fields.');
+      return;
+    }
+
+    if (newPass != confirmPass) {
+      errorSnackBar('New password and confirm password do not match.');
+      return;
+    }
+
+    if (newPass.length < 6) {
+      errorSnackBar('New password must be at least 6 characters long.');
+      return;
+    }
+
+    final user = authController.currentUser.value;
+    final role = user?.role ?? 'Student';
+    final isRestricted = role == 'Student' || role == 'Teacher' || role == 'HoD';
+
+    if (isRestricted && !authController.canResetPassword()) {
+      errorSnackBar(
+        'Annual Limit Reached: You have used all 5 password resets for calendar year ${DateTime.now().year}. Please contact College Admin for assistance.',
+      );
+      return;
+    }
+
+    final success = await authController.resetPassword(
+      currentPassword: current,
+      newPassword: newPass,
+    );
+
+    if (success) {
+      currentPasswordCtrl.clear();
+      newPasswordCtrl.clear();
+      confirmPasswordCtrl.clear();
+
+      final remaining = 5 - authController.annualPasswordResetCount.value;
+      snackBar(
+        isRestricted
+            ? 'Password reset successfully! ($remaining / 5 annual resets remaining)'
+            : 'Executive password updated successfully!',
+        title: 'Password Updated',
+      );
+    } else {
+      errorSnackBar('Failed to update password. Please check your credentials.');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Obx(() {
-          final user = authController.currentUser.value;
-          final isLoggedIn = authController.isLoggedIn.value;
+      final user = authController.currentUser.value;
+      final isLoggedIn = authController.isLoggedIn.value;
 
-          if (!isLoggedIn || user == null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.account_circle, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Not Logged In',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Log in with your USN, Employee ID, or Email to view profile details.',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 20),
-                  EchoSphereButton(
-                    onTap: () => Get.to(() => const LoginScreen()),
-                    child: const Text('Go to Login'),
-                  ),
-                ],
+      if (!isLoggedIn || user == null) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.account_circle, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              const Text(
+                'Not Logged In',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-            );
-          }
+              const SizedBox(height: 8),
+              const Text(
+                'Log in with your USN, Employee ID, or Email to view profile details.',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              EchoSphereButton(
+                onTap: () => Get.to(() => const LoginScreen()),
+                child: const Text('Go to Login'),
+              ),
+            ],
+          ),
+        );
+      }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Profile Header Card
-                    EchoSphereContainer(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 36,
-                            backgroundColor: theme.colorScheme.primary,
-                            child: Text(
-                              user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : 'U',
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onPrimary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.fullName,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      EchoSphereChip(
-                                        label: user.department ?? 'General',
-                                        isSelected: true,
-                                        onSelected: (_) {},
-                                      ),
-                                    ],
-                                  ),
-                               ],
-                             ),
-                           ),
-                         ],
-                       ),
-                     ),
-                     const SizedBox(height: 20),
+      final role = user.role;
+      final isRestricted = role == 'Student' || role == 'Teacher' || role == 'HoD';
 
-                     // User Details Container
-                     EchoSphereContainer(
-                       padding: const EdgeInsets.all(20.0),
-                       child: Column(
-                         crossAxisAlignment: CrossAxisAlignment.start,
-                         children: [
-                           const EchoSphereText(
-                             text: 'Account Details',
-                             size: 16,
-                             variant: TextVariant.bold,
-                           ),
-                           const Divider(height: 20),
-                           if (user.usn != null)
-                             _buildInfoTile('USN (University Seat Number)', user.usn!, Icons.badge),
-                           if (user.officialEmail != null)
-                             _buildInfoTile('Official Email', user.officialEmail!, Icons.email),
-                           if (user.employeeId != null)
-                             _buildInfoTile('Employee ID', user.employeeId!, Icons.badge),
-                           _buildInfoTile('Department', user.department ?? 'Institution-Wide', Icons.business),
-                         ],
-                       ),
-                     ),
-                    const SizedBox(height: 20),
-
-                    // System Settings & Security Container
-                    EchoSphereContainer(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const EchoSphereText(
-                            text: 'Preferences & Security',
-                            size: 16,
-                            variant: TextVariant.bold,
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Profile Header Card
+                EchoSphereContainer(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundColor: theme.colorScheme.primary,
+                        child: Text(
+                          user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : 'U',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onPrimary,
                           ),
-                          const Divider(height: 20),
-                          SwitchListTile(
-                            title: const Text('Dark Mode Theme'),
-                            subtitle: const Text('Toggle between dark and light glassmorphism styles'),
-                            value: isDark,
-                            onChanged: (_) => themeProvider.toggleTheme(),
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.lock_reset, color: Colors.blue),
-                            title: const Text('Change Password'),
-                            subtitle: const Text('Update your account password'),
-                            onTap: () => _showChangePasswordDialog(context),
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.notifications_active, color: Colors.amber),
-                            title: const Text('In-App Push & Speaker Alerts'),
-                            subtitle: const Text('Configure audio and notification channel preferences'),
-                            onTap: () => snackBar('Notification preferences updated.'),
-                          ),
-                          if (user.role == 'Dev Admin' || user.role == 'Developer') ...[
-                            const ListTile(
-                              leading: Icon(Icons.wifi, color: Colors.green),
-                              title: Text('FastAPI Backend Status'),
-                              subtitle: Text('Connected to http://localhost:8000/api/v1'),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Audit Logs Table for Admin/Dev
-                    if (user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal') ...[
-                      EchoSphereContainer(
-                        padding: const EdgeInsets.all(20.0),
+                      const SizedBox(width: 20),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
+                            Text(
+                              user.fullName,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
                               children: [
-                                const EchoSphereText(
-                                  text: 'System Audit Logs',
-                                  size: 16,
-                                  variant: TextVariant.bold,
+                                EchoSphereChip(
+                                  label: user.role,
+                                  isSelected: true,
+                                  onSelected: (_) {},
                                 ),
-                                const Spacer(),
-                                IconButton(
-                                  icon: const Icon(Icons.refresh, size: 18),
-                                  onPressed: _loadAuditLogs,
+                                EchoSphereChip(
+                                  label: user.department ?? 'General',
+                                  isSelected: false,
+                                  onSelected: (_) {},
                                 ),
                               ],
                             ),
-                            const Divider(height: 20),
-                            if (isLoadingLogs)
-                              const Center(child: CircularProgressIndicator())
-                            else if (auditLogs.isEmpty)
-                              const Text('No recent audit logs found.', style: TextStyle(color: Colors.grey))
-                            else
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: auditLogs.length > 5 ? 5 : auditLogs.length,
-                                itemBuilder: (context, idx) {
-                                  final log = auditLogs[idx];
-                                  return ListTile(
-                                    dense: true,
-                                    leading: const Icon(Icons.security, size: 18),
-                                    title: Text('${log['action']} • ${log['description']}'),
-                                    subtitle: Text('Timestamp: ${log['created_at'] ?? "Recent"}'),
-                                  );
-                                },
-                              ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 20),
 
-                    // Log Out Action
-                    EchoSphereButton(
-                      width: double.infinity,
-                      height: 48,
-                      color: Colors.red.withOpacity(0.2),
-                      border: const BorderSide(color: Colors.red),
-                      onTap: () {
-                        authController.logout();
-                        Get.offAll(() => const LoginScreen());
-                      },
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                // 2. Personal & Account Details Container
+                EchoSphereContainer(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const EchoSphereText(
+                        text: 'Personal & Account Details',
+                        size: 16,
+                        variant: TextVariant.bold,
+                      ),
+                      const Divider(height: 20),
+                      _buildInfoTile('Full Name', user.fullName, Icons.person_outline),
+                      _buildInfoTile('User Role', user.role, Icons.badge_outlined),
+                      if (user.officialEmail != null)
+                        _buildInfoTile('Official Email', user.officialEmail!, Icons.email_outlined),
+                      if (user.usn != null)
+                        _buildInfoTile('University Seat Number (USN)', user.usn!, Icons.pin_drop_outlined),
+                      if (user.employeeId != null)
+                        _buildInfoTile('Official Employee ID', user.employeeId!, Icons.badge),
+                      _buildInfoTile('Department', user.department ?? 'Institution-Wide', Icons.business_outlined),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 3. Reset Password Container
+                EchoSphereContainer(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Icon(Icons.logout, color: Colors.red, size: 20),
-                          SizedBox(width: 10),
-                          Text('Log Out from EchoSphere', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                          const Icon(Icons.lock_reset_rounded, color: Colors.purple, size: 22),
+                          const SizedBox(width: 8),
+                          const EchoSphereText(
+                            text: 'Reset Account Password',
+                            size: 16,
+                            variant: TextVariant.bold,
+                          ),
+                          const Spacer(),
+                          // Quota Badge
+                          Obx(() {
+                            final used = authController.annualPasswordResetCount.value;
+                            if (isRestricted) {
+                              final isMax = used >= 5;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isMax ? Colors.red.withOpacity(0.15) : Colors.purple.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: isMax ? Colors.red : Colors.purple),
+                                ),
+                                child: Text(
+                                  'Resets Used: $used / 5 this year',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isMax ? Colors.red : Colors.purple,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: Colors.green),
+                                ),
+                                child: const Text(
+                                  'Unlimited Resets',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              );
+                            }
+                          }),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        isRestricted
+                            ? 'Policy Rule: Maximum 5 password resets allowed per calendar year for Students, Teachers & HoDs.'
+                            : 'Executive Account: Unlimited password reset privileges active.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const Divider(height: 24),
+
+                      // Password Reset Form Fields
+                      TextField(
+                        controller: currentPasswordCtrl,
+                        obscureText: isObscureCurrent,
+                        decoration: InputDecoration(
+                          labelText: 'Current Password',
+                          prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                          suffixIcon: IconButton(
+                            icon: Icon(isObscureCurrent ? Icons.visibility_off : Icons.visibility, size: 20),
+                            onPressed: () => setState(() => isObscureCurrent = !isObscureCurrent),
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      TextField(
+                        controller: newPasswordCtrl,
+                        obscureText: isObscureNew,
+                        decoration: InputDecoration(
+                          labelText: 'New Password',
+                          prefixIcon: const Icon(Icons.key_outlined, size: 20),
+                          suffixIcon: IconButton(
+                            icon: Icon(isObscureNew ? Icons.visibility_off : Icons.visibility, size: 20),
+                            onPressed: () => setState(() => isObscureNew = !isObscureNew),
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      TextField(
+                        controller: confirmPasswordCtrl,
+                        obscureText: isObscureConfirm,
+                        decoration: InputDecoration(
+                          labelText: 'Confirm New Password',
+                          prefixIcon: const Icon(Icons.check_circle_outline, size: 20),
+                          suffixIcon: IconButton(
+                            icon: Icon(isObscureConfirm ? Icons.visibility_off : Icons.visibility, size: 20),
+                            onPressed: () => setState(() => isObscureConfirm = !isObscureConfirm),
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 46),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _handleResetPassword,
+                        icon: const Icon(Icons.lock_reset, size: 20),
+                        label: const Text(
+                          'Update Account Password',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        });
-  }
+                const SizedBox(height: 20),
 
-  void _showChangePasswordDialog(BuildContext context) {
-    final currentCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => EchoSphereDialog(
-        title: 'Change Password',
-        contentWidget: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Current Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: currentCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
+                // 4. Log Out Action Button
+                EchoSphereButton(
+                  width: double.infinity,
+                  height: 48,
+                  color: Colors.red.withOpacity(0.2),
+                  border: const BorderSide(color: Colors.red),
+                  onTap: () {
+                    authController.logout();
+                    Get.offAll(() => const LoginScreen());
+                  },
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout, color: Colors.red, size: 20),
+                      SizedBox(width: 10),
+                      Text(
+                        'Log Out from EchoSphere',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 14),
-            const Text('New Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: newCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-            ),
-          ],
+          ),
         ),
-        onConfirm: () {
-          if (currentCtrl.text.isEmpty || newCtrl.text.isEmpty) {
-            errorSnackBar('Password fields cannot be empty.');
-            return;
-          }
-          snackBar('Password changed successfully!');
-        },
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildInfoTile(String title, String value, IconData icon) {
@@ -326,7 +388,7 @@ class _ProfilePageState extends State<ProfilePage> {
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.grey),
+          Icon(icon, size: 20, color: Colors.purple.withOpacity(0.8)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -334,7 +396,7 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
