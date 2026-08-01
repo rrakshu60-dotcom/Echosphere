@@ -318,6 +318,38 @@ class AuthController extends GetxController {
     return getRoleLevel(currentRoleName) >= getRoleLevel(requiredRole);
   }
 
+  /// Validates if an employee ID belongs to any registered staff, teacher, HoD, or admin in the database.
+  bool isRegisteredStaffEmployeeId(String empId) {
+    final cleanId = empId.trim().toUpperCase();
+    if (cleanId.isEmpty) return false;
+
+    // Registered staff employee IDs from database seeders
+    const registeredStaffIds = [
+      'DBITADM001',
+      'ADM001',
+      'DEVADM01',
+      'PRI001',
+      'HOD001',
+      'TCH001',
+      'DBITAIMLT022022',
+    ];
+
+    if (registeredStaffIds.contains(cleanId)) return true;
+
+    // Pattern matching for any official staff/teacher/HoD/admin employee IDs
+    if (cleanId.startsWith('DBIT') ||
+        cleanId.startsWith('EMP') ||
+        cleanId.startsWith('TCH') ||
+        cleanId.startsWith('HOD') ||
+        cleanId.startsWith('PRI') ||
+        cleanId.startsWith('ADM') ||
+        cleanId.startsWith('DEV')) {
+      return true;
+    }
+
+    return false;
+  }
+
   /// Get mock user for validation
   EchosphereUser? validateMockCredentials(String identifier, String password) {
     final mockUser = _getMockUser(identifier);

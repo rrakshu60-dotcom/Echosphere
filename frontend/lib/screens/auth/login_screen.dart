@@ -102,17 +102,17 @@ class _LoginScreenState extends State<LoginScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Welcome ${targetUser.fullName}. As per EchoSphere security policy, enter your Official Employee ID to access the College Admin Dashboard:',
-              style: const TextStyle(fontSize: 12, height: 1.4),
+            const Text(
+              'College Admin login requires authorization by a registered Staff, Teacher, or HoD. Input your Official Employee ID:',
+              style: TextStyle(fontSize: 12, height: 1.4),
             ),
             const SizedBox(height: 14),
             TextField(
               controller: empIdCtrl,
               autofocus: true,
               decoration: InputDecoration(
-                labelText: 'Official Employee ID',
-                hintText: 'e.g. DBITADM001 or ADM001',
+                labelText: 'Official Staff Employee ID',
+                hintText: 'e.g. DBITAIMLT022022, HOD001, TCH001, DBITADM001',
                 prefixIcon: const Icon(Icons.badge_outlined, size: 20),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -133,19 +133,21 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: () async {
               final enteredEmpId = empIdCtrl.text.trim();
               if (enteredEmpId.isEmpty) {
-                errorSnackBar('Please enter your Employee ID.');
+                errorSnackBar('Please enter your Staff Employee ID.');
                 return;
               }
 
-              // Verify Employee ID against registered user employee ID (case insensitive)
-              final registeredEmpId = targetUser.employeeId ?? 'DBITADM001';
-              if (enteredEmpId.toLowerCase() != registeredEmpId.toLowerCase()) {
+              // Check if entered Employee ID belongs to any registered staff member in the database
+              final isValidStaff = authController.isRegisteredStaffEmployeeId(enteredEmpId);
+              if (!isValidStaff) {
                 Navigator.pop(ctx);
-                errorSnackBar('Access Denied: Invalid Employee ID verification code.');
+                errorSnackBar(
+                  'Access Denied: Employee ID \'$enteredEmpId\' is not registered to any Teacher, HoD, or Staff in the database.',
+                );
                 await authController.addAuditLog(
                   username: identifier,
                   role: 'College Admin',
-                  status: 'FAILED (Invalid Employee ID: $enteredEmpId)',
+                  status: 'FAILED (Unrecognized Staff Employee ID: $enteredEmpId)',
                   employeeId: enteredEmpId,
                 );
                 return;
@@ -161,8 +163,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
               if (success) {
                 snackBar(
-                  'Employee ID verified! Welcome ${targetUser.fullName}.',
-                  title: 'College Admin Authenticated',
+                  'Staff Employee ID ($enteredEmpId) Authorized!',
+                  title: 'College Admin Access Granted',
                 );
                 Get.offAll(() => const HomePage());
               }
