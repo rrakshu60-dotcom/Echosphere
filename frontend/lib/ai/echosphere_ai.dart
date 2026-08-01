@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
+import 'package:anymex/screens/home_page.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -38,11 +39,25 @@ class _EchosphereAiState extends State<EchosphereAi> {
     });
   }
 
+  void _handleSuggestedAction(String act) {
+    final lower = act.toLowerCase();
+    if (lower.contains('browse announcement') || lower.contains('view announcement') || lower.contains('show announcement') || lower == 'browse announcements') {
+      Get.offAll(() => const HomePage());
+      return;
+    }
+
+    if (lower.contains('check categorie') || lower.contains('categories') || lower.contains('category') || lower == 'check categories') {
+      Get.offAll(() => const HomePage());
+      return;
+    }
+
+    _sendMessage(act);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final role = user?.role ?? 'Student';
     final dept = user?.department ?? 'CSE';
 
     return Column(
@@ -94,25 +109,18 @@ class _EchosphereAiState extends State<EchosphereAi> {
         ),
         const Divider(height: 1),
 
-        // Quick Prompts Preset Bar (Context-Aware based on role)
+        // Quick Prompts Preset Bar
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: role == 'Student'
-                  ? [
-                      _buildPresetChip('🚨 Emergency Alert Status', 'Check heavy rain emergency alert status'),
-                      _buildPresetChip('📝 Exam Schedule Info', 'What is the CSE lab exam timetable?'),
-                      _buildPresetChip('💼 Placement Drives', 'Which companies have active placement drives?'),
-                      _buildPresetChip('⚙️ Where is Settings?', 'How do I change dark mode settings?'),
-                    ]
-                  : [
-                      _buildPresetChip('📌 How to Post Notice', 'How do I create a new announcement?'),
-                      _buildPresetChip('🔐 Change Password', 'How do I change my account password?'),
-                      _buildPresetChip('✅ Approval Rules', 'Who approves teacher announcements?'),
-                      _buildPresetChip('🚨 Emergency Status', 'Check active emergency weather warnings'),
-                    ],
+              children: [
+                _buildPresetChip('📢 Browse Announcements', 'Browse Announcements'),
+                _buildPresetChip('🏷️ Check Categories', 'Check Categories'),
+                _buildPresetChip('🚨 Emergency Alerts', 'Check active emergency weather warnings'),
+                _buildPresetChip('📝 Exam Schedule Info', 'What is the CSE lab exam timetable?'),
+              ],
             ),
           ),
         ),
@@ -348,7 +356,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
                     .map((act) => ActionChip(
                           avatar: const Icon(Icons.touch_app_rounded, size: 14, color: Colors.blue),
                           label: Text(act, style: const TextStyle(fontSize: 11)),
-                          onPressed: () => _sendMessage(act),
+                          onPressed: () => _handleSuggestedAction(act),
                         ))
                     .toList(),
               ),

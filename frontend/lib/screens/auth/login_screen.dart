@@ -58,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = authController.currentUser.value;
       snackBar(
         'Welcome back, ${user?.fullName}!',
-        title: 'Logged in as ${user?.role ?? "User"}',
+        title: 'Login Successful',
       );
       Get.offAll(() => const HomePage());
     } else {

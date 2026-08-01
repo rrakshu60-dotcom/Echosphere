@@ -33,23 +33,22 @@ class EchosphereAiController extends GetxController {
     super.onInit();
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
-    final role = user?.role ?? 'Student';
     final dept = user?.department ?? 'CSE';
 
     messages.add(
       AiChatMessage(
         text:
             'Hello ${user?.fullName ?? "there"}! I am EchoSphere AI Assistant 🤖\n'
-            'I am tuned to your context as **$role** in **$dept Department**.\n'
+            'I am tuned to your context for **$dept Department**.\n'
             'Ask me about recent announcements, exam schedules, department queries, or app features.',
         isUser: false,
         categoryBadge: 'EchoSphere AI',
-        contextBadge: '👤 $role • $dept Department',
+        contextBadge: '$dept Department',
         suggestedActions: [
+          'Browse Announcements',
+          'Check Categories',
           'Show Examination Notices',
           'Check Weather Advisory',
-          'Where is Settings?',
-          'How to Create Notice'
         ],
       ),
     );
@@ -80,7 +79,7 @@ class EchosphereAiController extends GetxController {
 
       final responseText = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
-      final ctxBadge = apiRes['context_badge'] as String? ?? '👤 $role • $dept Department';
+      final ctxBadge = apiRes['context_badge'] as String? ?? '$dept Department';
       final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
@@ -90,7 +89,7 @@ class EchosphereAiController extends GetxController {
         isUser: false,
         categoryBadge: catBadge,
         contextBadge: ctxBadge,
-        suggestedActions: actions,
+        suggestedActions: actions.isEmpty ? ['Browse Announcements', 'Check Categories'] : actions,
         navigationTarget: navTarget,
         matchedAnnouncements: matchedList,
       ));
@@ -100,7 +99,7 @@ class EchosphereAiController extends GetxController {
         text: fallbackText,
         isUser: false,
         categoryBadge: 'EchoSphere AI',
-        contextBadge: '👤 $role • $dept Department',
+        contextBadge: '$dept Department',
         suggestedActions: ['Browse Announcements', 'Check Categories'],
       ));
     } finally {
