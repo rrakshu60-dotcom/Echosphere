@@ -2,7 +2,10 @@ import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:anymex/screens/admin/announcement_management_page.dart';
+import 'package:anymex/screens/admin/user_management_page.dart';
+import 'package:anymex/screens/announcements/approval_queue_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -93,32 +96,29 @@ class Header extends StatelessWidget {
               );
             }
 
+            final isExecutive = user.role == 'Principal' || user.role == 'Developer' || user.role == 'College Admin';
+            final isHoD = user.role == 'HoD';
+
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!isMobile) ...[
-                  EchoSphereChip(
-                    label: user.role,
-                    isSelected: true,
-                    onSelected: (_) {},
+                if (isExecutive) ...[
+                  IconButton(
+                    tooltip: 'Admin Control Hub',
+                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 20),
+                    onPressed: () => _showAdminHubSheet(context, user.role),
                   ),
-                  const SizedBox(width: 8),
+                ] else if (isHoD) ...[
+                  IconButton(
+                    tooltip: 'Approval Queue',
+                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.fact_check_rounded, color: Colors.orange, size: 20),
+                    onPressed: () => Get.to(() => const ApprovalQueuePage()),
+                  ),
                 ],
-                GestureDetector(
-                  onTap: () => _showUserMenu(context, authController),
-                  child: CircleAvatar(
-                    radius: isMobile ? 15 : 18,
-                    backgroundColor: theme.colorScheme.primary,
-                    child: Text(
-                      user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : 'U',
-                      style: TextStyle(
-                        fontSize: isMobile ? 12 : 14,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             );
           }),
@@ -127,47 +127,73 @@ class Header extends StatelessWidget {
     );
   }
 
-  void _showUserMenu(BuildContext context, AuthController authController) {
-    final user = authController.currentUser.value;
+  void _showAdminHubSheet(BuildContext context, String role) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              user?.fullName ?? 'User Profile',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Role: ${user?.role} • Dept: ${user?.department ?? "N/A"}',
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-            if (user?.usn != null) ...[
-              const SizedBox(height: 4),
-              Text('USN: ${user!.usn}', style: const TextStyle(fontWeight: FontWeight.w600)),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 22),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Admin Control Hub',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 20),
+              ListTile(
+                leading: const Icon(Icons.auto_fix_high_rounded, color: Colors.amber),
+                title: const Text('Notice Moderation & Management'),
+                subtitle: const Text('Edit, reschedule, or revoke any announcement'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => const AnnouncementManagementPage());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.fact_check_rounded, color: Colors.orange),
+                title: const Text('Approval Queue'),
+                subtitle: const Text('Review and approve teacher announcements'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => const ApprovalQueuePage());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.volume_up_rounded, color: Colors.blue),
+                title: const Text('Speaker Announcement Queue'),
+                subtitle: const Text('Manage live speaker broadcasts'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => const SpeakerQueuePage());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.manage_accounts_rounded, color: Colors.purple),
+                title: const Text('User Accounts & Permissions'),
+                subtitle: const Text('Manage student & faculty access'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Get.to(() => const UserManagementPage());
+                },
+              ),
             ],
-            if (user?.employeeId != null) ...[
-              const SizedBox(height: 4),
-              Text('Employee ID: ${user!.employeeId}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            ],
-            const Divider(height: 24),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text('Log Out', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(ctx);
-                authController.logout();
-                Get.offAll(() => const LoginScreen());
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );

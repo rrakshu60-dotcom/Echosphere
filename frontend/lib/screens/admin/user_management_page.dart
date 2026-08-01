@@ -32,7 +32,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
     'HoD',
     'College Admin',
     'Principal',
-    'Developer',
+    'Dev Admin',
   ];
 
   @override
@@ -61,11 +61,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
       users = [
         {
           'id': 1,
-          'full_name': 'System Developer',
-          'role': 'Developer',
-          'official_email': 'developer@echosphere.edu',
-          'employee_id': 'DEV001',
-          'department': 'IT Systems',
+          'full_name': 'Dev Admin',
+          'role': 'Dev Admin',
+          'official_email': 'rrakshu60@gmail.com',
+          'employee_id': 'DEVADM01',
+          'department': 'Dev Operations',
           'is_active': true,
         },
         {
@@ -84,6 +84,24 @@ class _UserManagementPageState extends State<UserManagementPage> {
           'official_email': 'principal@echosphere.edu',
           'employee_id': 'PRI001',
           'department': 'Executive',
+          'is_active': true,
+        },
+        {
+          'id': 6,
+          'full_name': 'Rakshitha S',
+          'role': 'Student',
+          'official_email': '1db23ci079@echosphere.edu',
+          'usn': '1DB23CI079',
+          'department': 'AIML',
+          'is_active': true,
+        },
+        {
+          'id': 7,
+          'full_name': 'Dr. B Kursheed',
+          'role': 'Teacher',
+          'official_email': 'b.kursheed@echosphere.edu',
+          'employee_id': 'DBITAIMLT022022',
+          'department': 'AIML',
           'is_active': true,
         },
         {
@@ -224,44 +242,146 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
+  void _showAccessLogDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.shield_outlined, color: Colors.purple, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Security Audit & App Access Logs',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 540,
+          height: 400,
+          child: Obx(() {
+            final logs = authController.auditLogs;
+            if (logs.isEmpty) {
+              return const Center(child: Text('No audit logs recorded yet.'));
+            }
+            return ListView.builder(
+              itemCount: logs.length,
+              itemBuilder: (context, index) {
+                final log = logs[index];
+                final isSuccess = log.status.contains('SUCCESS');
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isSuccess ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                      child: Icon(
+                        isSuccess ? Icons.verified_user_rounded : Icons.gpp_bad_rounded,
+                        color: isSuccess ? Colors.green : Colors.red,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '${log.username} (${log.role})',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Location: ${log.location}', style: const TextStyle(fontSize: 11)),
+                        Text('Timestamp: ${log.timestamp}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text('Status: ${log.status}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSuccess ? Colors.green : Colors.red)),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close Audit Log'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
     final canManage = user != null && user.role != 'Student';
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
-    return Column(
-      children: [
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
             // Top Bar
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
               child: Row(
                 children: [
-                  const Icon(Icons.manage_accounts, size: 24),
-                  const SizedBox(width: 10),
+                  if (canPop) ...[
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Icon(Icons.manage_accounts_rounded, size: 22, color: theme.colorScheme.primary),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'User Accounts & Permissions',
+                      'User Accounts',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: 'Poppins-Bold',
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
+                  if (user?.role == 'Dev Admin' || user?.role == 'Developer') ...[
+                    EchoSphereButton(
+                      height: 36,
+                      color: Colors.purple.withOpacity(0.15),
+                      border: const BorderSide(color: Colors.purple),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      onTap: _showAccessLogDialog,
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.shield_outlined, size: 15, color: Colors.purple),
+                          SizedBox(width: 4),
+                          Text('Access Logs', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (canManage)
                     EchoSphereButton(
-                      height: 38,
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       onTap: _showCreateUserDialog,
                       child: const Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.person_add, size: 16),
-                          SizedBox(width: 6),
-                          Text('Create User'),
+                          Icon(Icons.person_add_rounded, size: 15),
+                          SizedBox(width: 4),
+                          Text('Create', style: TextStyle(fontSize: 12)),
                         ],
                       ),
                     ),
@@ -353,64 +473,77 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8.0),
                               child: EchoSphereContainer(
-                                padding: const EdgeInsets.all(14.0),
+                                padding: const EdgeInsets.all(12.0),
                                 child: Row(
                                   children: [
                                     CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                                      radius: 18,
+                                      backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
                                       child: Text(
                                         (u['full_name'] as String? ?? 'U')[0].toUpperCase(),
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
+                                          fontSize: 13,
                                           color: theme.colorScheme.primary,
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 14),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
-                                              Text(
-                                                u['full_name'] ?? 'User',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 15,
+                                              Expanded(
+                                                child: Text(
+                                                  u['full_name'] ?? 'User',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
                                                 ),
                                               ),
-                                              const SizedBox(width: 8),
-                                              EchoSphereChip(
-                                                label: u['role'] ?? 'Student',
-                                                isSelected: true,
-                                                onSelected: (_) {},
+                                              const SizedBox(width: 6),
+                                              Flexible(
+                                                child: EchoSphereChip(
+                                                  label: u['role'] ?? 'Student',
+                                                  isSelected: true,
+                                                  onSelected: (_) {},
+                                                ),
                                               ),
                                             ],
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            'Identifier: $identifier • Dept: ${u['department'] ?? "CSE"}',
+                                            'ID: $identifier • Dept: ${u['department'] ?? "CSE"}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: 11,
                                               color: theme.colorScheme.onSurface.withOpacity(0.6),
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                    Switch(
-                                      value: isActive,
-                                      activeColor: theme.colorScheme.primary,
-                                      onChanged: (val) {
-                                        setState(() {
-                                          u['is_active'] = val;
-                                        });
-                                        snackBar(
-                                          'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
-                                        );
-                                      },
+                                    const SizedBox(width: 4),
+                                    Transform.scale(
+                                      scale: 0.85,
+                                      child: Switch(
+                                        value: isActive,
+                                        activeColor: theme.colorScheme.primary,
+                                        onChanged: (val) {
+                                          setState(() {
+                                            u['is_active'] = val;
+                                          });
+                                          snackBar(
+                                            'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -420,6 +553,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         ),
             ),
           ],
-        );
+        ),
+      ),
+    );
   }
 }

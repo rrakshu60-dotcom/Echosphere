@@ -192,16 +192,16 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
   Color _getPriorityColor(String priority) {
     switch (priority.toUpperCase()) {
       case 'EMERGENCY':
-        return Colors.red;
+        return const Color(0xFFF87171);
       case 'URGENT':
-        return Colors.orange;
+        return const Color(0xFFFB923C);
       case 'HIGH':
-        return Colors.amber.shade700;
+        return const Color(0xFFFBBF24);
       case 'LOW':
-        return Colors.grey.shade600;
+        return const Color(0xFF94A3B8);
       case 'NORMAL':
       default:
-        return Colors.blue;
+        return const Color(0xFF60A5FA);
     }
   }
 
@@ -363,139 +363,121 @@ class _PriorityCard extends StatelessWidget {
               ]
             : [],
       ),
-      child: Stack(
+      padding: const EdgeInsets.all(14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Priority color accent bar
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 5,
-              decoration: BoxDecoration(
-                color: pColor,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  bottomLeft: Radius.circular(18),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: pColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: pColor.withOpacity(0.4)),
                 ),
-              ),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Priority badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: pColor.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: pColor.withOpacity(0.4)),
+                    if (isEmergency)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.warning_amber_rounded,
+                            size: 13, color: pColor),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isEmergency)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Icon(Icons.warning_amber_rounded,
-                                  size: 13, color: pColor),
-                            ),
-                          Text(
-                            item.priority,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: pColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        item.department,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
                     Text(
-                      timeAgo,
+                      item.priority,
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    height: 1.3,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  item.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.person_outline,
-                        size: 13,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5)),
-                    const SizedBox(width: 4),
-                    Text(
-                      item.creatorName,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      'View →',
-                      style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.bold,
                         color: pColor,
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  item.department,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                timeAgo,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            item.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.bold,
+              height: 1.25,
             ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: Text(
+              item.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                color: theme.colorScheme.onSurface.withOpacity(0.75),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.person_outline,
+                  size: 13,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  item.creatorName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'View →',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: pColor,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -519,16 +501,16 @@ class AnnouncementFeedCard extends StatelessWidget {
   Color _getPriorityColor(String priority) {
     switch (priority.toUpperCase()) {
       case 'EMERGENCY':
-        return Colors.red;
+        return const Color(0xFFF87171);
       case 'URGENT':
-        return Colors.orange;
+        return const Color(0xFFFB923C);
       case 'HIGH':
-        return Colors.amber.shade700;
+        return const Color(0xFFFBBF24);
       case 'LOW':
-        return Colors.grey.shade600;
+        return const Color(0xFF94A3B8);
       case 'NORMAL':
       default:
-        return Colors.blue;
+        return const Color(0xFF60A5FA);
     }
   }
 
@@ -565,31 +547,16 @@ class AnnouncementFeedCard extends StatelessWidget {
               Get.to(() => AnnouncementDetailPage(announcement: notice)),
           borderRadius: BorderRadius.circular(16),
           child: EchoSphereContainer(
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Priority color bar (left edge)
-                  Container(
-                    width: 4,
-                    decoration: BoxDecoration(
-                      color: pColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                      ),
-                    ),
-                  ),
-
-                  // Card content
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(18.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+            padding: const EdgeInsets.all(18.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                           // Top row: chips + timestamp
-                          Row(
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            alignment: WrapAlignment.spaceBetween,
                             children: [
                               EchoSphereChip(
                                 label: notice.category,
@@ -597,7 +564,6 @@ class AnnouncementFeedCard extends StatelessWidget {
                                 onSelected: (_) {},
                                 showCheck: false,
                               ),
-                              const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
@@ -616,11 +582,10 @@ class AnnouncementFeedCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              const Spacer(),
                               Text(
                                 _timeAgo(notice.createdAt),
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11,
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.5),
                                 ),
@@ -742,11 +707,6 @@ class AnnouncementFeedCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
       ),

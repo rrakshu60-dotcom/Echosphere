@@ -237,10 +237,10 @@ def approve_announcement_service(
             detail="Announcement not found.",
         )
 
-    if announcement.status != AnnouncementStatus.PENDING_APPROVAL:
+    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only pending announcements can be approved.",
+            detail="Only pending or submitted announcements can be approved.",
         )
 
     approval = AnnouncementApproval(
@@ -260,7 +260,7 @@ def approve_announcement_service(
         db,
         announcement,
         AnnouncementUpdate(
-            status=AnnouncementStatus.SCHEDULED,
+            status=AnnouncementStatus.PUBLISHED,
         ),
     )
 
@@ -296,10 +296,10 @@ def reject_announcement_service(
             detail="Announcement not found.",
         )
 
-    if announcement.status != AnnouncementStatus.PENDING_APPROVAL:
+    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only pending announcements can be rejected.",
+            detail="Only pending or submitted announcements can be rejected.",
         )
 
     approval = AnnouncementApproval(

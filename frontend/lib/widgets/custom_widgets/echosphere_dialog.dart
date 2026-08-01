@@ -42,12 +42,16 @@ class EchoSphereDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: context.colors.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
       child: Container(
         width: getResponsiveValue(context,
             mobileValue: double.infinity, desktopValue: 500.0),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         padding: padding,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -55,13 +59,17 @@ class EchoSphereDialog extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 16),
-            message != null
-                ? EchoSphereText(
-                    text: message!, textAlign: TextAlign.center, size: 14)
-                : contentWidget ?? const SizedBox.shrink(),
+            Flexible(
+              child: message != null
+                  ? SingleChildScrollView(
+                      child: EchoSphereText(
+                          text: message!, textAlign: TextAlign.center, size: 14),
+                    )
+                  : (contentWidget ?? const SizedBox.shrink()),
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

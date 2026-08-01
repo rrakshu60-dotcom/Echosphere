@@ -82,11 +82,12 @@ class _EchosphereAiState extends State<EchosphereAi> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              EchoSphereChip(
-                label: '👤 $role • $dept',
-                isSelected: true,
-                onSelected: (_) {},
+              Flexible(
+                child: EchoSphereChip(
+                  label: '$dept Dept',
+                  isSelected: true,
+                  onSelected: (_) {},
+                ),
               ),
             ],
           ),
@@ -294,19 +295,23 @@ class _EchosphereAiState extends State<EchosphereAi> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                alignment: WrapAlignment.spaceBetween,
                                 children: [
                                   EchoSphereChip(
                                     label: ann['category'] ?? 'General',
                                     isSelected: true,
                                     onSelected: (_) {},
                                   ),
-                                  const SizedBox(width: 6),
                                   Text(
                                     ann['department'] ?? 'College-Wide',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
-                                  const Spacer(),
                                   Text(
                                     ann['created_at'] ?? '',
                                     style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.5)),

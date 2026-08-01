@@ -1,4 +1,3 @@
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
@@ -49,19 +48,29 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
-    return Column(
-      children: [
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
             // Header Bar
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
               child: Row(
                 children: [
-                  const Icon(Icons.volume_up, size: 24, color: Colors.blue),
-                  const SizedBox(width: 10),
+                  if (canPop) ...[
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  const Icon(Icons.volume_up_rounded, size: 22, color: Colors.blue),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Speaker Announcement Queue',
+                      'Speaker Queue',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -73,10 +82,12 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  EchoSphereChip(
-                    label: '${queueItems.length} in Queue',
-                    isSelected: true,
-                    onSelected: (_) {},
+                  Flexible(
+                    child: EchoSphereChip(
+                      label: '${queueItems.length} In Queue',
+                      isSelected: true,
+                      onSelected: (_) {},
+                    ),
                   ),
                 ],
               ),
@@ -85,9 +96,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
 
             // Active Speaker Banner
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(12.0),
               child: EchoSphereContainer(
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.all(14.0),
                 color: theme.colorScheme.primary.withOpacity(0.12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,9 +106,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                     Row(
                       children: [
                         Icon(
-                          isPlaying ? Icons.graphic_eq : Icons.pause_circle_filled,
+                          isPlaying ? Icons.graphic_eq_rounded : Icons.pause_circle_filled_rounded,
                           color: theme.colorScheme.primary,
-                          size: 28,
+                          size: 26,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -105,10 +116,12 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isPlaying ? 'Now Broadcasting on Campus Speakers' : 'Speaker Queue Ready',
+                                isPlaying ? 'Broadcasting Now' : 'Speaker Queue Ready',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   color: theme.colorScheme.primary,
                                 ),
                               ),
@@ -116,30 +129,70 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                                 queueItems.isNotEmpty
                                     ? queueItems[activeIndex]['title']
                                     : 'No active speaker announcement',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                               ),
                             ],
                           ),
                         ),
-                        EchoSphereButton(
-                          height: 38,
-                          onTap: () {
-                            setState(() => isPlaying = !isPlaying);
-                            snackBar(
-                              isPlaying ? 'Started speaker playback...' : 'Paused speaker queue.',
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 18),
-                              const SizedBox(width: 6),
-                              Text(isPlaying ? 'Pause' : 'Play'),
-                            ],
+                        const SizedBox(width: 8),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() => isPlaying = !isPlaying);
+                              snackBar(
+                                isPlaying ? 'Started speaker playback...' : 'Paused speaker queue.',
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: isPlaying
+                                      ? [const Color(0xFF9333EA), const Color(0xFF6366F1)]
+                                      : [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                                    blurRadius: 10,
+                                    spreadRadius: 1,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    isPlaying ? 'Pause' : 'Play',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     Text(
                       'Minimum 2-minute gap strictly maintained between speaker announcements.',
                       style: TextStyle(
@@ -156,21 +209,21 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
             // Queue Items List
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(12.0),
                 itemCount: queueItems.length,
                 itemBuilder: (ctx, i) {
                   final item = queueItems[i];
                   final isCurrent = i == activeIndex;
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
+                    padding: const EdgeInsets.only(bottom: 10.0),
                     child: EchoSphereContainer(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.all(12.0),
                       color: isCurrent ? theme.colorScheme.primary.withOpacity(0.08) : null,
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: theme.colorScheme.primary.withOpacity(0.15),
@@ -178,37 +231,44 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                             child: Text(
                               '#${i + 1}',
                               style: TextStyle(
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 color: theme.colorScheme.primary,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     EchoSphereChip(
                                       label: item['type'],
                                       isSelected: true,
                                       onSelected: (_) {},
                                     ),
-                                    const SizedBox(width: 8),
                                     Text(
                                       item['department'],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.bold,
                                         color: theme.colorScheme.primary,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 4),
                                 Text(
                                   item['title'],
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
@@ -217,8 +277,10 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                                 const SizedBox(height: 4),
                                 Text(
                                   'Scheduled: ${DateFormat("hh:mm a").format(item["scheduledTime"])} • Duration: ${item["duration"]}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     color: theme.colorScheme.onSurface.withOpacity(0.6),
                                   ),
                                 ),
@@ -226,7 +288,39 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.arrow_upward, size: 20),
+                            tooltip: isCurrent && isPlaying ? 'Pause' : 'Play Now',
+                            icon: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isCurrent && isPlaying
+                                    ? const Color(0xFF8B5CF6)
+                                    : theme.colorScheme.primary.withOpacity(0.15),
+                              ),
+                              child: Icon(
+                                isCurrent && isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                size: 18,
+                                color: isCurrent && isPlaying ? Colors.white : theme.colorScheme.primary,
+                              ),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                if (activeIndex == i) {
+                                  isPlaying = !isPlaying;
+                                } else {
+                                  activeIndex = i;
+                                  isPlaying = true;
+                                }
+                              });
+                              snackBar(
+                                isPlaying
+                                    ? 'Broadcasting: ${item['title']}'
+                                    : 'Paused speaker queue.',
+                              );
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.arrow_upward_rounded, size: 18),
                             onPressed: i == 0
                                 ? null
                                 : () {
@@ -246,6 +340,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> {
               ),
             ),
           ],
-        );
+        ),
+      ),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/admin/user_management_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
+import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
@@ -47,6 +48,7 @@ class _HomePageState extends State<HomePage> {
 
             Expanded(
               child: Obx(() {
+                final _ = authController.currentUser.value;
                 final navItems = _buildNavItems(context);
                 final pages = _buildPages(context, theme);
 
@@ -79,8 +81,9 @@ class _HomePageState extends State<HomePage> {
       ),
     ),
 
-      // Mobile Bottom Navigation Bar
+      // Mobile Bottom Navigation Bar (Uniform DevAdmin Glassmorphic Design)
       bottomNavigationBar: Obx(() {
+        final _ = authController.currentUser.value;
         final navItems = _buildNavItems(context);
         final safeIndex = _selectedNavIndex >= navItems.length ? 0 : _selectedNavIndex;
 
@@ -120,172 +123,70 @@ class _HomePageState extends State<HomePage> {
     final user = authController.currentUser.value;
     final role = user?.role ?? 'Student';
 
-    if (role == 'Student') {
-      return [
-        _buildAnnouncementsDashboard(context, theme),
-        _buildSearchPage(context, theme),
-        const EchosphereAi(),
-        const NotificationsPage(),
-        const ProfilePage(),
-      ];
-    } else if (role == 'Teacher') {
-      return [
-        _buildAnnouncementsDashboard(context, theme),
-        _buildSearchPage(context, theme),
-        const ApprovalQueuePage(),
-        const EchosphereAi(),
-        const NotificationsPage(),
-        const UserManagementPage(),
-        const ProfilePage(),
-      ];
+    Widget secondPage;
+    if (role == 'HoD') {
+      secondPage = const ApprovalQueuePage();
+    } else if (role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
+      secondPage = const UserManagementPage();
     } else {
-      // HoD, College Admin, Principal, Dev Admin
-      return [
-        _buildAnnouncementsDashboard(context, theme),
-        _buildSearchPage(context, theme),
-        const ApprovalQueuePage(),
-        const SpeakerQueuePage(),
-        const EchosphereAi(),
-        const NotificationsPage(),
-        const UserManagementPage(),
-        const ProfilePage(),
-      ];
+      secondPage = _buildSearchPage(context, theme);
     }
+
+    return [
+      _buildAnnouncementsDashboard(context, theme),
+      secondPage,
+      const EchosphereAi(),
+      const NotificationsPage(),
+      const ProfilePage(),
+    ];
   }
 
   List<NavItem> _buildNavItems(BuildContext context) {
     final user = authController.currentUser.value;
     final role = user?.role ?? 'Student';
 
-    if (role == 'Student') {
-      return [
-        NavItem(
-          selectedIcon: Icons.campaign,
-          unselectedIcon: Icons.campaign_outlined,
-          label: 'Notices',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.search,
-          unselectedIcon: Icons.search_outlined,
-          label: 'Search',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.auto_awesome,
-          unselectedIcon: Icons.auto_awesome_outlined,
-          label: 'AI Assistant',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.notifications,
-          unselectedIcon: Icons.notifications_outlined,
-          label: 'Alerts',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.person,
-          unselectedIcon: Icons.person_outline,
-          label: 'Profile',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-      ];
+    IconData secondSelectedIcon = Icons.search_rounded;
+    IconData secondUnselectedIcon = Icons.search_outlined;
+    String secondLabel = 'Search';
+
+    if (role == 'HoD') {
+      secondSelectedIcon = Icons.fact_check_rounded;
+      secondUnselectedIcon = Icons.fact_check_outlined;
+      secondLabel = 'Approvals';
+    } else if (role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
+      secondSelectedIcon = Icons.admin_panel_settings_rounded;
+      secondUnselectedIcon = Icons.admin_panel_settings_outlined;
+      secondLabel = 'Admin Hub';
     }
 
-    if (role == 'Teacher') {
-      return [
-        NavItem(
-          selectedIcon: Icons.campaign,
-          unselectedIcon: Icons.campaign_outlined,
-          label: 'Notices',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.search,
-          unselectedIcon: Icons.search_outlined,
-          label: 'Search',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.edit_note,
-          unselectedIcon: Icons.edit_note_outlined,
-          label: 'My Notices',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.auto_awesome,
-          unselectedIcon: Icons.auto_awesome_outlined,
-          label: 'AI Assistant',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.notifications,
-          unselectedIcon: Icons.notifications_outlined,
-          label: 'Alerts',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.group,
-          unselectedIcon: Icons.group_outlined,
-          label: 'Students',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-        NavItem(
-          selectedIcon: Icons.person,
-          unselectedIcon: Icons.person_outline,
-          label: 'Profile',
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-        ),
-      ];
-    }
-
-    // HoD, College Admin, Principal, Developer Admin
     return [
       NavItem(
-        selectedIcon: Icons.campaign,
+        selectedIcon: Icons.campaign_rounded,
         unselectedIcon: Icons.campaign_outlined,
         label: 'Notices',
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
       NavItem(
-        selectedIcon: Icons.search,
-        unselectedIcon: Icons.search_outlined,
-        label: 'Search',
+        selectedIcon: secondSelectedIcon,
+        unselectedIcon: secondUnselectedIcon,
+        label: secondLabel,
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
       NavItem(
-        selectedIcon: Icons.fact_check,
-        unselectedIcon: Icons.fact_check_outlined,
-        label: 'Approvals',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
-      ),
-      NavItem(
-        selectedIcon: Icons.volume_up,
-        unselectedIcon: Icons.volume_up_outlined,
-        label: 'Speaker Queue',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
-      ),
-      NavItem(
-        selectedIcon: Icons.auto_awesome,
+        selectedIcon: Icons.auto_awesome_rounded,
         unselectedIcon: Icons.auto_awesome_outlined,
         label: 'AI Assistant',
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
       NavItem(
-        selectedIcon: Icons.notifications,
+        selectedIcon: Icons.notifications_rounded,
         unselectedIcon: Icons.notifications_outlined,
         label: 'Alerts',
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
       NavItem(
-        selectedIcon: Icons.manage_accounts,
-        unselectedIcon: Icons.manage_accounts_outlined,
-        label: 'Accounts',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
-      ),
-      NavItem(
-        selectedIcon: Icons.person,
-        unselectedIcon: Icons.person_outline,
+        selectedIcon: Icons.person_rounded,
+        unselectedIcon: Icons.person_outline_rounded,
         label: 'Profile',
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
@@ -315,12 +216,12 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 16),
 
               // ─── Section 2: Today's Summary ────────────────────────
-              Obx(() => TodaySummaryBanner(
-                    todayCount: annController.todayAnnouncements.length,
-                    pendingCount: annController.pendingApprovals.length,
-                    isAuthorized: authController.currentUser.value != null &&
-                        authController.currentUser.value!.role != 'Student',
-                  )),
+              TodaySummaryBanner(
+                todayCount: annController.todayAnnouncements.length,
+                pendingCount: annController.pendingApprovals.length,
+                isAuthorized: authController.currentUser.value != null &&
+                    authController.currentUser.value!.role != 'Student',
+              ),
               const SizedBox(height: 20),
 
               // ─── Section 3: Stats Dashboard Panel ──────────────────
@@ -408,8 +309,8 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text(
                       user != null
-                          ? 'Welcome back, ${user.fullName} 👋'
-                          : 'Welcome to EchoSphere 📢',
+                          ? 'Welcome back, ${user.fullName}'
+                          : 'Welcome to EchoSphere',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -419,7 +320,7 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 3),
                     Text(
                       user != null
-                          ? '${user.role} · ${user.department ?? "College-Wide"} Department'
+                          ? '${user.department ?? "College-Wide"} Department'
                           : 'Log in to access college announcements.',
                       style: TextStyle(
                         fontSize: 13,
@@ -472,6 +373,12 @@ class _HomePageState extends State<HomePage> {
               value: annController.announcements.length,
               icon: Icons.campaign_rounded,
               color: Colors.blue,
+              onTap: () {
+                annController.showTodayOnly.value = false;
+                annController.selectedCategory.value = 'All';
+                annController.searchQuery.value = '';
+                setState(() => _selectedNavIndex = 1);
+              },
             ),
             const SizedBox(width: 10),
             StatCard(
@@ -479,6 +386,10 @@ class _HomePageState extends State<HomePage> {
               value: annController.todayAnnouncements.length,
               icon: Icons.today_rounded,
               color: Colors.green,
+              onTap: () {
+                annController.filterTodayOnly();
+                setState(() => _selectedNavIndex = 1);
+              },
             ),
             const SizedBox(width: 10),
             if (isAdmin || role == 'Teacher')
@@ -487,7 +398,7 @@ class _HomePageState extends State<HomePage> {
                 value: annController.pendingApprovals.length,
                 icon: Icons.pending_actions_rounded,
                 color: Colors.orange,
-                onTap: () => setState(() => _selectedNavIndex = 1),
+                onTap: () => Get.to(() => const ApprovalQueuePage()),
               )
             else
               StatCard(
@@ -495,6 +406,11 @@ class _HomePageState extends State<HomePage> {
                 value: annController.emergencyCount,
                 icon: Icons.warning_amber_rounded,
                 color: Colors.red,
+                onTap: () {
+                  annController.selectedCategory.value = 'All';
+                  annController.searchQuery.value = 'EMERGENCY';
+                  setState(() => _selectedNavIndex = 1);
+                },
               ),
           ],
         ),
@@ -514,6 +430,7 @@ class _HomePageState extends State<HomePage> {
       final isAdmin = role == 'College Admin' ||
           role == 'HoD' ||
           role == 'Principal' ||
+          role == 'Dev Admin' ||
           role == 'Developer';
 
       return TweenAnimationBuilder<double>(
@@ -555,29 +472,35 @@ class _HomePageState extends State<HomePage> {
                         builder: (_) => const CreateAnnouncementDialog(),
                       ),
                     ),
-                  if (isAdmin || isTeacher)
+                  if (isAdmin)
                     QuickActionCard(
                       title: 'Approvals',
                       icon: Icons.fact_check_rounded,
                       color: Colors.orange,
                       badgeCount: annController.pendingApprovals.length,
-                      onTap: () => setState(() => _selectedNavIndex = 1),
+                      onTap: () => Get.to(() => const ApprovalQueuePage()),
+                    ),
+                  if (isTeacher)
+                    QuickActionCard(
+                      title: 'My Submissions',
+                      icon: Icons.track_changes_rounded,
+                      color: Colors.orange,
+                      onTap: () => Get.to(() => const ApprovalQueuePage()),
                     ),
                   if (isAdmin)
                     QuickActionCard(
                       title: 'Speaker Queue',
                       icon: Icons.volume_up_rounded,
                       color: Colors.blue,
-                      onTap: () => setState(() => _selectedNavIndex = 2),
+                      onTap: () => Get.to(() => const SpeakerQueuePage()),
                     ),
-                  QuickActionCard(
-                    title: 'My Profile',
-                    icon: Icons.person_rounded,
-                    color: Colors.purple,
-                    onTap: () => setState(() =>
-                        _selectedNavIndex =
-                            isAdmin ? 6 : (isTeacher ? 5 : 3)),
-                  ),
+                  if (role == 'Dev Admin' || role == 'College Admin')
+                    QuickActionCard(
+                      title: 'User Accounts',
+                      icon: Icons.manage_accounts_rounded,
+                      color: Colors.purple,
+                      onTap: () => Get.to(() => const UserManagementPage()),
+                    ),
                 ],
               ),
             ),
@@ -585,8 +508,7 @@ class _HomePageState extends State<HomePage> {
 
             // AI Assistant Shortcut Banner
             InkWell(
-              onTap: () => setState(() => _selectedNavIndex =
-                  isAdmin ? 3 : (isTeacher ? 2 : 1)),
+              onTap: () => setState(() => _selectedNavIndex = 2),
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 width: double.infinity,
@@ -679,7 +601,10 @@ class _HomePageState extends State<HomePage> {
                     label: cat,
                     isSelected: isSelected,
                     onSelected: (val) {
-                      if (val) annController.selectedCategory.value = cat;
+                      if (val) {
+                        annController.showTodayOnly.value = false;
+                        annController.selectedCategory.value = cat;
+                      }
                     },
                   ),
                 );
@@ -709,22 +634,54 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const Spacer(),
-            Obx(() => Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${annController.filteredAnnouncements.length} Notices',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
+            Row(
+              children: [
+                Obx(() => Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${annController.filteredAnnouncements.length} Notices',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    )),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => Get.to(() => const ArchivePage()),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inventory_2_rounded, size: 14, color: Colors.amber),
+                        SizedBox(width: 4),
+                        Text(
+                          'Archive',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                )),
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -811,6 +768,8 @@ class _HomePageState extends State<HomePage> {
               onChanged: (val) => annController.searchQuery.value = val,
               decoration: InputDecoration(
                 isDense: true,
+                filled: false,
+                fillColor: Colors.transparent,
                 hintText: 'Search by title, department, or keyword...',
                 hintStyle: TextStyle(
                   fontSize: 13,
@@ -824,6 +783,10 @@ class _HomePageState extends State<HomePage> {
                 ),
                 prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),

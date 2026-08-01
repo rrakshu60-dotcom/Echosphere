@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/widgets/common/glow.dart';
@@ -7,14 +8,65 @@ import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AnnouncementDetailPage extends StatelessWidget {
   final AnnouncementModel announcement;
 
   const AnnouncementDetailPage({super.key, required this.announcement});
+
+  Future<void> _downloadAttachment(BuildContext context, String filename) async {
+    try {
+      Directory? dir;
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      final file = File('${dir.path}/$filename');
+      final content = '''
+================================================================================
+                        ECHOSPHERE INSTITUTIONAL NOTICE
+================================================================================
+
+TITLE: ${announcement.title}
+DEPARTMENT: ${announcement.department}
+CATEGORY: ${announcement.category}
+PRIORITY: ${announcement.priority}
+ISSUED BY: ${announcement.creatorName}
+DATE: ${DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt)}
+
+--------------------------------------------------------------------------------
+OFFICIAL NOTICE DETAILS:
+--------------------------------------------------------------------------------
+${announcement.description}
+
+AI SUMMARY:
+${announcement.aiSummary ?? 'N/A'}
+
+================================================================================
+Downloaded & Saved via EchoSphere Smart Campus System
+================================================================================
+''';
+
+      await file.writeAsString(content);
+
+      snackBar('Downloaded "$filename" to Downloads directory!');
+
+      final uri = Uri.file(file.path);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      snackBar('Saved "$filename" to Downloads directory!');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,15 +75,18 @@ class AnnouncementDetailPage extends StatelessWidget {
     final announcementController = Get.find<AnnouncementController>();
 
     final userRole = authController.currentUser.value?.role ?? 'Student';
-    final canApprove = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Developer') &&
-        (announcement.status == 'SUBMITTED' || announcement.status == 'DRAFT');
+    final canApprove = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
+        (announcement.status == 'SUBMITTED' || announcement.status == 'DRAFT' || announcement.status == 'PENDING_APPROVAL');
 
-    final canDelete = userRole == 'Principal' || userRole == 'Developer' || (userRole == 'HoD' && announcement.department == authController.currentUser.value?.department);
+    final canDelete = userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer' || (userRole == 'HoD' && announcement.department == authController.currentUser.value?.department);
 
     return Scaffold(
       body: Glow(
-        child: Column(
-          children: [
+        child: SafeArea(
+          top: true,
+          bottom: false,
+          child: Column(
+            children: [
             // Top Navigation Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -116,24 +171,30 @@ class AnnouncementDetailPage extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        announcement.creatorName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          announcement.creatorName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                        Text(
+                                          DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -200,11 +261,11 @@ class AnnouncementDetailPage extends StatelessWidget {
                                 ),
                               ),
                               if (announcement.remarks != null && announcement.remarks!.isNotEmpty) ...[
-                                const SizedBox(height: 20),
+                                const SizedBox(height: 16),
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                    color: theme.colorScheme.primary.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Row(
@@ -234,7 +295,7 @@ class AnnouncementDetailPage extends StatelessWidget {
                             children: [
                               const Row(
                                 children: [
-                                  Icon(Icons.attach_file, size: 20),
+                                  Icon(Icons.attach_file_rounded, size: 20),
                                   SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
@@ -251,15 +312,21 @@ class AnnouncementDetailPage extends StatelessWidget {
                                 spacing: 10,
                                 runSpacing: 10,
                                 children: [
-                                  ActionChip(
-                                    avatar: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 18),
-                                    label: const Text('Official_Circular.pdf (245 KB)'),
-                                    onPressed: () => snackBar('Downloading Official_Circular.pdf...'),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
+                                    child: ActionChip(
+                                      avatar: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFF87171), size: 18),
+                                      label: const Text('Official_Circular.pdf (245 KB)', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      onPressed: () => _downloadAttachment(context, 'Official_Circular.pdf'),
+                                    ),
                                   ),
-                                  ActionChip(
-                                    avatar: const Icon(Icons.table_chart, color: Colors.green, size: 18),
-                                    label: const Text('Exam_Schedule.xlsx (120 KB)'),
-                                    onPressed: () => snackBar('Downloading Exam_Schedule.xlsx...'),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
+                                    child: ActionChip(
+                                      avatar: const Icon(Icons.table_chart_rounded, color: Color(0xFF34D399), size: 18),
+                                      label: const Text('Exam_Schedule.xlsx (120 KB)', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      onPressed: () => _downloadAttachment(context, 'Exam_Schedule.xlsx'),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -306,73 +373,90 @@ class AnnouncementDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 24),
 
-                        // Action Buttons (Approve / Reject / Request Changes / Delete)
+                        // Action Buttons (Approve / Reject / Modify / Reschedule / Delete)
                         if (canApprove || canDelete)
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               if (canApprove) ...[
-                                Expanded(
-                                  child: EchoSphereButton(
-                                    height: 46,
-                                    onTap: () => _showApproveDialog(context, announcementController),
-                                    child: const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.check_circle_outline, size: 18),
-                                        SizedBox(width: 6),
-                                        Text('Approve'),
-                                      ],
-                                    ),
+                                EchoSphereButton(
+                                  height: 42,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showApproveDialog(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_circle_outline_rounded, size: 16),
+                                      SizedBox(width: 6),
+                                      Text('Approve', style: TextStyle(fontSize: 12)),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: EchoSphereButton(
-                                    height: 46,
-                                    color: Colors.amber.withOpacity(0.2),
-                                    border: BorderSide(color: Colors.amber.shade700),
-                                    onTap: () {
-                                      snackBar('Requested changes from author.');
-                                    },
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.edit, size: 18, color: Colors.amber.shade800),
-                                        const SizedBox(width: 6),
-                                        Text('Request Changes', style: TextStyle(color: Colors.amber.shade900, fontSize: 12)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: EchoSphereButton(
-                                    height: 46,
-                                    color: Colors.red.withOpacity(0.2),
-                                    border: const BorderSide(color: Colors.red),
-                                    onTap: () => _showRejectDialog(context, announcementController),
-                                    child: const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
-                                        SizedBox(width: 6),
-                                        Text('Reject', style: TextStyle(color: Colors.red)),
-                                      ],
-                                    ),
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.red.withOpacity(0.2),
+                                  border: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showRejectDialog(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
+                                      SizedBox(width: 6),
+                                      Text('Reject', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                    ],
                                   ),
                                 ),
                               ],
                               if (canDelete) ...[
-                                if (canApprove) const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                  onPressed: () async {
-                                    await announcementController.deleteAnnouncement(announcement.id);
-                                    snackBar('Announcement deleted.');
-                                    Get.back();
-                                  },
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.amber.withOpacity(0.15),
+                                  border: const BorderSide(color: Colors.amber),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showEditDialog(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.edit_rounded, size: 16, color: Colors.amber),
+                                      SizedBox(width: 6),
+                                      Text('Modify', style: TextStyle(fontSize: 12)),
+                                    ],
+                                  ),
                                 ),
-                              ]
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.blue.withOpacity(0.15),
+                                  border: const BorderSide(color: Colors.blue),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showReschedulePicker(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.event_rounded, size: 16, color: Colors.blue),
+                                      SizedBox(width: 6),
+                                      Text('Reschedule', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.red.withOpacity(0.15),
+                                  border: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showDeleteConfirm(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                      SizedBox(width: 6),
+                                      Text('Delete', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                       ],
@@ -384,6 +468,7 @@ class AnnouncementDetailPage extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -451,9 +536,150 @@ class AnnouncementDetailPage extends StatelessWidget {
     );
   }
 
+  void _showEditDialog(BuildContext context, AnnouncementController controller) {
+    final titleCtrl = TextEditingController(text: announcement.title);
+    final descCtrl = TextEditingController(text: announcement.description);
+    String catVal = announcement.category;
+    String prioVal = announcement.priority;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => EchoSphereDialog(
+          title: 'Modify Announcement',
+          contentWidget: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 6),
+                TextField(controller: titleCtrl, decoration: const InputDecoration(border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                const Text('Description / Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 6),
+                TextField(controller: descCtrl, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          EchoSphereDropdown(
+                            label: 'Category',
+                            icon: Icons.category,
+                            selectedItem: DropdownItem(value: catVal, text: catVal),
+                            items: AnnouncementController.categories
+                                .where((c) => c != 'All')
+                                .map((c) => DropdownItem(value: c, text: c))
+                                .toList(),
+                            onChanged: (val) => setDlgState(() => catVal = val.value),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Priority', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          EchoSphereDropdown(
+                            label: 'Priority',
+                            icon: Icons.priority_high,
+                            selectedItem: DropdownItem(value: prioVal, text: prioVal),
+                            items: ['NORMAL', 'HIGH', 'EMERGENCY']
+                                .map((p) => DropdownItem(value: p, text: p))
+                                .toList(),
+                            onChanged: (val) => setDlgState(() => prioVal = val.value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          onConfirm: () async {
+            if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) {
+              errorSnackBar('Title and description cannot be empty.');
+              return;
+            }
+            await controller.updateAnnouncement(
+              id: announcement.id,
+              title: titleCtrl.text.trim(),
+              description: descCtrl.text.trim(),
+              category: catVal,
+              priority: prioVal,
+            );
+            snackBar('Announcement updated successfully!');
+            Get.back();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showReschedulePicker(BuildContext context, AnnouncementController controller) async {
+    final now = DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: announcement.createdAt.isAfter(now) ? announcement.createdAt : now.add(const Duration(hours: 1)),
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+
+    if (pickedDate != null && context.mounted) {
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(announcement.createdAt),
+      );
+
+      if (pickedTime != null) {
+        final newDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        await controller.rescheduleAnnouncement(
+          id: announcement.id,
+          newScheduledTime: newDateTime,
+        );
+
+        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(newDateTime)}!');
+        Get.back();
+      }
+    }
+  }
+
+  void _showDeleteConfirm(BuildContext context, AnnouncementController controller) {
+    showDialog(
+      context: context,
+      builder: (ctx) => EchoSphereDialog(
+        title: 'Delete Announcement?',
+        message: 'Are you sure you want to delete "${announcement.title}"? This action cannot be undone.',
+        confirmText: 'Delete',
+        onConfirm: () async {
+          await controller.deleteAnnouncement(announcement.id);
+          snackBar('Announcement deleted.');
+          Get.back();
+        },
+      ),
+    );
+  }
+
   Widget _buildStatusBadge(String status) {
     Color bg = Colors.green;
     if (status == 'SUBMITTED' || status == 'DRAFT') bg = Colors.orange;
+    if (status == 'SCHEDULED') bg = Colors.blue;
     if (status == 'REJECTED') bg = Colors.red;
 
     return Container(

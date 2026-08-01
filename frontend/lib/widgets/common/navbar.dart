@@ -108,10 +108,10 @@ class _ResponsiveNavBarState extends State<ResponsiveNavBar>
             bottom: widget.margin!.bottom + bottomPadding,
           )
         : EdgeInsets.only(
-            left: widget.isDesktop ? 5 : 40,
-            right: widget.isDesktop ? 5 : 40,
-            top: widget.isDesktop ? 0 : 20,
-            bottom: (widget.isDesktop ? 0 : 20) + bottomPadding,
+            left: widget.isDesktop ? 5 : 12,
+            right: widget.isDesktop ? 5 : 12,
+            top: widget.isDesktop ? 0 : 8,
+            bottom: (widget.isDesktop ? 0 : 10) + bottomPadding,
           );
 
     return AnimatedContainer(
@@ -361,21 +361,26 @@ class _MobileNavItem extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          item.altIcon ??
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: Icon(
-                  isSelected ? item.selectedIcon : item.unselectedIcon,
-                  key: ValueKey(isSelected),
-                  color: isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface
-                          .opaque(0.45, iReallyMeanIt: true),
-                  size: item.iconSize ?? 22,
+          AnimatedScale(
+            scale: isSelected ? 1.08 : 1.0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            child: item.altIcon ??
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: Icon(
+                    isSelected ? item.selectedIcon : item.unselectedIcon,
+                    key: ValueKey(isSelected),
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface
+                            .opaque(0.45, iReallyMeanIt: true),
+                    size: item.iconSize ?? 22,
+                  ),
                 ),
-              ),
+          ),
           const SizedBox(height: 4),
           AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 250),

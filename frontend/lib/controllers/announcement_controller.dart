@@ -60,10 +60,11 @@ class AnnouncementModel {
 }
 
 class AnnouncementController extends GetxController {
-  final RxList<AnnouncementModel> announcements = <AnnouncementModel>[].obs;
+  final RxList<AnnouncementModel> _rawAnnouncements = <AnnouncementModel>[].obs;
   final RxString selectedCategory = 'All'.obs;
   final RxString selectedPriority = 'All'.obs;
   final RxString searchQuery = ''.obs;
+  final RxBool showTodayOnly = false.obs;
   final RxBool isLoading = false.obs;
 
   static const List<String> categories = [
@@ -87,12 +88,22 @@ class AnnouncementController extends GetxController {
     fetchAnnouncements();
   }
 
+  // Active announcements restricted strictly to approved/published notices within the current week (past 7 days)
+  List<AnnouncementModel> get announcements {
+    final now = DateTime.now();
+    return _rawAnnouncements.where((a) {
+      final diffDays = now.difference(a.createdAt).inDays;
+      final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
+      return diffDays <= 7 && isApproved;
+    }).toList();
+  }
+
   Future<void> fetchAnnouncements() async {
     isLoading.value = true;
     try {
       final data = await EchosphereApiService().getAnnouncements();
       if (data.isNotEmpty) {
-        announcements.value = data
+        _rawAnnouncements.value = data
             .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
             .toList();
         isLoading.value = false;
@@ -103,10 +114,26 @@ class AnnouncementController extends GetxController {
     }
 
     // Seed/Sample announcements for instant demonstration & offline resilience
-    if (announcements.isEmpty) {
-      announcements.value = _getSampleAnnouncements();
+    if (_rawAnnouncements.isEmpty) {
+      _rawAnnouncements.value = _getSampleAnnouncements();
     }
     isLoading.value = false;
+  }
+
+  void filterTodayOnly() {
+    showTodayOnly.value = true;
+    searchQuery.value = '';
+    selectedCategory.value = 'All';
+    selectedPriority.value = 'All';
+  }
+
+  // Archived notices (older than 1 week / 7 days)
+  List<AnnouncementModel> get archivedAnnouncements {
+    final now = DateTime.now();
+    return _rawAnnouncements.where((a) {
+      final diffDays = now.difference(a.createdAt).inDays;
+      return diffDays > 7;
+    }).toList();
   }
 
   List<AnnouncementModel> get priorityAnnouncements {
@@ -137,13 +164,26 @@ class AnnouncementController extends GetxController {
   }
 
   List<AnnouncementModel> get pendingApprovals {
-    return announcements
-        .where((a) => a.status == 'SUBMITTED' || a.status == 'DRAFT')
+    return _rawAnnouncements
+        .where((a) => a.status == 'SUBMITTED' || a.status == 'DRAFT' || a.status == 'PENDING_APPROVAL')
         .toList();
   }
 
+  List<AnnouncementModel> get mySubmissions {
+    return _rawAnnouncements.toList();
+  }
+
   List<AnnouncementModel> get filteredAnnouncements {
+    final now = DateTime.now();
+
     return announcements.where((a) {
+      if (showTodayOnly.value) {
+        final isToday = a.createdAt.year == now.year &&
+            a.createdAt.month == now.month &&
+            a.createdAt.day == now.day;
+        if (!isToday) return false;
+      }
+
       final selectedCat = selectedCategory.value.toLowerCase();
       final noticeCat = a.category.toLowerCase();
 
@@ -232,10 +272,10 @@ class AnnouncementController extends GetxController {
       await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
     } catch (_) {}
 
-    final idx = announcements.indexWhere((a) => a.id == id);
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
-      final old = announcements[idx];
-      announcements[idx] = AnnouncementModel(
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = AnnouncementModel(
         id: old.id,
         title: old.title,
         description: old.description,
@@ -249,7 +289,7 @@ class AnnouncementController extends GetxController {
         aiSummary: old.aiSummary,
         remarks: remarks ?? 'Approved by Administrator',
       );
-      announcements.refresh();
+      _rawAnnouncements.refresh();
     }
     return true;
   }
@@ -259,10 +299,10 @@ class AnnouncementController extends GetxController {
       await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
     } catch (_) {}
 
-    final idx = announcements.indexWhere((a) => a.id == id);
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
-      final old = announcements[idx];
-      announcements[idx] = AnnouncementModel(
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = AnnouncementModel(
         id: old.id,
         title: old.title,
         description: old.description,
@@ -276,7 +316,7 @@ class AnnouncementController extends GetxController {
         aiSummary: old.aiSummary,
         remarks: remarks,
       );
-      announcements.refresh();
+      _rawAnnouncements.refresh();
     }
     return true;
   }
@@ -286,7 +326,62 @@ class AnnouncementController extends GetxController {
       await EchosphereApiService().deleteAnnouncement(id);
     } catch (_) {}
 
-    announcements.removeWhere((a) => a.id == id);
+    _rawAnnouncements.removeWhere((a) => a.id == id);
+    return true;
+  }
+
+  Future<bool> updateAnnouncement({
+    required int id,
+    required String title,
+    required String description,
+    required String category,
+    required String priority,
+  }) async {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx != -1) {
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = AnnouncementModel(
+        id: old.id,
+        title: title,
+        description: description,
+        priority: priority,
+        emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
+        status: old.status,
+        creatorName: old.creatorName,
+        department: old.department,
+        category: category,
+        createdAt: old.createdAt,
+        aiSummary: 'AI Summary: $title - Modified notice.',
+        remarks: 'Modified by Administrator',
+      );
+      _rawAnnouncements.refresh();
+    }
+    return true;
+  }
+
+  Future<bool> rescheduleAnnouncement({
+    required int id,
+    required DateTime newScheduledTime,
+  }) async {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx != -1) {
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = AnnouncementModel(
+        id: old.id,
+        title: old.title,
+        description: old.description,
+        priority: old.priority,
+        emergencyLevel: old.emergencyLevel,
+        status: 'SCHEDULED',
+        creatorName: old.creatorName,
+        department: old.department,
+        category: old.category,
+        createdAt: newScheduledTime,
+        aiSummary: old.aiSummary,
+        remarks: 'Rescheduled for ${newScheduledTime.toString().substring(0, 16)}',
+      );
+      _rawAnnouncements.refresh();
+    }
     return true;
   }
 
@@ -361,6 +456,34 @@ class AnnouncementController extends GetxController {
         category: 'Academics',
         createdAt: DateTime.now().subtract(const Duration(hours: 2)),
         aiSummary: 'Pending HoD approval for guest lecture on Cloud Systems next Friday.',
+      ),
+      AnnouncementModel(
+        id: 6,
+        title: 'Archived: Mid-Term Examination Retest Guidelines & Instructions',
+        description:
+            'Official guidelines for students eligible for the Mid-Term Retests. Submissions must be approved by respective HoDs before the deadline.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'ARCHIVED',
+        creatorName: 'Academic Controller',
+        department: 'Examinations',
+        category: 'Examinations',
+        createdAt: DateTime.now().subtract(const Duration(days: 12)),
+        aiSummary: 'Archived circular: Mid-term retest instructions and HoD approval requirements.',
+      ),
+      AnnouncementModel(
+        id: 7,
+        title: 'Archived: Campus Sports Meet Registration & Athletic Trials',
+        description:
+            'All undergraduate and postgraduate students are invited to register for the annual inter-departmental athletic events.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'ARCHIVED',
+        creatorName: 'Physical Education Dept',
+        department: 'Sports',
+        category: 'Sports',
+        createdAt: DateTime.now().subtract(const Duration(days: 22)),
+        aiSummary: 'Archived notification: Annual sports meet trial schedules and team registrations.',
       ),
     ];
   }

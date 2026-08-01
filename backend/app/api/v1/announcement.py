@@ -162,9 +162,11 @@ def approve_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
             "Principal",
+            "HoD",
         )
     ),
 ):
@@ -185,9 +187,11 @@ def reject_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
             "Principal",
+            "HoD",
         )
     ),
 ):

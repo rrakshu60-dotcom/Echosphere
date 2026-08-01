@@ -4,7 +4,6 @@ from app.models.role import Role
 
 DEFAULT_ROLES = [
     "Dev Admin",
-    "Developer",
     "College Admin",
     "Principal",
     "HoD",

@@ -6,6 +6,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -38,6 +39,33 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   String? aiValidationWarning;
   String? aiSpamWarning;
   String? aiDuplicateWarning;
+
+  List<PlatformFile> attachedFiles = [];
+
+  Future<void> _pickAttachmentFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          // Documents
+          'pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt', 'csv', 'ppt', 'pptx',
+          // Images
+          'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'ico',
+        ],
+        allowMultiple: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          attachedFiles.addAll(result.files);
+        });
+        snackBar('Attached ${result.files.length} file${result.files.length == 1 ? '' : 's'}!');
+      }
+    } catch (e) {
+      debugPrint('File picker error: $e');
+      snackBar('File picker error or cancelled.');
+    }
+  }
 
   final List<String> audiences = [
     'Entire College',
@@ -217,33 +245,38 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 14),
 
             // Description Header with AI Tools
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Description Header with AI Tools
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 const Text('Announcement Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                Row(
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
                     if (textLength >= 10)
                       ActionChip(
-                        avatar: const Icon(Icons.spellcheck, size: 14, color: Colors.blue),
+                        avatar: const Icon(Icons.spellcheck_rounded, size: 14, color: Color(0xFF60A5FA)),
                         label: isAiPolishing
                             ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('Grammar', style: TextStyle(fontSize: 11)),
                         onPressed: isAiPolishing ? null : _polishGrammar,
                       ),
-                    const SizedBox(width: 6),
                     ActionChip(
                       avatar: const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
                       label: isAiExpanding
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('✨ AI Expand', style: TextStyle(fontSize: 11)),
+                          : const Text('AI Expand', style: TextStyle(fontSize: 11)),
                       onPressed: isAiExpanding ? null : _expandWithAi,
                     ),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             TextField(
               controller: descController,
               maxLines: 4,
@@ -273,16 +306,21 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                       children: [
                         Icon(Icons.warning_amber_rounded, size: 16, color: Colors.amber),
                         SizedBox(width: 6),
-                        Text('AI Content Assistance Warnings', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                        Expanded(
+                          child: Text('AI Content Assistance Warnings',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     if (aiValidationWarning != null)
                       Text('• $aiValidationWarning', style: const TextStyle(fontSize: 11)),
                     if (aiSpamWarning != null)
-                      Text('• Spam Alert: $aiSpamWarning', style: const TextStyle(fontSize: 11, color: Colors.red)),
+                      Text('• Spam Alert: $aiSpamWarning', style: const TextStyle(fontSize: 11, color: Color(0xFFF87171))),
                     if (aiDuplicateWarning != null)
-                      Text('• Duplicate Alert: $aiDuplicateWarning', style: const TextStyle(fontSize: 11, color: Colors.orange)),
+                      Text('• Duplicate Alert: $aiDuplicateWarning', style: const TextStyle(fontSize: 11, color: Color(0xFFFB923C))),
                   ],
                 ),
               ),
@@ -308,18 +346,20 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           'AI Auto-Classification',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
                         ),
-                        const SizedBox(height: 2),
-                        Row(
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              'Category: ',
-                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                              'Category:',
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                             ),
                             EchoSphereChip(label: aiDetectedCategory, isSelected: true, onSelected: (_) {}),
-                            const SizedBox(width: 10),
                             Text(
-                              'Priority: ',
-                              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                              'Priority:',
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                             ),
                             EchoSphereChip(label: aiDetectedPriority, isSelected: true, onSelected: (_) {}),
                           ],
@@ -332,14 +372,61 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             ),
             const SizedBox(height: 12),
 
-            // Attachments Upload Chip
-            Row(
+            // Attachments Upload Section
+            const Text('Attachments (Documents & Images)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => snackBar('Attached document file: Circular_Details.pdf'),
-                  icon: const Icon(Icons.attach_file, size: 16),
-                  label: const Text('+ Attach PDF / Document', style: TextStyle(fontSize: 12)),
+                  onPressed: _pickAttachmentFiles,
+                  icon: const Icon(Icons.attach_file_rounded, size: 16),
+                  label: const Text('+ Attach Documents / Images', style: TextStyle(fontSize: 12)),
                 ),
+                ...attachedFiles.map((file) {
+                  final ext = (file.extension ?? 'doc').toLowerCase();
+                  final isPdf = ext == 'pdf';
+                  final isExcel = ext == 'xlsx' || ext == 'xls' || ext == 'csv';
+                  final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'ico'].contains(ext);
+
+                  final iconData = isImage
+                      ? Icons.image_rounded
+                      : isPdf
+                          ? Icons.picture_as_pdf_rounded
+                          : isExcel
+                              ? Icons.table_chart_rounded
+                              : Icons.description_rounded;
+
+                  final iconColor = isImage
+                      ? const Color(0xFFC084FC)
+                      : isPdf
+                          ? const Color(0xFFF87171)
+                          : isExcel
+                              ? const Color(0xFF34D399)
+                              : const Color(0xFF60A5FA);
+
+                  final sizeKb = (file.size / 1024).toStringAsFixed(0);
+
+                  return InputChip(
+                    avatar: Icon(
+                      iconData,
+                      color: iconColor,
+                      size: 16,
+                    ),
+                    label: Text(
+                      '${file.name} ($sizeKb KB)',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onDeleted: () {
+                      setState(() {
+                        attachedFiles.remove(file);
+                      });
+                      snackBar('Removed ${file.name}');
+                    },
+                  );
+                }),
               ],
             ),
             const SizedBox(height: 16),
@@ -349,7 +436,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 6),
             EchoSphereDropdown(
               label: 'Audience',
-              icon: Icons.groups,
+              icon: Icons.groups_rounded,
               selectedItem: DropdownItem(value: selectedAudience, text: selectedAudience),
               items: audiences.map((a) => DropdownItem(value: a, text: a)).toList(),
               onChanged: (item) => setState(() => selectedAudience = item.value),
@@ -358,23 +445,23 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
             // Delivery Channels
             const Text('Delivery Channels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 4),
-            Row(
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 FilterChip(
-                  label: const Text('In-App Feed'),
+                  label: const Text('In-App Feed', style: TextStyle(fontSize: 12)),
                   selected: deliverInApp,
                   onSelected: (val) => setState(() => deliverInApp = val),
                 ),
-                const SizedBox(width: 8),
                 FilterChip(
-                  label: const Text('Push Notification'),
+                  label: const Text('Push Notification', style: TextStyle(fontSize: 12)),
                   selected: deliverPush,
                   onSelected: (val) => setState(() => deliverPush = val),
                 ),
-                const SizedBox(width: 8),
                 FilterChip(
-                  label: const Text('Speaker Announcement'),
+                  label: const Text('Speaker Announcement', style: TextStyle(fontSize: 12)),
                   selected: deliverSpeaker,
                   onSelected: (val) => setState(() => deliverSpeaker = val),
                 ),
@@ -383,18 +470,19 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 16),
 
             // Scheduling
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text('Publish Schedule:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(width: 12),
                 ChoiceChip(
-                  label: const Text('Publish Now'),
+                  label: const Text('Publish Now', style: TextStyle(fontSize: 12)),
                   selected: !isScheduleLater,
                   onSelected: (val) => setState(() => isScheduleLater = !val),
                 ),
-                const SizedBox(width: 8),
                 ChoiceChip(
-                  label: const Text('Schedule Later'),
+                  label: const Text('Schedule Later', style: TextStyle(fontSize: 12)),
                   selected: isScheduleLater,
                   onSelected: (val) => setState(() => isScheduleLater = val),
                 ),
@@ -412,9 +500,16 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.event, size: 18),
+                      const Icon(Icons.event_rounded, size: 18),
                       const SizedBox(width: 10),
-                      Text('Scheduled for: ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}'),
+                      Expanded(
+                        child: Text(
+                          'Scheduled for: ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
                     ],
                   ),
                 ),

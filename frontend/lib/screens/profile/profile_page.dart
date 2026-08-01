@@ -122,53 +122,47 @@ class _ProfilePageState extends State<ProfilePage> {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                 Wrap(
-                                   spacing: 8,
-                                   runSpacing: 6,
-                                   children: [
-                                     EchoSphereChip(
-                                       label: user.role,
-                                       isSelected: true,
-                                       onSelected: (_) {},
-                                     ),
-                                     EchoSphereChip(
-                                       label: user.department ?? 'General',
-                                       isSelected: false,
-                                       onSelected: (_) {},
-                                     ),
-                                   ],
-                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      EchoSphereChip(
+                                        label: user.department ?? 'General',
+                                        isSelected: true,
+                                        onSelected: (_) {},
+                                      ),
+                                    ],
+                                  ),
+                               ],
+                             ),
+                           ),
+                         ],
+                       ),
+                     ),
+                     const SizedBox(height: 20),
 
-                    // User Details Container
-                    EchoSphereContainer(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const EchoSphereText(
-                            text: 'Account Details',
-                            size: 16,
-                            variant: TextVariant.bold,
-                          ),
-                          const Divider(height: 20),
-                          if (user.usn != null)
-                            _buildInfoTile('USN (University Seat Number)', user.usn!, Icons.badge),
-                          if (user.officialEmail != null)
-                            _buildInfoTile('Official Email', user.officialEmail!, Icons.email),
-                          if (user.employeeId != null)
-                            _buildInfoTile('Employee ID', user.employeeId!, Icons.badge),
-                          _buildInfoTile('Department', user.department ?? 'Institution-Wide', Icons.business),
-                          _buildInfoTile('Role', user.role, Icons.verified_user),
-                        ],
-                      ),
-                    ),
+                     // User Details Container
+                     EchoSphereContainer(
+                       padding: const EdgeInsets.all(20.0),
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           const EchoSphereText(
+                             text: 'Account Details',
+                             size: 16,
+                             variant: TextVariant.bold,
+                           ),
+                           const Divider(height: 20),
+                           if (user.usn != null)
+                             _buildInfoTile('USN (University Seat Number)', user.usn!, Icons.badge),
+                           if (user.officialEmail != null)
+                             _buildInfoTile('Official Email', user.officialEmail!, Icons.email),
+                           if (user.employeeId != null)
+                             _buildInfoTile('Employee ID', user.employeeId!, Icons.badge),
+                           _buildInfoTile('Department', user.department ?? 'Institution-Wide', Icons.business),
+                         ],
+                       ),
+                     ),
                     const SizedBox(height: 20),
 
                     // System Settings & Security Container
@@ -334,12 +328,24 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           Icon(icon, size: 20, color: Colors.grey),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
