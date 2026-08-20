@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    Boolean,
     Column,
     ForeignKey,
     Index,
@@ -55,6 +56,8 @@ class User(TimestampMixin, Base):
     semester = Column(Integer, nullable=True)
 
     section = Column(String(10), nullable=True)
+
+    is_active = Column(Boolean, default=True, nullable=False)
 
     role_id = Column(
         Integer,

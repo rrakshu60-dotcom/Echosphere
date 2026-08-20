@@ -23,8 +23,8 @@ class EchosphereApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 2),
-        receiveTimeout: const Duration(seconds: 3),
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -408,6 +408,7 @@ class EchosphereApiService {
   Future<Map<String, dynamic>> updateUserRole(
     int userId, {
     int? roleId,
+    String? roleName,
     int? departmentId,
     bool? isActive,
   }) async {
@@ -415,10 +416,178 @@ class EchosphereApiService {
       '/users/$userId',
       data: {
         if (roleId != null) 'role_id': roleId,
+        if (roleName != null) 'role_name': roleName,
         if (departmentId != null) 'department_id': departmentId,
         if (isActive != null) 'is_active': isActive,
       },
     );
     return response.data as Map<String, dynamic>;
   }
+
+  // --- Hardware & Smart Speaker Endpoints ---
+  Future<List<dynamic>> getSpeakerNodes({int? departmentId, String? zone, String? status}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (departmentId != null) queryParams['department_id'] = departmentId;
+      if (zone != null) queryParams['zone'] = zone;
+      if (status != null) queryParams['status'] = status;
+
+      final response = await _dio.get('/hardware/speakers', queryParameters: queryParams);
+      return response.data as List<dynamic>;
+    } catch (e) {
+      debugPrint('Error fetching speaker nodes: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> registerSpeakerNode({
+    required String name,
+    required String macAddress,
+    String? ipAddress,
+    String zone = 'College-Wide',
+    int? departmentId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/speakers/register',
+        data: {
+          'name': name,
+          'mac_address': macAddress,
+          'ip_address': ipAddress,
+          'zone': zone,
+          'department_id': departmentId,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to register speaker node.');
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerEmergencyOverride({
+    required String title,
+    required String message,
+    String zone = 'College-Wide',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/speakers/override',
+        data: {
+          'title': title,
+          'message': message,
+          'zone': zone,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Emergency override request failed.');
+    }
+  }
+
+  Future<Map<String, dynamic>> controlSpeakerNode(
+    int nodeId, {
+    required String command,
+    int? volume,
+    int? announcementId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/speakers/$nodeId/control',
+        data: {
+          'command': command,
+          if (volume != null) 'volume': volume,
+          if (announcementId != null) 'announcement_id': announcementId,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Speaker control command failed.');
+    }
+  }
+
+  Future<List<dynamic>> getSpeakerQueue({String? status}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (status != null) queryParams['status'] = status;
+
+      final response = await _dio.get('/hardware/queue', queryParameters: queryParams);
+      return response.data as List<dynamic>;
+    } catch (e) {
+      debugPrint('Error fetching speaker queue: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> queueAction(int queueId, String action) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/queue/$queueId/action',
+        queryParameters: {'action': action},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Queue action failed.');
+    }
+  }
+
+  Future<Map<String, dynamic>> createUser({
+    required String fullName,
+    required String officialEmail,
+    required String password,
+    String roleName = 'Student',
+    String? username,
+    int? departmentId,
+    String? usn,
+    String? employeeId,
+    int? semester,
+    String? section,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/users/',
+        data: {
+          'full_name': fullName,
+          'official_email': officialEmail,
+          'password': password,
+          'role_name': roleName,
+          if (username != null) 'username': username,
+          if (departmentId != null) 'department_id': departmentId,
+          if (usn != null) 'usn': usn,
+          if (employeeId != null) 'employee_id': employeeId,
+          if (semester != null) 'semester': semester,
+          if (section != null) 'section': section,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to create user account.');
+    }
+  }
+
+  Future<void> deleteUser(int userId) async {
+    try {
+      await _dio.delete('/users/$userId');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to delete user.');
+    }
+  }
+
+  Future<void> deleteSpeakerNode(int nodeId) async {
+    try {
+      await _dio.delete('/hardware/speakers/$nodeId');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to delete speaker node.');
+    }
+  }
+
+  Future<void> deleteSpeakerQueueItem(int queueId) async {
+    try {
+      await _dio.delete('/hardware/queue/$queueId');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to delete queue item.');
+    }
+  }
 }
+
+
+

@@ -99,16 +99,16 @@ def create_architecture_diagram_image(filename="architecture_diagram.png"):
             ]
         },
         {
-            "title": "AUDIO BROADCAST & QUEUE SUBSYSTEM",
-            "subtitle": "Asynchronous Audio Synthesis & Hardware Dispatch",
+            "title": "DEPARTMENTAL IOT HARDWARE SPEAKER TIER",
+            "subtitle": "Departmental Hardware Audio Nodes & MQTT Broadcast (ESP32/RasPi)",
             "bg": "#FFFBEB", "border": "#F59E0B", "header_bg": "#B45309",
             "box": (750, 800, 1450, 1380),
             "items": [
-                ("Speaker Queue Worker", "Async job processing, priority play queue"),
-                ("Text-to-Speech Engine", "Multi-lingual neural voice audio generation"),
-                ("PA Speaker Dispatcher", "Multi-zone physical & IoT virtual speaker driver"),
-                ("Push Dispatcher", "Firebase Cloud Messaging (FCM) integration"),
-                ("Multi-Channel Router", "Visual displays, mobile feed, audio broadcast sync")
+                ("Department Audio Nodes", "ESP32-S3 / RasPi audio nodes placed in every department"),
+                ("MQTT Command Broker", "Real-time telemetry, volume control & status heartbeat"),
+                ("Neural TTS Engine", "Multi-lingual audio synthesis from announcement text"),
+                ("Targeted Dept Routing", "Zone audio dispatch (CSE, ECE, ME, Civil, EEE, AIML)"),
+                ("Emergency Hardware Override", "Optocoupled relay interrupt for Priority 1 safety alerts")
             ]
         },
         {
@@ -202,6 +202,14 @@ def create_er_diagram_image(filename="er_diagram.png"):
         "Department": {
             "box": (80, 460, 430, 700), "bg": "#EFF6FF", "header_bg": "#1D4ED8",
             "fields": [("id", "INTEGER (PK)"), ("name", "VARCHAR(100)"), ("code", "VARCHAR(20)"), ("created_at", "TIMESTAMP")]
+        },
+        "HardwareSpeakerNode": {
+            "box": (80, 740, 430, 980), "bg": "#FFFBEB", "header_bg": "#B45309",
+            "fields": [
+                ("id", "INTEGER (PK)"), ("device_mac", "VARCHAR(50) (UQ)"),
+                ("department_id", "INTEGER (FK)"), ("ip_address", "VARCHAR(45)"),
+                ("status", "VARCHAR(20)"), ("volume_level", "INTEGER"), ("last_heartbeat", "TIMESTAMP")
+            ]
         },
         "User": {
             "box": (550, 200, 950, 620), "bg": "#FEF3C7", "header_bg": "#D97706",
@@ -315,6 +323,8 @@ def create_er_diagram_image(filename="er_diagram.png"):
     draw_rel((430, 290), (550, 290), "1", "N")
     # Department (1) -> User (N)
     draw_rel((430, 580), (550, 510), "1", "N")
+    # Department (1) -> HardwareSpeakerNode (N)
+    draw_rel((255, 700), (255, 740), "1", "N")
     # User (1) -> Announcement (N)
     draw_rel((950, 410), (1070, 520), "1", "N")
     # Category (1) -> Announcement (N)

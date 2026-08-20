@@ -9,5 +9,7 @@ from .department import Department as Department
 from .notification import Notification as Notification
 from .role import Role as Role
 from .speaker_queue import SpeakerQueue as SpeakerQueue
+from .speaker_node import SpeakerNode as SpeakerNode
 from .user import User as User
 from .password_reset_token import PasswordResetToken as PasswordResetToken
+

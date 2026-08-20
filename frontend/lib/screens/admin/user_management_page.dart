@@ -6,6 +6,8 @@ import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/screens/announcements/approval_queue_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -216,26 +218,46 @@ class _UserManagementPageState extends State<UserManagementPage> {
               ],
             ),
           ),
-          onConfirm: () {
+          onConfirm: () async {
             final name = nameCtrl.text.trim();
             final idText = idCtrl.text.trim();
+            final pwdText = passwordCtrl.text.trim();
             if (name.isEmpty || idText.isEmpty) {
               errorSnackBar('Please fill in all required fields.');
               return;
             }
 
-            setState(() {
-              users.add({
-                'id': users.length + 1,
-                'full_name': name,
-                'role': roleVal,
-                if (roleVal == 'Student') 'usn': idText else 'official_email': idText,
-                'department': deptVal,
-                'is_active': true,
-              });
-            });
+            final email = idText.contains('@') ? idText : '$idText@echosphere.edu';
+            final pass = pwdText.isNotEmpty ? pwdText : 'EchoSphere@2026';
 
-            snackBar('Account created successfully for $name ($roleVal)!');
+            try {
+              final created = await EchosphereApiService().createUser(
+                fullName: name,
+                officialEmail: email,
+                password: pass,
+                roleName: roleVal,
+                usn: roleVal == 'Student' ? idText : null,
+                employeeId: roleVal != 'Student' ? idText : null,
+              );
+              setState(() {
+                users.add(created);
+              });
+              snackBar('Account created successfully for $name ($roleVal)!');
+            } catch (e) {
+              debugPrint('Offline fallback user creation: $e');
+              setState(() {
+                users.add({
+                  'id': users.length + 100,
+                  'full_name': name,
+                  'role': roleVal,
+                  'official_email': email,
+                  if (roleVal == 'Student') 'usn': idText else 'employee_id': idText,
+                  'department': deptVal,
+                  'is_active': true,
+                });
+              });
+              snackBar('Account created locally for $name ($roleVal)!');
+            }
           },
         ),
       ),
@@ -243,15 +265,19 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
   void _showAccessLogDialog() {
+    final theme = Theme.of(context);
+    const successColor = Color(0xFF10B981);
+    const dangerColor = Color(0xFFEF4444);
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.shield_outlined, color: Colors.purple, size: 22),
-            SizedBox(width: 8),
-            Expanded(
+            Icon(Icons.shield_outlined, color: theme.colorScheme.primary, size: 22),
+            const SizedBox(width: 8),
+            const Expanded(
               child: Text(
                 'Security Audit & App Access Logs',
                 maxLines: 1,
@@ -262,8 +288,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
           ],
         ),
         content: SizedBox(
-          width: 540,
-          height: 400,
+          width: MediaQuery.of(ctx).size.width < 580 ? MediaQuery.of(ctx).size.width * 0.88 : 540,
+          height: MediaQuery.of(ctx).size.height * 0.60,
           child: Obx(() {
             final logs = authController.auditLogs;
             if (logs.isEmpty) {
@@ -279,10 +305,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: isSuccess ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                      backgroundColor: (isSuccess ? successColor : dangerColor).withOpacity(0.15),
                       child: Icon(
                         isSuccess ? Icons.verified_user_rounded : Icons.gpp_bad_rounded,
-                        color: isSuccess ? Colors.green : Colors.red,
+                        color: isSuccess ? successColor : dangerColor,
                         size: 20,
                       ),
                     ),
@@ -295,7 +321,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                       children: [
                         Text('Location: ${log.location}', style: const TextStyle(fontSize: 11)),
                         Text('Timestamp: ${log.timestamp}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        Text('Status: ${log.status}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSuccess ? Colors.green : Colors.red)),
+                        Text('Status: ${log.status}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSuccess ? successColor : dangerColor)),
                       ],
                     ),
                   ),
@@ -314,11 +340,68 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
   }
 
+  void _showRoleChangeDialog(Map<String, dynamic> u) {
+    final roles = ['Student', 'Teacher', 'HoD', 'Principal', 'College Admin', 'Dev Admin'];
+    String currentRole = u['role'] ?? 'Student';
+    if (!roles.contains(currentRole)) currentRole = 'Student';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => EchoSphereDialog(
+          title: 'Change User Role',
+          contentWidget: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Select new role for ${u['full_name']}:', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: roles.map((role) {
+                    final isSel = currentRole == role;
+                    return ChoiceChip(
+                      label: Text(role, style: TextStyle(fontSize: 12, color: isSel ? Colors.white : null)),
+                      selected: isSel,
+                      selectedColor: Theme.of(context).colorScheme.primary,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setDialogState(() => currentRole = role);
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          onConfirm: () async {
+            final userId = u['id'];
+            if (userId != null && userId is int) {
+              try {
+                await EchosphereApiService().updateUserRole(userId, roleName: currentRole);
+                setState(() {
+                  u['role'] = currentRole;
+                });
+                snackBar('User role updated to $currentRole.');
+              } catch (e) {
+                errorSnackBar('Failed to update role: $e');
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
     final canManage = user != null && user.role != 'Student';
+    final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal' || user.role == 'HoD');
     final canPop = ModalRoute.of(context)?.canPop ?? false;
 
     return Scaffold(
@@ -352,26 +435,28 @@ class _UserManagementPageState extends State<UserManagementPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  if (user?.role == 'Dev Admin' || user?.role == 'Developer') ...[
-                    EchoSphereButton(
-                      height: 36,
-                      color: Colors.purple.withOpacity(0.15),
-                      border: const BorderSide(color: Colors.purple),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      onTap: _showAccessLogDialog,
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.shield_outlined, size: 15, color: Colors.purple),
-                          SizedBox(width: 4),
-                          Text('Access Logs', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
+                  const SizedBox(width: 4),
+                  if (isAdminRole) ...[
+                    IconButton(
+                      icon: const Icon(Icons.volume_up_rounded, size: 20),
+                      tooltip: 'Speaker Hardware Queue',
+                      onPressed: () => Get.to(() => const SpeakerQueuePage()),
                     ),
-                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.fact_check_rounded, size: 20),
+                      tooltip: 'Approval Queue',
+                      onPressed: () => Get.to(() => const ApprovalQueuePage()),
+                    ),
                   ],
-                  if (canManage)
+                  if (user?.role == 'Dev Admin' || user?.role == 'Developer') ...[
+                    IconButton(
+                      icon: const Icon(Icons.shield_outlined, size: 20),
+                      tooltip: 'Security Access Audit Logs',
+                      onPressed: _showAccessLogDialog,
+                    ),
+                  ],
+                  if (canManage) ...[
+                    const SizedBox(width: 4),
                     EchoSphereButton(
                       height: 36,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -385,6 +470,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         ],
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -433,10 +519,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     child: Row(
                       children: roles.map((r) {
                         final isSel = selectedRoleFilter == r;
+                        final count = r == 'All'
+                            ? users.length
+                            : users.where((u) => u['role'] == r).length;
                         return Padding(
                           padding: const EdgeInsets.only(right: 8.0),
                           child: EchoSphereChip(
-                            label: r,
+                            label: '$r ($count)',
                             isSelected: isSel,
                             onSelected: (val) {
                               if (val) setState(() => selectedRoleFilter = r);
@@ -508,10 +597,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                               ),
                                               const SizedBox(width: 6),
                                               Flexible(
-                                                child: EchoSphereChip(
-                                                  label: u['role'] ?? 'Student',
-                                                  isSelected: true,
-                                                  onSelected: (_) {},
+                                                child: Tooltip(
+                                                  message: 'Click to change role',
+                                                  child: EchoSphereChip(
+                                                    label: '${u['role'] ?? 'Student'} ✏️',
+                                                    isSelected: true,
+                                                    onSelected: (_) => _showRoleChangeDialog(u),
+                                                  ),
                                                 ),
                                               ),
                                             ],
@@ -535,15 +627,48 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                       child: Switch(
                                         value: isActive,
                                         activeColor: theme.colorScheme.primary,
-                                        onChanged: (val) {
+                                        onChanged: (val) async {
                                           setState(() {
                                             u['is_active'] = val;
                                           });
+                                          try {
+                                            await EchosphereApiService().updateUserRole(u['id'] as int, isActive: val);
+                                          } catch (e) {
+                                            debugPrint('Update user active status: $e');
+                                          }
                                           snackBar(
                                             'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
                                           );
                                         },
                                       ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline_rounded, size: 20, color: theme.colorScheme.error),
+                                      tooltip: 'Delete User Account',
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => EchoSphereDialog(
+                                            title: 'Delete User',
+                                            confirmText: 'Delete Account',
+                                            message: 'Are you sure you want to delete user account for ${u['full_name']}? This action cannot be undone.',
+                                            onConfirm: () async {
+                                              final userId = u['id'];
+                                              if (userId != null && userId is int) {
+                                                try {
+                                                  await EchosphereApiService().deleteUser(userId);
+                                                } catch (e) {
+                                                  debugPrint('Delete user error: $e');
+                                                }
+                                              }
+                                              setState(() {
+                                                users.removeWhere((item) => item['id'] == u['id']);
+                                              });
+                                              snackBar('User account deleted successfully.');
+                                            },
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),

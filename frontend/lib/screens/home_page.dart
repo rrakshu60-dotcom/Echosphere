@@ -5,7 +5,6 @@ import 'package:anymex/screens/admin/user_management_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/screens/home/home_dashboard_widgets.dart';
 import 'package:anymex/screens/notifications/notifications_page.dart';
@@ -215,38 +214,25 @@ class _HomePageState extends State<HomePage> {
               _buildWelcomeBanner(theme),
               const SizedBox(height: 16),
 
-              // ─── Section 2: Today's Summary ────────────────────────
-              TodaySummaryBanner(
-                todayCount: annController.todayAnnouncements.length,
-                pendingCount: annController.pendingApprovals.length,
-                isAuthorized: authController.currentUser.value != null &&
-                    authController.currentUser.value!.role != 'Student',
-              ),
+              // ─── Section 2: Stats Dashboard Panel ──────────────────
+              _buildStatsPanel(theme),
               const SizedBox(height: 20),
 
-              // ─── Section 3: Stats Dashboard Panel ──────────────────
-              _buildStatsPanel(theme),
-              const SizedBox(height: 24),
-
-              // ─── Section 4: Quick Actions + AI Shortcut ────────────
-              _buildQuickActionsSection(theme),
-              const SizedBox(height: 24),
-
-              // ─── Section 5: Priority Announcements Carousel ────────
+              // ─── Section 3: Priority Announcements Carousel ────────
               Obx(() {
                 final priorityList = annController.priorityAnnouncements;
                 if (priorityList.isEmpty) return const SizedBox.shrink();
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.only(bottom: 20),
                   child: PriorityCarousel(items: priorityList),
                 );
               }),
 
-              // ─── Section 6: Category Filter Chips ──────────────────
+              // ─── Section 4: Category Filter Chips ──────────────────
               _buildCategoryFilters(theme),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              // ─── Section 7: Announcement Feed ──────────────────────
+              // ─── Section 5: Announcement Feed ──────────────────────
               _buildAnnouncementFeed(theme),
             ],
           ),
@@ -353,6 +339,7 @@ class _HomePageState extends State<HomePage> {
       final isAdmin = role == 'College Admin' ||
           role == 'HoD' ||
           role == 'Principal' ||
+          role == 'Dev Admin' ||
           role == 'Developer';
 
       return TweenAnimationBuilder<double>(
@@ -372,12 +359,11 @@ class _HomePageState extends State<HomePage> {
               label: 'Total Notices',
               value: annController.announcements.length,
               icon: Icons.campaign_rounded,
-              color: Colors.blue,
+              color: theme.colorScheme.primary,
               onTap: () {
                 annController.showTodayOnly.value = false;
                 annController.selectedCategory.value = 'All';
                 annController.searchQuery.value = '';
-                setState(() => _selectedNavIndex = 1);
               },
             ),
             const SizedBox(width: 10),
@@ -385,10 +371,9 @@ class _HomePageState extends State<HomePage> {
               label: 'Today',
               value: annController.todayAnnouncements.length,
               icon: Icons.today_rounded,
-              color: Colors.green,
+              color: const Color(0xFF10B981),
               onTap: () {
                 annController.filterTodayOnly();
-                setState(() => _selectedNavIndex = 1);
               },
             ),
             const SizedBox(width: 10),
@@ -397,7 +382,7 @@ class _HomePageState extends State<HomePage> {
                 label: 'Pending',
                 value: annController.pendingApprovals.length,
                 icon: Icons.pending_actions_rounded,
-                color: Colors.orange,
+                color: const Color(0xFFF59E0B),
                 onTap: () => Get.to(() => const ApprovalQueuePage()),
               )
             else
@@ -405,246 +390,12 @@ class _HomePageState extends State<HomePage> {
                 label: 'Urgent',
                 value: annController.emergencyCount,
                 icon: Icons.warning_amber_rounded,
-                color: Colors.red,
+                color: const Color(0xFFEF4444),
                 onTap: () {
                   annController.selectedCategory.value = 'All';
                   annController.searchQuery.value = 'EMERGENCY';
-                  setState(() => _selectedNavIndex = 1);
                 },
               ),
-          ],
-        ),
-      );
-    });
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Quick Actions + AI Shortcut
-  // ──────────────────────────────────────────────────────────────────────────
-  Widget _buildQuickActionsSection(ThemeData theme) {
-    return Obx(() {
-      final user = authController.currentUser.value;
-      final role = user?.role ?? 'Student';
-      final canCreate = user != null && role != 'Student';
-      final isTeacher = role == 'Teacher';
-      final isAdmin = role == 'College Admin' ||
-          role == 'HoD' ||
-          role == 'Principal' ||
-          role == 'Dev Admin' ||
-          role == 'Developer';
-
-      if (role == 'Student') {
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 16 * (1 - value)),
-              child: child,
-            ),
-          ),
-          child: InkWell(
-            onTap: () => setState(() => _selectedNavIndex = 2),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.amber.shade200.withOpacity(0.15),
-                    Colors.amber.shade500.withOpacity(0.08),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.amber.shade400.withOpacity(0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      color: Colors.amber,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'EchoSphere Assistant',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Ask AI to summarize notices or answer questions',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.arrow_forward_ios,
-                    size: 14,
-                    color: Colors.grey,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-
-      return TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 800),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) => Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 16 * (1 - value)),
-            child: child,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Quick Actions',
-              style: TextStyle(
-                fontFamily: 'Poppins-Bold',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Horizontal scrollable Quick Actions row
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  if (canCreate)
-                    QuickActionCard(
-                      title: 'New Notice',
-                      icon: Icons.add_circle_rounded,
-                      color: Colors.green,
-                      onTap: () => showDialog(
-                        context: context,
-                        builder: (_) => const CreateAnnouncementDialog(),
-                      ),
-                    ),
-                  if (isAdmin)
-                    QuickActionCard(
-                      title: 'Approvals',
-                      icon: Icons.fact_check_rounded,
-                      color: Colors.orange,
-                      badgeCount: annController.pendingApprovals.length,
-                      onTap: () => Get.to(() => const ApprovalQueuePage()),
-                    ),
-                  if (isTeacher)
-                    QuickActionCard(
-                      title: 'My Submissions',
-                      icon: Icons.track_changes_rounded,
-                      color: Colors.orange,
-                      onTap: () => Get.to(() => const ApprovalQueuePage()),
-                    ),
-                  if (isAdmin)
-                    QuickActionCard(
-                      title: 'Speaker Queue',
-                      icon: Icons.volume_up_rounded,
-                      color: Colors.blue,
-                      onTap: () => Get.to(() => const SpeakerQueuePage()),
-                    ),
-                  if (role == 'Dev Admin' || role == 'College Admin')
-                    QuickActionCard(
-                      title: 'User Accounts',
-                      icon: Icons.manage_accounts_rounded,
-                      color: Colors.purple,
-                      onTap: () => Get.to(() => const UserManagementPage()),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // AI Assistant Shortcut Banner
-            InkWell(
-              onTap: () => setState(() => _selectedNavIndex = 2),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.amber.shade200.withOpacity(0.15),
-                      Colors.amber.shade500.withOpacity(0.08),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.amber.shade400.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.auto_awesome,
-                          color: Colors.amber, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'EchoSphere AI Assistant',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Ask about academics, navigate the app, or get help.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface
-                                  .withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        color: Colors.amber.shade600),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       );

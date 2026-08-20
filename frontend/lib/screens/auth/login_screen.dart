@@ -98,26 +98,28 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'College Admin login requires authorization by a registered Staff, Teacher, or HoD. Input your Official Employee ID:',
-              style: TextStyle(fontSize: 12, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: empIdCtrl,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Official Staff Employee ID',
-                hintText: 'e.g. DBITAIMLT022022, HOD001, TCH001, DBITADM001',
-                prefixIcon: const Icon(Icons.badge_outlined, size: 20),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'College Admin login requires authorization by a registered Staff, Teacher, or HoD. Input your Official Employee ID:',
+                style: TextStyle(fontSize: 12, height: 1.4),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: empIdCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Official Staff Employee ID',
+                  hintText: 'e.g. DBITAIMLT022022, HOD001, TCH001, DBITADM001',
+                  prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -453,38 +455,40 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Password Recovery'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your USN, Official Email, or Username:',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: idCtrl,
-              decoration: const InputDecoration(
-                hintText: 'e.g. 1EC22CS001 or teacher@echosphere.edu',
-                border: OutlineInputBorder(),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your USN, Official Email, or Username:',
+                style: TextStyle(fontSize: 13),
               ),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: idCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'e.g. 1EC22CS001 or teacher@echosphere.edu',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              child: const Text(
-                '• Student Recovery: Contact your Department Faculty or HoD to request a reset.\n'
-                '• Faculty Recovery: A reset link will be sent to your registered official email.\n'
-                '• Admin Recovery: Requires backend administrator intervention.',
-                style: TextStyle(fontSize: 11, height: 1.5, color: Colors.blue),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Text(
+                  '• Student Recovery: Contact your Department Faculty or HoD to request a reset.\n'
+                  '• Faculty Recovery: A reset link will be sent to your registered official email.\n'
+                  '• Admin Recovery: Requires backend administrator intervention.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.blue),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(

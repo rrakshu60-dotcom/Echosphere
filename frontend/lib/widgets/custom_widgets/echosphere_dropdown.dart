@@ -281,6 +281,8 @@ class _EchoSphereDropdownState extends State<EchoSphereDropdown>
                                           children: [
                                             Text(
                                               item.text,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: isSelected
@@ -299,6 +301,8 @@ class _EchoSphereDropdownState extends State<EchoSphereDropdown>
                                               const SizedBox(height: 2),
                                               Text(
                                                 item.subtitle!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w400,
