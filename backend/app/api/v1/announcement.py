@@ -94,6 +94,7 @@ def update_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
             "Principal",
@@ -103,9 +104,10 @@ def update_announcement(
     ),
 ):
     return update_announcement_service(
-        db,
-        announcement_id,
-        request,
+        db=db,
+        announcement_id=announcement_id,
+        request=request,
+        current_user=current_user,
     )
 
 
@@ -117,6 +119,7 @@ def delete_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
             "Principal",
@@ -126,9 +129,11 @@ def delete_announcement(
     ),
 ):
     return delete_announcement_service(
-        db,
-        announcement_id,
+        db=db,
+        announcement_id=announcement_id,
+        current_user=current_user,
     )
+
 
 
 @router.post(
@@ -207,7 +212,16 @@ def reject_announcement(
 def publish_announcement(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles(
+            "Dev Admin",
+            "Developer",
+            "College Admin",
+            "Principal",
+            "HoD",
+            "Teacher",
+        )
+    ),
 ):
     return publish_announcement_service(
         db=db,
@@ -219,9 +233,18 @@ def publish_announcement(
 def archive_announcement(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles(
+            "Dev Admin",
+            "Developer",
+            "College Admin",
+            "Principal",
+            "HoD",
+        )
+    ),
 ):
     return archive_announcement_service(
         db=db,
         announcement_id=announcement_id,
     )
+

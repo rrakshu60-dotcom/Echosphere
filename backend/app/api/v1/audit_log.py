@@ -24,6 +24,7 @@ def get_all_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
         )
@@ -41,6 +42,7 @@ def get_audit_log_by_id(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
         )

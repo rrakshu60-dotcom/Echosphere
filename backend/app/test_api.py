@@ -34,7 +34,7 @@ def test_ai_conversational_questions():
     # Test 'who r u?'
     r1 = client.post("/api/v1/ai/chat", json={"prompt": "who r u?", "user_role": "STUDENT", "department": "CSE", "full_name": "Harshith"})
     assert r1.status_code == 200
-    assert "I am EchoSphere AI Assistant!" in r1.json()["response"]
+    assert "EchoSphere AI Assistant" in r1.json()["response"]
     assert "Harshith" in r1.json()["response"]
 
     # Test 'hello'

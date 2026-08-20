@@ -68,7 +68,9 @@ class EchoSphereDialog extends StatelessWidget {
                       child: EchoSphereText(
                           text: message!, textAlign: TextAlign.center, size: 14),
                     )
-                  : (contentWidget ?? const SizedBox.shrink()),
+                  : (contentWidget != null
+                      ? SingleChildScrollView(child: contentWidget!)
+                      : const SizedBox.shrink()),
             ),
             const SizedBox(height: 16),
             Row(

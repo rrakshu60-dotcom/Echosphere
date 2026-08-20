@@ -4,6 +4,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
@@ -62,15 +63,64 @@ class NotificationsPage extends StatelessWidget {
         Expanded(
           child: Obx(() {
             if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
+              final isDark = theme.brightness == Brightness.dark;
+              final baseColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+              final highlightColor = isDark ? Colors.grey.shade700 : Colors.grey.shade100;
+              final cardColor = isDark ? Colors.grey.shade900 : Colors.white;
+
+              return Shimmer.fromColors(
+                baseColor: baseColor,
+                highlightColor: highlightColor,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: 4,
+                  itemBuilder: (_, __) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: Container(
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              );
             }
 
             final list = controller.notifications;
             if (list.isEmpty) {
               return Center(
-                child: Text(
-                  'No notifications.',
-                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.notifications_none_rounded,
+                        size: 56,
+                        color: theme.colorScheme.onSurface.withOpacity(0.2),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No notifications yet',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'You will receive campus alerts, approvals, and system updates here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.4),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
@@ -123,12 +173,15 @@ class NotificationsPage extends StatelessWidget {
                                     Expanded(
                                       child: Text(
                                         n['title'],
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
                                           fontSize: 14,
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(width: 6),
                                     Text(
                                       DateFormat('hh:mm a').format(n['time']),
                                       style: TextStyle(
@@ -141,6 +194,8 @@ class NotificationsPage extends StatelessWidget {
                                 const SizedBox(height: 4),
                                 Text(
                                   n['message'],
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: theme.colorScheme.onSurface.withOpacity(0.8),

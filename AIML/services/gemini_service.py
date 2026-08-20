@@ -1,51 +1,72 @@
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-model = None
-if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_ACTUAL_GEMINI_API_KEY":
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-    except Exception:
-        model = None
+def ask_gemini(prompt: str, system_instruction: str = "") -> str:
+    key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY)
+    full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
 
-def ask_gemini(prompt: str) -> str:
-    if model is not None:
+    if key and key != "YOUR_ACTUAL_GEMINI_API_KEY":
+        # 1. Try REST API
         try:
-            response = model.generate_content(prompt)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+            payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+            resp = requests.post(url, json=payload, timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and parts[0].get("text"):
+                        return parts[0].get("text").strip()
+        except Exception as e:
+            print(f"[AIML Gemini REST Error]: {e}")
+
+        # 2. Try SDK
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(full_prompt)
             if response and hasattr(response, 'text') and response.text:
-                return response.text
-        except Exception:
-            pass
-    
+                return response.text.strip()
+        except Exception as e:
+            print(f"[AIML Gemini SDK Error]: {e}")
+
     return _local_fallback_response(prompt)
 
 def _local_fallback_response(prompt: str) -> str:
     text = prompt.lower()
     if "category" in text:
-        if any(w in text for w in ['exam', 'test', 'marks', 'viva']): return "Category: Academic\nReason: Examination or academic details detected."
-        if any(w in text for w in ['rain', 'closed', 'flood', 'suspended']): return "Category: Emergency\nReason: Weather alert or campus suspension."
-        if any(w in text for w in ['placement', 'job', 'interview', 'hiring']): return "Category: Placements\nReason: Career drive notification."
-        if any(w in text for w in ['sports', 'match', 'cricket']): return "Category: Sports\nReason: Athletic or sports activity."
+        if any(w in text for w in ['exam', 'test', 'marks', 'viva']):
+            return "Category: Academic\nReason: Examination or academic schedule detected."
+        if any(w in text for w in ['rain', 'closed', 'flood', 'suspended']):
+            return "Category: Emergency\nReason: Weather alert or campus suspension."
+        if any(w in text for w in ['placement', 'job', 'interview', 'hiring']):
+            return "Category: Placements\nReason: Recruitment drive notification."
+        if any(w in text for w in ['sports', 'match', 'cricket']):
+            return "Category: Sports\nReason: Athletic or sports activity."
         return "Category: Academic\nReason: General campus announcement."
+
     if "priority" in text:
-        if any(w in text for w in ['emergency', 'rain', 'closed', 'flood']): return "Priority: Emergency\nReason: High severity alert."
-        if any(w in text for w in ['exam', 'timetable', 'hall ticket', 'placement']): return "Priority: High\nReason: Timetable/academic deadline."
-        return "Priority: Medium\nReason: Standard announcement."
-    if "emergency" in text:
-        is_em = any(w in text for w in ['rain', 'flood', 'closed', 'suspended', 'urgent', 'disaster'])
-        return f"Emergency: {is_em}\nReason: {'High severity emergency keywords detected.' if is_em else 'Standard notice.'}"
-    if "spam" in text:
-        is_spam = any(w in text for w in ['win money', 'free cash', 'crypto', 'subscribe', 'buy now'])
-        return f"Spam: {is_spam}\nReason: {'Contains spam keywords.' if is_spam else 'Clean official text.'}"
+        if any(w in text for w in ['emergency', 'rain', 'closed', 'flood']):
+            return "Priority: Emergency\nReason: High severity campus alert."
+        if any(w in text for w in ['exam', 'timetable', 'hall ticket', 'placement']):
+            return "Priority: High\nReason: Academic or placement deadline."
+        return "Priority: Normal\nReason: Standard announcement."
+
     if "expand" in text:
-        return f"Official Notice:\n\n{prompt}\n\nPlease take note of the schedule and guidelines. Contact department office for details."
+        return (
+            f"Official Announcement Circular:\n\n"
+            f"This is to notify all concerned students and faculty regarding the recent update: {prompt.strip()}.\n\n"
+            f"Please adhere strictly to the published schedule and check the EchoSphere portal for further details."
+        )
+
     if "summarize" in text:
-        return f"• Important notice regarding campus schedule.\n• Please check detailed guidelines.\n• Contact administration for queries."
-    
-    return f"EchoSphere AI: Processed announcement successfully."
+        return f"Summary: Important update regarding campus schedule and departmental guidelines."
+
+    return "EchoSphere AI: Processed request successfully in natural language."

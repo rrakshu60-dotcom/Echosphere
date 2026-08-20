@@ -1,4 +1,6 @@
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from slowapi import _rate_limit_exceeded_handler
@@ -8,16 +10,28 @@ from app.api.v1.ai import router as ai_router
 from app.api.v1.announcement import router as announcement_router
 from app.api.v1.audit_log import router as audit_log_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.hardware import router as hardware_router
 from app.api.v1.notification import router as notification_router
 from app.api.v1.password_reset import router as password_reset_router
 from app.api.v1.user_management import router as user_management_router
 from app.core.rate_limiter import limiter
-from app.db.database import engine
+from app.db.database import Base, engine
+import app.models  # Ensure all SQLAlchemy models are registered
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="EchoSphere Backend",
     version="1.0.0",
 )
+
+# -------------------------
+# Static Files (Audio Streams)
+# -------------------------
+
+static_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+os.makedirs(os.path.join(static_audio_path, "audio_streams"), exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_audio_path), name="static")
 
 # -------------------------
 # Rate Limiter
@@ -40,6 +54,11 @@ app.include_router(
 
 app.include_router(
     announcement_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    hardware_router,
     prefix="/api/v1",
 )
 
@@ -67,6 +86,7 @@ app.include_router(
     user_management_router,
     prefix="/api/v1",
 )
+
 
 # -------------------------
 # Health Check

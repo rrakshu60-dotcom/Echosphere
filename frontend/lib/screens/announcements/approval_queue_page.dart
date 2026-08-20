@@ -22,6 +22,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
 
   void _showApproveModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController(text: 'Approved for college-wide publication');
+    const emeraldColor = Color(0xFF10B981);
 
     showDialog(
       context: context,
@@ -32,10 +33,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.15),
+                color: emeraldColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 24),
+              child: const Icon(Icons.check_circle_rounded, color: emeraldColor, size: 24),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -46,25 +47,27 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Are you sure you want to approve "${item.title}"? This will publish the notice to the institutional feed immediately.',
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: remarksController,
-              decoration: InputDecoration(
-                labelText: 'Approval Remarks / Notes',
-                hintText: 'e.g. Approved by HoD',
-                prefixIcon: const Icon(Icons.rate_review_outlined, size: 20),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to approve "${item.title}"? This will publish the notice to the institutional feed immediately.',
+                style: const TextStyle(fontSize: 13, height: 1.4),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: remarksController,
+                decoration: InputDecoration(
+                  labelText: 'Approval Remarks / Notes',
+                  hintText: 'e.g. Approved by HoD',
+                  prefixIcon: const Icon(Icons.rate_review_outlined, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -73,7 +76,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+              backgroundColor: emeraldColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -94,6 +97,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
 
   void _showRejectModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController();
+    const roseColor = Color(0xFFEF4444);
 
     showDialog(
       context: context,
@@ -104,10 +108,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.15),
+                color: roseColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.cancel_rounded, color: Colors.red, size: 24),
+              child: const Icon(Icons.cancel_rounded, color: roseColor, size: 24),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -118,27 +122,29 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Please provide a mandatory reason for rejecting "${item.title}" so the author can revise it:',
-              style: const TextStyle(fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: remarksController,
-              autofocus: true,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: 'Rejection Reason (Required)',
-                hintText: 'e.g. Schedule conflicts with exam timetable',
-                prefixIcon: const Icon(Icons.feedback_outlined, size: 20),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Please provide a mandatory reason for rejecting "${item.title}" so the author can revise it:',
+                style: const TextStyle(fontSize: 13, height: 1.4),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: remarksController,
+                autofocus: true,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Rejection Reason (Required)',
+                  hintText: 'e.g. Schedule conflicts with exam timetable',
+                  prefixIcon: const Icon(Icons.feedback_outlined, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -147,7 +153,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: roseColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),

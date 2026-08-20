@@ -224,10 +224,12 @@ class AnnouncementController extends GetxController {
     if (category == 'Placements') catId = 5;
     if (category == 'Emergency') catId = 6;
 
-    // Roles Teacher/HoD create SUBMITTED or APPROVED based on hierarchy
+    // Executive roles (Dev Admin, College Admin, Principal, HoD) auto-publish announcements directly!
     final initialStatus = (creatorRole == 'Principal' ||
             creatorRole == 'College Admin' ||
-            creatorRole == 'Developer')
+            creatorRole == 'Dev Admin' ||
+            creatorRole == 'Developer' ||
+            creatorRole == 'HoD')
         ? 'PUBLISHED'
         : 'SUBMITTED';
 
@@ -248,6 +250,15 @@ class AnnouncementController extends GetxController {
       debugPrint('Error creating via API, adding locally: $e');
     }
 
+    String generatedAiSummary = 'Summary: $title';
+    try {
+      generatedAiSummary = await EchosphereApiService().summarizeContent(description);
+    } catch (_) {
+      if (description.length > 60) {
+        generatedAiSummary = 'Summary: ${description.substring(0, 60)}...';
+      }
+    }
+
     final newNotice = AnnouncementModel(
       id: announcements.length + 101,
       title: title,
@@ -259,7 +270,7 @@ class AnnouncementController extends GetxController {
       department: department,
       category: category,
       createdAt: DateTime.now(),
-      aiSummary: 'AI Summary: $title - Important update for $department department.',
+      aiSummary: generatedAiSummary,
     );
 
     announcements.insert(0, newNotice);

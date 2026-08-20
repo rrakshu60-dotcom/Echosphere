@@ -44,6 +44,17 @@ def create_announcement_service(
             detail="Announcement category not found.",
         )
 
+    user_role = current_user.role.name if current_user.role else "Student"
+
+    # Executive roles (Dev Admin, College Admin, Principal, HoD) auto-publish directly!
+    if user_role in ["Dev Admin", "Developer", "College Admin", "Principal", "HoD"]:
+        if request.scheduled_at and request.scheduled_at > datetime.utcnow():
+            initial_status = AnnouncementStatus.SCHEDULED
+        else:
+            initial_status = AnnouncementStatus.PUBLISHED
+    else:
+        initial_status = AnnouncementStatus.PENDING_APPROVAL
+
     announcement = Announcement(
         title=request.title,
         description=request.description,
@@ -51,7 +62,7 @@ def create_announcement_service(
         priority=request.priority,
         emergency_level=request.emergency_level,
         scheduled_at=request.scheduled_at,
-        status=AnnouncementStatus.DRAFT,
+        status=initial_status,
         created_by=current_user.id,
     )
 
@@ -66,7 +77,7 @@ def create_announcement_service(
         action="CREATE_ANNOUNCEMENT",
         entity="ANNOUNCEMENT",
         entity_id=created_announcement.id,
-        description=f"Created announcement: {created_announcement.title}",
+        description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
     )
 
     return created_announcement
@@ -106,6 +117,7 @@ def update_announcement_service(
     db: Session,
     announcement_id: int,
     request: AnnouncementUpdate,
+    current_user: User = None,
 ):
     announcement = get_announcement_by_id(
         db,
@@ -118,11 +130,21 @@ def update_announcement_service(
             detail="Announcement not found.",
         )
 
-    if announcement.status != AnnouncementStatus.DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only draft announcements can be edited.",
-        )
+    # Executive roles can edit announcements at any status; lower roles only DRAFT or own notices
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    is_admin = user_role in ["Dev Admin", "Developer", "College Admin", "Principal"]
+
+    if not is_admin:
+        if current_user and announcement.created_by != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only edit your own announcements.",
+            )
+        if announcement.status not in (AnnouncementStatus.DRAFT, AnnouncementStatus.PENDING_APPROVAL):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only draft or pending announcements can be edited by non-admins.",
+            )
 
     if request.category_id is not None:
         category = get_category_by_id(
@@ -144,7 +166,7 @@ def update_announcement_service(
 
     create_audit_log_service(
         db=db,
-        user_id=announcement.created_by,
+        user_id=current_user.id if current_user else announcement.created_by,
         action="UPDATE_ANNOUNCEMENT",
         entity="ANNOUNCEMENT",
         entity_id=updated_announcement.id,
@@ -157,6 +179,7 @@ def update_announcement_service(
 def delete_announcement_service(
     db: Session,
     announcement_id: int,
+    current_user: User = None,
 ):
     announcement = get_announcement_by_id(
         db,
@@ -167,6 +190,15 @@ def delete_announcement_service(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Announcement not found.",
+        )
+
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    is_admin = user_role in ["Dev Admin", "Developer", "College Admin", "Principal", "HoD"]
+
+    if not is_admin and current_user and announcement.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own announcements.",
         )
 
     # Store details before deleting
@@ -181,7 +213,7 @@ def delete_announcement_service(
 
     create_audit_log_service(
         db=db,
-        user_id=created_by,
+        user_id=current_user.id if current_user else created_by,
         action="DELETE_ANNOUNCEMENT",
         entity="ANNOUNCEMENT",
         entity_id=announcement_id_value,
@@ -189,6 +221,7 @@ def delete_announcement_service(
     )
 
     return {"message": "Announcement deleted successfully."}
+
 
 
 def submit_announcement_service(

@@ -43,11 +43,30 @@ def get_current_user(
     return user
 
 
-def require_roles(*allowed_roles: str) -> Callable:
+def require_roles(*allowed_roles) -> Callable:
+    # Flatten arguments if passed as a list or tuple
+    flat_roles = set()
+    for role in allowed_roles:
+        if isinstance(role, (list, tuple, set)):
+            for r in role:
+                flat_roles.add(str(r))
+        else:
+            flat_roles.add(str(role))
+
+    # Support aliases for backward compatibility
+    expanded_roles = set(flat_roles)
+    if "Developer" in flat_roles or "Dev Admin" in flat_roles:
+        expanded_roles.add("Dev Admin")
+        expanded_roles.add("Developer")
+    if "Admin" in flat_roles or "College Admin" in flat_roles:
+        expanded_roles.add("College Admin")
+        expanded_roles.add("Admin")
+
     def role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:
-        if current_user.role.name not in allowed_roles:
+        user_role = current_user.role.name if current_user.role else "Student"
+        if user_role not in expanded_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to perform this action.",

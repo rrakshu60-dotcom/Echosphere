@@ -11,6 +11,7 @@ __pycache__/
 .venv/
 venv/
 *.sqlite3
+*.db
 
 # Flutter & Dart
 .dart_tool/
@@ -27,3 +28,7 @@ frontend/android/app/build/
 *.mp4
 *.zip
 .tempmediaStorage/
+test*.pdf
+hardware/.node_mac
+backend/app/static/audio_streams/*.mp3
+!backend/app/static/audio_streams/.gitkeep

@@ -2,10 +2,6 @@ import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/screens/admin/announcement_management_page.dart';
-import 'package:anymex/screens/admin/user_management_page.dart';
-import 'package:anymex/screens/announcements/approval_queue_page.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -62,13 +58,17 @@ class Header extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                'EchoSphere',
-                style: TextStyle(
-                  fontFamily: 'Poppins-Bold',
-                  fontSize: isMobile ? 17 : 19,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
+              Flexible(
+                child: Text(
+                  'EchoSphere',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Poppins-Bold',
+                    fontSize: isMobile ? 17 : 19,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ],
@@ -96,106 +96,22 @@ class Header extends StatelessWidget {
               );
             }
 
-            final isExecutive = user.role == 'Principal' || user.role == 'Developer' || user.role == 'College Admin';
-            final isHoD = user.role == 'HoD';
-
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isExecutive) ...[
-                  IconButton(
-                    tooltip: 'Admin Control Hub',
-                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 20),
-                    onPressed: () => _showAdminHubSheet(context, user.role),
-                  ),
-                ] else if (isHoD) ...[
-                  IconButton(
-                    tooltip: 'Approval Queue',
-                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.fact_check_rounded, color: Colors.orange, size: 20),
-                    onPressed: () => Get.to(() => const ApprovalQueuePage()),
-                  ),
-                ],
-              ],
+            return Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.person_rounded,
+                size: isMobile ? 18 : 20,
+                color: theme.colorScheme.primary,
+              ),
             );
           }),
         ],
       ),
     );
   }
-
-  void _showAdminHubSheet(BuildContext context, String role) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 22),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Admin Control Hub',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(height: 20),
-              ListTile(
-                leading: const Icon(Icons.auto_fix_high_rounded, color: Colors.amber),
-                title: const Text('Notice Moderation & Management'),
-                subtitle: const Text('Edit, reschedule, or revoke any announcement'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Get.to(() => const AnnouncementManagementPage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.fact_check_rounded, color: Colors.orange),
-                title: const Text('Approval Queue'),
-                subtitle: const Text('Review and approve teacher announcements'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Get.to(() => const ApprovalQueuePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.volume_up_rounded, color: Colors.blue),
-                title: const Text('Speaker Announcement Queue'),
-                subtitle: const Text('Manage live speaker broadcasts'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Get.to(() => const SpeakerQueuePage());
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.manage_accounts_rounded, color: Colors.purple),
-                title: const Text('User Accounts & Permissions'),
-                subtitle: const Text('Manage student & faculty access'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Get.to(() => const UserManagementPage());
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
+

@@ -24,7 +24,7 @@ class SpeakerQueue(TimestampMixin, Base):
     )
 
     # -------------------------
-    # Foreign Key
+    # Foreign Keys & Node Binding
     # -------------------------
 
     announcement_id = Column(
@@ -34,8 +34,14 @@ class SpeakerQueue(TimestampMixin, Base):
         unique=True,
     )
 
+    speaker_node_id = Column(
+        Integer,
+        ForeignKey("speaker_nodes.id"),
+        nullable=True,
+    )
+
     # -------------------------
-    # Queue Details
+    # Queue Details & Telemetry
     # -------------------------
 
     queue_position = Column(
@@ -58,6 +64,23 @@ class SpeakerQueue(TimestampMixin, Base):
         nullable=True,
     )
 
+    duration_seconds = Column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+
+    failure_reason = Column(
+        String(255),
+        nullable=True,
+    )
+
+    error_count = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
     # -------------------------
     # Relationships
     # -------------------------
@@ -66,3 +89,9 @@ class SpeakerQueue(TimestampMixin, Base):
         "Announcement",
         back_populates="speaker_queue",
     )
+
+    speaker_node = relationship(
+        "SpeakerNode",
+        back_populates="queue_items",
+    )
+

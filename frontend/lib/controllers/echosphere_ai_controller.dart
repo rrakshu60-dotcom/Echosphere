@@ -34,21 +34,23 @@ class EchosphereAiController extends GetxController {
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
     final dept = user?.department ?? 'CSE';
+    final role = user?.role ?? 'Student';
+    final name = user?.fullName ?? 'Student';
 
     messages.add(
       AiChatMessage(
         text:
-            'Hello ${user?.fullName ?? "there"}! I am EchoSphere AI Assistant 🤖\n'
-            'I am tuned to your context for **$dept Department**.\n'
-            'Ask me about recent announcements, exam schedules, department queries, or app features.',
+            'Hello $name! I am EchoSphere AI Assistant.\n\n'
+            'I am tuned to your context as **$role** in the **$dept Department**.\n\n'
+            'How can I help you today? Ask me about recent announcements, exam schedules, placement drives, or app settings.',
         isUser: false,
         categoryBadge: 'EchoSphere AI',
-        contextBadge: '$dept Department',
+        contextBadge: '$role • $dept Department',
         suggestedActions: [
-          'Browse Announcements',
-          'Check Categories',
           'Show Examination Notices',
           'Check Weather Advisory',
+          'View Placement Drives',
+          'Where is Settings?',
         ],
       ),
     );
@@ -79,7 +81,7 @@ class EchosphereAiController extends GetxController {
 
       final responseText = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
-      final ctxBadge = apiRes['context_badge'] as String? ?? '$dept Department';
+      final ctxBadge = apiRes['context_badge'] as String? ?? '$role • $dept Department';
       final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
@@ -99,7 +101,7 @@ class EchosphereAiController extends GetxController {
         text: fallbackText,
         isUser: false,
         categoryBadge: 'EchoSphere AI',
-        contextBadge: '$dept Department',
+        contextBadge: '$role • $dept Department',
         suggestedActions: ['Browse Announcements', 'Check Categories'],
       ));
     } finally {
@@ -111,9 +113,9 @@ class EchosphereAiController extends GetxController {
     if (content.length < 60) return content;
     final sentences = content.split(RegExp(r'(?<=[.!?])\s+'));
     if (sentences.isNotEmpty) {
-      return 'AI Summary: ${sentences.first} (Key notice update)';
+      return 'Summary: ${sentences.first}';
     }
-    return 'AI Summary: ${content.substring(0, 80)}...';
+    return 'Summary: ${content.substring(0, 80)}...';
   }
 
   Map<String, String> recommendPriorityAndCategory(String title, String description, {String? userRole}) {
@@ -129,7 +131,7 @@ class EchosphereAiController extends GetxController {
         combined.contains('urgent') ||
         combined.contains('emergency') ||
         combined.contains('suspended')) {
-      priority = (role == 'HOD' || role == 'COLLEGE ADMIN' || role == 'PRINCIPAL' || role == 'DEVELOPER') ? 'EMERGENCY' : 'HIGH';
+      priority = (role == 'HOD' || role == 'COLLEGE ADMIN' || role == 'PRINCIPAL' || role == 'DEVELOPER' || role == 'DEV ADMIN') ? 'EMERGENCY' : 'HIGH';
       category = 'Emergency';
     } else if (combined.contains('exam') ||
         combined.contains('timetable') ||
@@ -166,77 +168,74 @@ class EchosphereAiController extends GetxController {
   String _generateFallbackResponse(String input, String role, String dept, String name) {
     final query = input.toLowerCase();
 
-    if (query.contains('who r u') || query.contains('who are you') || query.contains('what is your name') || query.contains('what\'s your name') || query.contains('identify yourself')) {
-      return '🤖 **I am EchoSphere AI Assistant!**\n\n'
-          'I am your intelligent, context-aware college announcement & campus knowledge assistant.\n\n'
-          'I am currently tuned for **$name** ($role · $dept Department).\n\n'
-          '**What I can do for you:**\n'
-          '• 📝 **Exams & Timetables:** Retrieve schedule & hall ticket info.\n'
-          '• 🚨 **Emergency Alerts:** Check active weather or campus closure warnings.\n'
-          '• 💼 **Placements:** Find company drives & registration deadlines.\n'
-          '• 📌 **Notice Creation:** Expand short notes into formal circulars with AI.\n'
-          '• ⚙️ **App Navigation:** Guide you to settings, password resets, or approval queues.';
+    if (query.contains('who r u') || query.contains('who are you') || query.contains('what is your name') || query.contains('identify yourself')) {
+      return 'I am the **EchoSphere AI Assistant**, your intelligent campus communication companion.\n\n'
+          'I am customized for **$name** as a **$role** in the **$dept Department**.\n\n'
+          '**How I can assist you:**\n'
+          '- **Announcements & Notices:** Search circulars for $dept or college-wide updates.\n'
+          '- **Exams & Schedules:** Retrieve lab timetables, exam dates, and hall ticket requirements.\n'
+          '- **Placements & Events:** Track active recruitment drives and campus events.\n'
+          '- **Notice Creation:** Expand short notes into formal circulars and polish tone using AI.\n'
+          '- **App Navigation:** Guide you to profile settings, theme toggles, or password updates.';
     }
 
-    if (query.startsWith('hi') || query.startsWith('hello') || query.startsWith('hey') || query.startsWith('good morning') || query.startsWith('good afternoon') || query == 'yo' || query == 'sup') {
-      return '👋 **Hello $name!**\n\n'
-          'Welcome to EchoSphere! How can I help you today with **$dept Department** announcements, exam timetables, or app navigation?';
+    if (query.startsWith('hi') || query.startsWith('hello') || query.startsWith('hey') || query.startsWith('good morning') || query.startsWith('good afternoon')) {
+      return 'Hello $name! Welcome to EchoSphere. I am tuned to your context in the **$dept Department** ($role).\n\n'
+          'How can I help you today? Ask me about recent announcements, exam timetables, placement drives, or app settings.';
     }
 
-    if (query.contains('thank') || query.contains('thanks') || query.contains('awesome') || query.contains('great') || query.contains('cool')) {
-      return '😊 **You\'re very welcome, $name!**\n\n'
-          'I\'m always here to help you stay informed on campus announcements, department circulars, and application features.';
+    if (query.contains('thank') || query.contains('thanks') || query.contains('awesome') || query.contains('great')) {
+      return 'You\'re very welcome, $name! I am always here to keep you updated on campus announcements and department circulars.';
     }
 
     if (query.contains('how are you') || query.contains('how r u') || query.contains('how\'s it going')) {
-      return '😊 **I\'m doing great and ready to help!**\n\n'
-          'How can I assist you today, **$name**? Ask me about campus notices, exam schedules, or app settings.';
+      return 'I\'m doing great and ready to assist you! How can I help you today in **$dept Department**?';
     }
 
     if (query.contains('setting') || query.contains('theme') || query.contains('dark mode')) {
-      return '⚙️ **App Navigation Assistant - Settings & Themes:**\n\n'
-          'Hello $name! Open the **Profile** tab on the navigation bar → Tap **Dark Mode Theme** to toggle light/dark glassmorphism.';
+      return 'To customize your application interface:\n\n'
+          '1. Open the **Profile** tab on the navigation bar.\n'
+          '2. Tap **Dark Mode Theme** to switch light/dark glassmorphism modes.\n'
+          '3. Configure notification channels and speaker preferences.';
     }
 
     if (query.contains('password') || query.contains('change password')) {
       if (role == 'Student') {
-        return '🔐 **Password Management Assistance:**\n\n'
-            'As a **Student**, password resets are handled via your Department HoD or by tapping **Forgot Password?** on the Login screen.';
+        return 'As a **Student**, password resets are managed through your Department HoD or Class Teacher.\n\n'
+            'You can also tap **Forgot Password?** on the sign-in screen to generate a reset token.';
       }
-      return '🔐 **Password Management Assistance:**\n\n'
-          'Go to **Profile** → **Preferences & Security** → Tap **Change Password**.';
+      return 'Go to **Profile** → **Preferences & Security** → Tap **Change Password**.';
     }
 
     if (query.contains('exam') || query.contains('timetable') || query.contains('test')) {
-      return '📝 **Examinations Query ($dept Department):**\n\n'
-          '• Practical lab & theory timetables for **$dept Department** are published under **Examinations**.\n'
-          '• Students must carry their official College ID Card and Hall Ticket.';
+      return 'Here is the examination guidance for **$dept Department**:\n\n'
+          '- Practical lab & theory timetables are published under the **Examinations** category.\n'
+          '- Students must carry their official College ID Card and Hall Ticket.';
     }
 
     if (query.contains('rain') || query.contains('weather') || query.contains('holiday') || query.contains('closed')) {
-      return '🚨 **Emergency Announcement Summary:**\n\n'
-          '• **Status:** Emergency Rainfall Alert monitoring active.\n'
-          '• Class suspensions will broadcast with top priority on your home feed.';
+      return '**Emergency Status Update:**\n\n'
+          '- Weather advisories and emergency alerts are broadcasted college-wide with highest priority.\n'
+          '- Class suspension notices appear at the top of your feed and play via campus speakers.';
     }
 
     if (query.contains('placement') || query.contains('job') || query.contains('company')) {
-      return '💼 **Placements Drive Information:**\n\n'
-          '• Active recruitment drives for Google, Microsoft, and TCS are tagged under **Placements**.\n'
-          '• Eligibility: CGPA ≥ 7.0 with no active backlogs.';
+      return '**Placements & Recruitment Drives:**\n\n'
+          '- Active drives for Google, Microsoft, TCS, and Infosys are listed under **Placements**.\n'
+          '- Minimum Eligibility: CGPA ≥ 7.0 with no active backlogs.';
     }
 
     if (query.contains('create') || query.contains('submit') || query.contains('notice') || query.contains('how to')) {
       if (role == 'Student') {
-        return '📌 **Announcement Creation Policy:**\n\n'
-            'Students have read-only access to preserve official notice authenticity. Contact your Faculty Advisor to issue a notice.';
+        return 'Students have read-only access to preserve official notice authenticity.\n\n'
+            'Please contact your **Department Faculty Advisor** or **HoD** to publish a notice.';
       }
-      return '📌 **How to Create & Publish Announcements:**\n\n'
-          '1. Click the floating **+ New Notice** button on the bottom right.\n'
-          '2. Fill in details and use **AI Text Expander** for professional notice formatting.';
+      return 'To post a notice:\n\n'
+          '1. Click the floating **+ New Notice** button on your Home screen.\n'
+          '2. Fill in details and use **AI Expand** for instant formal circular formatting.';
     }
 
-    return '🤖 **EchoSphere AI Assistant:**\n\n'
-        'I am here to assist **$name** ($role · $dept Department).\n\n'
-        'I can help you search campus notices, check exam timetables, find placement drives, or navigate settings. What specific topic or announcement would you like to check?';
+    return 'I am ready to assist **$name** ($role · $dept Department).\n\n'
+        'You can ask me to search campus notices, check exam timetables, view placement drives, or navigate settings.';
   }
 }
