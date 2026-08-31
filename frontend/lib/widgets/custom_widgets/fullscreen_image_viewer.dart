@@ -76,7 +76,7 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
           await file.writeAsBytes(bytes);
 
           try {
-            const platform = MethodChannel('com.ryan.echosphere/utils');
+            const platform = MethodChannel('com.roxy.echosphere/utils');
             await platform.invokeMethod('scanFile', {'path': file.path});
           } catch (_) {}
 

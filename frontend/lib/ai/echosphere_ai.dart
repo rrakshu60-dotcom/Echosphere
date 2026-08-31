@@ -1,10 +1,11 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
 import 'package:anymex/screens/home_page.dart';
+import 'package:anymex/utils/usn_parser.dart';
+import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -16,19 +17,35 @@ class EchosphereAi extends StatefulWidget {
 }
 
 class _EchosphereAiState extends State<EchosphereAi> {
-  final EchosphereAiController aiController = Get.find<EchosphereAiController>();
-  final AuthController authController = Get.find<AuthController>();
-  final TextEditingController inputController = TextEditingController();
-  final ScrollController scrollController = ScrollController();
+  final authController = Get.find<AuthController>();
+  final aiController = Get.isRegistered<EchosphereAiController>()
+      ? Get.find<EchosphereAiController>()
+      : Get.put(EchosphereAiController());
 
-  void _sendMessage([String? text]) {
-    final prompt = text ?? inputController.text.trim();
-    if (prompt.isEmpty) return;
+  final queryController = TextEditingController();
+  final scrollController = ScrollController();
 
-    inputController.clear();
-    aiController.sendQuery(prompt);
+  @override
+  void dispose() {
+    queryController.dispose();
+    scrollController.dispose();
+    super.dispose();
+  }
 
-    Future.delayed(const Duration(milliseconds: 300), () {
+  void _sendMessage([String? textOverride]) {
+    final text = textOverride ?? queryController.text.trim();
+    if (text.isEmpty) return;
+
+    if (textOverride == null) {
+      queryController.clear();
+    }
+
+    aiController.sendQuery(text);
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 200), () {
       if (scrollController.hasClients) {
         scrollController.animateTo(
           scrollController.position.maxScrollExtent,
@@ -39,14 +56,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
     });
   }
 
-  void _handleSuggestedAction(String act) {
-    final lower = act.toLowerCase();
-    if (lower.contains('browse announcement') || lower.contains('view announcement') || lower.contains('show announcement') || lower == 'browse announcements') {
-      Get.offAll(() => const HomePage());
-      return;
-    }
-
-    if (lower.contains('check categorie') || lower.contains('categories') || lower.contains('category') || lower == 'check categories') {
+  void _handleSuggestedAction(String action) {
+    final act = action.trim();
+    if (act == 'Show Examination Notices') {
       Get.offAll(() => const HomePage());
       return;
     }
@@ -58,7 +70,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final dept = user?.department ?? 'CSE';
+    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
 
     return Column(
       children: [
@@ -179,7 +191,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
             children: [
               Expanded(
                 child: TextField(
-                  controller: inputController,
+                  controller: queryController,
                   onSubmitted: (_) => _sendMessage(),
                   decoration: InputDecoration(
                     hintText: 'Ask AI about announcements, exams, or departments...',

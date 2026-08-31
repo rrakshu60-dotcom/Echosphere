@@ -1,4 +1,4 @@
-package com.ryan.echosphere
+package com.roxy.echosphere
 
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -29,9 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "app/architecture"
-    private val VOLUME_CHANNEL = "com.ryan.echosphere/volume"
-    private val VOLUME_EVENTS = "com.ryan.echosphere/volume_events"
-    private val PIP_CHANNEL = "com.ryan.echosphere/pip"
+    private val VOLUME_CHANNEL = "com.roxy.echosphere/volume"
+    private val VOLUME_EVENTS = "com.roxy.echosphere/volume_events"
+    private val PIP_CHANNEL = "com.roxy.echosphere/pip"
     private val THUMBNAIL_CHANNEL = "com.echosphere.app/thumbnail"
     private val THUMBNAIL_TIMEOUT_MS = 8000L
     private val THUMBNAIL_MAX_AGE_MS = 24 * 60 * 60 * 1000L
@@ -40,10 +40,10 @@ class MainActivity : FlutterActivity() {
 
     private var pipAutoEnterEnabled = false
 
-    private val ACTION_PLAY = "com.ryan.echosphere.PIP_PLAY"
-    private val ACTION_PAUSE = "com.ryan.echosphere.PIP_PAUSE"
-    private val ACTION_FORWARD = "com.ryan.echosphere.PIP_FORWARD"
-    private val ACTION_BACKWARD = "com.ryan.echosphere.PIP_BACKWARD"
+    private val ACTION_PLAY = "com.roxy.echosphere.PIP_PLAY"
+    private val ACTION_PAUSE = "com.roxy.echosphere.PIP_PAUSE"
+    private val ACTION_FORWARD = "com.roxy.echosphere.PIP_FORWARD"
+    private val ACTION_BACKWARD = "com.roxy.echosphere.PIP_BACKWARD"
     private var isPlaying = true
 
     private val pipReceiver = object : BroadcastReceiver() {
@@ -90,7 +90,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.ryan.echosphere/utils").setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.roxy.echosphere/utils").setMethodCallHandler { call, result ->
             when (call.method) {
                 "scanFile" -> {
                     val path = call.argument<String>("path")

@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/home_page.dart';
+import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -113,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 autofocus: true,
                 decoration: InputDecoration(
                   labelText: 'Official Staff Employee ID',
-                  hintText: 'e.g. DBITAIMLT022022, HOD001, TCH001, DBITADM001',
+                  hintText: 'e.g. DBITAIMLT022022, DBITADM001, PRI001, DEVADM01',
                   prefixIcon: const Icon(Icons.badge_outlined, size: 20),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -234,18 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // App Logo & Header
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: theme.colorScheme.primary.withOpacity(0.15),
-                    ),
-                    child: Icon(
-                      Icons.campaign,
-                      size: 42,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
+                  const EchoSphereAnimatedLogo(size: 56),
                   const SizedBox(height: 16),
                   Text(
                     'EchoSphere',
@@ -284,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: identifierController,
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
-                      hintText: 'e.g. 1EC22CS001 or admin@echosphere.edu',
+                      hintText: 'e.g. 1DB23CI079, CAdmin, or ESDev01',
                       prefixIcon: const Icon(Icons.person_outline, size: 20),
                       filled: true,
                       fillColor: theme.colorScheme.surfaceContainerHighest
@@ -461,14 +451,14 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Enter your USN, Official Email, or Username:',
-                style: TextStyle(fontSize: 13),
+                'Enter your credentials or identifier:',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: idCtrl,
                 decoration: const InputDecoration(
-                  hintText: 'e.g. 1EC22CS001 or teacher@echosphere.edu',
+                  hintText: 'Enter your credentials or identifier',
                   border: OutlineInputBorder(),
                 ),
               ),

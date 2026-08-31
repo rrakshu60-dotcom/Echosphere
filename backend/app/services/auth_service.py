@@ -35,6 +35,13 @@ def authenticate_user(
     if user is None:
         raise ValueError("Invalid credentials.")
 
+    role_name = user.role.name if user.role else "Student"
+
+    # College Admin and Dev Admin accounts cannot log in using email according to schema rules
+    if role_name in ["College Admin", "Dev Admin", "Developer"]:
+        if "@" in cleaned or (user.official_email and user.official_email.lower() == cleaned.lower()):
+            raise ValueError("Email login disabled for administrative accounts. Please log in using your Username or Employee ID.")
+
     if not verify_password(password, cast(str, user.password_hash)):
         raise ValueError("Invalid credentials.")
 

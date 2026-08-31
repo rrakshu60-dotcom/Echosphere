@@ -5,6 +5,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
+import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -200,40 +201,54 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             // Top Bar Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (canPop) ...[
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Icon(
-                    isTeacher ? Icons.track_changes_rounded : Icons.fact_check_rounded,
-                    size: 22,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: EchoSphereText(
-                      text: isTeacher ? 'My Notice Status' : 'Approval Queue',
-                      size: 16,
-                      variant: TextVariant.bold,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Obx(() => Flexible(
-                        child: EchoSphereChip(
-                          label: isTeacher
-                              ? '${controller.mySubmissions.length} Submissions'
-                              : '${controller.pendingApprovals.length} Pending',
-                          isSelected: true,
-                          onSelected: (_) {},
+                  Row(
+                    children: [
+                      if (canPop) ...[
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                          padding: EdgeInsets.zero,
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
-                      )),
+                        const SizedBox(width: 4),
+                      ],
+                      Icon(
+                        isTeacher ? Icons.track_changes_rounded : Icons.fact_check_rounded,
+                        size: 22,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: EchoSphereText(
+                          text: isTeacher ? 'My Notice Status' : 'Approval Queue',
+                          size: 16,
+                          variant: TextVariant.bold,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        const NoticeSortButton(compact: true),
+                        const SizedBox(width: 8),
+                        Obx(() => EchoSphereChip(
+                              label: isTeacher
+                                  ? '${controller.mySubmissions.length} Submissions'
+                                  : '${controller.pendingApprovals.length} Pending',
+                              isSelected: true,
+                              onSelected: (_) {},
+                            )),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

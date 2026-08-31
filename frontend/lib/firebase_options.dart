@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '655963122485',
     projectId: 'echosphere-ryan7',
     storageBucket: 'echosphere-ryan7.firebasestorage.app',
-    iosBundleId: 'com.ryan.echosphere',
+    iosBundleId: 'com.roxy.echosphere',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '655963122485',
     projectId: 'echosphere-ryan7',
     storageBucket: 'echosphere-ryan7.firebasestorage.app',
-    iosBundleId: 'com.ryan.echosphere',
+    iosBundleId: 'com.roxy.echosphere',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

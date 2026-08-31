@@ -6,7 +6,7 @@ import 'dart:convert';
 
 class AppNamePackageManager {
   static const String configBackupPath = 'app_config_backup.json';
-  static const String basePackageName = 'com.ryan.echosphere';
+  static const String basePackageName = 'com.roxy.echosphere';
   static const String baseAppName = 'EchoSphere';
 
   void run() async {

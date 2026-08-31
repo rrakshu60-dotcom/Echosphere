@@ -364,7 +364,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> with SingleTickerPr
                     ),
                     const SizedBox(width: 4),
                   ],
-                  Icon(Icons.speaker_group_rounded, size: 24, color: context.colors.primary),
+                  Icon(Icons.podcasts_rounded, size: 24, color: context.colors.primary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -850,7 +850,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage> with SingleTickerPr
                             ),
                           ),
                           IconButton(
-                            icon: Icon(Icons.volume_up_rounded, size: 18, color: context.colors.primary),
+                            icon: Icon(Icons.equalizer_rounded, size: 18, color: context.colors.primary),
                             tooltip: 'Test Speaker',
                             onPressed: () async {
                               try {

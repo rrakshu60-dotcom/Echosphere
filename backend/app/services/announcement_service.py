@@ -46,8 +46,22 @@ def create_announcement_service(
 
     user_role = current_user.role.name if current_user.role else "Student"
 
-    # Executive roles (Dev Admin, College Admin, Principal, HoD) auto-publish directly!
-    if user_role in ["Dev Admin", "Developer", "College Admin", "Principal", "HoD"]:
+    # RBAC Approval Matrix
+    if user_role == "Teacher":
+        # Teachers MANDATORILY require approval for ALL notices (whether immediate or scheduled)
+        initial_status = AnnouncementStatus.PENDING_APPROVAL
+    elif user_role == "HoD":
+        # HoD auto-approves for own department; cross-dept / institution-wide notices require approval
+        target = (request.target_audience or "").lower()
+        dept_name = (current_user.department.code if current_user.department else "").lower() if hasattr(current_user, 'department') and current_user.department else ""
+        is_own_dept = dept_name in target and "entire" not in target and "all" not in target
+        if not is_own_dept:
+            initial_status = AnnouncementStatus.PENDING_APPROVAL
+        elif request.scheduled_at and request.scheduled_at > datetime.utcnow():
+            initial_status = AnnouncementStatus.SCHEDULED
+        else:
+            initial_status = AnnouncementStatus.PUBLISHED
+    elif user_role in ["Dev Admin", "Developer", "College Admin", "Principal"]:
         if request.scheduled_at and request.scheduled_at > datetime.utcnow():
             initial_status = AnnouncementStatus.SCHEDULED
         else:

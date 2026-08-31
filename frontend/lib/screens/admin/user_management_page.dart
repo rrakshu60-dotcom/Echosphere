@@ -8,6 +8,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+import 'package:anymex/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -66,16 +67,16 @@ class _UserManagementPageState extends State<UserManagementPage> {
           'full_name': 'Dev Admin',
           'role': 'Dev Admin',
           'official_email': 'rrakshu60@gmail.com',
-          'employee_id': 'DEVADM01',
+          'employee_id': 'ESDev01',
           'department': 'Dev Operations',
           'is_active': true,
         },
         {
           'id': 2,
-          'full_name': 'College Administrator',
+          'full_name': 'College Admin (Primary)',
           'role': 'College Admin',
-          'official_email': 'admin@echosphere.edu',
-          'employee_id': 'ADM001',
+          'official_email': 'cadmin@echosphere.edu',
+          'employee_id': 'DBITADM001',
           'department': 'Administration',
           'is_active': true,
         },
@@ -89,47 +90,32 @@ class _UserManagementPageState extends State<UserManagementPage> {
           'is_active': true,
         },
         {
-          'id': 6,
+          'id': 4,
+          'full_name': 'Dr. AIML HoD',
+          'role': 'HoD',
+          'official_email': 'hod.aiml@echosphere.edu',
+          'employee_id': 'HOD001',
+          'department': 'AIML',
+          'is_active': true,
+        },
+        {
+          'id': 5,
           'full_name': 'Rakshitha S',
           'role': 'Student',
           'official_email': '1db23ci079@echosphere.edu',
           'usn': '1DB23CI079',
           'department': 'AIML',
+          'section': 'A',
+          'semester': 5,
           'is_active': true,
         },
         {
-          'id': 7,
+          'id': 6,
           'full_name': 'Dr. B Kursheed',
           'role': 'Teacher',
           'official_email': 'b.kursheed@echosphere.edu',
           'employee_id': 'DBITAIMLT022022',
           'department': 'AIML',
-          'is_active': true,
-        },
-        {
-          'id': 4,
-          'full_name': 'CSE HoD',
-          'role': 'HoD',
-          'official_email': 'hod.cse@echosphere.edu',
-          'employee_id': 'HOD001',
-          'department': 'CSE',
-          'is_active': true,
-        },
-        {
-          'id': 5,
-          'full_name': 'CSE Teacher',
-          'role': 'Teacher',
-          'official_email': 'teacher.cse@echosphere.edu',
-          'employee_id': 'TCH001',
-          'department': 'CSE',
-          'is_active': true,
-        },
-        {
-          'id': 6,
-          'full_name': 'Student One',
-          'role': 'Student',
-          'usn': '1EC22CS001',
-          'department': 'CSE',
           'is_active': true,
         },
       ];
@@ -155,9 +141,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
   void _showCreateUserDialog() {
     final nameCtrl = TextEditingController();
     final idCtrl = TextEditingController();
+    final sectionCtrl = TextEditingController(text: 'A');
     final passwordCtrl = TextEditingController(text: 'EchoSphere@123');
     String roleVal = 'Student';
     String deptVal = 'CSE';
+    int semesterVal = 5;
 
     showDialog(
       context: context,
@@ -200,12 +188,62 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 const SizedBox(height: 6),
                 TextField(
                   controller: idCtrl,
+                  onChanged: (_) => setDlgState(() {}),
                   decoration: InputDecoration(
-                    hintText: roleVal == 'Student' ? 'e.g. 1EC22CS099' : 'e.g. teacher@echosphere.edu',
+                    hintText: roleVal == 'Student' ? 'e.g. 1DB23IS045 or 1DB23EC088' : 'e.g. teacher@echosphere.edu',
                     border: const OutlineInputBorder(),
+                    helperText: roleVal == 'Student' && idCtrl.text.isNotEmpty
+                        ? 'Auto-Detected Department: ${detectDepartmentFromUsn(idCtrl.text)}'
+                        : null,
+                    helperStyle: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
+
+                if (roleVal == 'Student') ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Semester', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            const SizedBox(height: 6),
+                            EchoSphereDropdown(
+                              label: 'Semester',
+                              icon: Icons.numbers,
+                              selectedItem: DropdownItem(value: semesterVal.toString(), text: 'Semester $semesterVal'),
+                              items: List.generate(8, (i) => DropdownItem(value: (i + 1).toString(), text: 'Semester ${i + 1}')),
+                              onChanged: (item) => setDlgState(() => semesterVal = int.parse(item.value)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Section (e.g. A, B, C)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: sectionCtrl,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: const InputDecoration(
+                                hintText: 'e.g. A, B, C',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
 
                 const Text('Initial Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
@@ -222,6 +260,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
             final name = nameCtrl.text.trim();
             final idText = idCtrl.text.trim();
             final pwdText = passwordCtrl.text.trim();
+            final sectionText = sectionCtrl.text.trim().toUpperCase();
+
             if (name.isEmpty || idText.isEmpty) {
               errorSnackBar('Please fill in all required fields.');
               return;
@@ -229,6 +269,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
             final email = idText.contains('@') ? idText : '$idText@echosphere.edu';
             final pass = pwdText.isNotEmpty ? pwdText : 'EchoSphere@2026';
+            final assignedDept = roleVal == 'Student' ? detectDepartmentFromUsn(idText) : deptVal;
+            final chosenSection = sectionText.isNotEmpty ? sectionText : 'A';
 
             try {
               final created = await EchosphereApiService().createUser(
@@ -238,11 +280,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 roleName: roleVal,
                 usn: roleVal == 'Student' ? idText : null,
                 employeeId: roleVal != 'Student' ? idText : null,
+                semester: roleVal == 'Student' ? semesterVal : null,
+                section: roleVal == 'Student' ? chosenSection : null,
               );
               setState(() {
                 users.add(created);
               });
-              snackBar('Account created successfully for $name ($roleVal)!');
+              snackBar('Account created successfully for $name ($roleVal - $assignedDept, Sec $chosenSection)!');
             } catch (e) {
               debugPrint('Offline fallback user creation: $e');
               setState(() {
@@ -252,11 +296,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   'role': roleVal,
                   'official_email': email,
                   if (roleVal == 'Student') 'usn': idText else 'employee_id': idText,
-                  'department': deptVal,
+                  'department': assignedDept,
+                  if (roleVal == 'Student') 'section': chosenSection,
+                  if (roleVal == 'Student') 'semester': semesterVal,
                   'is_active': true,
                 });
               });
-              snackBar('Account created locally for $name ($roleVal)!');
+              snackBar('Account created locally for $name ($roleVal - $assignedDept, Sec $chosenSection)!');
             }
           },
         ),
@@ -438,7 +484,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   const SizedBox(width: 4),
                   if (isAdminRole) ...[
                     IconButton(
-                      icon: const Icon(Icons.volume_up_rounded, size: 20),
+                      icon: const Icon(Icons.sensors_rounded, size: 20),
                       tooltip: 'Speaker Hardware Queue',
                       onPressed: () => Get.to(() => const SpeakerQueuePage()),
                     ),
@@ -610,7 +656,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            'ID: $identifier • Dept: ${u['department'] ?? "CSE"}',
+                                            'ID: $identifier • Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " • Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
