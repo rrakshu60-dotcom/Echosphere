@@ -13,6 +13,7 @@ import 'package:anymex/widgets/common/glow.dart';
 import 'package:anymex/widgets/common/navbar.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:anymex/widgets/header.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -123,10 +124,8 @@ class _HomePageState extends State<HomePage> {
     final role = user?.role ?? 'Student';
 
     Widget secondPage;
-    if (role == 'HoD') {
+    if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondPage = const ApprovalQueuePage();
-    } else if (role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
-      secondPage = const UserManagementPage();
     } else {
       secondPage = _buildSearchPage(context, theme);
     }
@@ -148,20 +147,16 @@ class _HomePageState extends State<HomePage> {
     IconData secondUnselectedIcon = Icons.search_outlined;
     String secondLabel = 'Search';
 
-    if (role == 'HoD') {
+    if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondSelectedIcon = Icons.fact_check_rounded;
       secondUnselectedIcon = Icons.fact_check_outlined;
       secondLabel = 'Approvals';
-    } else if (role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
-      secondSelectedIcon = Icons.admin_panel_settings_rounded;
-      secondUnselectedIcon = Icons.admin_panel_settings_outlined;
-      secondLabel = 'Admin Hub';
     }
 
     return [
       NavItem(
-        selectedIcon: Icons.campaign_rounded,
-        unselectedIcon: Icons.campaign_outlined,
+        selectedIcon: Icons.grid_view_rounded,
+        unselectedIcon: Icons.grid_view_outlined,
         label: 'Notices',
         onTap: (index) => setState(() => _selectedNavIndex = index),
       ),
@@ -247,6 +242,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildWelcomeBanner(ThemeData theme) {
     return Obx(() {
       final user = authController.currentUser.value;
+      final role = user?.role ?? 'Student';
       return TweenAnimationBuilder<double>(
         tween: Tween(begin: 0.0, end: 1.0),
         duration: const Duration(milliseconds: 600),
@@ -321,6 +317,12 @@ class _HomePageState extends State<HomePage> {
                   height: 38,
                   onTap: () => Get.to(() => const LoginScreen()),
                   child: const Text('Login'),
+                )
+              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer')
+                IconButton(
+                  tooltip: 'User Management Hub',
+                  icon: const Icon(Icons.manage_accounts_rounded),
+                  onPressed: () => Get.to(() => const UserManagementPage()),
                 ),
             ],
           ),
@@ -358,7 +360,7 @@ class _HomePageState extends State<HomePage> {
             StatCard(
               label: 'Total Notices',
               value: annController.announcements.length,
-              icon: Icons.campaign_rounded,
+              icon: Icons.rss_feed_rounded,
               color: theme.colorScheme.primary,
               onTap: () {
                 annController.showTodayOnly.value = false;
@@ -433,6 +435,7 @@ class _HomePageState extends State<HomePage> {
                     onSelected: (val) {
                       if (val) {
                         annController.showTodayOnly.value = false;
+                        annController.searchQuery.value = '';
                         annController.selectedCategory.value = cat;
                       }
                     },
@@ -453,7 +456,11 @@ class _HomePageState extends State<HomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 8,
+          spacing: 8,
           children: [
             const Text(
               'Recent Announcements',
@@ -463,54 +470,59 @@ class _HomePageState extends State<HomePage> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const Spacer(),
-            Row(
-              children: [
-                Obx(() => Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${annController.filteredAnnouncements.length} Notices',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const NoticeSortButton(),
+                  const SizedBox(width: 6),
+                  Obx(() => Container(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                    )),
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: () => Get.to(() => const ArchivePage()),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.inventory_2_rounded, size: 14, color: Colors.amber),
-                        SizedBox(width: 4),
-                        Text(
-                          'Archive',
+                        child: Text(
+                          '${annController.filteredAnnouncements.length} Notices',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.primary,
                           ),
                         ),
-                      ],
+                      )),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () => Get.to(() => const ArchivePage()),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.inventory_2_rounded, size: 13, color: Colors.amber),
+                          SizedBox(width: 4),
+                          Text(
+                            'Archive',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -525,7 +537,7 @@ class _HomePageState extends State<HomePage> {
                 padding: const EdgeInsets.all(40.0),
                 child: Column(
                   children: [
-                    Icon(Icons.campaign_outlined,
+                    Icon(Icons.inbox_outlined,
                         size: 56,
                         color: theme.colorScheme.onSurface.withOpacity(0.2)),
                     const SizedBox(height: 16),

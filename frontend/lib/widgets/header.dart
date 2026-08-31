@@ -1,9 +1,6 @@
-import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/theme.dart';
-import 'package:anymex/screens/auth/login_screen.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
+import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
 enum PageType { manga, anime, home, novel, library, extensions }
@@ -16,7 +13,6 @@ class Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final authController = Get.find<AuthController>();
     final isDark = theme.brightness == Brightness.dark;
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -45,18 +41,7 @@ class Header extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.campaign,
-                  color: theme.colorScheme.primary,
-                  size: isMobile ? 20 : 22,
-                ),
-              ),
+              EchoSphereAnimatedLogo(size: isMobile ? 22 : 25),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -75,40 +60,8 @@ class Header extends StatelessWidget {
           ),
           const Spacer(),
 
-          // User Profile & Role Info
-          Obx(() {
-            final user = authController.currentUser.value;
-            if (user == null || !authController.isLoggedIn.value) {
-              return EchoSphereButton(
-                height: 32,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                onTap: () => Get.to(() => const LoginScreen()),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.login, size: isMobile ? 14 : 16),
-                    if (!isMobile) ...[
-                      const SizedBox(width: 4),
-                      const Text('Login', style: TextStyle(fontSize: 12)),
-                    ],
-                  ],
-                ),
-              );
-            }
-
-            return Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.person_rounded,
-                size: isMobile ? 18 : 20,
-                color: theme.colorScheme.primary,
-              ),
-            );
-          }),
+          // Right End Spacer (Balances theme toggle icon for centered branding)
+          const SizedBox(width: 36, height: 36),
         ],
       ),
     );

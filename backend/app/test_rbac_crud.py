@@ -31,7 +31,7 @@ def test_rbac_require_roles_fix():
     
     # 1. Login as Dev Admin
     r_login = client.post("/api/v1/auth/login", json={
-        "identifier": "rrakshu60@gmail.com",
+        "identifier": "ESDev01",
         "password": "rakshitha@1228"
     })
     assert r_login.status_code == 200, f"Dev Admin login failed: {r_login.text}"
@@ -76,7 +76,7 @@ def test_hardware_crud():
     
     # Login as Dev Admin
     r_login = client.post("/api/v1/auth/login", json={
-        "identifier": "rrakshu60@gmail.com",
+        "identifier": "ESDev01",
         "password": "rakshitha@1228"
     })
     dev_token = r_login.json()["access_token"]
@@ -110,7 +110,7 @@ def test_executive_auto_publish_privilege():
     
     # 1. Login as Dev Admin
     r_login = client.post("/api/v1/auth/login", json={
-        "identifier": "rrakshu60@gmail.com",
+        "identifier": "ESDev01",
         "password": "rakshitha@1228"
     })
     dev_token = r_login.json()["access_token"]

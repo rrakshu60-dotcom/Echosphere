@@ -106,6 +106,67 @@ def get_me(
     }
 
 
+from pydantic import BaseModel
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class DirectPasswordResetRequest(BaseModel):
+    identifier: str
+    current_password: str
+    new_password: str
+
+@router.post("/update-password")
+def update_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.password import verify_password, hash_password
+
+    if not verify_password(request.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password.")
+
+    current_user.password_hash = hash_password(request.new_password)
+    db.commit()
+    return {"message": "Password updated successfully."}
+
+@router.post("/reset-password-direct")
+def reset_password_direct(
+    request: DirectPasswordResetRequest,
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+    from app.core.password import verify_password, hash_password
+    from sqlalchemy import or_
+
+    clean_id = request.identifier.strip().lower()
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.username.ilike(clean_id),
+                User.official_email.ilike(clean_id),
+                User.usn.ilike(clean_id),
+                User.employee_id.ilike(clean_id),
+            )
+        )
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    if not verify_password(request.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password.")
+
+    user.password_hash = hash_password(request.new_password)
+    db.commit()
+    return {"message": "Password updated successfully."}
+
+
 @router.get("/admin-only")
 def admin_only(
     current_user: User = Depends(

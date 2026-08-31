@@ -69,10 +69,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
   final List<String> audiences = [
     'Entire College',
+    'AIML Department',
+    'AIDS Department',
+    'ISE Department',
     'CSE Department',
     'ECE Department',
     'EEE Department',
-    'Mechanical Dept',
+    'Mechanical Department',
+    'Civil Department',
     '1st Year Students',
     '2nd Year Students',
     '3rd Year Students',
@@ -190,11 +194,21 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   }
 
   Future<void> _selectScheduleDateTime() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final maxPickerDate = today.add(const Duration(days: 2));
+    final maxDate = now.add(const Duration(days: 2));
+    final initial = scheduledDateTime.isAfter(maxDate) ? now.add(const Duration(hours: 1)) : scheduledDateTime;
+
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: scheduledDateTime,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initial.isBefore(today) ? today : (initial.isAfter(maxPickerDate) ? maxPickerDate : initial),
+      firstDate: today,
+      lastDate: maxPickerDate, // Hard-enforced 2 days max limit in GUI
+      selectableDayPredicate: (DateTime day) {
+        final dayOnly = DateTime(day.year, day.month, day.day);
+        return !dayOnly.isBefore(today) && !dayOnly.isAfter(maxPickerDate);
+      },
     );
 
     if (pickedDate != null && mounted) {
@@ -204,14 +218,26 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
       );
 
       if (pickedTime != null) {
+        final chosen = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        if (chosen.isBefore(now.add(const Duration(minutes: 5)))) {
+          errorSnackBar('Scheduling Policy: Scheduled broadcast time must be at least 5 minutes in the future.');
+          return;
+        }
+
+        if (chosen.isAfter(maxDate)) {
+          errorSnackBar('Scheduling Policy: Announcements cannot be scheduled more than 2 days in advance.');
+          return;
+        }
+
         setState(() {
-          scheduledDateTime = DateTime(
-            pickedDate.year,
-            pickedDate.month,
-            pickedDate.day,
-            pickedTime.hour,
-            pickedTime.minute,
-          );
+          scheduledDateTime = chosen;
         });
       }
     }
@@ -467,22 +493,40 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
 
-            // Scheduling
+            const SizedBox(height: 14),
+
+            // AI Smart Badges (Category & Priority)
+            const Text('AI Category & Priority Recommendation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 8,
               runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Text('Publish Schedule:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                EchoSphereChip(label: 'Category: $aiDetectedCategory', isSelected: true, onSelected: (_) {}),
+                EchoSphereChip(
+                  label: 'Priority: $aiDetectedPriority',
+                  isSelected: aiDetectedPriority == 'EMERGENCY' || aiDetectedPriority == 'HIGH',
+                  onSelected: (_) {},
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Schedule Options
+            const Text('Publish & Broadcast Timing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 ChoiceChip(
                   label: const Text('Publish Now', style: TextStyle(fontSize: 12)),
                   selected: !isScheduleLater,
                   onSelected: (val) => setState(() => isScheduleLater = !val),
                 ),
                 ChoiceChip(
-                  label: const Text('Schedule Later', style: TextStyle(fontSize: 12)),
+                  label: const Text('Schedule Later (Max 2 Days)', style: TextStyle(fontSize: 12)),
                   selected: isScheduleLater,
                   onSelected: (val) => setState(() => isScheduleLater = val),
                 ),
@@ -507,9 +551,10 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           'Scheduled for: ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
+                      const Icon(Icons.edit_calendar_rounded, size: 16),
                     ],
                   ),
                 ),
@@ -533,6 +578,40 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               'This is an official announcement to inform all concerned that $desc. Please strictly adhere to these instructions and check the portal for updates.';
         }
 
+        if (isScheduleLater) {
+          final now = DateTime.now();
+          final maxDate = now.add(const Duration(days: 2));
+          if (scheduledDateTime.isAfter(maxDate)) {
+            errorSnackBar('Scheduling Policy: Announcements cannot be scheduled more than 2 days in advance.');
+            return;
+          }
+          if (scheduledDateTime.isBefore(now.add(const Duration(minutes: 5)))) {
+            errorSnackBar('Scheduling Policy: Scheduled broadcast time must be at least 5 minutes in the future.');
+            return;
+          }
+        }
+
+        final isTeacher = user?.role == 'Teacher';
+        final isHod = user?.role == 'HoD';
+        final target = selectedAudience.trim().toLowerCase();
+        final userDept = (user?.department ?? 'AIML').trim().toLowerCase();
+        final isHodCrossDept = isHod && (!target.contains(userDept) || target.contains('entire') || target.contains('all'));
+
+        String statusMessage = '';
+        if (isTeacher) {
+          statusMessage = isScheduleLater
+              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)})!'
+              : 'Notice submitted for HoD/Principal approval!';
+        } else if (isHodCrossDept) {
+          statusMessage = isScheduleLater
+              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)})!'
+              : 'Institution-wide notice submitted for Principal/College Admin approval!';
+        } else if (isScheduleLater) {
+          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}!';
+        } else {
+          statusMessage = 'Notice published successfully to $selectedAudience!';
+        }
+
         final ok = await annController.createAnnouncement(
           title: title,
           description: desc,
@@ -540,15 +619,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           priority: aiDetectedPriority,
           creatorRole: user?.role ?? 'Teacher',
           creatorName: user?.fullName ?? 'Faculty',
-          department: user?.department ?? 'CSE',
+          department: user?.department ?? 'AIML',
+          targetAudience: selectedAudience,
+          isScheduleLater: isScheduleLater,
+          scheduledDateTime: scheduledDateTime,
         );
 
         if (ok) {
-          snackBar(
-            isScheduleLater
-                ? 'Announcement scheduled for ${DateFormat("MMM dd, hh:mm a").format(scheduledDateTime)}!'
-                : 'Announcement created successfully! (Category: $aiDetectedCategory, Priority: $aiDetectedPriority)',
-          );
+          snackBar(statusMessage);
         }
       },
     );

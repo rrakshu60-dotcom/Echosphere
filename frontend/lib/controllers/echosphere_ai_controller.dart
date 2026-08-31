@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/utils/usn_parser.dart';
 import 'package:get/get.dart';
 
 class AiChatMessage {
@@ -33,7 +34,7 @@ class EchosphereAiController extends GetxController {
     super.onInit();
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
-    final dept = user?.department ?? 'CSE';
+    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
     final role = user?.role ?? 'Student';
     final name = user?.fullName ?? 'Student';
 
@@ -62,7 +63,7 @@ class EchosphereAiController extends GetxController {
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
     final role = user?.role ?? 'Student';
-    final dept = user?.department ?? 'CSE';
+    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
     final fullName = user?.fullName ?? 'Student';
     final usnOrEmpId = user?.usn ?? user?.employeeId ?? '';
 

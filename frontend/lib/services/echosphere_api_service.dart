@@ -184,6 +184,42 @@ class EchosphereApiService {
     }
   }
 
+  Future<bool> updatePassword({
+    required String currentPassword,
+    required String newPassword,
+    String? identifier,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/update-password',
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      );
+      if (response.statusCode == 200) return true;
+    } on DioException catch (e) {
+      debugPrint('Live update-password failed, trying direct endpoint: ${e.message}');
+    }
+
+    if (identifier != null && identifier.isNotEmpty) {
+      try {
+        final response = await _dio.post(
+          '/auth/reset-password-direct',
+          data: {
+            'identifier': identifier,
+            'current_password': currentPassword,
+            'new_password': newPassword,
+          },
+        );
+        if (response.statusCode == 200) return true;
+      } on DioException catch (e) {
+        debugPrint('Direct password reset failed: ${e.message}');
+      }
+    }
+    return false;
+  }
+
   Future<Map<String, dynamic>> publishAnnouncement(int id) async {
     try {
       final response = await _dio.post('/announcements/$id/publish');

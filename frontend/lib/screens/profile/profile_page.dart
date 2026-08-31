@@ -130,6 +130,25 @@ class _ProfilePageState extends State<ProfilePage> {
       final role = user.role;
       final isRestricted = role == 'Student' || role == 'Teacher' || role == 'HoD';
 
+      String singleDesignation = 'Campus Member';
+      String departmentName = user.department ?? 'Institution';
+      if (role == 'Dev Admin' || role == 'Developer') {
+        singleDesignation = 'Developer Administrator';
+        departmentName = 'Dev Operations';
+      } else if (role == 'Principal') {
+        singleDesignation = 'Principal & Executive Lead';
+        departmentName = 'Executive Office';
+      } else if (role == 'College Admin') {
+        singleDesignation = 'College Administrator';
+        departmentName = 'Central Administration';
+      } else if (role == 'HoD') {
+        singleDesignation = 'Head of Department (${user.department ?? 'AIML'})';
+      } else if (role == 'Teacher') {
+        singleDesignation = 'Faculty Member (${user.department ?? 'AIML'})';
+      } else if (role == 'Student') {
+        singleDesignation = 'Undergraduate Student (${user.department ?? 'AIML'})';
+      }
+
       return SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Center(
@@ -168,21 +187,10 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                EchoSphereChip(
-                                  label: user.role,
-                                  isSelected: true,
-                                  onSelected: (_) {},
-                                ),
-                                EchoSphereChip(
-                                  label: user.department ?? 'General',
-                                  isSelected: false,
-                                  onSelected: (_) {},
-                                ),
-                              ],
+                            EchoSphereChip(
+                              label: singleDesignation,
+                              isSelected: true,
+                              onSelected: (_) {},
                             ),
                           ],
                         ),
@@ -192,27 +200,26 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 20),
 
-                // 2. Personal & Account Details Container
+                // 2. Account Details Container
                 EchoSphereContainer(
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const EchoSphereText(
-                        text: 'Personal & Account Details',
+                        text: 'Account & Institutional Details',
                         size: 16,
                         variant: TextVariant.bold,
                       ),
                       const Divider(height: 20),
-                      _buildInfoTile('Full Name', user.fullName, Icons.person_outline),
-                      _buildInfoTile('User Role', user.role, Icons.badge_outlined),
+                      if (user.usn != null)
+                        _buildInfoTile('University Seat Number (USN)', user.usn!, Icons.school_outlined),
+                      if (user.employeeId != null)
+                        _buildInfoTile('Official Employee ID', user.employeeId!, Icons.badge_outlined),
                       if (user.officialEmail != null)
                         _buildInfoTile('Official Email', user.officialEmail!, Icons.email_outlined),
-                      if (user.usn != null)
-                        _buildInfoTile('University Seat Number (USN)', user.usn!, Icons.pin_drop_outlined),
-                      if (user.employeeId != null)
-                        _buildInfoTile('Official Employee ID', user.employeeId!, Icons.badge),
-                      _buildInfoTile('Department', user.department ?? 'Institution-Wide', Icons.business_outlined),
+                      _buildInfoTile('Department / Unit', departmentName, Icons.business_outlined),
+                      _buildInfoTile('Account Status', 'Active & Verified', Icons.verified_user_outlined),
                     ],
                   ),
                 ),
@@ -224,16 +231,24 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        runSpacing: 8,
+                        spacing: 8,
                         children: [
-                          const Icon(Icons.lock_reset_rounded, color: Colors.purple, size: 22),
-                          const SizedBox(width: 8),
-                          const EchoSphereText(
-                            text: 'Reset Account Password',
-                            size: 16,
-                            variant: TextVariant.bold,
+                          const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.lock_reset_rounded, color: Colors.purple, size: 22),
+                              SizedBox(width: 8),
+                              EchoSphereText(
+                                text: 'Reset Account Password',
+                                size: 16,
+                                variant: TextVariant.bold,
+                              ),
+                            ],
                           ),
-                          const Spacer(),
                           // Quota Badge
                           Obx(() {
                             final used = authController.annualPasswordResetCount.value;
@@ -247,7 +262,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   border: Border.all(color: isMax ? Colors.red : Colors.purple),
                                 ),
                                 child: Text(
-                                  'Resets Used: $used / 5 this year',
+                                  'Resets Used: $used / 5',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -276,16 +291,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           }),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isRestricted
-                            ? 'Policy Rule: Maximum 5 password resets allowed per calendar year for Students, Teachers & HoDs.'
-                            : 'Executive Account: Unlimited password reset privileges active.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
+                      const SizedBox(height: 12),
                       const Divider(height: 24),
 
                       // Password Reset Form Fields

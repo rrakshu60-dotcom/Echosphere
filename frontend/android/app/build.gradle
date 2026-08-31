@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.ryan.echosphere"
+    namespace = "com.roxy.echosphere"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -28,7 +28,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ryan.echosphere"
+        applicationId = "com.roxy.echosphere"
         minSdkVersion = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

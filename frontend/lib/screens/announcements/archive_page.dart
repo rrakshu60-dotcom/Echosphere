@@ -4,6 +4,7 @@ import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/widgets/common/glow.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
+import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -84,53 +85,67 @@ Retrieved from EchoSphere Historical Campus Notice Archive
             children: [
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: Row(
+                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (canPop) ...[
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    Icon(Icons.inventory_2_rounded, size: 22, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      children: [
+                        if (canPop) ...[
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            padding: EdgeInsets.zero,
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Icon(Icons.inventory_2_rounded, size: 22, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Notice Archive',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Poppins-Bold',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                'Historical notices older than 1 week',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
                         children: [
-                          Text(
-                            'Notice Archive',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: 'Poppins-Bold',
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                          Text(
-                            'Historical notices older than 1 week',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
-                            ),
-                          ),
+                          const NoticeSortButton(compact: true),
+                          const SizedBox(width: 8),
+                          Obx(() => EchoSphereChip(
+                                label: '${controller.archivedAnnouncements.length} Archived',
+                                isSelected: true,
+                                onSelected: (_) {},
+                              )),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Obx(() => Flexible(
-                          child: EchoSphereChip(
-                            label: '${controller.archivedAnnouncements.length} Archived',
-                            isSelected: true,
-                            onSelected: (_) {},
-                          ),
-                        )),
                   ],
                 ),
               ),

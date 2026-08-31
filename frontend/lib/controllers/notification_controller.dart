@@ -9,6 +9,9 @@ import 'package:path_provider/path_provider.dart';
 class NotificationController extends GetxController {
   final RxSet<int> readIds = <int>{}.obs;
   final RxBool isLoading = false.obs;
+  final RxBool showOnlyUnread = true.obs;
+  final RxString historySearchQuery = ''.obs;
+  final RxString historyTypeFilter = 'All'.obs;
 
   @override
   void onInit() {
@@ -17,7 +20,7 @@ class NotificationController extends GetxController {
   }
 
   // Derive notifications strictly from real active app announcements (zero dummy data)
-  List<Map<String, dynamic>> get notifications {
+  List<Map<String, dynamic>> get allNotifications {
     final annCtrl = Get.isRegistered<AnnouncementController>()
         ? Get.find<AnnouncementController>()
         : Get.put(AnnouncementController());
@@ -38,6 +41,34 @@ class NotificationController extends GetxController {
         'announcement': a,
       };
     }).toList();
+  }
+
+  List<Map<String, dynamic>> get unreadNotifications {
+    return allNotifications.where((n) => !isRead(n['id'] as int)).toList();
+  }
+
+  List<Map<String, dynamic>> get readHistory {
+    return allNotifications.where((n) => isRead(n['id'] as int)).toList();
+  }
+
+  List<Map<String, dynamic>> get filteredHistory {
+    final query = historySearchQuery.value.trim().toLowerCase();
+    final typeFilter = historyTypeFilter.value;
+
+    return readHistory.where((n) {
+      final matchesType = typeFilter == 'All' || n['type'] == typeFilter;
+      final matchesSearch = query.isEmpty ||
+          (n['title'] as String).toLowerCase().contains(query) ||
+          (n['message'] as String).toLowerCase().contains(query);
+      return matchesType && matchesSearch;
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get notifications {
+    if (showOnlyUnread.value) {
+      return unreadNotifications;
+    }
+    return allNotifications;
   }
 
   Future<File> _getStorageFile() async {
@@ -74,21 +105,49 @@ class NotificationController extends GetxController {
   }
 
   int get unreadCount {
-    return notifications.where((n) => !isRead(n['id'] as int)).length;
+    return unreadNotifications.length;
+  }
+
+  int get historyCount {
+    return readHistory.length;
   }
 
   void markAsRead(int id) {
     if (!readIds.contains(id)) {
       readIds.add(id);
+      readIds.refresh();
       _saveReadStateToDisk();
+      update();
+    }
+  }
+
+  void markAsUnread(int id) {
+    if (readIds.contains(id)) {
+      readIds.remove(id);
+      readIds.refresh();
+      _saveReadStateToDisk();
+      update();
     }
   }
 
   void markAllAsRead() {
-    for (var n in notifications) {
+    for (var n in allNotifications) {
       readIds.add(n['id'] as int);
     }
+    readIds.refresh();
     _saveReadStateToDisk();
+    update();
+  }
+
+  void clearAllHistory() {
+    readIds.clear();
+    readIds.refresh();
+    _saveReadStateToDisk();
+    update();
+  }
+
+  void toggleFilter(bool onlyUnread) {
+    showOnlyUnread.value = onlyUnread;
   }
 
   void openNotificationDetail(Map<String, dynamic> notification) {

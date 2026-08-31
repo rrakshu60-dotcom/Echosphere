@@ -41,6 +41,31 @@ class UserManagementService:
         final_username = username or official_email.split("@")[0]
         hashed_pw = hash_password(password)
 
+        if not department_id and usn:
+            usn_clean = usn.upper()
+            dept_code = "AIML"
+            if "CI" in usn_clean or "AI" in usn_clean:
+                dept_code = "AIML"
+            elif "AD" in usn_clean:
+                dept_code = "AIDS"
+            elif "IS" in usn_clean:
+                dept_code = "ISE"
+            elif "CS" in usn_clean:
+                dept_code = "CSE"
+            elif "EC" in usn_clean:
+                dept_code = "ECE"
+            elif "EE" in usn_clean:
+                dept_code = "EEE"
+            elif "ME" in usn_clean:
+                dept_code = "ME"
+            elif "CV" in usn_clean:
+                dept_code = "CIVIL"
+
+            from app.models.department import Department
+            dept_obj = db.query(Department).filter(Department.code == dept_code).first()
+            if dept_obj:
+                department_id = dept_obj.id
+
         new_user = User(
             full_name=full_name,
             official_email=official_email,
