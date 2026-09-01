@@ -24,11 +24,23 @@ frontend/.dart_tool/
 frontend/android/.gradle/
 frontend/android/app/build/
 
-# Media & Temp
+# Media, Screenshots, Temp & Docs
 *.mp4
 *.zip
+*.pdf
+*.docx
+*.png
+*.jpg
+*.jpeg
+Screenshot*
+SC1*
 .tempmediaStorage/
-test*.pdf
 hardware/.node_mac
 backend/app/static/audio_streams/*.mp3
 !backend/app/static/audio_streams/.gitkeep
+
+# Unused Deployment Files (Vercel)
+vercel.json
+backend/vercel.json
+api/index.py
+backend/api/index.py
