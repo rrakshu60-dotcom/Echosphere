@@ -13,6 +13,7 @@
 # Flutter
 -keep class io.flutter.embedding.** { *; }
 -keep class com.ryan.anymex.MainActivity { *; }
+-keep class com.roxy.echosphere.MainActivity { *; }
 
 # Google Play Core
 -keep class com.google.android.play.core.** { *; }

@@ -130,9 +130,25 @@ def test_executive_auto_publish_privilege():
     print(f"[PASS] Dev Admin announcement auto-published directly (Status: {created['status']})")
 
 
+def test_swagger_token_endpoint():
+    print("\n--- Testing Swagger OAuth2 Token Endpoint (/api/v1/auth/token) ---")
+    r_token = client.post("/api/v1/auth/token", data={
+        "username": "ESDev01",
+        "password": "rakshitha@1228"
+    })
+    assert r_token.status_code == 200, f"OAuth2 token login failed: {r_token.text}"
+    token_data = r_token.json()
+    assert "access_token" in token_data
+    assert token_data["token_type"] == "bearer"
+    assert token_data["role"] == "Dev Admin"
+    print("[PASS] Swagger OAuth2 Token Endpoint (/api/v1/auth/token) passed successfully!")
+
+
 if __name__ == "__main__":
     test_rbac_require_roles_fix()
     test_hardware_crud()
     test_executive_auto_publish_privilege()
+    test_swagger_token_endpoint()
     print("\n[SUCCESS] ALL RBAC & CRUD INTEGRATION TESTS PASSED SUCCESSFULLY!")
+
 
