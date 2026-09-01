@@ -2,6 +2,7 @@ import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AnnouncementModel {
   final int id;
@@ -235,14 +236,61 @@ class AnnouncementController extends GetxController {
     return _applySort(filtered);
   }
 
+  final Map<int, String> _statusOverrides = {};
+
+  Future<void> _loadStatusOverrides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((k) => k.startsWith('notice_override_'));
+      for (var key in keys) {
+        final idStr = key.replaceFirst('notice_override_', '');
+        final id = int.tryParse(idStr);
+        if (id != null) {
+          _statusOverrides[id] = prefs.getString(key) ?? 'PUBLISHED';
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _applyStatusOverrides() {
+    final list = _rawAnnouncements.toList();
+    for (int i = 0; i < list.length; i++) {
+      final item = list[i];
+      if (_statusOverrides.containsKey(item.id)) {
+        final newStatus = _statusOverrides[item.id]!;
+        list[i] = AnnouncementModel(
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          priority: item.priority,
+          emergencyLevel: item.emergencyLevel,
+          status: newStatus,
+          creatorName: item.creatorName,
+          department: item.department,
+          targetAudience: item.targetAudience,
+          category: item.category,
+          createdAt: item.createdAt,
+          scheduledAt: item.scheduledAt,
+          aiSummary: item.aiSummary,
+          remarks: newStatus == 'PUBLISHED'
+              ? 'Approved & Published'
+              : 'Rejected by Administrator',
+        );
+      }
+    }
+    _rawAnnouncements.value = list;
+  }
+
   Future<void> fetchAnnouncements() async {
     isLoading.value = true;
+    await _loadStatusOverrides();
     try {
       final data = await EchosphereApiService().getAnnouncements();
       if (data.isNotEmpty) {
         _rawAnnouncements.value = data
             .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
             .toList();
+        _applyStatusOverrides();
         isLoading.value = false;
         return;
       }
@@ -254,6 +302,7 @@ class AnnouncementController extends GetxController {
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
     }
+    _applyStatusOverrides();
     isLoading.value = false;
   }
 
@@ -475,6 +524,12 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
+    _statusOverrides[id] = 'PUBLISHED';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('notice_override_$id', 'PUBLISHED');
+    } catch (_) {}
+
     try {
       await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
     } catch (_) {}
@@ -528,6 +583,12 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
+    _statusOverrides[id] = 'REJECTED';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('notice_override_$id', 'REJECTED');
+    } catch (_) {}
+
     try {
       await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
     } catch (_) {}
