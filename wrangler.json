@@ -1,5 +1,9 @@
 {
   "name": "echosphere",
   "compatibility_date": "2026-09-01",
-  "pages_build_output_dir": "frontend/build/web"
+  "workers_dev": true,
+  "assets": {
+    "directory": "frontend/build/web",
+    "not_found_handling": "single-page-application"
+  }
 }
