@@ -471,65 +471,66 @@ class AuthController extends GetxController {
     rememberMe.value = remember;
     isLoading.value = true;
     try {
-      final api = EchosphereApiService();
-      final res = await api.login(
-        identifier: identifier,
-        password: password,
-      );
+      try {
+        final api = EchosphereApiService();
+        final res = await api.login(
+          identifier: identifier,
+          password: password,
+        );
 
-      final accessToken = res['access_token'] as String?;
-      if (accessToken != null) {
-        token.value = accessToken;
-        api.setAuthToken(accessToken);
+        final accessToken = res['access_token'] as String?;
+        if (accessToken != null) {
+          token.value = accessToken;
+          api.setAuthToken(accessToken);
 
-        final user = EchosphereUser.fromJson(res);
-        currentUser.value = user;
+          final user = EchosphereUser.fromJson(res);
+          currentUser.value = user;
+          isLoggedIn.value = true;
+          await _saveSessionToDisk();
+
+          await addAuditLog(
+            username: user.fullName,
+            role: user.role,
+            status: 'SUCCESS (API Login)',
+            employeeId: user.employeeId,
+          );
+
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Live backend login error, using local validation if match: $e');
+      }
+
+      // Local / Seed Fallback for testing
+      final mockUser = validateMockCredentials(identifier, password);
+      if (mockUser != null) {
+        currentUser.value = mockUser;
         isLoggedIn.value = true;
-        isLoading.value = false;
+        token.value = 'mock_jwt_token_${mockUser.role.toLowerCase()}';
+        EchosphereApiService().setAuthToken(token.value);
         await _saveSessionToDisk();
 
         await addAuditLog(
-          username: user.fullName,
-          role: user.role,
-          status: 'SUCCESS (API Login)',
-          employeeId: user.employeeId,
+          username: mockUser.fullName,
+          role: mockUser.role,
+          status: employeeIdVerification != null
+              ? 'SUCCESS (Employee ID Verified: $employeeIdVerification)'
+              : 'LOGIN SUCCESS',
+          employeeId: mockUser.employeeId ?? employeeIdVerification,
         );
 
         return true;
       }
-    } catch (e) {
-      debugPrint('Live backend login error, using local validation if match: $e');
-    }
-
-    // Local / Seed Fallback for testing when backend isn't actively running on port 8000
-    final mockUser = validateMockCredentials(identifier, password);
-    if (mockUser != null) {
-      currentUser.value = mockUser;
-      isLoggedIn.value = true;
-      token.value = 'mock_jwt_token_${mockUser.role.toLowerCase()}';
-      EchosphereApiService().setAuthToken(token.value);
-      isLoading.value = false;
-      await _saveSessionToDisk();
 
       await addAuditLog(
-        username: mockUser.fullName,
-        role: mockUser.role,
-        status: employeeIdVerification != null
-            ? 'SUCCESS (Employee ID Verified: $employeeIdVerification)'
-            : 'LOGIN SUCCESS',
-        employeeId: mockUser.employeeId ?? employeeIdVerification,
+        username: identifier,
+        role: 'Unknown',
+        status: 'FAILED (Invalid Credentials)',
       );
-
-      return true;
+      return false;
+    } finally {
+      isLoading.value = false;
     }
-
-    isLoading.value = false;
-    await addAuditLog(
-      username: identifier,
-      role: 'Unknown',
-      status: 'FAILED (Invalid Credentials)',
-    );
-    return false;
   }
 
   void logout() async {
@@ -537,6 +538,7 @@ class AuthController extends GetxController {
     isLoggedIn.value = false;
     token.value = '';
     rememberMe.value = false;
+    isLoading.value = false;
     EchosphereApiService().setAuthToken(null);
     try {
       final prefs = await SharedPreferences.getInstance();
