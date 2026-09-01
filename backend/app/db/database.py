@@ -8,21 +8,14 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-try:
-    if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
+if not DATABASE_URL:
+    # Safe in-memory fallback for serverless environments when DATABASE_URL is missing
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+else:
+    if DATABASE_URL.startswith("sqlite"):
         engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    elif DATABASE_URL:
-        engine = create_engine(DATABASE_URL)
-        # Test connection
-        with engine.connect() as conn:
-            pass
     else:
-        raise ValueError("DATABASE_URL is not set.")
-except Exception as e:
-    sqlite_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "test_hardware.db"))
-    engine = create_engine(f"sqlite:///{sqlite_path}", connect_args={"check_same_thread": False})
-
-
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
