@@ -1,0 +1,1 @@
+void listenToWin32Impl() {}
