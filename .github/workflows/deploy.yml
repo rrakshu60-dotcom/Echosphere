@@ -26,6 +26,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
       - name: Install Dependencies
         run: |
@@ -35,7 +36,7 @@ jobs:
       - name: Build Web App
         run: |
           cd frontend
-          flutter build web --release
+          flutter build web --release --no-wasm --base-href /Echosphere/
 
       - name: Deploy to GitHub Pages
         uses: PeaceIris/actions-gh-pages@v3
@@ -62,6 +63,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
       - name: Install Dependencies
         run: |
@@ -92,6 +94,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
 
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
@@ -104,7 +107,7 @@ jobs:
       - name: Build Windows App
         run: |
           cd frontend
-          flutter build windows --release
+          flutter build windows --release --no-pub
 
       - name: Compress Windows Build
         run: |
