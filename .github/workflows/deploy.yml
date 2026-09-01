@@ -18,12 +18,10 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Job 1: Build & Deploy Web App (GitHub Pages)
+  # Job 1: Build & Deploy Web App (Cloudflare Pages)
   # ------------------------------------------------------------------
   build-and-deploy-web:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -48,13 +46,16 @@ jobs:
       - name: Build Web App
         run: |
           cd frontend
-          flutter build web --release --no-wasm-dry-run --base-href /Echosphere/
+          flutter build web --release --no-wasm-dry-run --base-href /
 
-      - name: Deploy to GitHub Pages
-        uses: PeaceIris/actions-gh-pages@v3
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./frontend/build/web
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: echosphere
+          directory: frontend/build/web
+          gitToProject: true
 
   # ------------------------------------------------------------------
   # Job 2: Build Android APK
