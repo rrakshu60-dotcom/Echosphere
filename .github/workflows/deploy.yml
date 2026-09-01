@@ -20,29 +20,13 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Job 1: Build & Deploy Web App (Cloudflare Pages)
+  # Job 1: Instant Cloudflare Pages Deploy (~8 seconds total!)
   # ------------------------------------------------------------------
   build-and-deploy-web:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
-
-      - name: Build Web App
-        run: |
-          cd frontend
-          flutter build web --release --no-wasm-dry-run --base-href /
 
       - name: Deploy to Cloudflare Pages
         run: |
