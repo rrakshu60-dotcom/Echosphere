@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:flutter/foundation.dart';
+
 class ExternalFontLoader {
   static const String baseUrl = 'https://raw.githubusercontent.com/RyanYuuki/EchoSphere/main/assets/external_assets/';
   
@@ -30,6 +32,7 @@ class ExternalFontLoader {
   };
 
   static Future<void> loadAllFonts() async {
+    if (kIsWeb) return;
     for (String font in fonts) {
       loadFont(font); 
     }
