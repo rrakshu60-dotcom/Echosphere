@@ -6,12 +6,17 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   # ------------------------------------------------------------------
   # Job 1: Build & Deploy Web App (GitHub Pages)
   # ------------------------------------------------------------------
   build-and-deploy-web:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
