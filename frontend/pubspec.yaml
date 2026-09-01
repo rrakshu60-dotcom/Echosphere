@@ -43,6 +43,7 @@ dependencies:
     flutter_iconly: any
     iconsax: ^0.0.8
     install_plugin: ^2.1.0
+    supabase_flutter: ^2.8.0
     intl: ^0.20.1
     kenburns_nullsafety: ^1.0.1
     subtitle: any
