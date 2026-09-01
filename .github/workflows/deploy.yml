@@ -6,6 +6,7 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/deploy.yml'
+      - 'wrangler.json'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -45,6 +46,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         run: |
+          npx wrangler pages project create echosphere --production-branch=main || true
           npx wrangler pages deploy frontend/build/web --project-name=echosphere --branch=main --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
