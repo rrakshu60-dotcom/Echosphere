@@ -49,13 +49,11 @@ jobs:
           flutter build web --release --no-wasm-dry-run --base-href /
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: echosphere
-          directory: frontend/build/web
-          gitToProject: true
+          command: pages deploy frontend/build/web --project-name=echosphere --commit-dirty=true
 
   # ------------------------------------------------------------------
   # Job 2: Build Android APK
