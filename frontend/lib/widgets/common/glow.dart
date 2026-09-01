@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/settings/methods.dart';
 import 'package:anymex/controllers/settings/settings.dart';
 import 'package:anymex/controllers/theme.dart';
@@ -50,7 +51,7 @@ class Glow extends StatelessWidget {
             ),
           )
         : context.colors;
-    final isDesktop = Platform.isWindows;
+    final isDesktop = !kIsWeb && Platform.isWindows;
     final isOled = Provider.of<ThemeProvider>(context).isOled;
     final ch = child;
 

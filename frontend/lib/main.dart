@@ -245,7 +245,7 @@ class _MainAppState extends State<MainApp> {
           if (PlatformDispatcher.instance.views.length > 1) {
             return child!;
           }
-          final isDesktop = Platform.isWindows;
+          final isDesktop = !kIsWeb && Platform.isWindows;
 
           if (isDesktop) {
             return Column(

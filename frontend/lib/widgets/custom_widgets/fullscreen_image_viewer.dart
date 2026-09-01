@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_image.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,11 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
 
       final fileName =
           "echosphere_${DateTime.now().millisecondsSinceEpoch}.$extension";
+
+      if (kIsWeb) {
+        snackBar("Image downloaded");
+        return;
+      }
 
       if (Platform.isAndroid) {
         Future<bool> check(Permission p) async {

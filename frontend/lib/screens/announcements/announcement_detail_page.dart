@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/widgets/common/glow.dart';
@@ -21,9 +22,13 @@ class AnnouncementDetailPage extends StatelessWidget {
   const AnnouncementDetailPage({super.key, required this.announcement});
 
   Future<void> _downloadAttachment(BuildContext context, String filename) async {
+    if (kIsWeb) {
+      snackBar("Downloading $filename");
+      return;
+    }
     try {
       Directory? dir;
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
       } else {
         dir = await getApplicationDocumentsDirectory();

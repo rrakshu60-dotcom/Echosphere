@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class EchosphereApiService {
   static final EchosphereApiService _instance = EchosphereApiService._internal();
   factory EchosphereApiService() => _instance;
@@ -12,12 +14,13 @@ class EchosphereApiService {
   String? _authToken;
 
   EchosphereApiService._internal() {
-    if (kIsWeb) {
-      _baseUrl = 'http://localhost:8000/api/v1';
-    } else if (!kIsWeb && Platform.isAndroid) {
-      _baseUrl = 'http://10.0.2.2:8000/api/v1';
+    const String envUrl = String.fromEnvironment('ECHOSPHERE_API_URL');
+    String loadedUrl = dotenv.env['ECHOSPHERE_API_URL'] ?? (envUrl.isNotEmpty ? envUrl : '');
+
+    if (loadedUrl.isNotEmpty) {
+      _baseUrl = loadedUrl;
     } else {
-      _baseUrl = 'http://127.0.0.1:8000/api/v1';
+      _baseUrl = 'https://echosphere-backend-9lv8.onrender.com/api/v1';
     }
 
     _dio = Dio(
