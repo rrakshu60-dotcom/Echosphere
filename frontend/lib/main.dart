@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
 WebViewEnvironment? webViewEnvironment;
@@ -57,6 +58,13 @@ Future<void> safeCall(FutureOr<void> Function() function,
 void main(List<String> args) async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    await safeCall(() async {
+      await Supabase.initialize(
+        url: 'https://wvugkkwykdnyzcmaoxgj.supabase.co',
+        anonKey: 'sb_publishable_0h1jDPae3piItxkSaJEuqA_aUWgFuDe',
+      );
+    }, errorMessage: 'Failed to initialize Supabase');
 
     await safeCall(() async {
       if (!Platform.isLinux) {
