@@ -45,6 +45,7 @@ dependencies:
     install_plugin: ^2.1.0
     supabase_flutter: ^2.8.0
     intl: ^0.20.1
+    shared_preferences: ^2.5.2
     kenburns_nullsafety: ^1.0.1
     subtitle: any
     cross_platform_video_thumbnails: ^0.1.0
