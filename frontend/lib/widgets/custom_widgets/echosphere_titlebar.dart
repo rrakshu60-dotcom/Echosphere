@@ -1,21 +1,23 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:anymex/utils/theme_extensions.dart';
 import 'package:anymex/controllers/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:win32/win32.dart';
-import 'dart:ffi';
-// import 'package:anymex_extension_runtime_bridge/anymex_extension_runtime_bridge.dart' hide isar;
+
+import 'titlebar_win32_stub.dart'
+    if (dart.library.ffi) 'titlebar_win32.dart';
 
 class EchoSphereTitleBar {
   static final ValueNotifier<bool> isFullScreen = ValueNotifier(false);
   static final ValueNotifier<bool> isMaximized = ValueNotifier(false);
 
   static Future<void> initialize() async {
+    if (kIsWeb) return;
+
     if (!Platform.isWindows) {
       await windowManager.waitUntilReadyToShow(
         const WindowOptions(
@@ -46,15 +48,9 @@ class EchoSphereTitleBar {
   }
 
   static void listenToWin32() {
-    final hwnd = GetForegroundWindow();
-
-    final placement = calloc<WINDOWPLACEMENT>();
-    GetWindowPlacement(hwnd, placement);
-
-    final isMaximized = placement.ref.showCmd == SW_SHOWMAXIMIZED;
-    EchoSphereTitleBar.isMaximized.value = isMaximized;
-
-    calloc.free(placement);
+    if (!kIsWeb && Platform.isWindows) {
+      listenToWin32Impl();
+    }
   }
 
   static Widget titleBar() => ValueListenableBuilder<bool>(

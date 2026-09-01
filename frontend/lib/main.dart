@@ -14,6 +14,7 @@ import 'package:anymex/utils/external_font_loader.dart';
 import 'package:anymex/utils/logger.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_splash_screen.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_titlebar.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -67,7 +68,7 @@ void main(List<String> args) async {
     }, errorMessage: 'Failed to initialize Supabase');
 
     await safeCall(() async {
-      if (!Platform.isLinux) {
+      if (!kIsWeb && !Platform.isLinux) {
         if (Platform.isWindows || Platform.isMacOS) {
           webViewEnvironment = await WebViewEnvironment.create();
         }
@@ -82,15 +83,17 @@ void main(List<String> args) async {
 
     await Logger.init();
 
-    HttpOverrides.global = MyHttpoverrides();
+    if (!kIsWeb) {
+      HttpOverrides.global = MyHttpoverrides();
+    }
 
     _initializeGetxController();
 
     await safeCall(() async {
-      if (!Platform.isAndroid && !Platform.isIOS) {
+      if (!kIsWeb && !Platform.isAndroid && !Platform.isIOS) {
         await windowManager.ensureInitialized();
         await EchoSphereTitleBar.initialize();
-      } else {
+      } else if (!kIsWeb) {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
             systemNavigationBarDividerColor: Colors.transparent,
