@@ -36,7 +36,7 @@ jobs:
       - name: Build Web App
         run: |
           cd frontend
-          flutter build web --release --no-wasm --base-href /Echosphere/
+          flutter build web --release --no-wasm-dry-run --base-href /Echosphere/
 
       - name: Deploy to GitHub Pages
         uses: PeaceIris/actions-gh-pages@v3
