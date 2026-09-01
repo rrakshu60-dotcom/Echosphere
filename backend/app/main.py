@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -23,6 +24,18 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="EchoSphere Backend",
     version="1.0.0",
+)
+
+# -------------------------
+# CORS Middleware
+# -------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # -------------------------

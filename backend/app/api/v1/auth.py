@@ -9,14 +9,7 @@ from app.core.dependencies import (
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.password_reset import (
-    VerifyResetTokenRequest,
-    VerifyResetTokenResponse,
-)
 from app.services.auth_service import authenticate_user
-from app.services.password_reset_service import (
-    verify_reset_token_service,
-)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -82,22 +75,6 @@ def login_for_swagger(
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post(
-    "/verify-reset-token",
-    response_model=VerifyResetTokenResponse,
-)
-def verify_reset_token(
-    request: VerifyResetTokenRequest,
-    db: Session = Depends(get_db),
-):
-    result = verify_reset_token_service(
-        db=db,
-        token=request.token,
-    )
-
-    return VerifyResetTokenResponse(**result)
 
 
 @router.get("/me")
