@@ -1,4 +1,4 @@
-name: EchoSphere Multi-Platform Deployment Pipeline
+name: EchoSphere Deployment Pipeline
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - '.github/workflows/deploy.yml'
     tags:
       - 'v*'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,18 +20,13 @@ permissions:
 jobs:
   # ------------------------------------------------------------------
   # Job 1: Build & Deploy Web App (Cloudflare Pages)
+  # Runs on every push to main (~1 min)
   # ------------------------------------------------------------------
   build-and-deploy-web:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -59,31 +55,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   # ------------------------------------------------------------------
-  # Job 2: Build Android APK
+  # Job 2: Build Android APK (Runs only on release tags v* or manual trigger)
   # ------------------------------------------------------------------
   build-android-apk:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
-      - name: Cache Gradle Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('frontend/android/**/*.gradle*', 'frontend/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -114,9 +93,10 @@ jobs:
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
 
   # ------------------------------------------------------------------
-  # Job 3: Build Windows Desktop App
+  # Job 3: Build Windows Desktop App (Runs only on release tags v* or manual trigger)
   # ------------------------------------------------------------------
   build-windows-app:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - name: Checkout Code
