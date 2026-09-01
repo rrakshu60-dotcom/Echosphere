@@ -39,6 +39,13 @@ hardware/.node_mac
 backend/app/static/audio_streams/*.mp3
 !backend/app/static/audio_streams/.gitkeep
 
+# Helper & Generator Scripts
+generate_*.py
+refactor_*.py
+fix_*.py
+*_progress.txt
+echosphere_plan.txt
+
 # Unused Deployment Files (Vercel)
 vercel.json
 backend/vercel.json
