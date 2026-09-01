@@ -70,6 +70,7 @@ class Logger {
   }
 
   static Future<void> _ensureLogFileReady({String? customPath}) async {
+    if (kIsWeb) return;
     try {
       final documentsDirectory = customPath != null && customPath.isNotEmpty
           ? Directory(customPath)
@@ -95,8 +96,9 @@ class Logger {
         await _fileSink?.close();
       } catch (_) {}
       _fileSink = _logFile!.openWrite(mode: FileMode.append);
-    } catch (e) {
-      developer.log('Logger: Failed to initialize log file at $customPath: $e',
+      _writeToFileEnabled = true;
+    } catch (e, stackTrace) {
+      developer.log('Failed to initialize log file: $e\n$stackTrace',
           level: 900, name: 'LOGGER');
       _logFile = null;
       _fileSink = null;
@@ -108,13 +110,14 @@ class Logger {
   }
 
   static Future<void> _logInitializationDetails() async {
+    if (kIsWeb) return;
     try {
       final pkg = await PackageInfo.fromPlatform();
 
       final deviceInfo = DeviceInfoPlugin();
       String deviceDetails = '';
 
-      if (Platform.isAndroid) {
+      if (!kIsWeb && Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
         deviceDetails = '''
 Device: ${info.manufacturer} ${info.model}
