@@ -20,27 +20,24 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Job 1: Ultra-Fast Cloudflare Direct Upload (~4 seconds total!)
+  # Deploy to Cloudflare Workers (pre-built assets, ~15s)
   # ------------------------------------------------------------------
-  build-and-deploy-web:
+  deploy-web:
     runs-on: ubuntu-latest
     steps:
-      - name: Fast Shallow Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Direct Cloudflare Pages Upload
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: 'echosphere'
-          directory: 'frontend/build/web'
-          branch: 'main'
+      - name: Deploy to Cloudflare Workers
+        run: npx wrangler deploy --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   # ------------------------------------------------------------------
-  # Job 2: Build Android APK (Runs only on release tags v* or manual trigger)
+  # Build Android APK (release tags or manual only)
   # ------------------------------------------------------------------
   build-android-apk:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
@@ -62,14 +59,10 @@ jobs:
           cache: true
 
       - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
+        run: cd frontend && flutter pub get
 
       - name: Build Android Debug APK
-        run: |
-          cd frontend
-          flutter build apk --debug
+        run: cd frontend && flutter build apk --debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -78,7 +71,7 @@ jobs:
           path: frontend/build/app/outputs/flutter-apk/app-debug.apk
 
   # ------------------------------------------------------------------
-  # Job 3: Build Windows Desktop App (Runs only on release tags v* or manual trigger)
+  # Build Windows Desktop App (release tags or manual only)
   # ------------------------------------------------------------------
   build-windows-app:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
@@ -97,18 +90,13 @@ jobs:
         run: flutter config --enable-windows-desktop
 
       - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
+        run: cd frontend && flutter pub get
 
       - name: Build Windows App
-        run: |
-          cd frontend
-          flutter build windows --release --no-pub
+        run: cd frontend && flutter build windows --release --no-pub
 
       - name: Compress Windows Build
-        run: |
-          Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip
+        run: Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
