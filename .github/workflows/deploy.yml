@@ -20,20 +20,24 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Job 1: Instant Cloudflare Pages Deploy (~8 seconds total!)
+  # Job 1: Ultra-Fast Cloudflare Direct Upload (~4 seconds total!)
   # ------------------------------------------------------------------
   build-and-deploy-web:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Fast Shallow Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Deploy to Cloudflare Pages
-        run: |
-          npx wrangler pages deploy frontend/build/web --project-name=echosphere --branch=main --commit-dirty=true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Direct Cloudflare Pages Upload
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: 'echosphere'
+          directory: 'frontend/build/web'
+          branch: 'main'
 
   # ------------------------------------------------------------------
   # Job 2: Build Android APK (Runs only on release tags v* or manual trigger)
