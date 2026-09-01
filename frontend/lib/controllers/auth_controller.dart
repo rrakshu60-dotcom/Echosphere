@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:anymex/utils/usn_parser.dart';
 
@@ -132,23 +133,13 @@ class AuthController extends GetxController {
     _loadCustomPasswordsFromDisk();
   }
 
-  Future<File> _getResetQuotaFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final year = DateTime.now().year;
-    final userId = currentUser.value?.id ?? 0;
-    return File('${dir.path}/password_resets_${userId}_$year.json');
-  }
-
   Future<void> loadResetQuotaFromDisk() async {
     try {
-      final file = await _getResetQuotaFile();
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final Map<String, dynamic> data = jsonDecode(content);
-        annualPasswordResetCount.value = data['count'] ?? 0;
-      } else {
-        annualPasswordResetCount.value = 0;
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final year = DateTime.now().year;
+      final userId = currentUser.value?.id ?? 0;
+      final count = prefs.getInt('password_resets_${userId}_$year') ?? 0;
+      annualPasswordResetCount.value = count;
     } catch (_) {
       annualPasswordResetCount.value = 0;
     }
@@ -156,12 +147,10 @@ class AuthController extends GetxController {
 
   Future<void> _saveResetQuotaToDisk() async {
     try {
-      final file = await _getResetQuotaFile();
-      final data = {
-        'year': DateTime.now().year,
-        'count': annualPasswordResetCount.value,
-      };
-      await file.writeAsString(jsonEncode(data));
+      final prefs = await SharedPreferences.getInstance();
+      final year = DateTime.now().year;
+      final userId = currentUser.value?.id ?? 0;
+      await prefs.setInt('password_resets_${userId}_$year', annualPasswordResetCount.value);
     } catch (_) {}
   }
 
@@ -177,17 +166,12 @@ class AuthController extends GetxController {
 
   final RxMap<String, String> _customUserPasswords = <String, String>{}.obs;
 
-  Future<File> _getCustomPasswordsFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/custom_user_passwords.json');
-  }
-
   Future<void> _loadCustomPasswordsFromDisk() async {
     try {
-      final file = await _getCustomPasswordsFile();
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final Map<String, dynamic> data = jsonDecode(content);
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('custom_user_passwords');
+      if (raw != null) {
+        final Map<String, dynamic> data = jsonDecode(raw);
         data.forEach((k, v) {
           _customUserPasswords[k.toString()] = v.toString();
         });
@@ -199,8 +183,8 @@ class AuthController extends GetxController {
 
   Future<void> _saveCustomPasswordsToDisk() async {
     try {
-      final file = await _getCustomPasswordsFile();
-      await file.writeAsString(jsonEncode(_customUserPasswords));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('custom_user_passwords', jsonEncode(_customUserPasswords));
     } catch (e) {
       debugPrint('Failed to save custom passwords: $e');
     }
@@ -263,22 +247,12 @@ class AuthController extends GetxController {
     return true;
   }
 
-  Future<File> _getSessionFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/auth_session.json');
-  }
-
-  Future<File> _getAuditLogFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/login_audit_logs.json');
-  }
-
   Future<void> _loadSessionFromDisk() async {
     try {
-      final file = await _getSessionFile();
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final Map<String, dynamic> data = jsonDecode(content);
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('auth_session');
+      if (raw != null) {
+        final Map<String, dynamic> data = jsonDecode(raw);
         final isRemembered = data['remember_me'] == true;
         if (isRemembered && data['user'] != null) {
           rememberMe.value = true;
@@ -295,18 +269,16 @@ class AuthController extends GetxController {
 
   Future<void> _saveSessionToDisk() async {
     try {
-      final file = await _getSessionFile();
+      final prefs = await SharedPreferences.getInstance();
       if (rememberMe.value && currentUser.value != null) {
         final data = {
           'remember_me': true,
           'token': token.value,
           'user': currentUser.value!.toJson(),
         };
-        await file.writeAsString(jsonEncode(data));
+        await prefs.setString('auth_session', jsonEncode(data));
       } else {
-        if (await file.exists()) {
-          await file.delete();
-        }
+        await prefs.remove('auth_session');
       }
     } catch (e) {
       debugPrint('Failed to save session to disk: $e');
@@ -315,10 +287,10 @@ class AuthController extends GetxController {
 
   Future<void> _loadAuditLogsFromDisk() async {
     try {
-      final file = await _getAuditLogFile();
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final List<dynamic> jsonList = jsonDecode(content);
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('login_audit_logs');
+      if (raw != null) {
+        final List<dynamic> jsonList = jsonDecode(raw);
         auditLogs.value = jsonList.map((j) => LoginLogEntry.fromJson(j)).toList();
       } else {
         auditLogs.value = [
@@ -347,9 +319,9 @@ class AuthController extends GetxController {
 
   Future<void> _saveAuditLogsToDisk() async {
     try {
-      final file = await _getAuditLogFile();
+      final prefs = await SharedPreferences.getInstance();
       final content = jsonEncode(auditLogs.map((e) => e.toJson()).toList());
-      await file.writeAsString(content);
+      await prefs.setString('login_audit_logs', content);
     } catch (e) {
       debugPrint('Error saving audit logs: $e');
     }

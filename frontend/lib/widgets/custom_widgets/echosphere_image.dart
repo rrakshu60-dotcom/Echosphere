@@ -211,6 +211,17 @@ class _EchoSphereImageState extends State<EchoSphereImage> {
       );
     }
 
+    if (kIsWeb) {
+      return Image.network(
+        imageUrl,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        alignment: widget.alignment,
+        errorBuilder: (_, __, ___) => _fallback(context),
+      );
+    }
+
     return Image.file(
       _fileFromPath(imageUrl),
       width: widget.width,
