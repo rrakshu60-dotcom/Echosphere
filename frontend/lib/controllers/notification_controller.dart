@@ -5,6 +5,7 @@ import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationController extends GetxController {
   final RxSet<int> readIds = <int>{}.obs;
@@ -71,14 +72,16 @@ class NotificationController extends GetxController {
     return allNotifications;
   }
 
-  Future<File> _getStorageFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/notifications_read_state.json');
-  }
-
   Future<void> _loadReadStateFromDisk() async {
     try {
-      final file = await _getStorageFile();
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        final list = prefs.getStringList('read_notification_ids') ?? [];
+        readIds.assignAll(list.map((e) => int.parse(e)).toSet());
+        return;
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/notifications_read_state.json');
       if (await file.exists()) {
         final content = await file.readAsString();
         final List<dynamic> list = jsonDecode(content);
@@ -93,8 +96,13 @@ class NotificationController extends GetxController {
 
   Future<void> _saveReadStateToDisk() async {
     try {
-      final file = await _getStorageFile();
-      await file.writeAsString(jsonEncode(readIds.toList()));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('read_notification_ids', readIds.map((e) => e.toString()).toList());
+      if (!kIsWeb) {
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/notifications_read_state.json');
+        await file.writeAsString(jsonEncode(readIds.toList()));
+      }
     } catch (e) {
       debugPrint('Failed to save read notifications state to disk: $e');
     }
