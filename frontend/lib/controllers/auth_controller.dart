@@ -1,11 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:anymex/utils/usn_parser.dart';
@@ -541,10 +539,8 @@ class AuthController extends GetxController {
     rememberMe.value = false;
     EchosphereApiService().setAuthToken(null);
     try {
-      final file = await _getSessionFile();
-      if (await file.exists()) {
-        await file.delete();
-      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_session');
     } catch (_) {}
     Get.offAll(() => const LoginScreen());
   }
