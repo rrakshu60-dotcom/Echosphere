@@ -13,7 +13,10 @@ STATIC_AUDIO_DIR = os.path.join(
 
 
 def ensure_audio_dir_exists():
-    os.makedirs(STATIC_AUDIO_DIR, exist_ok=True)
+    try:
+        os.makedirs(STATIC_AUDIO_DIR, exist_ok=True)
+    except Exception:
+        pass
 
 
 def generate_synthesized_wav_fallback(file_path: str, text: str):

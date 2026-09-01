@@ -43,8 +43,12 @@ app.add_middleware(
 # -------------------------
 
 static_audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-os.makedirs(os.path.join(static_audio_path, "audio_streams"), exist_ok=True)
-app.mount("/static", StaticFiles(directory=static_audio_path), name="static")
+try:
+    os.makedirs(os.path.join(static_audio_path, "audio_streams"), exist_ok=True)
+    if os.path.exists(static_audio_path):
+        app.mount("/static", StaticFiles(directory=static_audio_path), name="static")
+except Exception as e:
+    pass
 
 # -------------------------
 # Rate Limiter
