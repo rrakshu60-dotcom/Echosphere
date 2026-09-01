@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class MyAdaptiveWrapper extends StatelessWidget {
@@ -9,7 +10,7 @@ class MyAdaptiveWrapper extends StatelessWidget {
   bool _isAndroidTV(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final dpi = MediaQuery.of(context).devicePixelRatio;
-    return Platform.isAndroid && size.width > 1000 && dpi < 2.0;
+    return !kIsWeb && Platform.isAndroid && size.width > 1000 && dpi < 2.0;
   }
 
   @override

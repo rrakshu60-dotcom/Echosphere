@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/widgets/common/glow.dart';
@@ -25,9 +26,13 @@ class _ArchivePageState extends State<ArchivePage> {
   String searchQuery = '';
 
   Future<void> _downloadAttachment(String filename, AnnouncementModel announcement) async {
+    if (kIsWeb) {
+      Get.snackbar("Download", "Downloading $filename");
+      return;
+    }
     try {
       Directory? dir;
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
       } else {
         dir = await getApplicationDocumentsDirectory();

@@ -1,7 +1,10 @@
 import 'dart:io';
 
 import 'package:anymex/constants/contants.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+bool get _isMobilePlatform => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
 double getResponsiveSize(context,
     {required double mobileSize,
@@ -9,7 +12,7 @@ double getResponsiveSize(context,
     bool isStrict = false}) {
   final currentWidth = MediaQuery.of(context).size.width;
   if (isStrict) {
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (_isMobilePlatform) {
       return mobileSize;
     } else {
       return desktopSize;
@@ -33,7 +36,7 @@ dynamic getResponsiveValueWithTablet(
   final currentWidth = MediaQuery.of(context).size.width;
   const double maxMobileWidth = 600;
   const double maxTabletWidth = 1024;
-  final bool isMobilePlatform = Platform.isAndroid || Platform.isIOS;
+  final bool isMobilePlatform = _isMobilePlatform;
 
   if (strictMode) {
     if (!isMobilePlatform) {
@@ -57,7 +60,7 @@ dynamic getResponsiveValue(context,
     required dynamic desktopValue,
     bool strictMode = false}) {
   final currentWidth = MediaQuery.of(context).size.width;
-  final isMobile = Platform.isAndroid || Platform.isIOS;
+  final isMobile = _isMobilePlatform;
   if (strictMode) {
     if (!isMobile) {
       return desktopValue;
@@ -75,46 +78,38 @@ dynamic getResponsiveValue(context,
 
 dynamic getPlatform(context, {bool strictMode = false}) {
   final currentWidth = MediaQuery.of(context).size.width;
-  final isMobile = Platform.isAndroid || Platform.isIOS;
+  final isMobile = _isMobilePlatform;
   if (strictMode) {
     if (!isMobile) {
-      return true;
+      return 'desktop';
     } else {
-      return false;
+      return 'mobile';
     }
   } else {
     if (currentWidth > maxMobileWidth) {
-      return true;
+      return 'desktop';
     } else {
-      return false;
+      return 'mobile';
     }
   }
 }
 
-int getResponsiveCrossAxisCount(
-  BuildContext context, {
-  int baseColumns = 2,
-  int maxColumns = 6,
-  int mobileBreakpoint = 600,
-  int tabletBreakpoint = 1200,
-  int mobileItemWidth = 200,
-  int tabletItemWidth = 200,
-  int desktopItemWidth = 200,
-}) {
+bool getIsDesktop(context) {
   final currentWidth = MediaQuery.of(context).size.width;
-  const mobileBreakpoint = 600;
-  const tabletBreakpoint = 1200;
-
-  int crossAxisCount;
-  if (currentWidth < mobileBreakpoint) {
-    crossAxisCount = (currentWidth / mobileItemWidth).floor();
-  } else if (currentWidth < tabletBreakpoint) {
-    crossAxisCount = (currentWidth / tabletItemWidth).floor();
+  if (currentWidth > maxMobileWidth) {
+    return true;
   } else {
-    crossAxisCount = (currentWidth / desktopItemWidth).floor();
+    return false;
   }
+}
 
-  return crossAxisCount.clamp(baseColumns, maxColumns);
+bool getIsMobile(context) {
+  final currentWidth = MediaQuery.of(context).size.width;
+  if (currentWidth < maxMobileWidth) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 class PlatformBuilder extends StatelessWidget {
@@ -131,7 +126,7 @@ class PlatformBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       if (strictMode) {
-        if (!Platform.isAndroid && !Platform.isIOS) {
+        if (!_isMobilePlatform) {
           return desktopBuilder;
         } else {
           return androidBuilder;
@@ -168,7 +163,7 @@ class PlatformBuilderWithTablet extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (strictMode) {
-          if (!Platform.isAndroid && !Platform.isIOS) {
+          if (!_isMobilePlatform) {
             return desktopBuilder;
           } else if (constraints.maxWidth > maxMobileWidth) {
             return tabletBuilder;
@@ -186,21 +181,5 @@ class PlatformBuilderWithTablet extends StatelessWidget {
         }
       },
     );
-  }
-}
-
-class ConditionalBuilder extends StatelessWidget {
-  final Widget falseBuilder;
-  final Widget trueBuilder;
-  final bool condition;
-  const ConditionalBuilder(
-      {super.key,
-      required this.falseBuilder,
-      required this.trueBuilder,
-      required this.condition});
-
-  @override
-  Widget build(BuildContext context) {
-    return condition ? trueBuilder : falseBuilder;
   }
 }
