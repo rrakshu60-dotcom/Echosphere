@@ -21,7 +21,19 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isObscure = true;
   bool rememberMe = true;
 
+  @override
+  void initState() {
+    super.initState();
+    authController.isLoading.value = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        authController.isLoading.value = false;
+      }
+    });
+  }
+
   Future<void> _handleLogin() async {
+    authController.isLoading.value = false;
     final identifier = identifierController.text.trim();
     final password = passwordController.text.trim();
 
