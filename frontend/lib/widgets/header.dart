@@ -86,10 +86,7 @@ class Header extends StatelessWidget {
                 size: isMobile ? 18 : 20,
                 color: theme.colorScheme.primary,
               ),
-              onPressed: () => Get.to(
-                () => const SpeakerQueuePage(),
-                routeName: '/speaker-queue',
-              ),
+              onPressed: () => Get.toNamed('/speaker-queue'),
             );
           }),
         ],

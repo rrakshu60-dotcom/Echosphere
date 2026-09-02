@@ -323,12 +323,12 @@ class _HomePageState extends State<HomePage> {
                 IconButton(
                   tooltip: 'Smart Speaker System',
                   icon: const Icon(Icons.podcasts_rounded),
-                  onPressed: () => Get.to(() => const SpeakerQueuePage(), routeName: '/speaker-queue'),
+                  onPressed: () => Get.toNamed('/speaker-queue'),
                 ),
                 IconButton(
                   tooltip: 'User Management Hub',
                   icon: const Icon(Icons.manage_accounts_rounded),
-                  onPressed: () => Get.to(() => const UserManagementPage(), routeName: '/user-management'),
+                  onPressed: () => Get.toNamed('/user-management'),
                 ),
               ],
             ],
