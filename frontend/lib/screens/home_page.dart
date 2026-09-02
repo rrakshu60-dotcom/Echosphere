@@ -2,6 +2,7 @@ import 'package:anymex/ai/echosphere_ai.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/admin/user_management_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
@@ -318,12 +319,18 @@ class _HomePageState extends State<HomePage> {
                   onTap: () => Get.to(() => const LoginScreen()),
                   child: const Text('Login'),
                 )
-              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer')
+              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer') ...[
+                IconButton(
+                  tooltip: 'Smart Speaker System',
+                  icon: const Icon(Icons.podcasts_rounded),
+                  onPressed: () => Get.to(() => const SpeakerQueuePage(), routeName: '/speaker-queue'),
+                ),
                 IconButton(
                   tooltip: 'User Management Hub',
                   icon: const Icon(Icons.manage_accounts_rounded),
-                  onPressed: () => Get.to(() => const UserManagementPage()),
+                  onPressed: () => Get.to(() => const UserManagementPage(), routeName: '/user-management'),
                 ),
+              ],
             ],
           ),
         ),

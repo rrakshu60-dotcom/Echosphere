@@ -486,7 +486,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     IconButton(
                       icon: const Icon(Icons.sensors_rounded, size: 20),
                       tooltip: 'Speaker Hardware Queue',
-                      onPressed: () => Get.to(() => const SpeakerQueuePage()),
+                      onPressed: () => Get.to(() => const SpeakerQueuePage(), routeName: '/speaker-queue'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.fact_check_rounded, size: 20),
