@@ -3,10 +3,6 @@ name: EchoSphere Web Deploy (Cloudflare Pages)
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-web.yml'
-      - 'wrangler.json'
   workflow_dispatch:
 
 concurrency:
