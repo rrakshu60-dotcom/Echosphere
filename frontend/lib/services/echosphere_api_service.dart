@@ -13,7 +13,17 @@ class EchosphereApiService {
 
   EchosphereApiService._internal() {
     const String envUrl = String.fromEnvironment('ECHOSPHERE_API_URL');
-    String loadedUrl = dotenv.env['ECHOSPHERE_API_URL'] ?? (envUrl.isNotEmpty ? envUrl : '');
+    String loadedUrl = '';
+    try {
+      if (dotenv.isInitialized) {
+        loadedUrl = dotenv.env['ECHOSPHERE_API_URL'] ?? '';
+      }
+    } catch (_) {
+      loadedUrl = '';
+    }
+    if (loadedUrl.isEmpty && envUrl.isNotEmpty) {
+      loadedUrl = envUrl;
+    }
 
     if (loadedUrl.isNotEmpty) {
       _baseUrl = loadedUrl;
