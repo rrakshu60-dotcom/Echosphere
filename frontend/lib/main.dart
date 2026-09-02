@@ -153,6 +153,53 @@ void _initializeGetxController() async {
   }, errorMessage: 'Failed to register GetX controllers');
 }
 
+class RootWrapper extends StatefulWidget {
+  const RootWrapper({super.key});
+
+  @override
+  State<RootWrapper> createState() => _RootWrapperState();
+}
+
+class _RootWrapperState extends State<RootWrapper> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 2.5s fallback to smoothly dismiss splash screen
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && _showSplash) {
+        setState(() {
+          _showSplash = false;
+        });
+      }
+    });
+  }
+
+  void _onComplete() {
+    if (mounted && _showSplash) {
+      setState(() {
+        _showSplash = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSplash) {
+      return EchoSphereSplashScreen(
+        onAnimationComplete: _onComplete,
+      );
+    }
+    return Obx(() {
+      final authController = Get.find<AuthController>();
+      return authController.isLoggedIn.value
+          ? const HomePage()
+          : const LoginScreen();
+    });
+  }
+}
+
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
 
@@ -161,7 +208,6 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  bool _showMainApp = false;
   bool _isFullScreen = false;
 
   late FocusNode focusNode;
@@ -204,14 +250,6 @@ class _MainAppState extends State<MainApp> {
         () => _isFullScreen = EchoSphereTitleBar.isFullScreen.value);
 
     focusNode = FocusNode(canRequestFocus: false, skipTraversal: true);
-
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _showMainApp = true;
-        });
-      }
-    });
   }
 
   @override
@@ -242,26 +280,12 @@ class _MainAppState extends State<MainApp> {
         initialRoute: '/',
         unknownRoute: GetPage(
           name: '/404',
-          page: () => _showMainApp
-              ? Obx(() {
-                  final authController = Get.find<AuthController>();
-                  return authController.isLoggedIn.value
-                      ? const HomePage()
-                      : const LoginScreen();
-                })
-              : const EchoSphereSplashScreen(),
+          page: () => const RootWrapper(),
         ),
         getPages: [
           GetPage(
             name: '/',
-            page: () => _showMainApp
-                ? Obx(() {
-                    final authController = Get.find<AuthController>();
-                    return authController.isLoggedIn.value
-                        ? const HomePage()
-                        : const LoginScreen();
-                  })
-                : const EchoSphereSplashScreen(),
+            page: () => const RootWrapper(),
           ),
           GetPage(name: '/home', page: () => const HomePage()),
           GetPage(name: '/login', page: () => const LoginScreen()),
