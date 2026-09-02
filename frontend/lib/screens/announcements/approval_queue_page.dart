@@ -235,7 +235,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                         IconButton(
                           icon: Icon(Icons.podcasts_rounded, size: 20, color: theme.colorScheme.primary),
                           tooltip: 'Smart Speaker System',
-                          onPressed: () => Get.to(() => const SpeakerQueuePage(), routeName: '/speaker-queue'),
+                          onPressed: () => Get.toNamed('/speaker-queue'),
                         ),
                       ],
                     ],
