@@ -26,6 +26,21 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Build Flutter Web & Copy Cloudflare Rules
+        run: |
+          cd frontend
+          flutter pub get
+          flutter build web --release --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
+          cp web/_redirects build/web/_redirects
+          cp web/_headers build/web/_headers
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
