@@ -10,6 +10,9 @@ import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/controllers/ui/greeting.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/screens/home_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+import 'package:anymex/screens/announcements/approval_queue_page.dart';
+import 'package:anymex/screens/admin/user_management_page.dart';
 import 'package:anymex/utils/external_font_loader.dart';
 import 'package:anymex/utils/logger.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_splash_screen.dart';
@@ -241,6 +244,24 @@ class _MainAppState extends State<MainApp> {
                     : const LoginScreen();
               })
             : const EchoSphereSplashScreen(),
+        getPages: [
+          GetPage(
+            name: '/',
+            page: () => _showMainApp
+                ? Obx(() {
+                    final authController = Get.find<AuthController>();
+                    return authController.isLoggedIn.value
+                        ? const HomePage()
+                        : const LoginScreen();
+                  })
+                : const EchoSphereSplashScreen(),
+          ),
+          GetPage(name: '/home', page: () => const HomePage()),
+          GetPage(name: '/login', page: () => const LoginScreen()),
+          GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage()),
+          GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage()),
+          GetPage(name: '/user-management', page: () => const UserManagementPage()),
+        ],
         builder: (context, child) {
           if (PlatformDispatcher.instance.views.length > 1) {
             return child!;
