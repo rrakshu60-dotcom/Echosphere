@@ -244,6 +244,18 @@ class _MainAppState extends State<MainApp> {
                     : const LoginScreen();
               })
             : const EchoSphereSplashScreen(),
+        initialRoute: '/',
+        unknownRoute: GetPage(
+          name: '/notfound',
+          page: () => _showMainApp
+              ? Obx(() {
+                  final authController = Get.find<AuthController>();
+                  return authController.isLoggedIn.value
+                      ? const HomePage()
+                      : const LoginScreen();
+                })
+              : const EchoSphereSplashScreen(),
+        ),
         getPages: [
           GetPage(
             name: '/',

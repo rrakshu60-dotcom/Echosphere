@@ -18,7 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="EchoSphere Campus PA System">
 
   <!-- Mobile meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -32,6 +32,20 @@
 
   <title>EchoSphere</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Clean up corrupted or minified route hashes immediately before Flutter initializes
+    if (window.location.hash && (window.location.hash.includes('minified') || window.location.hash.includes('Instance%20of') || window.location.hash.includes('Instance of') || window.location.hash.includes('xp'))) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+    // Auto-unregister stale service worker and clear cache to guarantee newest build
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(var i = 0; i < registrations.length; i++) {
+          registrations[i].unregister();
+        }
+      });
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
