@@ -314,7 +314,7 @@ class _HomePageState extends State<HomePage> {
               if (user == null)
                 EchoSphereButton(
                   height: 38,
-                  onTap: () => Get.to(() => const LoginScreen()),
+                  onTap: () => Get.toNamed('/login'),
                   child: const Text('Login'),
                 )
               else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer' || role == 'HoD' || role == 'Teacher') ...[
@@ -390,7 +390,7 @@ class _HomePageState extends State<HomePage> {
                 value: annController.pendingApprovals.length,
                 icon: Icons.pending_actions_rounded,
                 color: const Color(0xFFF59E0B),
-                onTap: () => Get.to(() => const ApprovalQueuePage()),
+                onTap: () => Get.toNamed('/approval-queue'),
               )
             else
               StatCard(
@@ -500,7 +500,7 @@ class _HomePageState extends State<HomePage> {
                       )),
                   const SizedBox(width: 6),
                   InkWell(
-                    onTap: () => Get.to(() => const ArchivePage()),
+                    onTap: () => Get.toNamed('/archive'),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
