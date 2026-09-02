@@ -6,6 +6,8 @@ import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/screens/announcements/approval_queue_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -484,12 +486,16 @@ class _UserManagementPageState extends State<UserManagementPage> {
                     IconButton(
                       icon: const Icon(Icons.sensors_rounded, size: 20),
                       tooltip: 'Speaker Hardware Queue',
-                      onPressed: () => Get.toNamed('/speaker-queue'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.fact_check_rounded, size: 20),
                       tooltip: 'Approval Queue',
-                      onPressed: () => Get.toNamed('/approval-queue'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
+                      ),
                     ),
                   ],
                   if (user?.role == 'Dev Admin' || user?.role == 'Developer') ...[

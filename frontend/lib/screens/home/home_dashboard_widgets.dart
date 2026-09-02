@@ -279,8 +279,11 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
                   right: index < widget.items.length - 1 ? 12 : 0,
                 ),
                 child: InkWell(
-                  onTap: () =>
-                      Get.to(() => AnnouncementDetailPage(announcement: item)),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AnnouncementDetailPage(announcement: item),
+                    ),
+                  ),
                   borderRadius: BorderRadius.circular(18),
                   child: _PriorityCard(
                     item: item,
@@ -545,8 +548,11 @@ class AnnouncementFeedCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
         child: InkWell(
-          onTap: () =>
-              Get.to(() => AnnouncementDetailPage(announcement: notice)),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AnnouncementDetailPage(announcement: notice),
+            ),
+          ),
           borderRadius: BorderRadius.circular(16),
           child: EchoSphereContainer(
             padding: const EdgeInsets.all(18.0),

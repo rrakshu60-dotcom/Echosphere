@@ -366,7 +366,11 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                   IconButton(
                                     tooltip: 'View Full Notice',
                                     icon: const Icon(Icons.open_in_new_rounded),
-                                    onPressed: () => Get.to(() => AnnouncementDetailPage(announcement: item)),
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => AnnouncementDetailPage(announcement: item),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),

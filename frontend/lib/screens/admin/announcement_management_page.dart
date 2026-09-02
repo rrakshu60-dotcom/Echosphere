@@ -161,7 +161,11 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       child: InkWell(
-                        onTap: () => Get.to(() => AnnouncementDetailPage(announcement: item)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => AnnouncementDetailPage(announcement: item),
+                          ),
+                        ),
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.all(14.0),

@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/theme.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -85,7 +86,9 @@ class Header extends StatelessWidget {
                 size: isMobile ? 18 : 20,
                 color: theme.colorScheme.primary,
               ),
-              onPressed: () => Get.toNamed('/speaker-queue'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+              ),
             );
           }),
         ],

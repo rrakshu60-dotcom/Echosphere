@@ -1,6 +1,7 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -234,7 +235,9 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                         IconButton(
                           icon: Icon(Icons.podcasts_rounded, size: 20, color: theme.colorScheme.primary),
                           tooltip: 'Smart Speaker System',
-                          onPressed: () => Get.toNamed('/speaker-queue'),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                          ),
                         ),
                       ],
                     ],
@@ -477,7 +480,11 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                             EchoSphereButton(
                               height: 32,
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              onTap: () => Get.to(() => AnnouncementDetailPage(announcement: item)),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => AnnouncementDetailPage(announcement: item),
+                                ),
+                              ),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -639,7 +646,11 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                       EchoSphereButton(
                         height: 36,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        onTap: () => Get.to(() => AnnouncementDetailPage(announcement: item)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => AnnouncementDetailPage(announcement: item),
+                          ),
+                        ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
