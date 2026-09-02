@@ -319,7 +319,7 @@ class _HomePageState extends State<HomePage> {
                   onTap: () => Get.to(() => const LoginScreen()),
                   child: const Text('Login'),
                 )
-              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer') ...[
+              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer' || role == 'HoD' || role == 'Teacher') ...[
                 IconButton(
                   tooltip: 'Smart Speaker System',
                   icon: const Icon(Icons.podcasts_rounded),

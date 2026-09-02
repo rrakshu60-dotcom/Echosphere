@@ -58870,7 +58870,7 @@ s=s.k3
 l=t.p
 s=A.b([m,B.a9J,A.bc(A.aD(A.b([n,B.lu,A.ad(r,k,k,k,k,k,k,k,A.aG(k,k,A.R(166,s.n()>>>16&255,s.n()>>>8&255,s.n()&255),k,k,k,k,k,k,k,k,13,k,k,k,k,k,!0,k,k,k,k,k,k,k,k),k,k,k,k)],l),B.B,B.h,B.j,0,B.m),1)],l)
 if(i)s.push(A.hX(k,B.agN,k,38,new A.aP7(),k,k,k))
-else if(h==="College Admin"||h==="Principal"||h==="Dev Admin"||h==="Developer")B.b.E(s,A.b([A.da(k,k,k,B.X6,k,k,new A.aP8(),k,k,k,"Smart Speaker System"),A.da(k,k,k,B.Wu,k,k,new A.aP9(),k,k,k,"User Management Hub")],l))
+else if(h==="College Admin"||h==="Principal"||h==="Dev Admin"||h==="Developer"||h==="HoD"||h==="Teacher")B.b.E(s,A.b([A.da(k,k,k,B.X6,k,k,new A.aP8(),k,k,k,"Smart Speaker System"),A.da(k,k,k,B.Wu,k,k,new A.aP9(),k,k,k,"User Management Hub")],l))
 return A.aFH(new A.aPa(),A.aW(k,A.aT(s,B.k,B.h,B.j,0,k),B.n,k,k,new A.aN(k,k,o,p,k,new A.fx(B.bV,B.er,B.aJ,q,k,k),B.z),k,k,k,k,B.T2,k,k,k),B.bX,B.fL,new A.av(0,1,t.Y),t.i)},
 $S:182}
 A.aPa.prototype={
