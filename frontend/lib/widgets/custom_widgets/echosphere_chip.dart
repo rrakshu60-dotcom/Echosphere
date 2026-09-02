@@ -19,6 +19,15 @@ class EchoSphereChip extends StatelessWidget {
   });
 
   BoxShadow glowingShadow(BuildContext context) {
+    if (!Get.isRegistered<Settings>()) {
+      return BoxShadow(
+        color: context.colors.primary.opaque(
+            Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
+        blurRadius: 20.0,
+        spreadRadius: -1.0,
+        offset: const Offset(0, 0),
+      );
+    }
     final controller = Get.find<Settings>();
     if (controller.glowMultiplier.value == 0.0) {
       return const BoxShadow(color: Colors.transparent);

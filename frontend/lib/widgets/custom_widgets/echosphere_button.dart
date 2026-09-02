@@ -1,4 +1,5 @@
 import 'package:anymex/controllers/settings/methods.dart';
+import 'package:anymex/controllers/settings/settings.dart';
 import 'package:anymex/utils/theme_extensions.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:flutter/material.dart';
@@ -44,65 +45,72 @@ class EchoSphereButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      0.multiplyRadius();
-      final BorderRadiusGeometry? effectiveRadius = radius != null
-          ? BorderRadius.circular(radius!.multiplyRadius())
-          : borderRadius;
+    if (Get.isRegistered<Settings>()) {
+      return Obx(() {
+        final _ = Get.find<Settings>().glowMultiplier.value;
+        return _buildButton(context);
+      });
+    }
+    return _buildButton(context);
+  }
 
-      final BoxDecoration effectiveDecoration = decoration ??
-          BoxDecoration(
-            color: color,
-            borderRadius: effectiveRadius,
-            boxShadow: enableGlow
-                ? [
-                    BoxShadow(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .opaque(.05.multiplyGlow(), iReallyMeanIt: true),
-                      offset: const Offset(-1, 1),
-                      blurRadius: 50.multiplyBlur(),
-                      spreadRadius: 2.multiplyGlow(),
-                    )
-                  ]
-                : shadow != null
-                    ? [shadow!]
+  Widget _buildButton(BuildContext context) {
+    final BorderRadiusGeometry? effectiveRadius = radius != null
+        ? BorderRadius.circular(radius!.multiplyRadius())
+        : borderRadius;
+
+    final BoxDecoration effectiveDecoration = decoration ??
+        BoxDecoration(
+          color: color,
+          borderRadius: effectiveRadius,
+          boxShadow: enableGlow
+              ? [
+                  BoxShadow(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .opaque(.05.multiplyGlow(), iReallyMeanIt: true),
+                    offset: const Offset(-1, 1),
+                    blurRadius: 50.multiplyBlur(),
+                    spreadRadius: 2.multiplyGlow(),
+                  )
+                ]
+              : shadow != null
+                  ? [shadow!]
+                  : null,
+        );
+    return ClipRRect(
+      borderRadius: effectiveRadius ?? BorderRadius.circular(0),
+      clipBehavior: clipBehavior,
+      child: ElevatedButtonTheme(
+        data: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                maximumSize: width != null && height != null
+                    ? Size(width!, height!)
                     : null,
-          );
-      return ClipRRect(
-        borderRadius: effectiveRadius ?? BorderRadius.circular(0),
-        clipBehavior: clipBehavior,
-        child: ElevatedButtonTheme(
-          data: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                  minimumSize: Size.zero,
-                  padding: EdgeInsets.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  maximumSize: width != null && height != null
-                      ? Size(width!, height!)
-                      : null,
-                  backgroundColor: color,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: effectiveRadius ?? BorderRadius.circular(0),
-                      side: border ??
-                          const BorderSide(color: Colors.transparent)))),
-          child: ElevatedButton(
-            onPressed: onTap,
-            onLongPress: onLongPress,
-            child: Container(
-              height: height,
-              width: width,
-              alignment: Alignment.center,
-              margin: margin,
-              padding: padding,
-              decoration: effectiveDecoration,
-              child: child,
-            ),
+                backgroundColor: color,
+                shape: RoundedRectangleBorder(
+                    borderRadius: effectiveRadius ?? BorderRadius.circular(0),
+                    side: border ??
+                        const BorderSide(color: Colors.transparent)))),
+        child: ElevatedButton(
+          onPressed: onTap,
+          onLongPress: onLongPress,
+          child: Container(
+            height: height,
+            width: width,
+            alignment: Alignment.center,
+            margin: margin,
+            padding: padding,
+            decoration: effectiveDecoration,
+            child: child,
           ),
         ),
-      );
-    });
+      ),
+    );
   }
 }
 
