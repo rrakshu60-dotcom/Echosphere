@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -164,7 +165,9 @@ class NotificationController extends GetxController {
 
     final announcement = notification['announcement'] as AnnouncementModel?;
     if (announcement != null) {
-      Get.to(() => AnnouncementDetailPage(announcement: announcement));
+      Get.key.currentState?.push(
+        MaterialPageRoute(builder: (_) => AnnouncementDetailPage(announcement: announcement)),
+      );
     }
   }
 }

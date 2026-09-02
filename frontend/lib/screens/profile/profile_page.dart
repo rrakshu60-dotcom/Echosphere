@@ -119,7 +119,9 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 20),
               EchoSphereButton(
-                onTap: () => Get.to(() => const LoginScreen()),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                ),
                 child: const Text('Go to Login'),
               ),
             ],
