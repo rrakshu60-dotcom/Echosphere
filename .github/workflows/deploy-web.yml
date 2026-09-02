@@ -41,10 +41,8 @@ jobs:
           cp web/_headers build/web/_headers
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: 'echosphere'
-          directory: 'frontend/build/web'
-          branch: 'main'
+          command: pages deploy frontend/build/web --project-name=echosphere --branch=main --commit-dirty=true
