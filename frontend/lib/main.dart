@@ -239,16 +239,9 @@ class _MainAppState extends State<MainApp> {
             : theme.isLightMode
                 ? ThemeMode.light
                 : ThemeMode.dark,
-        home: _showMainApp
-            ? Obx(() {
-                final authController = Get.find<AuthController>();
-                return authController.isLoggedIn.value
-                    ? const HomePage()
-                    : const LoginScreen();
-              })
-            : const EchoSphereSplashScreen(),
+        initialRoute: '/',
         unknownRoute: GetPage(
-          name: '/notfound',
+          name: '/404',
           page: () => _showMainApp
               ? Obx(() {
                   final authController = Get.find<AuthController>();
@@ -259,6 +252,17 @@ class _MainAppState extends State<MainApp> {
               : const EchoSphereSplashScreen(),
         ),
         getPages: [
+          GetPage(
+            name: '/',
+            page: () => _showMainApp
+                ? Obx(() {
+                    final authController = Get.find<AuthController>();
+                    return authController.isLoggedIn.value
+                        ? const HomePage()
+                        : const LoginScreen();
+                  })
+                : const EchoSphereSplashScreen(),
+          ),
           GetPage(name: '/home', page: () => const HomePage()),
           GetPage(name: '/login', page: () => const LoginScreen()),
           GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage()),
