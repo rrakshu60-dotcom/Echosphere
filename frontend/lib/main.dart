@@ -13,6 +13,9 @@ import 'package:anymex/screens/home_page.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/admin/user_management_page.dart';
+import 'package:anymex/screens/announcements/archive_page.dart';
+import 'package:anymex/screens/notifications/notifications_page.dart';
+import 'package:anymex/screens/profile/profile_page.dart';
 import 'package:anymex/utils/external_font_loader.dart';
 import 'package:anymex/utils/logger.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_splash_screen.dart';
@@ -273,6 +276,9 @@ class _MainAppState extends State<MainApp> {
           GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage()),
           GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage()),
           GetPage(name: '/user-management', page: () => const UserManagementPage()),
+          GetPage(name: '/archive', page: () => const ArchivePage()),
+          GetPage(name: '/notifications', page: () => const NotificationsPage()),
+          GetPage(name: '/profile', page: () => const ProfilePage()),
         ],
         builder: (context, child) {
           if (PlatformDispatcher.instance.views.length > 1) {
