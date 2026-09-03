@@ -316,7 +316,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                 snackBar('Triggering Emergency Override...');
                 try {
                   await _apiService.triggerEmergencyOverride(
-                    title: titleController.text.trim(),
+                    title: titleController.text.trim().isEmpty
+                        ? 'Emergency Campus Broadcast'
+                        : titleController.text.trim(),
                     message: msg,
                   );
                   snackBar('EMERGENCY BROADCAST LIVE ACROSS ALL NODES');
