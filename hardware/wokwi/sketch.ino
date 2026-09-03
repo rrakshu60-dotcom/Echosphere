@@ -59,17 +59,15 @@ void playNoticeTone() {
 }
 
 void playTestTone() {
-    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Running 3-Tone PA Speaker Diagnostic...");
-    for (int i = 0; i < 3; i++) {
-        digitalWrite(LED_NOTICE_PIN, HIGH);
-        tone(SPEAKER_PIN, 800 + (i * 300));
-        delay(350);
-        noTone(SPEAKER_PIN);
-        digitalWrite(LED_NOTICE_PIN, LOW);
-        delay(150);
-    }
+    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Crisp PA Diagnostic Chime...");
+    digitalWrite(LED_NOTICE_PIN, HIGH);
+    tone(SPEAKER_PIN, 950);
+    delay(120);
+    tone(SPEAKER_PIN, 1350);
+    delay(160);
+    noTone(SPEAKER_PIN);
     digitalWrite(LED_NOTICE_PIN, LOW);
-    Serial.println("🎛️ [DIAGNOSTIC TEST] Speaker & Purple LED Test Complete.");
+    Serial.println("🎛️ [DIAGNOSTIC TEST] Diagnostic Complete.");
 }
 
 // ----------------------------------------------------------------------------
@@ -130,7 +128,7 @@ void sendHeartbeat() {
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/heartbeat";
         
         secureClient.setInsecure();
-        http.setTimeout(4000);
+        http.setTimeout(3500);
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("Connection", "close");
@@ -157,10 +155,19 @@ void sendHeartbeat() {
             DeserializationError err = deserializeJson(respDoc, response);
             if (!err && respDoc["pending_commands"].is<JsonArray>()) {
                 JsonArray cmds = respDoc["pending_commands"].as<JsonArray>();
+                bool testToneTriggered = false;
                 for (JsonObject cmdObj : cmds) {
                     const char* cmd = cmdObj["command"] | "";
                     const char* title = cmdObj["title"] | "Campus Broadcast";
-                    executeCommand(cmd, title);
+                    // Deduplicate test tone clicks in the same batch
+                    if (String(cmd) == "TEST_SPEAKER") {
+                        if (!testToneTriggered) {
+                            testToneTriggered = true;
+                            executeCommand(cmd, title);
+                        }
+                    } else {
+                        executeCommand(cmd, title);
+                    }
                 }
             }
 
@@ -239,10 +246,10 @@ void setup() {
 unsigned long lastCycle = 0;
 
 void loop() {
-    // Single unified heartbeat & command fetch cycle every 1.5 seconds (Ultra-Low Latency)
-    if (millis() - lastCycle >= 1500) {
+    // Ultra-responsive 800ms cycle for instant real-time sound feedback
+    if (millis() - lastCycle >= 800) {
         sendHeartbeat();
         lastCycle = millis();
     }
-    delay(50);
+    delay(25);
 }
