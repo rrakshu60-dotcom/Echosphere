@@ -165,23 +165,31 @@ async def trigger_emergency_override(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    base_url = str(request.base_url).rstrip("/")
-    announcement_id = 99999
-    result = await broadcast_announcement_to_speaker(
-        db=db,
-        announcement_id=announcement_id,
-        title=override_in.title,
-        content=override_in.message,
-        department_code="ALL",
-        zone=override_in.zone or "College-Wide",
-        is_emergency=True,
-        base_url=base_url,
-    )
-    return {
-        "status": "EMERGENCY_OVERRIDE_ACTIVATED",
-        "message": override_in.message,
-        "details": result,
-    }
+    try:
+        base_url = str(request.base_url).rstrip("/")
+        announcement_id = 99999
+        result = await broadcast_announcement_to_speaker(
+            db=db,
+            announcement_id=announcement_id,
+            title=override_in.title,
+            content=override_in.message,
+            department_code="ALL",
+            zone=override_in.zone or "College-Wide",
+            is_emergency=True,
+            base_url=base_url,
+        )
+        return {
+            "status": "EMERGENCY_OVERRIDE_ACTIVATED",
+            "message": override_in.message,
+            "details": result,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Emergency override error: {str(e)}"
+        )
 
 
 @router.post("/speakers/{id}/control")
