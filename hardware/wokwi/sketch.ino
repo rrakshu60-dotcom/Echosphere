@@ -122,16 +122,22 @@ void executeCommand(const char* cmd, const char* title) {
     }
 }
 
+HTTPClient http;
+bool httpInitialized = false;
+
 void sendHeartbeat() {
     if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/heartbeat";
         
-        secureClient.setInsecure();
-        http.setTimeout(3500);
-        http.begin(secureClient, url);
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("Connection", "close");
+        if (!httpInitialized) {
+            secureClient.setInsecure();
+            http.setReuse(true);
+            http.setTimeout(3500);
+            http.begin(secureClient, url);
+            http.addHeader("Content-Type", "application/json");
+            http.addHeader("Connection", "keep-alive");
+            httpInitialized = true;
+        }
 
         JsonDocument doc;
         doc["mac_address"] = macAddress;
@@ -144,12 +150,14 @@ void sendHeartbeat() {
         String jsonPayload;
         serializeJson(doc, jsonPayload);
 
+        unsigned long t0 = millis();
         int httpCode = http.POST(jsonPayload);
+        unsigned long roundtrip = millis() - t0;
+
         if (httpCode == 200 || httpCode == 201) {
             digitalWrite(LED_ONLINE_PIN, HIGH);
             
             String response = http.getString();
-            http.end(); // Close connection immediately before executing tone delays
 
             JsonDocument respDoc;
             DeserializationError err = deserializeJson(respDoc, response);
@@ -171,11 +179,12 @@ void sendHeartbeat() {
                 }
             }
 
-            Serial.printf("💓 [HEARTBEAT] Telemetry OK (Code %d) | CPU: %d%% | RAM: %d%%\n", 
-                          httpCode, (int)doc["cpu_usage"], (int)doc["memory_usage"]);
+            Serial.printf("💓 [HEARTBEAT] OK in %lums (Code %d) | CPU: %d%%\n", 
+                          roundtrip, httpCode, (int)doc["cpu_usage"]);
         } else {
-            Serial.printf("⚠️ [HEARTBEAT] Telemetry Code %d (Retrying next cycle)\n", httpCode);
+            Serial.printf("⚠️ [HEARTBEAT] Code %d (Reconnecting keep-alive)\n", httpCode);
             http.end();
+            httpInitialized = false;
         }
     } else {
         // Blink Green LED if searching Wi-Fi
@@ -246,10 +255,10 @@ void setup() {
 unsigned long lastCycle = 0;
 
 void loop() {
-    // Ultra-responsive 800ms cycle for instant real-time sound feedback
-    if (millis() - lastCycle >= 800) {
+    // Ultra-low latency check: Polls every 400ms when connected!
+    if (millis() - lastCycle >= 400) {
         sendHeartbeat();
         lastCycle = millis();
     }
-    delay(25);
+    delay(20);
 }
