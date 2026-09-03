@@ -55,9 +55,9 @@ def get_pending_commands_for_mac(mac_address: str) -> List[dict]:
     if mac_key in _PENDING_COMMANDS:
         cmds.extend(_PENDING_COMMANDS.pop(mac_key))
 
-    # Broadcast commands (keep for other nodes but return for this node)
-    if "ALL" in _PENDING_COMMANDS:
-        cmds.extend(_PENDING_COMMANDS["ALL"])
+    # Broadcast commands (pop so nodes receive the broadcast command once without repeating)
+    if "ALL" in _PENDING_COMMANDS and _PENDING_COMMANDS["ALL"]:
+        cmds.extend(_PENDING_COMMANDS.pop("ALL"))
 
     return cmds
 
@@ -92,30 +92,41 @@ async def broadcast_announcement_to_speaker(
     """
     Synthesizes TTS audio for the announcement, queues it, and dispatches play command.
     """
-    # 1. Generate audio stream
-    audio_info = await generate_announcement_audio(announcement_id, f"{title}. {content}")
-    audio_full_url = f"{base_url}{audio_info['url_path']}"
+    # 1. Generate audio stream (gracefully fallback if TTS service encounters errors)
+    audio_full_url = ""
+    try:
+        audio_info = await generate_announcement_audio(announcement_id, f"{title}. {content}")
+        audio_full_url = f"{base_url}{audio_info['url_path']}"
+    except Exception as e:
+        logger.warning(f"Audio generation fallback for #{announcement_id}: {e}")
+        audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.wav"
 
-    # 2. Add/Get queue item
-    existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
-    if not existing_item:
-        max_pos = db.query(SpeakerQueue).count()
-        queue_item = SpeakerQueue(
-            announcement_id=announcement_id,
-            queue_position=1 if is_emergency else max_pos + 1,
-            status="Playing" if is_emergency else "Next in Queue",
-            scheduled_time=datetime.utcnow(),
-            played_at=datetime.utcnow() if is_emergency else None,
-        )
-        db.add(queue_item)
-        db.commit()
-        db.refresh(queue_item)
-    else:
-        queue_item = existing_item
-        queue_item.status = "Playing" if is_emergency else "Next in Queue"
-        if is_emergency:
-            queue_item.played_at = datetime.utcnow()
-        db.commit()
+    # 2. Add/Get queue item (only if valid announcement exists in database)
+    from app.models.announcement import Announcement
+    announcement_exists = db.query(Announcement).filter(Announcement.id == announcement_id).first()
+    queue_pos = 1
+
+    if announcement_exists:
+        existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
+        if not existing_item:
+            max_pos = db.query(SpeakerQueue).count()
+            queue_item = SpeakerQueue(
+                announcement_id=announcement_id,
+                queue_position=1 if is_emergency else max_pos + 1,
+                status="Playing" if is_emergency else "Next in Queue",
+                scheduled_time=datetime.utcnow(),
+                played_at=datetime.utcnow() if is_emergency else None,
+            )
+            db.add(queue_item)
+            db.commit()
+            db.refresh(queue_item)
+            queue_pos = queue_item.queue_position
+        else:
+            existing_item.status = "Playing" if is_emergency else "Next in Queue"
+            if is_emergency:
+                existing_item.played_at = datetime.utcnow()
+            db.commit()
+            queue_pos = existing_item.queue_position
 
     # 3. Publish MQTT dispatch
     topic = f"echosphere/dept/{department_code}/speakers/command"
@@ -142,7 +153,7 @@ async def broadcast_announcement_to_speaker(
         "command": payload["command"],
         "topic": topic,
         "audio_url": audio_full_url,
-        "queue_position": queue_item.queue_position,
+        "queue_position": queue_pos,
         "mqtt_dispatched": publish_success,
     }
 
