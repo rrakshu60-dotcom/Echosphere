@@ -32,6 +32,12 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None):
     key = target_mac.upper() if target_mac else "ALL"
     if key not in _PENDING_COMMANDS:
         _PENDING_COMMANDS[key] = []
+
+    # If the same idempotent command is already pending (e.g. repeated test button clicks), deduplicate
+    cmd_type = payload.get("command")
+    if cmd_type in ("TEST_SPEAKER", "RESTART"):
+        _PENDING_COMMANDS[key] = [c for c in _PENDING_COMMANDS[key] if c.get("command") != cmd_type]
+
     _PENDING_COMMANDS[key].append(payload)
     # Retain at most 10 recent commands per target
     if len(_PENDING_COMMANDS[key]) > 10:
