@@ -81,6 +81,7 @@ void registerNodeWithBackend() {
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/register";
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
+        http.addHeader("Connection", "close");
 
         JsonDocument doc;
         doc["name"] = deviceName;
@@ -132,6 +133,7 @@ void sendHeartbeat() {
         secureClient.setTimeout(6000);
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
+        http.addHeader("Connection", "close");
 
         JsonDocument doc;
         doc["mac_address"] = macAddress;
@@ -190,6 +192,7 @@ void pollPendingNotices() {
         secureClient.setInsecure();
         secureClient.setTimeout(5000);
         http.begin(secureClient, url);
+        http.addHeader("Connection", "close");
 
         int httpCode = http.GET();
         if (httpCode == 200) {
