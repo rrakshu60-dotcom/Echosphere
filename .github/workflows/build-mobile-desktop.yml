@@ -55,11 +55,15 @@ jobs:
       - name: Build Android Debug APK
         run: cd frontend && flutter build apk --debug --android-skip-build-dependency-validation
 
+      - name: Copy & Rename APK
+        run: |
+          cp frontend/build/app/outputs/flutter-apk/app-debug.apk frontend/echosphere-app-debug.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: echosphere-android-apk
-          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          path: frontend/echosphere-app-debug.apk
 
   # ------------------------------------------------------------------
   # Job 2: Build Windows Desktop App
@@ -94,3 +98,45 @@ jobs:
         with:
           name: echosphere-windows-app
           path: frontend/echosphere-windows.zip
+
+  # ------------------------------------------------------------------
+  # Job 3: Publish to GitHub Releases (Direct 1-Click APK Download)
+  # ------------------------------------------------------------------
+  release-builds:
+    name: Publish to GitHub Releases
+    needs: [build-android-apk, build-windows-app]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: echosphere-android-apk
+          path: release-assets
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: echosphere-windows-app
+          path: release-assets
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "EchoSphere Latest Build"
+          body: |
+            ## EchoSphere Automated Build
+            
+            ### 📱 Android Installation:
+            Download **`echosphere-app-debug.apk`** below directly to your Android device, open it, and tap **Install**.
+            
+            ### 💻 Windows Installation:
+            Download **`echosphere-windows.zip`**, extract the folder, and run `echosphere.exe`.
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/echosphere-app-debug.apk
+            release-assets/echosphere-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
