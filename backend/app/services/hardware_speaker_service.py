@@ -220,3 +220,84 @@ def send_node_control_command(
         "command": command,
         "mqtt_dispatched": publish_success,
     }
+
+
+def enqueue_and_broadcast_announcement(
+    db: Session,
+    announcement_id: int,
+    title: str,
+    content: str,
+    department_code: str = "ALL",
+    zone: str = "College-Wide",
+    is_emergency: bool = False,
+    base_url: str = "https://echosphere-backend-9lv8.onrender.com",
+) -> dict:
+    """
+    Enqueues an announcement into SpeakerQueue and broadcasts to all active speaker nodes.
+    Synchronous wrapper safe to call from standard CRUD and approval endpoints.
+    """
+    # 1. Add / update SpeakerQueue table
+    existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
+    if not existing_item:
+        max_pos = db.query(SpeakerQueue).count()
+        queue_item = SpeakerQueue(
+            announcement_id=announcement_id,
+            queue_position=1 if is_emergency else max_pos + 1,
+            status="Playing" if is_emergency else "Next in Queue",
+            scheduled_time=datetime.utcnow(),
+            played_at=datetime.utcnow() if is_emergency else None,
+        )
+        db.add(queue_item)
+        db.commit()
+        db.refresh(queue_item)
+        queue_pos = queue_item.queue_position
+    else:
+        existing_item.status = "Playing" if is_emergency else "Next in Queue"
+        if is_emergency:
+            existing_item.played_at = datetime.utcnow()
+        db.commit()
+        queue_pos = existing_item.queue_position
+
+    # 2. Generate TTS audio stream (MP3 / WAV)
+    audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.mp3"
+    try:
+        from app.services.tts_service import STATIC_AUDIO_DIR, ensure_audio_dir_exists
+        from gtts import gTTS
+        ensure_audio_dir_exists()
+        mp3_filepath = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}.mp3")
+        tts = gTTS(text=f"{title}. {content}", lang="en", slow=False)
+        tts.save(mp3_filepath)
+    except Exception as e:
+        logger.warning(f"Audio file generation fallback: {e}")
+
+    # 3. Form payload and dispatch to all speaker nodes
+    topic = f"echosphere/dept/{department_code}/speakers/command"
+    if zone and zone != "College-Wide":
+        topic = f"echosphere/zone/{zone}/speakers/command"
+    if is_emergency:
+        topic = "echosphere/speakers/all/emergency"
+
+    payload = {
+        "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
+        "announcement_id": announcement_id,
+        "title": title,
+        "message": content,
+        "audio_url": audio_full_url,
+        "zone": zone,
+        "volume": 100 if is_emergency else 85,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    publish_success = publish_mqtt_command(topic, payload)
+    queue_command_for_nodes(payload, target_mac=None)
+
+    logger.info(f"📢 [AUTO-BROADCAST] Queued Announcement #{announcement_id}: '{title}' -> Dispatched to speaker nodes.")
+    return {
+        "status": "success",
+        "command": payload["command"],
+        "topic": topic,
+        "audio_url": audio_full_url,
+        "queue_position": queue_pos,
+        "mqtt_dispatched": publish_success,
+    }
+
