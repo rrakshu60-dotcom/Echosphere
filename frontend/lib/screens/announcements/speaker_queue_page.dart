@@ -324,6 +324,20 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   snackBar('EMERGENCY BROADCAST LIVE ACROSS ALL NODES');
                   _fetchHardwareData();
                 } catch (e) {
+                  // Resilient fallback: broadcast PLAY_EMERGENCY directly across all registered nodes
+                  try {
+                    if (speakerNodes.isNotEmpty) {
+                      for (final node in speakerNodes) {
+                        final nId = node['id'];
+                        if (nId is int) {
+                          await _apiService.controlSpeakerNode(nId, command: 'PLAY_EMERGENCY');
+                        }
+                      }
+                      snackBar('EMERGENCY OVERRIDE BROADCAST TO ALL HARDWARE NODES');
+                      _fetchHardwareData();
+                      return;
+                    }
+                  } catch (_) {}
                   snackBar('Emergency override status: ${e.toString()}');
                 }
               },
