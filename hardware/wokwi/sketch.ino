@@ -59,17 +59,17 @@ void playNoticeTone() {
 }
 
 void playTestTone() {
-    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Speaker Tone Burst Test (1000Hz)...");
-    digitalWrite(LED_NOTICE_PIN, HIGH);
-    tone(SPEAKER_PIN, 1000);
-    delay(300);
-    noTone(SPEAKER_PIN);
-    delay(100);
-    tone(SPEAKER_PIN, 1200);
-    delay(300);
-    noTone(SPEAKER_PIN);
+    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Running 3-Tone PA Speaker Diagnostic...");
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(LED_NOTICE_PIN, HIGH);
+        tone(SPEAKER_PIN, 800 + (i * 300));
+        delay(350);
+        noTone(SPEAKER_PIN);
+        digitalWrite(LED_NOTICE_PIN, LOW);
+        delay(150);
+    }
     digitalWrite(LED_NOTICE_PIN, LOW);
-    Serial.println("🎛️ [DIAGNOSTIC TEST] Test Tone Complete.");
+    Serial.println("🎛️ [DIAGNOSTIC TEST] Speaker & Purple LED Test Complete.");
 }
 
 // ----------------------------------------------------------------------------
