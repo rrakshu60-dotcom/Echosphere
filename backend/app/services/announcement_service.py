@@ -1,5 +1,8 @@
+import logging
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("echosphere.announcement")
 
 from app.core.enums.announcement import AnnouncementStatus
 from app.models.announcement import Announcement
@@ -93,6 +96,23 @@ def create_announcement_service(
         entity_id=created_announcement.id,
         description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
     )
+
+    if created_announcement.status == AnnouncementStatus.PUBLISHED:
+        try:
+            from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+            dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
+            p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=created_announcement.id,
+                title=created_announcement.title,
+                content=created_announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=(p_val == "EMERGENCY"),
+            )
+        except Exception as e:
+            logger.warning(f"Auto-broadcast error on announcement creation: {e}")
 
     return created_announcement
 
@@ -323,6 +343,22 @@ def approve_announcement_service(
         description=f"Approved announcement: {updated_announcement.title}",
     )
 
+    try:
+        from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+        dept_code = updated_announcement.department.code if (hasattr(updated_announcement, 'department') and updated_announcement.department) else "ALL"
+        p_val = updated_announcement.priority.value if hasattr(updated_announcement.priority, 'value') else str(updated_announcement.priority)
+        enqueue_and_broadcast_announcement(
+            db=db,
+            announcement_id=updated_announcement.id,
+            title=updated_announcement.title,
+            content=updated_announcement.description,
+            department_code=dept_code,
+            zone="College-Wide",
+            is_emergency=(p_val == "EMERGENCY"),
+        )
+    except Exception as e:
+        logger.warning(f"Auto-broadcast error on announcement approval: {e}")
+
     return {"message": "Announcement approved successfully."}
 
 
@@ -404,6 +440,22 @@ def publish_announcement_service(
 
     db.commit()
     db.refresh(announcement)
+
+    try:
+        from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+        dept_code = announcement.department.code if (hasattr(announcement, 'department') and announcement.department) else "ALL"
+        p_val = announcement.priority.value if hasattr(announcement.priority, 'value') else str(announcement.priority)
+        enqueue_and_broadcast_announcement(
+            db=db,
+            announcement_id=announcement.id,
+            title=announcement.title,
+            content=announcement.description,
+            department_code=dept_code,
+            zone="College-Wide",
+            is_emergency=(p_val == "EMERGENCY"),
+        )
+    except Exception as e:
+        logger.warning(f"Auto-broadcast error on announcement publish: {e}")
 
     return {"message": "Announcement published successfully."}
 
