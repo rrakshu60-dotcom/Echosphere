@@ -206,7 +206,14 @@ def receive_node_heartbeat(
     db: Session = Depends(get_db),
 ):
     node = update_speaker_node_heartbeat(db=db, heartbeat=heartbeat_in)
-    return {"status": "success", "node_id": node.id, "mac_address": node.mac_address}
+    from app.services.hardware_speaker_service import get_pending_commands_for_mac
+    cmds = get_pending_commands_for_mac(node.mac_address)
+    return {
+        "status": "success",
+        "node_id": node.id,
+        "mac_address": node.mac_address,
+        "pending_commands": cmds,
+    }
 
 
 @router.get("/speakers/poll/{mac_address}", summary="Poll Pending Node Commands")
