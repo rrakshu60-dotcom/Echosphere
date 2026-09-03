@@ -107,7 +107,7 @@ def register_speaker_node(
 def get_speaker_node_details(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     node = get_speaker_node_by_id(db, id)
     if not node:
@@ -120,9 +120,7 @@ def update_speaker_node_settings(
     id: int,
     update_in: SpeakerNodeUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     node = get_speaker_node_by_id(db, id)
     if not node:
@@ -136,9 +134,7 @@ async def trigger_speaker_broadcast(
     request_in: SpeakerBroadcastRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     node = get_speaker_node_by_id(db, id)
     if not node:
@@ -167,9 +163,7 @@ async def trigger_emergency_override(
     override_in: EmergencyOverrideRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     base_url = str(request.base_url).rstrip("/")
     announcement_id = 99999
@@ -195,9 +189,7 @@ def send_control_command(
     id: int,
     control_in: SpeakerControlRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     return send_node_control_command(
         db=db,
@@ -261,9 +253,7 @@ def update_queue_action(
     id: int,
     action: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     status_map = {
         "play": "Playing",
