@@ -212,6 +212,19 @@ def receive_node_heartbeat(
     return {"status": "success", "node_id": node.id, "mac_address": node.mac_address}
 
 
+@router.get("/speakers/poll/{mac_address}", summary="Poll Pending Node Commands")
+def poll_pending_node_commands(mac_address: str):
+    """
+    Allows simulated speaker nodes to poll for pending control and audio commands over REST.
+    """
+    from app.services.hardware_speaker_service import get_pending_commands_for_mac
+    cmds = get_pending_commands_for_mac(mac_address)
+    return {
+        "mac_address": mac_address,
+        "pending_commands": cmds,
+    }
+
+
 @router.get("/queue")
 def fetch_speaker_queue(
     status: Optional[str] = None,

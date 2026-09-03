@@ -4,6 +4,8 @@
 .idea/
 *.swp
 *.tmp
+.pio/
+**/.pio/
 
 # Python & Virtualenv
 __pycache__/

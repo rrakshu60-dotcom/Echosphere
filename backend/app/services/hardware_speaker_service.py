@@ -21,6 +21,40 @@ logger = logging.getLogger("echosphere.hardware")
 MQTT_BROKER_HOST = "localhost"
 MQTT_BROKER_PORT = 1883
 
+# Thread-safe in-memory queue for REST polling speaker nodes (e.g. Wokwi / ESP32)
+_PENDING_COMMANDS: Dict[str, List[dict]] = {}
+
+
+def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None):
+    """
+    Pushes a command into the pending command queue for REST polling nodes.
+    """
+    key = target_mac.upper() if target_mac else "ALL"
+    if key not in _PENDING_COMMANDS:
+        _PENDING_COMMANDS[key] = []
+    _PENDING_COMMANDS[key].append(payload)
+    # Retain at most 10 recent commands per target
+    if len(_PENDING_COMMANDS[key]) > 10:
+        _PENDING_COMMANDS[key] = _PENDING_COMMANDS[key][-10:]
+
+
+def get_pending_commands_for_mac(mac_address: str) -> List[dict]:
+    """
+    Retrieves and clears pending commands for a given MAC address, plus any broadcast commands.
+    """
+    mac_key = mac_address.upper()
+    cmds: List[dict] = []
+
+    # Node-specific commands
+    if mac_key in _PENDING_COMMANDS:
+        cmds.extend(_PENDING_COMMANDS.pop(mac_key))
+
+    # Broadcast commands (keep for other nodes but return for this node)
+    if "ALL" in _PENDING_COMMANDS:
+        cmds.extend(_PENDING_COMMANDS["ALL"])
+
+    return cmds
+
 
 def publish_mqtt_command(topic: str, payload: dict) -> bool:
     """
@@ -95,6 +129,7 @@ async def broadcast_announcement_to_speaker(
     }
 
     publish_success = publish_mqtt_command(topic, payload)
+    queue_command_for_nodes(payload, target_mac=None)
 
     return {
         "status": "success",
@@ -135,6 +170,7 @@ def send_node_control_command(
     }
 
     publish_success = publish_mqtt_command(topic, payload)
+    queue_command_for_nodes(payload, target_mac=node.mac_address)
 
     return {
         "status": "success",

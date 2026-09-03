@@ -46,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger("SpeakerNodeClient")
 
 # Configurations
-SERVER_URL = os.getenv("ECHOSPHERE_SERVER", "http://localhost:8000")
+SERVER_URL = os.getenv("ECHOSPHERE_SERVER", "https://echosphere-backend-9lv8.onrender.com")
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 DEPT_CODE = os.getenv("DEPT_CODE", "CSE")
