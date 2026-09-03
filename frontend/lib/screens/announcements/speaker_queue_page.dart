@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/utils/theme_extensions.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
@@ -19,100 +20,43 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final EchosphereApiService _apiService = EchosphereApiService();
+  Timer? _pollTimer;
 
   bool isPlaying = false;
   int activeIndex = 0;
   bool isLoading = false;
   String? errorMessage;
 
-  List<Map<String, dynamic>> queueItems = [
-    {
-      'id': 101,
-      'title': 'Emergency Campus Weather Advisory',
-      'department': 'College-Wide',
-      'duration': '00:45',
-      'scheduled_time': DateTime.now().add(const Duration(minutes: 2)).toIso8601String(),
-      'type': 'AI Speech',
-      'status': 'Next in Queue',
-    },
-    {
-      'id': 102,
-      'title': 'End Semester Practical Exam Guidelines',
-      'department': 'CSE Dept',
-      'duration': '01:20',
-      'scheduled_time': DateTime.now().add(const Duration(minutes: 8)).toIso8601String(),
-      'type': 'Recorded Voice',
-      'status': 'Queued',
-    },
-    {
-      'id': 103,
-      'title': 'Placement Drive Briefing - TCS & Infosys',
-      'department': 'Placement Cell',
-      'duration': '01:00',
-      'scheduled_time': DateTime.now().add(const Duration(minutes: 15)).toIso8601String(),
-      'type': 'AI Speech',
-      'status': 'Queued',
-    },
-  ];
-
-  List<Map<String, dynamic>> speakerNodes = [
-    {
-      'id': 1,
-      'name': 'CSE Block A Horn Speaker',
-      'mac_address': 'AA:BB:CC:DD:EE:01',
-      'ip_address': '192.168.1.101',
-      'zone': 'Block A',
-      'department': 'CSE',
-      'status': 'ONLINE',
-      'volume': 85,
-      'cpu_usage': 14.2,
-      'memory_usage': 32.5,
-    },
-    {
-      'id': 2,
-      'name': 'Central Auditorium PA System',
-      'mac_address': 'AA:BB:CC:DD:EE:02',
-      'ip_address': '192.168.1.102',
-      'zone': 'Auditorium',
-      'department': 'College-Wide',
-      'status': 'ONLINE',
-      'volume': 90,
-      'cpu_usage': 18.6,
-      'memory_usage': 41.0,
-    },
-    {
-      'id': 3,
-      'name': 'Library Reading Hall Speaker',
-      'mac_address': 'AA:BB:CC:DD:EE:03',
-      'ip_address': '192.168.1.103',
-      'zone': 'Library',
-      'department': 'College-Wide',
-      'status': 'OFFLINE',
-      'volume': 70,
-      'cpu_usage': 0.0,
-      'memory_usage': 0.0,
-    },
-  ];
+  List<Map<String, dynamic>> queueItems = [];
+  List<Map<String, dynamic>> speakerNodes = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _fetchHardwareData();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) {
+        _fetchHardwareData(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchHardwareData() async {
+  Future<void> _fetchHardwareData({bool silent = false}) async {
     if (!mounted) return;
-    setState(() {
-      isLoading = true;
-      errorMessage = null;
-    });
+    if (!silent) {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+    }
 
     try {
       final remoteNodes = await _apiService.getSpeakerNodes();
@@ -121,18 +65,15 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       if (!mounted) return;
 
       setState(() {
-        if (remoteNodes.isNotEmpty) {
-          speakerNodes = remoteNodes
-              .whereType<Map>()
-              .map((n) => Map<String, dynamic>.from(n))
-              .toList();
-        }
-        if (remoteQueue.isNotEmpty) {
-          queueItems = remoteQueue
-              .whereType<Map>()
-              .map((q) => Map<String, dynamic>.from(q))
-              .toList();
-        }
+        speakerNodes = remoteNodes
+            .whereType<Map>()
+            .map((n) => Map<String, dynamic>.from(n))
+            .toList();
+
+        queueItems = remoteQueue
+            .whereType<Map>()
+            .map((q) => Map<String, dynamic>.from(q))
+            .toList();
 
         // Clamp activeIndex safely
         if (queueItems.isEmpty) {
@@ -144,13 +85,13 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       });
     } catch (e) {
       debugPrint("Hardware data load error: $e");
-      if (mounted) {
+      if (mounted && !silent) {
         setState(() {
           errorMessage = e.toString();
         });
       }
     } finally {
-      if (mounted) setState(() => isLoading = false);
+      if (mounted && !silent) setState(() => isLoading = false);
     }
   }
 
