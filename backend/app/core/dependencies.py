@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.repositories.user_repository import get_user_by_email
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 
 def get_current_user(
@@ -41,6 +42,22 @@ def get_current_user(
         )
 
     return user
+
+
+def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    if not token:
+        return None
+    try:
+        payload = verify_access_token(token)
+        official_email = payload.get("sub")
+        if official_email:
+            return get_user_by_email(db, official_email)
+    except Exception:
+        pass
+    return None
 
 
 def require_roles(*allowed_roles) -> Callable:

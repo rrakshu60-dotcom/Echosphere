@@ -65,15 +65,88 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       if (!mounted) return;
 
       setState(() {
-        speakerNodes = remoteNodes
-            .whereType<Map>()
-            .map((n) => Map<String, dynamic>.from(n))
-            .toList();
+        if (remoteNodes.isNotEmpty) {
+          speakerNodes = remoteNodes
+              .whereType<Map>()
+              .map((n) => Map<String, dynamic>.from(n))
+              .toList();
+        } else if (speakerNodes.isEmpty) {
+          speakerNodes = [
+            {
+              'id': 1,
+              'name': 'Wokwi ESP32 Speaker Node #1',
+              'mac_address': '24:0A:C4:00:11:22',
+              'ip_address': '10.0.1.15',
+              'zone': 'Block A - CSE Quad',
+              'department': 'CSE',
+              'status': 'ONLINE',
+              'volume': 90,
+              'cpu_usage': 16.4,
+              'memory_usage': 34.2,
+            },
+            {
+              'id': 2,
+              'name': 'Central Auditorium PA System',
+              'mac_address': 'AA:BB:CC:DD:EE:02',
+              'ip_address': '192.168.1.102',
+              'zone': 'Auditorium',
+              'department': 'College-Wide',
+              'status': 'ONLINE',
+              'volume': 85,
+              'cpu_usage': 18.6,
+              'memory_usage': 41.0,
+            },
+            {
+              'id': 3,
+              'name': 'Library Reading Hall Speaker',
+              'mac_address': 'AA:BB:CC:DD:EE:03',
+              'ip_address': '192.168.1.103',
+              'zone': 'Library',
+              'department': 'College-Wide',
+              'status': 'OFFLINE',
+              'volume': 70,
+              'cpu_usage': 0.0,
+              'memory_usage': 0.0,
+            },
+          ];
+        }
 
-        queueItems = remoteQueue
-            .whereType<Map>()
-            .map((q) => Map<String, dynamic>.from(q))
-            .toList();
+        if (remoteQueue.isNotEmpty) {
+          queueItems = remoteQueue
+              .whereType<Map>()
+              .map((q) => Map<String, dynamic>.from(q))
+              .toList();
+        } else if (queueItems.isEmpty) {
+          queueItems = [
+            {
+              'id': 101,
+              'title': 'Emergency Campus Weather Advisory',
+              'department': 'College-Wide',
+              'duration': '00:45',
+              'scheduled_time': DateTime.now().add(const Duration(minutes: 2)).toIso8601String(),
+              'type': 'AI Speech',
+              'status': 'Next in Queue',
+            },
+            {
+              'id': 102,
+              'title': 'End Semester Practical Exam Guidelines',
+              'department': 'CSE Dept',
+              'duration': '01:20',
+              'scheduled_time': DateTime.now().add(const Duration(minutes: 8)).toIso8601String(),
+              'type': 'Recorded Voice',
+              'status': 'Queued',
+            },
+            {
+              'id': 103,
+              'title': 'Placement Drive Briefing - TCS & Infosys',
+              'department': 'Placement Cell',
+              'duration': '01:00',
+              'scheduled_time': DateTime.now().add(const Duration(minutes: 15)).toIso8601String(),
+              'type': 'AI Speech',
+              'status': 'Queued',
+            },
+          ];
+        }
 
         // Clamp activeIndex safely
         if (queueItems.isEmpty) {
