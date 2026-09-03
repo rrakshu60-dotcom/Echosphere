@@ -79,6 +79,7 @@ void registerNodeWithBackend() {
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/register";
+        http.setTimeout(5000);
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("Connection", "close");
@@ -103,7 +104,6 @@ void registerNodeWithBackend() {
             Serial.printf("⚠️ [REGISTER] Backend response (%d): Auto-registering on heartbeat.\n", httpCode);
         }
         http.end();
-        secureClient.stop();
     }
 }
 
@@ -130,7 +130,7 @@ void sendHeartbeat() {
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/heartbeat";
         
         secureClient.setInsecure();
-        secureClient.setTimeout(6000);
+        http.setTimeout(4000);
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("Connection", "close");
@@ -150,12 +150,12 @@ void sendHeartbeat() {
         if (httpCode == 200 || httpCode == 201) {
             digitalWrite(LED_ONLINE_PIN, HIGH);
             
-            bool handledInHeartbeat = false;
             String response = http.getString();
+            http.end(); // Close connection immediately before executing tone delays
+
             JsonDocument respDoc;
             DeserializationError err = deserializeJson(respDoc, response);
             if (!err && respDoc["pending_commands"].is<JsonArray>()) {
-                handledInHeartbeat = true;
                 JsonArray cmds = respDoc["pending_commands"].as<JsonArray>();
                 for (JsonObject cmdObj : cmds) {
                     const char* cmd = cmdObj["command"] | "";
@@ -166,50 +166,13 @@ void sendHeartbeat() {
 
             Serial.printf("💓 [HEARTBEAT] Telemetry OK (Code %d) | CPU: %d%% | RAM: %d%%\n", 
                           httpCode, (int)doc["cpu_usage"], (int)doc["memory_usage"]);
-            http.end();
-            secureClient.stop(); // Cleanly close TLS session
-
-            if (!handledInHeartbeat) {
-                delay(300); // Allow socket to cleanly terminate before next request
-                pollPendingNotices();
-            }
-            return;
         } else {
             Serial.printf("⚠️ [HEARTBEAT] Telemetry Code %d (Retrying next cycle)\n", httpCode);
             http.end();
-            secureClient.stop();
         }
     } else {
         // Blink Green LED if searching Wi-Fi
         digitalWrite(LED_ONLINE_PIN, !digitalRead(LED_ONLINE_PIN));
-    }
-}
-
-void pollPendingNotices() {
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        String url = String(SERVER_URL) + "/api/v1/hardware/speakers/poll/" + macAddress;
-        secureClient.setInsecure();
-        secureClient.setTimeout(5000);
-        http.begin(secureClient, url);
-        http.addHeader("Connection", "close");
-
-        int httpCode = http.GET();
-        if (httpCode == 200) {
-            String response = http.getString();
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, response);
-            if (!error && doc["pending_commands"].is<JsonArray>()) {
-                JsonArray cmds = doc["pending_commands"].as<JsonArray>();
-                for (JsonObject cmdObj : cmds) {
-                    const char* cmd = cmdObj["command"] | "";
-                    const char* title = cmdObj["title"] | "Campus Broadcast";
-                    executeCommand(cmd, title);
-                }
-            }
-        }
-        http.end();
-        secureClient.stop();
     }
 }
 
@@ -239,7 +202,6 @@ void setup() {
 
     // Disable SSL Certificate validation for Render backend
     secureClient.setInsecure();
-    secureClient.setTimeout(6000);
 
     Serial.println("🌐 Connecting to Wokwi-GUEST Virtual Wi-Fi...");
     WiFi.begin("Wokwi-GUEST", "");
@@ -277,8 +239,8 @@ void setup() {
 unsigned long lastCycle = 0;
 
 void loop() {
-    // Single unified heartbeat & command fetch cycle every 2.5 seconds (Low Latency)
-    if (millis() - lastCycle >= 2500) {
+    // Single unified heartbeat & command fetch cycle every 1.5 seconds (Ultra-Low Latency)
+    if (millis() - lastCycle >= 1500) {
         sendHeartbeat();
         lastCycle = millis();
     }
