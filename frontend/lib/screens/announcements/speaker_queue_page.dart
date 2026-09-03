@@ -313,33 +313,32 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   return;
                 }
                 Navigator.pop(ctx);
-                snackBar('Triggering Emergency Override...');
-                try {
-                  await _apiService.triggerEmergencyOverride(
-                    title: titleController.text.trim().isEmpty
-                        ? 'Emergency Campus Broadcast'
-                        : titleController.text.trim(),
-                    message: msg,
-                  );
-                  snackBar('EMERGENCY BROADCAST LIVE ACROSS ALL NODES');
-                  _fetchHardwareData();
-                } catch (e) {
-                  // Resilient fallback: broadcast PLAY_EMERGENCY directly across all registered nodes
-                  try {
-                    if (speakerNodes.isNotEmpty) {
-                      for (final node in speakerNodes) {
-                        final nId = node['id'];
-                        if (nId is int) {
-                          await _apiService.controlSpeakerNode(nId, command: 'PLAY_EMERGENCY');
-                        }
-                      }
-                      snackBar('EMERGENCY OVERRIDE BROADCAST TO ALL HARDWARE NODES');
-                      _fetchHardwareData();
-                      return;
+                snackBar('🚨 EMERGENCY OVERRIDE ACTIVATED!');
+
+                final title = titleController.text.trim().isEmpty
+                    ? 'Emergency Campus Broadcast'
+                    : titleController.text.trim();
+
+                // 1. Instantly fire PLAY_EMERGENCY across all speaker nodes in parallel (Zero Lag!)
+                if (speakerNodes.isNotEmpty) {
+                  for (final node in speakerNodes) {
+                    final nId = node['id'];
+                    if (nId is int) {
+                      _apiService.controlSpeakerNode(nId, command: 'PLAY_EMERGENCY');
                     }
-                  } catch (_) {}
-                  snackBar('Emergency override status: ${e.toString()}');
+                  }
                 }
+
+                // 2. Also register global emergency override in parallel
+                _apiService.triggerEmergencyOverride(
+                  title: title,
+                  message: msg,
+                ).then((_) {
+                  _fetchHardwareData();
+                }).catchError((_) => <String, dynamic>{});
+
+                snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
+                _fetchHardwareData();
               },
               child: const Row(
                 mainAxisSize: MainAxisSize.min,

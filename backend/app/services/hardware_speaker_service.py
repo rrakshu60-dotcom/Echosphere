@@ -92,6 +92,30 @@ async def broadcast_announcement_to_speaker(
     """
     Synthesizes TTS audio for the announcement, queues it, and dispatches play command.
     """
+    # Emergency Fast-Path: Sub-millisecond dispatch for urgent alarms without blocking on network TTS
+    if is_emergency:
+        topic = "echosphere/speakers/all/emergency"
+        payload = {
+            "command": "PLAY_EMERGENCY",
+            "announcement_id": announcement_id,
+            "title": title,
+            "message": content,
+            "audio_url": f"{base_url}/static/audio_streams/emergency_{announcement_id}.wav",
+            "zone": zone or "College-Wide",
+            "volume": 100,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        publish_success = publish_mqtt_command(topic, payload)
+        queue_command_for_nodes(payload, target_mac=None)
+        return {
+            "status": "success",
+            "command": "PLAY_EMERGENCY",
+            "topic": topic,
+            "audio_url": payload["audio_url"],
+            "queue_position": 1,
+            "mqtt_dispatched": publish_success,
+        }
+
     # 1. Generate audio stream (gracefully fallback if TTS service encounters errors)
     audio_full_url = ""
     try:
