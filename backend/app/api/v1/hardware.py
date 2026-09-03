@@ -1,8 +1,9 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from datetime import datetime
 
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
 from app.models.user import User
 from app.repositories.hardware_repository import (
@@ -76,7 +77,7 @@ def list_speaker_nodes(
     zone: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     return get_all_speaker_nodes(db=db, department_id=department_id, zone=zone, status=status)
 
@@ -85,16 +86,20 @@ def list_speaker_nodes(
 def register_speaker_node(
     node_in: SpeakerNodeCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     existing = get_speaker_node_by_mac(db, node_in.mac_address)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Speaker node with MAC address {node_in.mac_address} already exists.",
-        )
+        # Idempotent registration / reconnect for hardware nodes
+        existing.name = node_in.name or existing.name
+        existing.ip_address = node_in.ip_address or existing.ip_address
+        existing.zone = node_in.zone or existing.zone
+        existing.volume = node_in.volume if node_in.volume is not None else existing.volume
+        existing.status = "ONLINE"
+        existing.last_heartbeat = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
     return create_speaker_node(db=db, node_in=node_in)
 
 
@@ -229,7 +234,7 @@ def poll_pending_node_commands(mac_address: str):
 def fetch_speaker_queue(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     queue_items = get_speaker_queue(db=db, status=status)
     result = []
