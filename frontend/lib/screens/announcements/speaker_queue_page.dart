@@ -335,7 +335,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   message: msg,
                 ).then((_) {
                   _fetchHardwareData();
-                }).catchError((_) => <String, dynamic>{});
+                }).catchError((_) {});
 
                 snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
                 _fetchHardwareData();
