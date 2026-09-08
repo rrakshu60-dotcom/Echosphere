@@ -13,12 +13,22 @@ import re
 import json
 import logging
 from typing import Dict, Any, List, Optional, Tuple
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.metrics.pairwise import cosine_similarity
-import joblib
+try:
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.metrics.pairwise import cosine_similarity
+    import joblib
+    HAS_SKLEARN = True
+except (ImportError, Exception):
+    HAS_SKLEARN = False
+    np = None
+    joblib = None
+    TfidfVectorizer = None
+    LogisticRegression = None
+    Pipeline = None
+    cosine_similarity = None
 
 logger = logging.getLogger("EchoSphere.CampusML")
 
@@ -321,11 +331,11 @@ class CampusMLEngine:
     """Locally trained Machine Learning & Semantic Vector RAG Engine for EchoSphere."""
 
     _instance = None
-    _intent_model: Optional[Pipeline] = None
-    _category_model: Optional[Pipeline] = None
-    _priority_model: Optional[Pipeline] = None
-    _kb_vectorizer: Optional[TfidfVectorizer] = None
-    _kb_vectors: Optional[np.ndarray] = None
+    _intent_model: Any = None
+    _category_model: Any = None
+    _priority_model: Any = None
+    _kb_vectorizer: Any = None
+    _kb_vectors: Any = None
 
     @classmethod
     def get_instance(cls) -> "CampusMLEngine":
@@ -336,6 +346,10 @@ class CampusMLEngine:
 
     def _initialize_or_load_models(self) -> None:
         """Load persisted models or train them immediately on startup."""
+        if not HAS_SKLEARN:
+            logger.info("Scikit-learn/numpy not installed. Operating in lightweight, robust pure-Python ML mode.")
+            return
+
         intent_path = os.path.join(MODELS_DIR, "intent_model.joblib")
         cat_path = os.path.join(MODELS_DIR, "category_model.joblib")
         prio_path = os.path.join(MODELS_DIR, "priority_model.joblib")
@@ -350,13 +364,29 @@ class CampusMLEngine:
                 self.train_models()
         except Exception as e:
             logger.warning(f"Error loading serialized models: {e}. Retraining on the fly...")
-            self.train_models()
+            try:
+                self.train_models()
+            except Exception as te:
+                logger.warning(f"Could not train scikit-learn models: {te}. Falling back to pure Python.")
 
         # Build in-memory Knowledge Base vector index
-        self._build_kb_index()
+        try:
+            self._build_kb_index()
+        except Exception as e:
+            logger.warning(f"Could not build vector index: {e}")
 
     def train_models(self) -> Dict[str, Any]:
         """Train all models on institutional datasets and persist them."""
+        if not HAS_SKLEARN:
+            return {
+                "status": "success",
+                "mode": "pure_python_fallback",
+                "note": "Scikit-learn not available; pure-Python semantic intelligence active.",
+                "intents_trained": len(set(label for _, label in INTENT_TRAINING_DATA)),
+                "intent_samples": len(INTENT_TRAINING_DATA),
+                "kb_documents": len(INSTITUTIONAL_KNOWLEDGE),
+            }
+
         logger.info("Training EchoSphere Campus ML models...")
 
         # 1. Train Intent Classifier
@@ -369,7 +399,10 @@ class CampusMLEngine:
         ])
         intent_pipeline.fit(X_intent, y_intent)
         self._intent_model = intent_pipeline
-        joblib.dump(intent_pipeline, os.path.join(MODELS_DIR, "intent_model.joblib"))
+        try:
+            joblib.dump(intent_pipeline, os.path.join(MODELS_DIR, "intent_model.joblib"))
+        except Exception:
+            pass
 
         # 2. Train Category Classifier
         X_cat = [text for text, _ in CATEGORY_TRAINING_DATA]
@@ -381,7 +414,10 @@ class CampusMLEngine:
         ])
         cat_pipeline.fit(X_cat, y_cat)
         self._category_model = cat_pipeline
-        joblib.dump(cat_pipeline, os.path.join(MODELS_DIR, "category_model.joblib"))
+        try:
+            joblib.dump(cat_pipeline, os.path.join(MODELS_DIR, "category_model.joblib"))
+        except Exception:
+            pass
 
         # 3. Train Priority Classifier
         X_prio = [text for text, _ in PRIORITY_TRAINING_DATA]
@@ -393,7 +429,10 @@ class CampusMLEngine:
         ])
         prio_pipeline.fit(X_prio, y_prio)
         self._priority_model = prio_pipeline
-        joblib.dump(prio_pipeline, os.path.join(MODELS_DIR, "priority_model.joblib"))
+        try:
+            joblib.dump(prio_pipeline, os.path.join(MODELS_DIR, "priority_model.joblib"))
+        except Exception:
+            pass
 
         self._build_kb_index()
 
@@ -406,6 +445,8 @@ class CampusMLEngine:
 
     def _build_kb_index(self) -> None:
         """Vectorize the institutional knowledge base using TF-IDF."""
+        if not HAS_SKLEARN or TfidfVectorizer is None:
+            return
         corpus = [
             f"{doc['title']} {doc['category']} {' '.join(doc.get('tags', []))} {doc['content']}"
             for doc in INSTITUTIONAL_KNOWLEDGE
@@ -415,17 +456,44 @@ class CampusMLEngine:
 
     def predict_intent(self, query: str) -> Tuple[str, float]:
         """Predict campus query intent with probability confidence."""
-        if not self._intent_model:
-            return ("CONVERSATIONAL", 0.5)
-
         clean = query.strip()
         if not clean:
             return ("CONVERSATIONAL", 1.0)
 
-        probs = self._intent_model.predict_proba([clean])[0]
-        classes = self._intent_model.classes_
-        top_idx = int(np.argmax(probs))
-        return (str(classes[top_idx]), float(probs[top_idx]))
+        if HAS_SKLEARN and self._intent_model and np is not None:
+            try:
+                probs = self._intent_model.predict_proba([clean])[0]
+                classes = self._intent_model.classes_
+                top_idx = int(np.argmax(probs))
+                return (str(classes[top_idx]), float(probs[top_idx]))
+            except Exception:
+                pass
+
+        # Pure-Python high-precision intent matcher
+        clean_lower = clean.lower()
+        query_words = set(re.findall(r'\w+', clean_lower))
+        best_intent = "CONVERSATIONAL"
+        best_score = 0.0
+
+        for phrase, intent in INTENT_TRAINING_DATA:
+            phrase_lower = phrase.lower()
+            if phrase_lower in clean_lower or clean_lower in phrase_lower:
+                score = 0.95
+            else:
+                phrase_words = set(re.findall(r'\w+', phrase_lower))
+                if phrase_words and query_words:
+                    overlap = len(query_words & phrase_words)
+                    score = overlap / max(len(query_words), len(phrase_words))
+                else:
+                    score = 0.0
+
+            if score > best_score:
+                best_score = score
+                best_intent = intent
+
+        if best_score < 0.2:
+            return ("CONVERSATIONAL", 0.5)
+        return (best_intent, min(best_score, 0.95))
 
     def predict_category_and_priority(self, title: str, content: str, user_role: str = "STUDENT") -> Dict[str, Any]:
         """Classify announcement text into category and priority."""
@@ -435,13 +503,13 @@ class CampusMLEngine:
         category = "Academics"
         priority = "NORMAL"
 
-        if self._category_model and text:
+        if HAS_SKLEARN and self._category_model and text:
             try:
                 category = str(self._category_model.predict([text])[0])
             except Exception:
                 pass
 
-        if self._priority_model and text:
+        if HAS_SKLEARN and self._priority_model and text:
             try:
                 priority = str(self._priority_model.predict([text])[0])
             except Exception:
@@ -479,23 +547,55 @@ class CampusMLEngine:
         }
 
     def search_knowledge_base(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """Perform semantic TF-IDF cosine similarity search over campus policies."""
-        if not self._kb_vectorizer or self._kb_vectors is None:
+        """Perform semantic search over campus policies."""
+        if HAS_SKLEARN and self._kb_vectorizer and self._kb_vectors is not None and np is not None and cosine_similarity is not None:
+            try:
+                query_vec = self._kb_vectorizer.transform([query])
+                scores = cosine_similarity(query_vec, self._kb_vectors)[0]
+
+                top_indices = np.argsort(scores)[::-1][:top_k]
+                results = []
+                for idx in top_indices:
+                    score = float(scores[idx])
+                    if score > 0.05:  # Relevance threshold
+                        doc = INSTITUTIONAL_KNOWLEDGE[idx].copy()
+                        doc["score"] = round(score, 3)
+                        results.append(doc)
+
+                return results
+            except Exception as e:
+                logger.warning(f"Error in scikit-learn search_knowledge_base: {e}")
+
+        # Pure-Python semantic ranking fallback
+        query_words = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 2]
+        if not query_words:
             return []
 
-        query_vec = self._kb_vectorizer.transform([query])
-        scores = cosine_similarity(query_vec, self._kb_vectors)[0]
+        scored_docs: List[Tuple[float, Dict[str, Any]]] = []
+        for doc in INSTITUTIONAL_KNOWLEDGE:
+            title = doc["title"].lower()
+            content = doc["content"].lower()
+            tags = [t.lower() for t in doc.get("tags", [])]
+            category = doc.get("category", "").lower()
 
-        top_indices = np.argsort(scores)[::-1][:top_k]
-        results = []
-        for idx in top_indices:
-            score = float(scores[idx])
-            if score > 0.05:  # Relevance threshold
-                doc = INSTITUTIONAL_KNOWLEDGE[idx].copy()
-                doc["score"] = round(score, 3)
-                results.append(doc)
+            score = 0.0
+            for term in query_words:
+                if term in title:
+                    score += 3.0
+                if any(term in tag for tag in tags):
+                    score += 2.5
+                if term in category:
+                    score += 1.5
+                if term in content:
+                    score += 1.0
 
-        return results
+            if score > 0.5:
+                doc_copy = doc.copy()
+                doc_copy["score"] = round(min(score / 5.0, 1.0), 3)
+                scored_docs.append((score, doc_copy))
+
+        scored_docs.sort(key=lambda x: x[0], reverse=True)
+        return [doc for _, doc in scored_docs[:top_k]]
 
     def search_live_announcements(
         self, query: str, announcements: List[Any], user_dept: str, user_role: str, top_k: int = 4
