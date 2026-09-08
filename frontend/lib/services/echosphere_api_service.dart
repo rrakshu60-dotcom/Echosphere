@@ -95,6 +95,18 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> forgotPassword(String identifier) async {
+    try {
+      final response = await _dio.post(
+        '/auth/forgot-password',
+        data: {'identifier': identifier},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Password reset request failed.');
+    }
+  }
+
   // --- Announcements Endpoints ---
   Future<List<dynamic>> getAnnouncements({String? status, int? categoryId}) async {
     try {
@@ -125,6 +137,11 @@ class EchosphereApiService {
     String priority = 'NORMAL',
     String emergencyLevel = 'NORMAL',
     String? scheduledAt,
+    bool deliverSpeaker = false,
+    bool deliverInApp = true,
+    bool deliverPush = true,
+    String? targetAudience,
+    int? speakerNodeId,
   }) async {
     try {
       final response = await _dio.post(
@@ -136,6 +153,11 @@ class EchosphereApiService {
           'priority': priority,
           'emergency_level': emergencyLevel,
           if (scheduledAt != null) 'scheduled_at': scheduledAt,
+          'deliver_speaker': deliverSpeaker,
+          'deliver_in_app': deliverInApp,
+          'deliver_push': deliverPush,
+          if (targetAudience != null) 'target_audience': targetAudience,
+          if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
         },
       );
       return response.data as Map<String, dynamic>;
@@ -240,6 +262,20 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> archiveAnnouncement(int id, {String? reason}) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/$id/archive',
+        data: {
+          if (reason != null && reason.isNotEmpty) 'reason': reason,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to archive announcement.');
+    }
+  }
+
   Future<void> deleteAnnouncement(int id) async {
     try {
       await _dio.delete('/announcements/$id');
@@ -265,6 +301,8 @@ class EchosphereApiService {
     String? department,
     String? fullName,
     String? usnOrEmpId,
+    List<Map<String, dynamic>>? history,
+    String? sessionId,
   }) async {
     try {
       final response = await _dio.post(
@@ -275,6 +313,8 @@ class EchosphereApiService {
           'department': department,
           'full_name': fullName,
           'usn_or_emp_id': usnOrEmpId,
+          if (history != null && history.isNotEmpty) 'history': history,
+          if (sessionId != null) 'session_id': sessionId,
         },
       );
       return response.data as Map<String, dynamic>;
@@ -406,6 +446,24 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getAiStatus() async {
+    try {
+      final response = await _dio.get('/ai/status');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to get AI status.');
+    }
+  }
+
+  Future<Map<String, dynamic>> trainAiModels() async {
+    try {
+      final response = await _dio.post('/ai/train');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to train AI models.');
+    }
+  }
+
   // --- Notifications Endpoints ---
   Future<List<dynamic>> getNotifications() async {
     try {
@@ -481,9 +539,12 @@ class EchosphereApiService {
 
       final response = await _dio.get('/hardware/speakers', queryParameters: queryParams);
       return response.data as List<dynamic>;
+    } on DioException catch (e) {
+      debugPrint('Error fetching speaker nodes: ${e.message}');
+      rethrow;
     } catch (e) {
       debugPrint('Error fetching speaker nodes: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -493,6 +554,7 @@ class EchosphereApiService {
     String? ipAddress,
     String zone = 'College-Wide',
     int? departmentId,
+    String? department,
   }) async {
     try {
       final response = await _dio.post(
@@ -502,12 +564,57 @@ class EchosphereApiService {
           'mac_address': macAddress,
           'ip_address': ipAddress,
           'zone': zone,
-          'department_id': departmentId,
+          if (departmentId != null) 'department_id': departmentId,
+          if (department != null) 'department': department,
         },
       );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(e.response?.data?['detail'] ?? 'Failed to register speaker node.');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateSpeakerNode(
+    int nodeId, {
+    String? name,
+    String? ipAddress,
+    String? zone,
+    int? volume,
+    int? departmentId,
+    String? department,
+    bool? isActive,
+  }) async {
+    try {
+      final response = await _dio.put(
+        '/hardware/speakers/$nodeId',
+        data: {
+          if (name != null) 'name': name,
+          if (ipAddress != null) 'ip_address': ipAddress,
+          if (zone != null) 'zone': zone,
+          if (volume != null) 'volume': volume,
+          if (departmentId != null) 'department_id': departmentId,
+          if (department != null) 'department': department,
+          if (isActive != null) 'is_active': isActive,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to update speaker node.');
+    }
+  }
+
+  Future<Map<String, dynamic>> broadcastAnnouncementToNode(
+    int nodeId,
+    int announcementId,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/speakers/$nodeId/broadcast',
+        data: {'announcement_id': announcementId},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to broadcast announcement to node.');
     }
   }
 
@@ -559,9 +666,46 @@ class EchosphereApiService {
 
       final response = await _dio.get('/hardware/queue', queryParameters: queryParams);
       return response.data as List<dynamic>;
+    } on DioException catch (e) {
+      debugPrint('Error fetching speaker queue: ${e.message}');
+      rethrow;
     } catch (e) {
       debugPrint('Error fetching speaker queue: $e');
-      return [];
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> enqueueAnnouncement({
+    required int announcementId,
+    DateTime? scheduledTime,
+    int? speakerNodeId,
+    String? audioType,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/queue/add',
+        data: {
+          'announcement_id': announcementId,
+          if (scheduledTime != null) 'scheduled_time': scheduledTime.toIso8601String(),
+          if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
+          if (audioType != null) 'audio_type': audioType,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to enqueue announcement.');
+    }
+  }
+
+  Future<Map<String, dynamic>> reorderSpeakerQueue(List<int> queueIds) async {
+    try {
+      final response = await _dio.post(
+        '/hardware/queue/reorder',
+        data: {'queue_ids': queueIds},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to reorder queue.');
     }
   }
 
@@ -576,6 +720,20 @@ class EchosphereApiService {
       throw Exception(e.response?.data?['detail'] ?? 'Queue action failed.');
     }
   }
+
+  Future<Map<String, dynamic>> advanceSpeakerQueue() async {
+    try {
+      final response = await _dio.post('/hardware/queue/advance');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      debugPrint('Advance speaker queue error: $e');
+      return {'status': 'error', 'detail': e.message};
+    } catch (e) {
+      debugPrint('Advance speaker queue unexpected error: $e');
+      return {'status': 'error', 'detail': e.toString()};
+    }
+  }
+
 
   Future<Map<String, dynamic>> createUser({
     required String fullName,

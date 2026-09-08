@@ -37,6 +37,7 @@ class SpeakerNodeHeartbeat(BaseModel):
 class SpeakerNodeResponse(SpeakerNodeBase):
     id: int
     status: str
+    department_name: Optional[str] = None
     cpu_usage: Optional[float] = 0.0
     memory_usage: Optional[float] = 0.0
     disk_space: Optional[float] = 0.0
@@ -65,7 +66,7 @@ class EmergencyOverrideRequest(BaseModel):
 
 
 class SpeakerControlRequest(BaseModel):
-    command: str = Field(..., example="PLAY_ANNOUNCEMENT")  # PLAY_ANNOUNCEMENT, PAUSE, RESUME, SKIP, CANCEL, RESTART, TEST_SPEAKER
+    command: str = Field(..., example="PLAY_ANNOUNCEMENT")  # PLAY_ANNOUNCEMENT, PAUSE, RESUME, SKIP, CANCEL, RESTART, TEST_SPEAKER, SET_VOLUME
     announcement_id: Optional[int] = None
     audio_url: Optional[str] = None
     volume: Optional[int] = None
@@ -87,3 +88,14 @@ class SpeakerQueueItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ReorderQueueRequest(BaseModel):
+    queue_ids: List[int] = Field(..., example=[3, 1, 2])
+
+
+class EnqueueAnnouncementRequest(BaseModel):
+    announcement_id: int
+    scheduled_time: Optional[datetime] = None
+    speaker_node_id: Optional[int] = None
+

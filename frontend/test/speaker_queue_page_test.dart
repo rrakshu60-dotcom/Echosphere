@@ -1,21 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 
 void main() {
   setUp(() {
     Get.testMode = true;
+    SharedPreferences.setMockInitialValues({});
   });
 
   tearDown(() {
     Get.reset();
   });
 
-  testWidgets('SpeakerQueuePage renders and tab switching works smoothly', (WidgetTester tester) async {
+  testWidgets('SpeakerQueuePage shows Access Restricted screen for Student role', (WidgetTester tester) async {
+    final auth = Get.put(AuthController());
+    auth.currentUser.value = EchosphereUser(
+      id: 99,
+      fullName: 'Student John',
+      role: 'Student',
+    );
+
+    await tester.pumpWidget(
+      const GetMaterialApp(
+        home: SpeakerQueuePage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Access Restricted'), findsOneWidget);
+    expect(find.textContaining('authority to display the smart speaker dashboard'), findsOneWidget);
+  });
+
+  testWidgets('SpeakerQueuePage renders tabs and dialogs for authorized Admin role', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
+
+    final auth = Get.put(AuthController());
+    auth.currentUser.value = EchosphereUser(
+      id: 1,
+      fullName: 'Admin User',
+      role: 'Dev Admin',
+    );
 
     await tester.pumpWidget(
       const GetMaterialApp(
@@ -67,6 +96,13 @@ void main() {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
+
+    final auth = Get.put(AuthController());
+    auth.currentUser.value = EchosphereUser(
+      id: 1,
+      fullName: 'Admin User',
+      role: 'Dev Admin',
+    );
 
     await tester.pumpWidget(
       const GetMaterialApp(

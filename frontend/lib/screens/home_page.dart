@@ -2,10 +2,10 @@ import 'package:anymex/ai/echosphere_ai.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/admin/user_management_page.dart';
+import 'package:anymex/screens/admin/announcement_management_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/screens/home/home_dashboard_widgets.dart';
 import 'package:anymex/screens/notifications/notifications_page.dart';
@@ -321,21 +321,22 @@ class _HomePageState extends State<HomePage> {
                   ),
                   child: const Text('Login'),
                 )
-              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer' || role == 'HoD' || role == 'Teacher') ...[
+              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer' || role == 'HoD') ...[
                 IconButton(
-                  tooltip: 'Smart Speaker System',
-                  icon: const Icon(Icons.podcasts_rounded),
+                  tooltip: 'Notice Moderation Hub',
+                  icon: const Icon(Icons.auto_fix_high_rounded),
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                    MaterialPageRoute(builder: (_) => const AnnouncementManagementPage()),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'User Management Hub',
-                  icon: const Icon(Icons.manage_accounts_rounded),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const UserManagementPage()),
+                if (role != 'HoD')
+                  IconButton(
+                    tooltip: 'User Management Hub',
+                    icon: const Icon(Icons.manage_accounts_rounded),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const UserManagementPage()),
+                    ),
                   ),
-                ),
               ],
             ],
           ),

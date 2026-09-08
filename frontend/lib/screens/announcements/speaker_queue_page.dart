@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/utils/theme_extensions.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
@@ -7,6 +8,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
@@ -25,21 +27,31 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   bool isPlaying = false;
   int activeIndex = 0;
   bool isLoading = false;
+  bool _hasFetched = false;
   String? errorMessage;
 
   List<Map<String, dynamic>> queueItems = [];
   List<Map<String, dynamic>> speakerNodes = [];
 
+  bool get _isStudent {
+    if (!Get.isRegistered<AuthController>()) return true;
+    final user = Get.find<AuthController>().currentUser.value;
+    if (user == null) return true;
+    return user.role.toLowerCase() == 'student';
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _fetchHardwareData();
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (mounted) {
-        _fetchHardwareData(silent: true);
-      }
-    });
+    if (!_isStudent) {
+      _fetchHardwareData();
+      _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (mounted && !_isStudent) {
+          _fetchHardwareData(silent: true);
+        }
+      });
+    }
   }
 
   @override
@@ -50,7 +62,15 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   }
 
   Future<void> _fetchHardwareData({bool silent = false}) async {
-    if (!mounted) return;
+    if (!mounted || _isStudent) {
+      if (mounted) {
+        setState(() {
+          speakerNodes = [];
+          queueItems = [];
+        });
+      }
+      return;
+    }
     if (!silent) {
       setState(() {
         isLoading = true;
@@ -65,103 +85,74 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       if (!mounted) return;
 
       setState(() {
-        if (remoteNodes.isNotEmpty) {
-          speakerNodes = remoteNodes
-              .whereType<Map>()
-              .map((n) => Map<String, dynamic>.from(n))
-              .toList();
-        } else if (speakerNodes.isEmpty) {
-          speakerNodes = [
-            {
-              'id': 1,
-              'name': 'Wokwi ESP32 Speaker Node #1',
-              'mac_address': '24:0A:C4:00:11:22',
-              'ip_address': '10.0.1.15',
-              'zone': 'Block A - CSE Quad',
-              'department': 'CSE',
-              'status': 'ONLINE',
-              'volume': 90,
-              'cpu_usage': 16.4,
-              'memory_usage': 34.2,
-            },
-            {
-              'id': 2,
-              'name': 'Central Auditorium PA System',
-              'mac_address': 'AA:BB:CC:DD:EE:02',
-              'ip_address': '192.168.1.102',
-              'zone': 'Auditorium',
-              'department': 'College-Wide',
-              'status': 'ONLINE',
-              'volume': 85,
-              'cpu_usage': 18.6,
-              'memory_usage': 41.0,
-            },
-            {
-              'id': 3,
-              'name': 'Library Reading Hall Speaker',
-              'mac_address': 'AA:BB:CC:DD:EE:03',
-              'ip_address': '192.168.1.103',
-              'zone': 'Library',
-              'department': 'College-Wide',
-              'status': 'OFFLINE',
-              'volume': 70,
-              'cpu_usage': 0.0,
-              'memory_usage': 0.0,
-            },
-          ];
-        }
+        _hasFetched = true;
+        speakerNodes = remoteNodes
+            .whereType<Map>()
+            .map((n) => Map<String, dynamic>.from(n))
+            .toList();
 
-        if (remoteQueue.isNotEmpty) {
-          queueItems = remoteQueue
-              .whereType<Map>()
-              .map((q) => Map<String, dynamic>.from(q))
-              .toList();
+        queueItems = remoteQueue
+            .whereType<Map>()
+            .map((q) => Map<String, dynamic>.from(q))
+            .toList();
+
+        // Sync activeIndex and isPlaying dynamically with server status
+        final playingIdx = queueItems.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
+        if (playingIdx != -1) {
+          activeIndex = playingIdx;
+          isPlaying = true;
         } else if (queueItems.isEmpty) {
-          queueItems = [
-            {
-              'id': 101,
-              'title': 'Emergency Campus Weather Advisory',
-              'department': 'College-Wide',
-              'duration': '00:45',
-              'scheduled_time': DateTime.now().add(const Duration(minutes: 2)).toIso8601String(),
-              'type': 'AI Speech',
-              'status': 'Next in Queue',
-            },
-            {
-              'id': 102,
-              'title': 'End Semester Practical Exam Guidelines',
-              'department': 'CSE Dept',
-              'duration': '01:20',
-              'scheduled_time': DateTime.now().add(const Duration(minutes: 8)).toIso8601String(),
-              'type': 'Recorded Voice',
-              'status': 'Queued',
-            },
-            {
-              'id': 103,
-              'title': 'Placement Drive Briefing - TCS & Infosys',
-              'department': 'Placement Cell',
-              'duration': '01:00',
-              'scheduled_time': DateTime.now().add(const Duration(minutes: 15)).toIso8601String(),
-              'type': 'AI Speech',
-              'status': 'Queued',
-            },
-          ];
-        }
-
-        // Clamp activeIndex safely
-        if (queueItems.isEmpty) {
           activeIndex = 0;
           isPlaying = false;
-        } else if (activeIndex >= queueItems.length) {
-          activeIndex = queueItems.length - 1;
+        } else {
+          final pausedIdx = queueItems.indexWhere((q) => q['status']?.toString().toLowerCase() == 'paused');
+          if (pausedIdx != -1) {
+            activeIndex = pausedIdx;
+            isPlaying = false;
+          } else if (activeIndex >= queueItems.length) {
+            activeIndex = queueItems.length - 1;
+          }
         }
       });
     } catch (e) {
       debugPrint("Hardware data load error: $e");
-      if (mounted && !silent) {
-        setState(() {
-          errorMessage = e.toString();
-        });
+      if (mounted) {
+        if (!silent) {
+          setState(() {
+            errorMessage = e.toString();
+          });
+        }
+        // Only on initial cold start failure before any data was ever fetched
+        if (!_hasFetched && speakerNodes.isEmpty && queueItems.isEmpty) {
+          setState(() {
+            speakerNodes = [
+              {
+                'id': 1,
+                'name': 'Wokwi ESP32 Speaker Node #1',
+                'mac_address': '24:0A:C4:00:11:22',
+                'ip_address': '10.0.1.15',
+                'zone': 'Block A - CSE Quad',
+                'department': 'CSE',
+                'status': 'ONLINE',
+                'volume': 90,
+                'cpu_usage': 16.4,
+                'memory_usage': 34.2,
+              },
+              {
+                'id': 2,
+                'name': 'Central Auditorium PA System',
+                'mac_address': 'AA:BB:CC:DD:EE:02',
+                'ip_address': '192.168.1.102',
+                'zone': 'Auditorium',
+                'department': 'College-Wide',
+                'status': 'ONLINE',
+                'volume': 85,
+                'cpu_usage': 18.6,
+                'memory_usage': 41.0,
+              },
+            ];
+          });
+        }
       }
     } finally {
       if (mounted && !silent) setState(() => isLoading = false);
@@ -239,6 +230,80 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
           ? 'Broadcasting: ${item['title'] ?? 'Announcement'}'
           : 'Speaker playback paused.',
     );
+  }
+
+  Future<void> _skipCurrent() async {
+    if (queueItems.isEmpty) return;
+    final item = queueItems[activeIndex];
+    final itemId = item['id'];
+    if (itemId != null && itemId is int) {
+      try {
+        await _apiService.queueAction(itemId, 'skip');
+      } catch (e) {
+        debugPrint('Skip queue error: $e');
+      }
+    }
+    if (activeIndex < queueItems.length - 1) {
+      setState(() {
+        activeIndex++;
+        isPlaying = true;
+      });
+      snackBar('Skipped to: ${queueItems[activeIndex]['title'] ?? 'Announcement'}');
+    } else {
+      setState(() {
+        isPlaying = false;
+      });
+      snackBar('Reached end of speaker queue.');
+    }
+    _fetchHardwareData(silent: true);
+  }
+
+  Future<void> _stopCurrent() async {
+    if (queueItems.isEmpty) return;
+    final item = queueItems[activeIndex];
+    final itemId = item['id'];
+    if (itemId != null && itemId is int) {
+      try {
+        await _apiService.queueAction(itemId, 'cancel');
+      } catch (e) {
+        debugPrint('Stop queue error: $e');
+      }
+    }
+    setState(() {
+      isPlaying = false;
+    });
+    snackBar('Playback stopped.');
+    _fetchHardwareData(silent: true);
+  }
+
+  void _previewAudio() {
+    if (queueItems.isEmpty) {
+      snackBar('No announcement selected for preview.');
+      return;
+    }
+    final item = queueItems[activeIndex];
+    final title = item['title'] ?? 'Notice';
+    snackBar('🔊 Synthesizing and previewing voice announcement: "$title"');
+  }
+
+  Future<void> _reorderQueue(int from, int to) async {
+    if (from < 0 || from >= queueItems.length || to < 0 || to >= queueItems.length) return;
+    setState(() {
+      final item = queueItems.removeAt(from);
+      queueItems.insert(to, item);
+      if (activeIndex == from) {
+        activeIndex = to;
+      } else if (activeIndex == to) {
+        activeIndex = from;
+      }
+    });
+    snackBar('Reordered announcement in speaker queue.');
+    try {
+      final ids = queueItems.map((e) => e['id'] as int).toList();
+      await _apiService.reorderSpeakerQueue(ids);
+    } catch (e) {
+      debugPrint('Reorder queue backend error: $e');
+    }
   }
 
   void _showEmergencyDialog(BuildContext context) {
@@ -319,25 +384,15 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                     ? 'Emergency Campus Broadcast'
                     : titleController.text.trim();
 
-                // 1. Instantly fire PLAY_EMERGENCY across all speaker nodes in parallel (Zero Lag!)
-                if (speakerNodes.isNotEmpty) {
-                  for (final node in speakerNodes) {
-                    final nId = node['id'];
-                    if (nId is int) {
-                      _apiService.controlSpeakerNode(nId, command: 'PLAY_EMERGENCY');
-                    }
-                  }
+                try {
+                  await _apiService.triggerEmergencyOverride(
+                    title: title,
+                    message: msg,
+                  );
+                  snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
+                } catch (e) {
+                  snackBar('Emergency broadcast sent: ${e.toString()}');
                 }
-
-                // 2. Also register global emergency override in parallel
-                _apiService.triggerEmergencyOverride(
-                  title: title,
-                  message: msg,
-                ).then((_) {
-                  _fetchHardwareData();
-                }).catchError((_) {});
-
-                snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
                 _fetchHardwareData();
               },
               child: const Row(
@@ -360,11 +415,188 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     );
   }
 
+  void _showEnqueueDialog(BuildContext context) {
+    int? selectedAnnouncementId;
+    String selectedAudioType = 'AI Speech';
+    List<dynamic> announcements = [];
+    bool loadingAnnouncements = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (loadingAnnouncements && announcements.isEmpty) {
+              _apiService.getAnnouncements().then((data) {
+                if (ctx.mounted) {
+                  setDialogState(() {
+                    loadingAnnouncements = false;
+                    announcements = data;
+                    if (announcements.isNotEmpty) {
+                      selectedAnnouncementId = announcements.first['id'] as int?;
+                    }
+                  });
+                }
+              }).catchError((e) {
+                if (ctx.mounted) {
+                  setDialogState(() => loadingAnnouncements = false);
+                }
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: context.colors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.add_to_queue_rounded, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: EchoSphereText(
+                      text: 'Enqueue Notice to PA System',
+                      size: 15,
+                      variant: TextVariant.bold,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (loadingAnnouncements)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (announcements.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12.0),
+                        child: EchoSphereText(
+                          text: 'No published announcements available to enqueue.',
+                          size: 12,
+                          color: context.colors.onSurface.opaque(0.7),
+                        ),
+                      )
+                    else ...[
+                      const EchoSphereText(
+                        text: 'Select Notice to Broadcast:',
+                        size: 11,
+                        variant: TextVariant.semiBold,
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: selectedAnnouncementId,
+                        isExpanded: true,
+                        dropdownColor: context.colors.surface,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: announcements.map((ann) {
+                          final id = ann['id'] as int? ?? 0;
+                          final title = (ann['title'] ?? 'Notice #$id').toString();
+                          return DropdownMenuItem<int>(
+                            value: id,
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: context.colors.onSurface, fontSize: 12),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedAnnouncementId = val);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const EchoSphereText(
+                        text: 'Audio Engine:',
+                        size: 11,
+                        variant: TextVariant.semiBold,
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        value: selectedAudioType,
+                        isExpanded: true,
+                        dropdownColor: context.colors.surface,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'AI Speech',
+                            child: Text('AI Speech Synthesis (TTS)', style: TextStyle(fontSize: 12)),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Recorded Voice',
+                            child: Text('Recorded Voice Clip', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedAudioType = val);
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: EchoSphereText(
+                    text: 'Cancel',
+                    color: context.colors.onSurface.opaque(0.7),
+                  ),
+                ),
+                EchoSphereButton(
+                  color: context.colors.primary,
+                  radius: 12,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  onTap: selectedAnnouncementId == null
+                      ? null
+                      : () async {
+                          Navigator.pop(ctx);
+                          try {
+                            await _apiService.enqueueAnnouncement(
+                              announcementId: selectedAnnouncementId!,
+                              audioType: selectedAudioType,
+                            );
+                            snackBar('Notice successfully queued for speaker broadcast!');
+                            _fetchHardwareData();
+                          } catch (e) {
+                            snackBar('Enqueue failed: ${e.toString()}');
+                          }
+                        },
+                  child: const EchoSphereText(
+                    text: 'Add to Queue',
+                    size: 12,
+                    variant: TextVariant.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showRegisterNodeDialog(BuildContext context) {
     final nameCtrl = TextEditingController();
     final macCtrl = TextEditingController();
     final ipCtrl = TextEditingController();
     String selectedZone = 'Block A';
+    String selectedDept = 'College-Wide';
+
+    const zones = ['College-Wide', 'Block A', 'Block B', 'Auditorium', 'Library', 'Hostel', 'Lab-Block'];
+    const depts = ['College-Wide', 'CSE', 'ECE', 'MECH', 'CIVIL', 'AIML'];
 
     showDialog(
       context: context,
@@ -423,25 +655,33 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                         labelText: 'Zone',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      items: [
-                        'College-Wide',
-                        'Block A',
-                        'Block B',
-                        'Auditorium',
-                        'Library',
-                        'Hostel',
-                        'Lab-Block'
-                      ]
+                      items: zones
                           .map((z) => DropdownMenuItem(
                                 value: z,
-                                child: Text(
-                                  z,
-                                  style: TextStyle(color: context.colors.onSurface),
-                                ),
+                                child: Text(z, style: TextStyle(color: context.colors.onSurface)),
                               ))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setDialogState(() => selectedZone = val);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedDept,
+                      isExpanded: true,
+                      dropdownColor: context.colors.surface,
+                      decoration: InputDecoration(
+                        labelText: 'Department',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: depts
+                          .map((d) => DropdownMenuItem(
+                                value: d,
+                                child: Text(d, style: TextStyle(color: context.colors.onSurface)),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDept = val);
                       },
                     ),
                   ],
@@ -471,6 +711,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                         macAddress: macCtrl.text.trim(),
                         ipAddress: ipCtrl.text.trim().isEmpty ? null : ipCtrl.text.trim(),
                         zone: selectedZone,
+                        department: selectedDept,
                       );
                       snackBar('Speaker Node registered successfully!');
                       _fetchHardwareData();
@@ -493,9 +734,244 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     );
   }
 
+  void _showEditNodeDialog(BuildContext context, Map<String, dynamic> node) {
+    final nameCtrl = TextEditingController(text: node['name']?.toString() ?? '');
+    String selectedZone = (node['zone']?.toString() ?? 'Block A');
+    String selectedDept = (node['department']?.toString() ?? node['department_name']?.toString() ?? 'College-Wide');
+    double currentVolume = ((node['volume'] as num?)?.toDouble() ?? 80.0).clamp(0.0, 100.0);
+
+    const zones = ['College-Wide', 'Block A', 'Block B', 'Auditorium', 'Library', 'Hostel', 'Lab-Block'];
+    if (!zones.contains(selectedZone)) selectedZone = 'College-Wide';
+
+    const depts = ['College-Wide', 'CSE', 'ECE', 'MECH', 'CIVIL', 'AIML'];
+    if (!depts.contains(selectedDept)) selectedDept = 'College-Wide';
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: context.colors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const EchoSphereText(
+                text: 'Configure Speaker Node',
+                size: 15,
+                variant: TextVariant.bold,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      style: TextStyle(color: context.colors.onSurface),
+                      decoration: InputDecoration(
+                        labelText: 'Device Name',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedZone,
+                      isExpanded: true,
+                      dropdownColor: context.colors.surface,
+                      decoration: InputDecoration(
+                        labelText: 'Zone',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: zones
+                          .map((z) => DropdownMenuItem(
+                                value: z,
+                                child: Text(z, style: TextStyle(color: context.colors.onSurface)),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedZone = val);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: selectedDept,
+                      isExpanded: true,
+                      dropdownColor: context.colors.surface,
+                      decoration: InputDecoration(
+                        labelText: 'Department',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: depts
+                          .map((d) => DropdownMenuItem(
+                                value: d,
+                                child: Text(d, style: TextStyle(color: context.colors.onSurface)),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedDept = val);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        EchoSphereText(
+                          text: 'Volume Level',
+                          size: 12,
+                          variant: TextVariant.bold,
+                          color: context.colors.onSurface,
+                        ),
+                        EchoSphereText(
+                          text: '${currentVolume.round()}%',
+                          size: 12,
+                          variant: TextVariant.bold,
+                          color: context.colors.primary,
+                        ),
+                      ],
+                    ),
+                    Slider(
+                      value: currentVolume,
+                      min: 0,
+                      max: 100,
+                      divisions: 20,
+                      activeColor: context.colors.primary,
+                      onChanged: (val) {
+                        setDialogState(() => currentVolume = val);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: EchoSphereText(
+                    text: 'Cancel',
+                    color: context.colors.onSurface.opaque(0.7),
+                  ),
+                ),
+                EchoSphereButton(
+                  color: context.colors.primary,
+                  radius: 12,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final nodeId = node['id'];
+                    if (nodeId != null && nodeId is int) {
+                      try {
+                        await _apiService.updateSpeakerNode(
+                          nodeId,
+                          name: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : null,
+                          zone: selectedZone,
+                          department: selectedDept,
+                          volume: currentVolume.round(),
+                        );
+                        snackBar('Speaker Node updated successfully!');
+                        _fetchHardwareData();
+                      } catch (e) {
+                        snackBar('Update error: ${e.toString()}');
+                      }
+                    }
+                  },
+                  child: const EchoSphereText(
+                    text: 'Save Changes',
+                    size: 12,
+                    variant: TextVariant.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final authRegistered = Get.isRegistered<AuthController>();
+    final user = authRegistered ? Get.find<AuthController>().currentUser.value : null;
+    final role = user?.role ?? 'Student';
+    final isStudent = user == null || role.toLowerCase() == 'student';
+
+    if (isStudent) {
+      return Scaffold(
+        backgroundColor: context.colors.surface,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: canPop
+              ? IconButton(
+                  icon: Icon(Icons.arrow_back_rounded, color: context.colors.primary),
+                  onPressed: () => Navigator.of(context).pop(),
+                )
+              : null,
+          title: const EchoSphereText(
+            text: 'Access Restricted',
+            size: 16,
+            variant: TextVariant.bold,
+          ),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: EchoSphereContainer(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.gpp_bad_rounded,
+                      size: 48,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const EchoSphereText(
+                    text: 'Smart Speaker System',
+                    size: 16,
+                    variant: TextVariant.bold,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  EchoSphereText(
+                    text:
+                        "I don't have the authority to display the smart speaker dashboard or playback queue. Please consult your department office or system administrator for assistance.",
+                    size: 12,
+                    textAlign: TextAlign.center,
+                    color: context.colors.onSurface.opaque(0.7),
+                  ),
+                  const SizedBox(height: 20),
+                  EchoSphereButton(
+                    onTap: () {
+                      if (canPop) {
+                        Navigator.of(context).pop();
+                      } else {
+                        Get.offAllNamed('/home');
+                      }
+                    },
+                    child: const EchoSphereText(
+                      text: 'Return to Dashboard',
+                      size: 12,
+                      variant: TextVariant.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: context.colors.surface,
@@ -737,6 +1213,44 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous_rounded, size: 20),
+                        tooltip: 'Previous',
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                        onPressed: (activeIndex > 0 && queueItems.isNotEmpty)
+                            ? () => _togglePlayPause(index: activeIndex - 1)
+                            : null,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.stop_rounded, size: 20, color: Colors.redAccent),
+                        tooltip: 'Stop Playback',
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                        onPressed: isPlaying ? _stopCurrent : null,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next_rounded, size: 20),
+                        tooltip: 'Skip to Next',
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                        onPressed: (activeIndex < queueItems.length - 1 && queueItems.isNotEmpty)
+                            ? _skipCurrent
+                            : null,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.volume_up_rounded, size: 20, color: context.colors.primary),
+                        tooltip: 'Voice Preview',
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                        onPressed: queueItems.isNotEmpty ? _previewAudio : null,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -759,6 +1273,44 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
             ),
           ),
           Divider(height: 1, color: context.colors.outline.opaque(0.12)),
+
+          // Queue Action Bar (Header with Enqueue Notice button)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: EchoSphereText(
+                    text: 'Live Speaker Queue (${queueItems.length})',
+                    size: 13,
+                    variant: TextVariant.bold,
+                    color: context.colors.primary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                EchoSphereButton(
+                  color: context.colors.primary,
+                  radius: 12,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  onTap: () => _showEnqueueDialog(context),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_to_queue_rounded, size: 13, color: Colors.white),
+                      SizedBox(width: 4),
+                      EchoSphereText(
+                        text: 'Enqueue Notice',
+                        size: 11,
+                        variant: TextVariant.bold,
+                        color: Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
 
           // Queue Items List or Empty State
           Expanded(
@@ -900,31 +1452,29 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 onPressed: () => _togglePlayPause(index: i),
                               ),
                               IconButton(
-                                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                 padding: EdgeInsets.zero,
+                                tooltip: 'Move Up',
                                 icon: Icon(
                                   Icons.arrow_upward_rounded,
                                   size: 16,
                                   color: context.colors.onSurface.opaque(i == 0 ? 0.2 : 0.7),
                                 ),
-                                onPressed: i == 0
-                                    ? null
-                                    : () {
-                                        setState(() {
-                                          final temp = queueItems[i];
-                                          queueItems[i] = queueItems[i - 1];
-                                          queueItems[i - 1] = temp;
-                                          if (activeIndex == i) {
-                                            activeIndex = i - 1;
-                                          } else if (activeIndex == i - 1) {
-                                            activeIndex = i;
-                                          }
-                                        });
-                                        snackBar('Reordered announcement in speaker queue.');
-                                      },
+                                onPressed: i == 0 ? null : () => _reorderQueue(i, i - 1),
                               ),
                               IconButton(
-                                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Move Down',
+                                icon: Icon(
+                                  Icons.arrow_downward_rounded,
+                                  size: 16,
+                                  color: context.colors.onSurface.opaque(i == queueItems.length - 1 ? 0.2 : 0.7),
+                                ),
+                                onPressed: i == queueItems.length - 1 ? null : () => _reorderQueue(i, i + 1),
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                 padding: EdgeInsets.zero,
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     size: 16, color: Colors.redAccent),
@@ -940,10 +1490,11 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                   }
                                   setState(() {
                                     queueItems.removeAt(i);
-                                    if (activeIndex >= queueItems.length) {
-                                      activeIndex = queueItems.isNotEmpty
-                                          ? queueItems.length - 1
-                                          : 0;
+                                    if (queueItems.isEmpty) {
+                                      activeIndex = 0;
+                                      isPlaying = false;
+                                    } else if (activeIndex >= queueItems.length) {
+                                      activeIndex = queueItems.length - 1;
                                     }
                                   });
                                   snackBar('Item removed from speaker queue.');
@@ -1188,6 +1739,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                         snackBar('Restart command sent: ${e.toString()}');
                                       }
                                     },
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.edit_rounded,
+                                        size: 16, color: context.colors.primary),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'Configure Node',
+                                    onPressed: () => _showEditNodeDialog(context, node),
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.delete_outline_rounded,

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationController extends GetxController {
   final RxSet<int> readIds = <int>{}.obs;
+  final RxList<Map<String, dynamic>> liveNotifications = <Map<String, dynamic>>[].obs;
   final RxBool isLoading = false.obs;
   final RxBool showOnlyUnread = true.obs;
   final RxString historySearchQuery = ''.obs;
@@ -19,10 +21,65 @@ class NotificationController extends GetxController {
   void onInit() {
     super.onInit();
     _loadReadStateFromDisk();
+    fetchBackendNotifications();
   }
 
-  // Derive notifications strictly from real active app announcements (zero dummy data)
+  Future<void> fetchBackendNotifications() async {
+    try {
+      final res = await EchosphereApiService().getNotifications();
+      if (res.isNotEmpty) {
+        final annCtrl = Get.isRegistered<AnnouncementController>()
+            ? Get.find<AnnouncementController>()
+            : Get.put(AnnouncementController());
+
+        final mapped = res.map((n) {
+          final annId = n['announcement_id'] as int?;
+          AnnouncementModel? matchedAnn;
+          if (annId != null) {
+            final idx = annCtrl.announcements.indexWhere((a) => a.id == annId);
+            if (idx != -1) matchedAnn = annCtrl.announcements[idx];
+          }
+
+          final priority = (n['priority'] ?? 'NORMAL').toString().toUpperCase();
+          final typeStr = priority == 'EMERGENCY'
+              ? 'EMERGENCY'
+              : ((n['category'] ?? '').toString().toLowerCase().contains('placement')
+                  ? 'PLACEMENT'
+                  : 'APPROVAL');
+
+          final isReadVal = n['is_read'] == true;
+          final notifId = n['id'] as int;
+          if (isReadVal) {
+            readIds.add(notifId);
+          }
+
+          return {
+            'id': notifId,
+            'announcement_id': annId,
+            'title': n['title'] ?? (matchedAnn?.title ?? 'Campus Announcement'),
+            'message': n['message'] ?? (matchedAnn?.description ?? ''),
+            'type': typeStr,
+            'time': n['created_at'] != null
+                ? DateTime.tryParse(n['created_at'].toString()) ?? DateTime.now()
+                : DateTime.now(),
+            'announcement': matchedAnn,
+          };
+        }).toList();
+
+        liveNotifications.assignAll(mapped);
+        update();
+      }
+    } catch (e) {
+      debugPrint('Live notification fetch fallback: $e');
+    }
+  }
+
+  // Derive notifications from live database records if available, with resilient local fallback
   List<Map<String, dynamic>> get allNotifications {
+    if (liveNotifications.isNotEmpty) {
+      return liveNotifications;
+    }
+
     final annCtrl = Get.isRegistered<AnnouncementController>()
         ? Get.find<AnnouncementController>()
         : Get.put(AnnouncementController());
@@ -127,6 +184,9 @@ class NotificationController extends GetxController {
       readIds.refresh();
       _saveReadStateToDisk();
       update();
+
+      // Background async backend sync
+      EchosphereApiService().markNotificationRead(id).catchError((_) {});
     }
   }
 
@@ -146,6 +206,9 @@ class NotificationController extends GetxController {
     readIds.refresh();
     _saveReadStateToDisk();
     update();
+
+    // Background async backend sync
+    EchosphereApiService().markAllNotificationsRead().catchError((_) {});
   }
 
   void clearAllHistory() {

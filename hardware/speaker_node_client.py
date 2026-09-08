@@ -269,6 +269,27 @@ class SpeakerNodeClient:
             logger.info("🎛️ [TEST] Executing Speaker Diagnostic Test...")
             threading.Thread(target=self._run_speaker_test, daemon=True).start()
 
+        elif cmd == "PAUSE":
+            logger.info("⏸️ [PAUSE] Pausing current playback...")
+            self.current_status = "PAUSED"
+
+        elif cmd == "RESUME":
+            logger.info("▶️ [RESUME] Resuming playback...")
+            self.current_status = "PLAYING"
+
+        elif cmd in ("STOP", "CANCEL", "SKIP"):
+            logger.info(f"⏹️ [{cmd}] Stopping / skipping playback...")
+            self.current_status = "ONLINE"
+
+        elif cmd == "SET_VOLUME":
+            new_vol = data.get("volume")
+            if new_vol is not None:
+                try:
+                    self.volume = max(0, min(100, int(new_vol)))
+                    logger.info(f"🔊 [VOLUME] Speaker volume set to {self.volume}%")
+                except Exception as e:
+                    logger.warning(f"Failed to set volume: {e}")
+
         elif cmd == "RESTART":
             logger.info("🔄 [RESTART] Rebooting hardware speaker subsystem...")
             self.current_status = "ONLINE"

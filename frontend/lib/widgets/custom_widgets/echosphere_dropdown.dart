@@ -401,17 +401,21 @@ class _EchoSphereDropdownState extends State<EchoSphereDropdown>
                     size: 20,
                     color: context.colors.primary,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: context.colors.primary,
-                      letterSpacing: 0.5,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.primary,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 6),
                   RotationTransition(
                     turns: _rotateAnimation,
                     child: Icon(

@@ -66,7 +66,7 @@ class Header extends StatelessWidget {
           // Right shortcut for Smart Speaker System
           Obx(() {
             if (!Get.isRegistered<AuthController>()) {
-              return const SizedBox(width: 36, height: 36);
+              return const SizedBox.shrink();
             }
             final auth = Get.find<AuthController>();
             final user = auth.currentUser.value;
@@ -74,7 +74,7 @@ class Header extends StatelessWidget {
             final canAccessPA = user != null && role != 'Student';
 
             if (!canAccessPA) {
-              return const SizedBox(width: 36, height: 36);
+              return const SizedBox.shrink();
             }
 
             return IconButton(

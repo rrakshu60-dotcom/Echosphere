@@ -9,6 +9,8 @@ class AiChatRequest(BaseModel):
     user_id: Optional[int] = None
     usn_or_emp_id: Optional[str] = None
     context: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    session_id: Optional[str] = None
 
 class MatchedAnnouncementItem(BaseModel):
     id: int
@@ -26,6 +28,20 @@ class AiChatResponse(BaseModel):
     suggested_actions: List[str] = []
     navigation_target: Optional[str] = None
     matched_announcements: List[MatchedAnnouncementItem] = []
+    model_used: Optional[str] = "EchoSphere Campus ML Engine (Local)"
+
+class AiTrainResponse(BaseModel):
+    status: str
+    intents_trained: int
+    intent_samples: int
+    kb_documents: int
+
+class AiStatusResponse(BaseModel):
+    engine: str
+    gemini_model: str
+    is_gemini_available: bool
+    local_ml_available: bool
+    kb_indexed_documents: int
 
 class AiDraftRequest(BaseModel):
     topic: str
