@@ -19,6 +19,7 @@ class AnnouncementModel {
   final DateTime? scheduledAt;
   final String? aiSummary;
   final String? remarks;
+  final List<String> attachments;
 
   AnnouncementModel({
     required this.id,
@@ -35,6 +36,7 @@ class AnnouncementModel {
     this.scheduledAt,
     this.aiSummary,
     this.remarks,
+    this.attachments = const [],
   });
 
   factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
@@ -65,6 +67,9 @@ class AnnouncementModel {
           : null,
       aiSummary: json['ai_summary'],
       remarks: json['remarks'],
+      attachments: json['attachments'] != null
+          ? List<String>.from(json['attachments'])
+          : const [],
     );
   }
 }
@@ -313,10 +318,11 @@ class AnnouncementController extends GetxController {
     selectedPriority.value = 'All';
   }
 
-  // Archived notices (older than 1 week / 7 days)
+  // Archived notices (explicitly archived or older than 1 week / 7 days)
   List<AnnouncementModel> get archivedAnnouncements {
     final now = DateTime.now();
     final filtered = _rawAnnouncements.where((a) {
+      if (a.status == 'ARCHIVED') return true;
       final diffDays = now.difference(a.createdAt).inDays;
       return diffDays > 7;
     }).toList();
@@ -361,6 +367,16 @@ class AnnouncementController extends GetxController {
 
   List<AnnouncementModel> get mySubmissions {
     return _applySort(_rawAnnouncements.toList());
+  }
+
+  List<AnnouncementModel> get allAnnouncements {
+    return _applySort(_rawAnnouncements.toList());
+  }
+
+  void setAnnouncements(List<AnnouncementModel> list) {
+    _rawAnnouncements.assignAll(list);
+    _rawAnnouncements.refresh();
+    update();
   }
 
   List<AnnouncementModel> get filteredAnnouncements {
@@ -417,6 +433,11 @@ class AnnouncementController extends GetxController {
     String targetAudience = 'Entire College',
     bool isScheduleLater = false,
     DateTime? scheduledDateTime,
+    bool deliverSpeaker = false,
+    bool deliverInApp = true,
+    bool deliverPush = true,
+    int? speakerNodeId,
+    List<String> attachments = const [],
   }) async {
     isLoading.value = true;
 
@@ -469,6 +490,7 @@ class AnnouncementController extends GetxController {
       createdAt: DateTime.now(),
       scheduledAt: isScheduleLater ? scheduledDateTime : null,
       aiSummary: 'Summary: $title',
+      attachments: attachments,
     );
 
     // 0ms Instant Local Insertion for snappy responsiveness
@@ -480,7 +502,7 @@ class AnnouncementController extends GetxController {
     // Background Async Backend Sync & AI Summarization (non-blocking)
     Future.microtask(() async {
       try {
-        await EchosphereApiService().createAnnouncement(
+        final res = await EchosphereApiService().createAnnouncement(
           title: title,
           description: description,
           categoryId: catId,
@@ -489,7 +511,23 @@ class AnnouncementController extends GetxController {
           scheduledAt: isScheduleLater && scheduledDateTime != null
               ? scheduledDateTime.toIso8601String()
               : null,
+          deliverSpeaker: deliverSpeaker,
+          deliverInApp: deliverInApp,
+          deliverPush: deliverPush,
+          targetAudience: targetAudience,
+          speakerNodeId: speakerNodeId,
         );
+        final backendId = res['id'];
+        if (backendId != null && backendId is int && deliverSpeaker) {
+          try {
+            await EchosphereApiService().enqueueAnnouncement(
+              announcementId: backendId,
+              speakerNodeId: speakerNodeId,
+            );
+          } catch (_) {
+            // Already automatically enqueued by backend service
+          }
+        }
       } catch (e) {
         debugPrint('Async backend create announcement log: $e');
       }
@@ -514,6 +552,7 @@ class AnnouncementController extends GetxController {
             scheduledAt: old.scheduledAt,
             aiSummary: summary,
             remarks: old.remarks,
+            attachments: old.attachments,
           );
           _rawAnnouncements.refresh();
         }
@@ -521,6 +560,40 @@ class AnnouncementController extends GetxController {
     });
 
     return true;
+  }
+
+  Future<bool> archiveAnnouncement(int id, {String? reason}) async {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx != -1) {
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = AnnouncementModel(
+        id: old.id,
+        title: old.title,
+        description: old.description,
+        priority: old.priority,
+        emergencyLevel: old.emergencyLevel,
+        status: 'ARCHIVED',
+        creatorName: old.creatorName,
+        department: old.department,
+        targetAudience: old.targetAudience,
+        category: old.category,
+        createdAt: old.createdAt,
+        scheduledAt: old.scheduledAt,
+        aiSummary: old.aiSummary,
+        remarks: old.remarks,
+        attachments: old.attachments,
+      );
+      _rawAnnouncements.refresh();
+      update();
+    }
+
+    try {
+      await EchosphereApiService().archiveAnnouncement(id, reason: reason);
+      return true;
+    } catch (e) {
+      debugPrint('Archive announcement API error: $e');
+      return true;
+    }
   }
 
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {

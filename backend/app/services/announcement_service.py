@@ -30,6 +30,94 @@ from app.schemas.announcement import AnnouncementApprovalRequest
 from app.services.audit_log_service import create_audit_log_service
 
 
+def dispatch_announcement_notifications_and_deliveries(
+    db: Session,
+    announcement: Announcement,
+    deliver_in_app: bool = True,
+    deliver_push: bool = True,
+    deliver_speaker: bool = False,
+    target_audience: str = None,
+    current_user: User = None,
+):
+    from app.models.delivery_type import DeliveryType
+    from app.models.announcement_delivery import AnnouncementDelivery
+    from app.models.notification import Notification
+    from app.models.user import User
+    from app.models.department import Department
+
+    # 1. Record delivery channels in AnnouncementDelivery
+    channels = []
+    if deliver_in_app:
+        channels.append("In-App Feed")
+    if deliver_push:
+        channels.append("Push Notification")
+    if deliver_speaker:
+        channels.append("Speaker")
+
+    for ch_name in channels:
+        try:
+            dt = db.query(DeliveryType).filter(DeliveryType.name.ilike(f"%{ch_name}%")).first()
+            if not dt:
+                dt = DeliveryType(name=ch_name)
+                db.add(dt)
+                db.commit()
+                db.refresh(dt)
+
+            exists = db.query(AnnouncementDelivery).filter(
+                AnnouncementDelivery.announcement_id == announcement.id,
+                AnnouncementDelivery.delivery_type_id == dt.id,
+            ).first()
+            if not exists:
+                db.add(AnnouncementDelivery(
+                    announcement_id=announcement.id,
+                    delivery_type_id=dt.id,
+                ))
+                db.commit()
+        except Exception as e:
+            logger.warning(f"Error persisting delivery type {ch_name}: {e}")
+
+    # 2. If status is PUBLISHED, generate Notifications for targeted users
+    if announcement.status == AnnouncementStatus.PUBLISHED:
+        try:
+            target_str = (target_audience or "").strip().lower()
+            users_query = db.query(User)
+
+            if target_str and not any(k in target_str for k in ["entire", "all", "college"]):
+                depts = db.query(Department).all()
+                target_dept_id = None
+                for d in depts:
+                    if d.code.lower() in target_str or d.name.lower() in target_str:
+                        target_dept_id = d.id
+                        break
+                if target_dept_id:
+                    users_query = users_query.filter(User.department_id == target_dept_id)
+
+            recipients = users_query.all()
+            short_desc = announcement.description[:180] + ("..." if len(announcement.description) > 180 else "")
+
+            existing_user_ids = set(
+                row[0] for row in db.query(Notification.user_id).filter(
+                    Notification.announcement_id == announcement.id
+                ).all()
+            )
+
+            new_notifications = []
+            for u in recipients:
+                if u.id not in existing_user_ids:
+                    new_notifications.append(Notification(
+                        user_id=u.id,
+                        announcement_id=announcement.id,
+                        is_read=False,
+                    ))
+
+            if new_notifications:
+                db.bulk_save_objects(new_notifications)
+                db.commit()
+                logger.info(f"Generated {len(new_notifications)} notifications for announcement id={announcement.id}")
+        except Exception as e:
+            logger.warning(f"Error generating notifications for announcement {announcement.id}: {e}")
+
+
 def create_announcement_service(
     db: Session,
     request: AnnouncementCreate,
@@ -97,22 +185,41 @@ def create_announcement_service(
         description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
     )
 
+    # Multi-channel delivery and notification dispatch
+    deliver_speaker = getattr(request, 'deliver_speaker', False)
+    deliver_in_app = getattr(request, 'deliver_in_app', True)
+    deliver_push = getattr(request, 'deliver_push', True)
+    target_audience = getattr(request, 'target_audience', None)
+
+    dispatch_announcement_notifications_and_deliveries(
+        db=db,
+        announcement=created_announcement,
+        deliver_in_app=deliver_in_app,
+        deliver_push=deliver_push,
+        deliver_speaker=deliver_speaker,
+        target_audience=target_audience,
+        current_user=current_user,
+    )
+
     if created_announcement.status == AnnouncementStatus.PUBLISHED:
-        try:
-            from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
-            dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
-            p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
-            enqueue_and_broadcast_announcement(
-                db=db,
-                announcement_id=created_announcement.id,
-                title=created_announcement.title,
-                content=created_announcement.description,
-                department_code=dept_code,
-                zone="College-Wide",
-                is_emergency=(p_val == "EMERGENCY"),
-            )
-        except Exception as e:
-            logger.warning(f"Auto-broadcast error on announcement creation: {e}")
+        p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
+        is_emerg = (p_val == "EMERGENCY")
+        if deliver_speaker or is_emerg:
+            try:
+                from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+                dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
+                enqueue_and_broadcast_announcement(
+                    db=db,
+                    announcement_id=created_announcement.id,
+                    title=created_announcement.title,
+                    content=created_announcement.description,
+                    department_code=dept_code,
+                    zone="College-Wide",
+                    is_emergency=is_emerg,
+                    speaker_node_id=getattr(request, 'speaker_node_id', None),
+                )
+            except Exception as e:
+                logger.warning(f"Auto-broadcast error on announcement creation: {e}")
 
     return created_announcement
 
@@ -345,19 +452,44 @@ def approve_announcement_service(
 
     try:
         from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
-        dept_code = updated_announcement.department.code if (hasattr(updated_announcement, 'department') and updated_announcement.department) else "ALL"
+        dept_code = "ALL"
+        if updated_announcement.creator and hasattr(updated_announcement.creator, 'department') and updated_announcement.creator.department:
+            dept_code = updated_announcement.creator.department.code
+        elif hasattr(current_user, 'department') and current_user.department:
+            dept_code = current_user.department.code
+
         p_val = updated_announcement.priority.value if hasattr(updated_announcement.priority, 'value') else str(updated_announcement.priority)
-        enqueue_and_broadcast_announcement(
-            db=db,
-            announcement_id=updated_announcement.id,
-            title=updated_announcement.title,
-            content=updated_announcement.description,
-            department_code=dept_code,
-            zone="College-Wide",
-            is_emergency=(p_val == "EMERGENCY"),
-        )
+        is_emerg = (p_val == "EMERGENCY")
+
+        has_speaker_delivery = is_emerg
+        if not has_speaker_delivery and updated_announcement.deliveries:
+            for deliv in updated_announcement.deliveries:
+                if deliv.delivery_type and "speaker" in deliv.delivery_type.name.lower():
+                    has_speaker_delivery = True
+                    break
+
+        if has_speaker_delivery:
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=updated_announcement.id,
+                title=updated_announcement.title,
+                content=updated_announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=is_emerg,
+            )
     except Exception as e:
         logger.warning(f"Auto-broadcast error on announcement approval: {e}")
+
+    # Dispatch in-app and push notifications to recipients upon approval
+    dispatch_announcement_notifications_and_deliveries(
+        db=db,
+        announcement=updated_announcement,
+        deliver_in_app=True,
+        deliver_push=True,
+        deliver_speaker=has_speaker_delivery,
+        current_user=current_user,
+    )
 
     return {"message": "Announcement approved successfully."}
 
@@ -443,17 +575,29 @@ def publish_announcement_service(
 
     try:
         from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
-        dept_code = announcement.department.code if (hasattr(announcement, 'department') and announcement.department) else "ALL"
+        dept_code = "ALL"
+        if announcement.creator and hasattr(announcement.creator, 'department') and announcement.creator.department:
+            dept_code = announcement.creator.department.code
         p_val = announcement.priority.value if hasattr(announcement.priority, 'value') else str(announcement.priority)
-        enqueue_and_broadcast_announcement(
-            db=db,
-            announcement_id=announcement.id,
-            title=announcement.title,
-            content=announcement.description,
-            department_code=dept_code,
-            zone="College-Wide",
-            is_emergency=(p_val == "EMERGENCY"),
-        )
+        is_emerg = (p_val == "EMERGENCY")
+
+        has_speaker_delivery = is_emerg
+        if not has_speaker_delivery and announcement.deliveries:
+            for deliv in announcement.deliveries:
+                if deliv.delivery_type and "speaker" in deliv.delivery_type.name.lower():
+                    has_speaker_delivery = True
+                    break
+
+        if has_speaker_delivery:
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=announcement.id,
+                title=announcement.title,
+                content=announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=is_emerg,
+            )
     except Exception as e:
         logger.warning(f"Auto-broadcast error on announcement publish: {e}")
 
@@ -463,6 +607,7 @@ def publish_announcement_service(
 def archive_announcement_service(
     db: Session,
     announcement_id: int,
+    current_user: User = None,
 ):
     announcement = get_announcement_by_id(
         db,
@@ -485,5 +630,33 @@ def archive_announcement_service(
 
     db.commit()
     db.refresh(announcement)
+
+    # Persist in AnnouncementArchive table
+    try:
+        from app.models.announcement_archive import AnnouncementArchive
+        archived_record = db.query(AnnouncementArchive).filter(AnnouncementArchive.original_announcement_id == announcement.id).first()
+        if not archived_record:
+            archived_record = AnnouncementArchive(
+                original_announcement_id=announcement.id,
+                title=announcement.title,
+                description=announcement.description,
+                priority=announcement.priority.value if hasattr(announcement.priority, 'value') else str(announcement.priority),
+                emergency_level=announcement.emergency_level.value if hasattr(announcement.emergency_level, 'value') else str(announcement.emergency_level),
+                created_by=announcement.created_by,
+            )
+            db.add(archived_record)
+            db.commit()
+    except Exception as e:
+        logger.warning(f"Error persisting AnnouncementArchive record: {e}")
+
+    # Create system audit log
+    create_audit_log_service(
+        db=db,
+        user_id=current_user.id if current_user else announcement.created_by,
+        action="ARCHIVE_ANNOUNCEMENT",
+        entity="ANNOUNCEMENT",
+        entity_id=announcement.id,
+        description=f"Archived announcement: {announcement.title}",
+    )
 
     return {"message": "Announcement archived successfully."}

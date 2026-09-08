@@ -8,9 +8,11 @@ import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+import 'package:anymex/screens/admin/announcement_management_page.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 class UserManagementPage extends StatefulWidget {
   const UserManagementPage({super.key});
@@ -314,75 +316,302 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final theme = Theme.of(context);
     const successColor = Color(0xFF10B981);
     const dangerColor = Color(0xFFEF4444);
+    const primaryColor = Color(0xFF6366F1);
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.shield_outlined, color: theme.colorScheme.primary, size: 22),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Security Audit & App Access Logs',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: MediaQuery.of(ctx).size.width < 580 ? MediaQuery.of(ctx).size.width * 0.88 : 540,
-          height: MediaQuery.of(ctx).size.height * 0.60,
-          child: Obx(() {
-            final logs = authController.auditLogs;
-            if (logs.isEmpty) {
-              return const Center(child: Text('No audit logs recorded yet.'));
-            }
-            return ListView.builder(
-              itemCount: logs.length,
-              itemBuilder: (context, index) {
-                final log = logs[index];
-                final isSuccess = log.status.contains('SUCCESS');
+      builder: (ctx) {
+        int selectedTab = 0; // 0 = System Audit Trail, 1 = Sign-In Logs
+        List<dynamic>? backendLogs;
+        bool isLoadingBackend = true;
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: (isSuccess ? successColor : dangerColor).withOpacity(0.15),
-                      child: Icon(
-                        isSuccess ? Icons.verified_user_rounded : Icons.gpp_bad_rounded,
-                        color: isSuccess ? successColor : dangerColor,
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      '${log.username} (${log.role})',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Location: ${log.location}', style: const TextStyle(fontSize: 11)),
-                        Text('Timestamp: ${log.timestamp}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        Text('Status: ${log.status}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSuccess ? successColor : dangerColor)),
-                      ],
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            if (backendLogs == null && isLoadingBackend) {
+              EchosphereApiService().getAuditLogs().then((logs) {
+                if (ctx.mounted) {
+                  setDlgState(() {
+                    backendLogs = logs;
+                    isLoadingBackend = false;
+                  });
+                }
+              }).catchError((_) {
+                if (ctx.mounted) {
+                  setDlgState(() {
+                    backendLogs = [];
+                    isLoadingBackend = false;
+                  });
+                }
+              });
+            }
+
+            final isSmall = MediaQuery.of(ctx).size.width < 580;
+            final dialogWidth = isSmall ? MediaQuery.of(ctx).size.width * 0.92 : 560.0;
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Icon(Icons.shield_outlined, color: theme.colorScheme.primary, size: 22),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Executive Audit & Access Logs',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
-                );
-              },
+                ],
+              ),
+              content: SizedBox(
+                width: dialogWidth,
+                height: MediaQuery.of(ctx).size.height * 0.65,
+                child: Column(
+                  children: [
+                    // Tab Selector
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setDlgState(() => selectedTab = 0),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: selectedTab == 0 ? theme.colorScheme.primary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'System Audit Trail (${backendLogs?.length ?? 0})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedTab == 0 ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setDlgState(() => selectedTab = 1),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: selectedTab == 1 ? theme.colorScheme.primary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Sign-In Logs (${authController.auditLogs.length})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedTab == 1 ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Tab 0: System Audit Trail (DB AuditLog)
+                    if (selectedTab == 0) ...[
+                      if (isLoadingBackend)
+                        const Expanded(child: Center(child: CircularProgressIndicator()))
+                      else if (backendLogs == null || backendLogs!.isEmpty)
+                        Expanded(
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.history_toggle_off_rounded, size: 48, color: Colors.grey.withOpacity(0.4)),
+                                const SizedBox(height: 8),
+                                const Text('No system audit trail recorded yet.', style: TextStyle(color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: backendLogs!.length,
+                            itemBuilder: (context, index) {
+                              final log = backendLogs![index];
+                              final action = (log['action'] ?? 'AUDIT_EVENT').toString();
+                              final desc = (log['description'] ?? '').toString();
+                              final entity = (log['entity'] ?? 'SYSTEM').toString();
+                              final createdAtStr = log['created_at']?.toString() ?? '';
+                              final userId = log['user_id']?.toString() ?? '-';
+
+                              Color actionColor = primaryColor;
+                              IconData actionIcon = Icons.fact_check_rounded;
+                              if (action.contains('CREATE')) {
+                                actionColor = successColor;
+                                actionIcon = Icons.add_circle_outline_rounded;
+                              } else if (action.contains('APPROVE')) {
+                                actionColor = const Color(0xFF059669);
+                                actionIcon = Icons.check_circle_outline_rounded;
+                              } else if (action.contains('REJECT') || action.contains('DELETE')) {
+                                actionColor = dangerColor;
+                                actionIcon = Icons.highlight_off_rounded;
+                              } else if (action.contains('OVERRIDE')) {
+                                actionColor = Colors.orange;
+                                actionIcon = Icons.warning_amber_rounded;
+                              } else if (action.contains('ARCHIVE')) {
+                                actionColor = Colors.amber.shade700;
+                                actionIcon = Icons.inventory_2_outlined;
+                              }
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                elevation: 0.5,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: actionColor.withOpacity(0.15),
+                                        child: Icon(actionIcon, color: actionColor, size: 18),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: actionColor.withOpacity(0.12),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: actionColor.withOpacity(0.3), width: 0.8),
+                                                  ),
+                                                  child: Text(
+                                                    action,
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: actionColor,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text('Target: $entity', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              desc.isNotEmpty ? desc : 'Administrative event performed.',
+                                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text('User ID: #$userId', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                                if (createdAtStr.isNotEmpty)
+                                                  Text(
+                                                    createdAtStr.contains('T')
+                                                        ? DateFormat('MMM dd, hh:mm a').format(DateTime.tryParse(createdAtStr) ?? DateTime.now())
+                                                        : createdAtStr,
+                                                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ]
+                    // Tab 1: Sign-In Access Logs (Local login sessions)
+                    else ...[
+                      Expanded(
+                        child: Obx(() {
+                          final logs = authController.auditLogs;
+                          if (logs.isEmpty) {
+                            return const Center(child: Text('No login access logs recorded yet.'));
+                          }
+                          return ListView.builder(
+                            itemCount: logs.length,
+                            itemBuilder: (context, index) {
+                              final log = logs[index];
+                              final isSuccess = log.status.contains('SUCCESS');
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                elevation: 0.5,
+                                child: ListTile(
+                                  dense: true,
+                                  leading: CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: (isSuccess ? successColor : dangerColor).withOpacity(0.15),
+                                    child: Icon(
+                                      isSuccess ? Icons.verified_user_rounded : Icons.gpp_bad_rounded,
+                                      color: isSuccess ? successColor : dangerColor,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    '${log.username} (${log.role})',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Location: ${log.location}', style: const TextStyle(fontSize: 10)),
+                                      Text('Time: ${log.timestamp}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                      Text('Status: ${log.status}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: isSuccess ? successColor : dangerColor)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        }),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+              ],
             );
-          }),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close Audit Log'),
-          ),
-        ],
-      ),
+          },
+        );
+      },
     );
   }
 
@@ -456,67 +685,96 @@ class _UserManagementPageState extends State<UserManagementPage> {
           children: [
             // Top Bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (canPop) ...[
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Icon(Icons.manage_accounts_rounded, size: 22, color: theme.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'User Accounts',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: 'Poppins-Bold',
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
+                  Row(
+                    children: [
+                      if (canPop) ...[
+                        IconButton(
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Icon(Icons.manage_accounts_rounded, size: 22, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'User Accounts',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'Poppins-Bold',
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
                       ),
-                    ),
+                      if (canManage) ...[
+                        const SizedBox(width: 6),
+                        EchoSphereButton(
+                          height: 34,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          onTap: _showCreateUserDialog,
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_add_rounded, size: 15),
+                              SizedBox(width: 4),
+                              Text('Create', style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(width: 4),
                   if (isAdminRole) ...[
-                    IconButton(
-                      icon: const Icon(Icons.sensors_rounded, size: 20),
-                      tooltip: 'Speaker Hardware Queue',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.fact_check_rounded, size: 20),
-                      tooltip: 'Approval Queue',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
-                      ),
-                    ),
-                  ],
-                  if (user?.role == 'Dev Admin' || user?.role == 'Developer') ...[
-                    IconButton(
-                      icon: const Icon(Icons.shield_outlined, size: 20),
-                      tooltip: 'Security Access Audit Logs',
-                      onPressed: _showAccessLogDialog,
-                    ),
-                  ],
-                  if (canManage) ...[
-                    const SizedBox(width: 4),
-                    EchoSphereButton(
-                      height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      onTap: _showCreateUserDialog,
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                    const SizedBox(height: 6),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
                         children: [
-                          Icon(Icons.person_add_rounded, size: 15),
-                          SizedBox(width: 4),
-                          Text('Create', style: TextStyle(fontSize: 12)),
+                          IconButton(
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            padding: const EdgeInsets.all(6),
+                            icon: const Icon(Icons.sensors_rounded, size: 18),
+                            tooltip: 'Speaker Hardware Queue',
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                            ),
+                          ),
+                          IconButton(
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            padding: const EdgeInsets.all(6),
+                            icon: const Icon(Icons.fact_check_rounded, size: 18),
+                            tooltip: 'Approval Queue',
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
+                            ),
+                          ),
+                          IconButton(
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            padding: const EdgeInsets.all(6),
+                            icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                            tooltip: 'Notice Moderation',
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const AnnouncementManagementPage()),
+                            ),
+                          ),
+                          if (user.role == 'Dev Admin' || user.role == 'Developer')
+                            IconButton(
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              padding: const EdgeInsets.all(6),
+                              icon: const Icon(Icons.shield_outlined, size: 18),
+                              tooltip: 'Security Access Audit Logs',
+                              onPressed: _showAccessLogDialog,
+                            ),
                         ],
                       ),
                     ),

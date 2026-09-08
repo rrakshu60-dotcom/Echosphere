@@ -345,22 +345,42 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Wrap(
-                                      spacing: 8,
-                                      runSpacing: 6,
-                                      children: [
-                                        ActionChip(
-                                          avatar: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFF87171), size: 16),
-                                          label: const Text('Official_Circular.pdf', style: TextStyle(fontSize: 11)),
-                                          onPressed: () => _downloadAttachment('Official_Circular.pdf', item),
-                                        ),
-                                        ActionChip(
-                                          avatar: const Icon(Icons.table_chart_rounded, color: Color(0xFF34D399), size: 16),
-                                          label: const Text('Exam_Schedule.xlsx', style: TextStyle(fontSize: 11)),
-                                          onPressed: () => _downloadAttachment('Exam_Schedule.xlsx', item),
-                                        ),
-                                      ],
-                                    ),
+                                    child: item.attachments.isNotEmpty
+                                        ? Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            children: item.attachments.map((file) {
+                                              IconData icon = Icons.insert_drive_file_rounded;
+                                              Color iconCol = Colors.blue;
+                                              final lower = file.toLowerCase();
+                                              if (lower.endsWith('.pdf')) {
+                                                icon = Icons.picture_as_pdf_rounded;
+                                                iconCol = const Color(0xFFF87171);
+                                              } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
+                                                icon = Icons.table_chart_rounded;
+                                                iconCol = const Color(0xFF34D399);
+                                              } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+                                                icon = Icons.image_rounded;
+                                                iconCol = Colors.amber;
+                                              } else if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
+                                                icon = Icons.description_rounded;
+                                                iconCol = Colors.indigoAccent;
+                                              }
+                                              return ActionChip(
+                                                avatar: Icon(icon, color: iconCol, size: 16),
+                                                label: Text(file, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                onPressed: () => _downloadAttachment(file, item),
+                                              );
+                                            }).toList(),
+                                          )
+                                        : Text(
+                                            'No attachments',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontStyle: FontStyle.italic,
+                                              color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                            ),
+                                          ),
                                   ),
                                   const SizedBox(width: 8),
                                   IconButton(

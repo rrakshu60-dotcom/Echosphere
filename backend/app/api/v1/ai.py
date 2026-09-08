@@ -13,11 +13,30 @@ from app.schemas.ai_schema import (
     AiValidateRequest, AiValidateResponse,
     AiDuplicateRequest, AiDuplicateResponse,
     AiClassifyRequest, AiClassifyResponse,
-    AiIntentRequest, AiIntentResponse
+    AiIntentRequest, AiIntentResponse,
+    AiStatusResponse, AiTrainResponse
 )
+from app.core.dependencies import require_roles
+from app.models.user import User
 from app.services.ai_service import AIService
+from app.services.campus_ml_engine import CampusMLEngine
 
 router = APIRouter(prefix="/ai", tags=["EchoSphere AI"])
+
+@router.get("/status", response_model=AiStatusResponse)
+def ai_status():
+    """Return status of AI engine, model in use, and local ML health."""
+    return AiStatusResponse(**AIService.get_status())
+
+@router.post("/train", response_model=AiTrainResponse)
+def ai_train(
+    current_user: User = Depends(
+        require_roles("Dev Admin", "Developer", "College Admin", "Principal")
+    )
+):
+    """Train or retrain local Campus ML models."""
+    res = AIService.train_models()
+    return AiTrainResponse(**res)
 
 @router.post("/chat", response_model=AiChatResponse)
 def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
@@ -28,7 +47,9 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
             department=req.department,
             full_name=req.full_name,
             usn_or_emp_id=req.usn_or_emp_id,
-            db=db
+            db=db,
+            history=req.history,
+            session_id=req.session_id
         )
         matched = [MatchedAnnouncementItem(**m) for m in res.get("matched_announcements", [])]
         return AiChatResponse(
@@ -37,7 +58,8 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
             context_badge=res.get("context_badge"),
             suggested_actions=res.get("suggested_actions", []),
             navigation_target=res.get("navigation_target"),
-            matched_announcements=matched
+            matched_announcements=matched,
+            model_used=res.get("model_used", "EchoSphere Campus ML Engine (Local)")
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -168,6 +190,5 @@ def ai_classify(req: AiClassifyRequest):
 
 @router.post("/intent", response_model=AiIntentResponse)
 def ai_intent(req: AiIntentRequest):
-    q = req.question.lower()
-    intent = "announcements" if any(w in q for w in ["notice", "circular"]) else "general"
-    return AiIntentResponse(intent=intent)
+    intent, _ = CampusMLEngine.get_instance().predict_intent(req.question)
+    return AiIntentResponse(intent=intent.lower())

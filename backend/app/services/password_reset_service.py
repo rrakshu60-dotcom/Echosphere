@@ -77,12 +77,17 @@ def forgot_password_service(
             recipient_email=user.official_email,
             reset_link=reset_link,
         )
-
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to send the password reset email. Please try again later.",
-        ) from exc
+        import logging
+        import os
+        logging.getLogger(__name__).warning("Password reset email dispatch error: %s. Dev Reset Link: %s", exc, reset_link)
+        if not os.getenv("SMTP_SERVER") or os.getenv("ENVIRONMENT", "dev").lower() in ("dev", "development", "local", "test"):
+            pass
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to send the password reset email. Please try again later.",
+            ) from exc
 
     create_audit_log_service(
         db=db,

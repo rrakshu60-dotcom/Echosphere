@@ -26,7 +26,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
   String selectedStatusFilter = 'All';
   String searchQuery = '';
 
-  final List<String> statusFilters = ['All', 'PUBLISHED', 'SCHEDULED', 'SUBMITTED', 'REJECTED'];
+  final List<String> statusFilters = ['All', 'PUBLISHED', 'SCHEDULED', 'SUBMITTED', 'REJECTED', 'ARCHIVED'];
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +63,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                   const SizedBox(width: 8),
                   Obx(() => Flexible(
                         child: EchoSphereChip(
-                          label: '${controller.announcements.length} Total',
+                          label: '${controller.allAnnouncements.length} Total',
                           isSelected: true,
                           onSelected: (_) {},
                         ),
@@ -136,7 +136,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
             // Notice List
             Expanded(
               child: Obx(() {
-                final list = controller.announcements.where((a) {
+                final list = controller.allAnnouncements.where((a) {
                   final q = searchQuery.toLowerCase();
                   final matchesQuery = q.isEmpty ||
                       a.title.toLowerCase().contains(q) ||
@@ -270,63 +270,94 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDlgState) => EchoSphereDialog(
           title: 'Modify Announcement',
-          contentWidget: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(controller: titleCtrl, decoration: const InputDecoration(border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                const Text('Description / Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(controller: descCtrl, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          EchoSphereDropdown(
-                            label: 'Category',
-                            icon: Icons.category,
-                            selectedItem: DropdownItem(value: catVal, text: catVal),
-                            items: AnnouncementController.categories
-                                .where((c) => c != 'All')
-                                .map((c) => DropdownItem(value: c, text: c))
-                                .toList(),
-                            onChanged: (val) => setDlgState(() => catVal = val.value),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Priority', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          EchoSphereDropdown(
-                            label: 'Priority',
-                            icon: Icons.priority_high,
-                            selectedItem: DropdownItem(value: prioVal, text: prioVal),
-                            items: ['NORMAL', 'HIGH', 'EMERGENCY']
-                                .map((p) => DropdownItem(value: p, text: p))
-                                .toList(),
-                            onChanged: (val) => setDlgState(() => prioVal = val.value),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+          autoCloseOnConfirm: false,
+          contentWidget: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'Announcement title...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Description / Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: descCtrl,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Announcement content...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 450;
+                  final categoryField = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      EchoSphereDropdown(
+                        label: 'Category',
+                        icon: Icons.category_rounded,
+                        selectedItem: DropdownItem(value: catVal, text: catVal),
+                        items: AnnouncementController.categories
+                            .where((c) => c != 'All')
+                            .map((c) => DropdownItem(value: c, text: c))
+                            .toList(),
+                        onChanged: (val) => setDlgState(() => catVal = val.value),
+                      ),
+                    ],
+                  );
+
+                  final priorityField = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Priority', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      EchoSphereDropdown(
+                        label: 'Priority',
+                        icon: Icons.priority_high_rounded,
+                        selectedItem: DropdownItem(value: prioVal, text: prioVal),
+                        items: ['NORMAL', 'HIGH', 'EMERGENCY']
+                            .map((p) => DropdownItem(value: p, text: p))
+                            .toList(),
+                        onChanged: (val) => setDlgState(() => prioVal = val.value),
+                      ),
+                    ],
+                  );
+
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: categoryField),
+                        const SizedBox(width: 10),
+                        Expanded(child: priorityField),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      categoryField,
+                      const SizedBox(height: 12),
+                      priorityField,
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
           onConfirm: () async {
             if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) {
@@ -341,6 +372,9 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
               priority: prioVal,
             );
             snackBar('Announcement updated successfully!');
+            if (ctx.mounted) {
+              Navigator.of(ctx).pop();
+            }
             setState(() {});
           },
         ),

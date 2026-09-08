@@ -246,5 +246,6 @@ def archive_announcement(
     return archive_announcement_service(
         db=db,
         announcement_id=announcement_id,
+        current_user=current_user,
     )
 

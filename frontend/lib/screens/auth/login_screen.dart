@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/home_page.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
@@ -452,64 +453,85 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showForgotPasswordDialog(BuildContext context) {
     final idCtrl = TextEditingController();
+    bool isSubmitting = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Password Recovery'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Enter your credentials or identifier:',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: idCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Enter your credentials or identifier',
-                  border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          title: const Text('Password Recovery'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Enter your Employee ID, USN, or Official Email:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: idCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. 1DB23CI079 or admin@echosphere.edu',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                child: const Text(
-                  '• Student Recovery: Contact your Department Faculty or HoD to request a reset.\n'
-                  '• Faculty Recovery: A reset link will be sent to your registered official email.\n'
-                  '• Admin Recovery: Requires backend administrator intervention.',
-                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.blue),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: const Text(
+                    '• Student Accounts: For academic integrity, contact your Department Faculty or HoD.\n'
+                    '• Faculty & Staff: A secure reset link will be sent to your registered official email.\n'
+                    '• Administrators: Backend audit trail verification applies.',
+                    style: TextStyle(fontSize: 11, height: 1.5, color: Colors.blue),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final id = idCtrl.text.trim();
+                      if (id.isEmpty) {
+                        errorSnackBar('Please enter your identifier.');
+                        return;
+                      }
+                      setDlgState(() => isSubmitting = true);
+                      try {
+                        final res = await EchosphereApiService().forgotPassword(id);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        final msg = res['message']?.toString() ?? 'Password recovery request processed.';
+                        snackBar(msg);
+                      } catch (e) {
+                        setDlgState(() => isSubmitting = false);
+                        errorSnackBar('Failed: ${e.toString().replaceAll("Exception: ", "")}');
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Submit Request'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final id = idCtrl.text.trim();
-              if (id.isEmpty) {
-                errorSnackBar('Please enter your identifier.');
-                return;
-              }
-              Navigator.pop(ctx);
-              snackBar('Password reset instructions initiated for $id.');
-            },
-            child: const Text('Submit Request'),
-          ),
-        ],
       ),
     );
   }

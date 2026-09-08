@@ -13,6 +13,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -80,10 +81,14 @@ Downloaded & Saved via EchoSphere Smart Campus System
     final announcementController = Get.find<AnnouncementController>();
 
     final userRole = authController.currentUser.value?.role ?? 'Student';
+    final isStudent = userRole.toLowerCase() == 'student';
     final canApprove = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
         (announcement.status == 'SUBMITTED' || announcement.status == 'DRAFT' || announcement.status == 'PENDING_APPROVAL');
 
     final canDelete = userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer' || (userRole == 'HoD' && announcement.department == authController.currentUser.value?.department);
+    final canBroadcast = !isStudent && (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE' || announcement.status == 'SCHEDULED');
+    final canArchive = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
+        (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE');
 
     return Scaffold(
       body: Glow(
@@ -123,7 +128,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
 
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 16.0),
                 child: Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 800),
@@ -132,7 +137,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                       children: [
                         // Title & Status
                         EchoSphereContainer(
-                          padding: const EdgeInsets.all(24.0),
+                          padding: const EdgeInsets.all(16.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -246,7 +251,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
 
                         // Main Description Content
                         EchoSphereContainer(
-                          padding: const EdgeInsets.all(24.0),
+                          padding: const EdgeInsets.all(20.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -313,28 +318,46 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: [
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
-                                    child: ActionChip(
-                                      avatar: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFF87171), size: 18),
-                                      label: const Text('Official_Circular.pdf (245 KB)', maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      onPressed: () => _downloadAttachment(context, 'Official_Circular.pdf'),
-                                    ),
+                              if (announcement.attachments.isNotEmpty)
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: announcement.attachments.map((file) {
+                                    IconData icon = Icons.insert_drive_file_rounded;
+                                    Color iconCol = Colors.blue;
+                                    final lower = file.toLowerCase();
+                                    if (lower.endsWith('.pdf')) {
+                                      icon = Icons.picture_as_pdf_rounded;
+                                      iconCol = const Color(0xFFF87171);
+                                    } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
+                                      icon = Icons.table_chart_rounded;
+                                      iconCol = const Color(0xFF34D399);
+                                    } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+                                      icon = Icons.image_rounded;
+                                      iconCol = Colors.amber;
+                                    } else if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
+                                      icon = Icons.description_rounded;
+                                      iconCol = Colors.indigoAccent;
+                                    }
+                                    return ConstrainedBox(
+                                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
+                                      child: ActionChip(
+                                        avatar: Icon(icon, color: iconCol, size: 18),
+                                        label: Text(file, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        onPressed: () => _downloadAttachment(context, file),
+                                      ),
+                                    );
+                                  }).toList(),
+                                )
+                              else
+                                Text(
+                                  'No attachments uploaded with this notice.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
                                   ),
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
-                                    child: ActionChip(
-                                      avatar: const Icon(Icons.table_chart_rounded, color: Color(0xFF34D399), size: 18),
-                                      label: const Text('Exam_Schedule.xlsx (120 KB)', maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      onPressed: () => _downloadAttachment(context, 'Exam_Schedule.xlsx'),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
                             ],
                           ),
                         ),
@@ -378,13 +401,45 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         ),
                         const SizedBox(height: 24),
 
-                        // Action Buttons (Approve / Reject / Modify / Reschedule / Delete)
-                        if (canApprove || canDelete)
+                        // Action Buttons (Approve / Reject / Modify / Reschedule / Archive / Delete / Broadcast)
+                        if (canApprove || canDelete || canBroadcast || canArchive)
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
+                              if (canBroadcast)
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.purple.withOpacity(0.15),
+                                  border: const BorderSide(color: Colors.purple),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () async {
+                                    try {
+                                      await EchosphereApiService().enqueueAnnouncement(
+                                        announcementId: announcement.id,
+                                      );
+                                      snackBar('Enqueued "${announcement.title}" to PA speaker queue!');
+                                    } catch (e) {
+                                      snackBar('Failed to queue: ${e.toString()}');
+                                    }
+                                  },
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.podcasts_rounded, size: 16, color: Colors.purple),
+                                      SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          'Broadcast to Speakers',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: Colors.purple, fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               if (canApprove) ...[
                                 EchoSphereButton(
                                   height: 42,
@@ -395,7 +450,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     children: [
                                       Icon(Icons.check_circle_outline_rounded, size: 16),
                                       SizedBox(width: 6),
-                                      Text('Approve', style: TextStyle(fontSize: 12)),
+                                      Flexible(
+                                        child: Text('Approve', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12)),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -410,11 +467,31 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     children: [
                                       Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
                                       SizedBox(width: 6),
-                                      Text('Reject', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      Flexible(
+                                        child: Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      ),
                                     ],
                                   ),
                                 ),
                               ],
+                              if (canArchive)
+                                EchoSphereButton(
+                                  height: 42,
+                                  color: Colors.blueGrey.withOpacity(0.15),
+                                  border: const BorderSide(color: Colors.blueGrey),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showArchiveConfirm(context, announcementController),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.archive_outlined, size: 16, color: Colors.blueGrey),
+                                      SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text('Archive', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               if (canDelete) ...[
                                 EchoSphereButton(
                                   height: 42,
@@ -427,7 +504,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     children: [
                                       Icon(Icons.edit_rounded, size: 16, color: Colors.amber),
                                       SizedBox(width: 6),
-                                      Text('Modify', style: TextStyle(fontSize: 12)),
+                                      Flexible(
+                                        child: Text('Modify', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12)),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -442,7 +521,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     children: [
                                       Icon(Icons.event_rounded, size: 16, color: Colors.blue),
                                       SizedBox(width: 6),
-                                      Text('Reschedule', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                      Flexible(
+                                        child: Text('Reschedule', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -457,7 +538,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     children: [
                                       Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
                                       SizedBox(width: 6),
-                                      Text('Delete', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      Flexible(
+                                        child: Text('Delete', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -552,63 +635,94 @@ Downloaded & Saved via EchoSphere Smart Campus System
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDlgState) => EchoSphereDialog(
           title: 'Modify Announcement',
-          contentWidget: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(controller: titleCtrl, decoration: const InputDecoration(border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                const Text('Description / Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(controller: descCtrl, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          EchoSphereDropdown(
-                            label: 'Category',
-                            icon: Icons.category,
-                            selectedItem: DropdownItem(value: catVal, text: catVal),
-                            items: AnnouncementController.categories
-                                .where((c) => c != 'All')
-                                .map((c) => DropdownItem(value: c, text: c))
-                                .toList(),
-                            onChanged: (val) => setDlgState(() => catVal = val.value),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Priority', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          EchoSphereDropdown(
-                            label: 'Priority',
-                            icon: Icons.priority_high,
-                            selectedItem: DropdownItem(value: prioVal, text: prioVal),
-                            items: ['NORMAL', 'HIGH', 'EMERGENCY']
-                                .map((p) => DropdownItem(value: p, text: p))
-                                .toList(),
-                            onChanged: (val) => setDlgState(() => prioVal = val.value),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+          autoCloseOnConfirm: false,
+          contentWidget: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'Announcement title...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Description / Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: descCtrl,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Announcement content...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 450;
+                  final categoryField = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Category', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      EchoSphereDropdown(
+                        label: 'Category',
+                        icon: Icons.category_rounded,
+                        selectedItem: DropdownItem(value: catVal, text: catVal),
+                        items: AnnouncementController.categories
+                            .where((c) => c != 'All')
+                            .map((c) => DropdownItem(value: c, text: c))
+                            .toList(),
+                        onChanged: (val) => setDlgState(() => catVal = val.value),
+                      ),
+                    ],
+                  );
+
+                  final priorityField = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Priority', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      EchoSphereDropdown(
+                        label: 'Priority',
+                        icon: Icons.priority_high_rounded,
+                        selectedItem: DropdownItem(value: prioVal, text: prioVal),
+                        items: ['NORMAL', 'HIGH', 'EMERGENCY']
+                            .map((p) => DropdownItem(value: p, text: p))
+                            .toList(),
+                        onChanged: (val) => setDlgState(() => prioVal = val.value),
+                      ),
+                    ],
+                  );
+
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: categoryField),
+                        const SizedBox(width: 10),
+                        Expanded(child: priorityField),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      categoryField,
+                      const SizedBox(height: 12),
+                      priorityField,
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
           onConfirm: () async {
             if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) {
@@ -623,7 +737,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
               priority: prioVal,
             );
             snackBar('Announcement updated successfully!');
-            Get.back();
+            if (ctx.mounted) {
+              Navigator.of(ctx).pop();
+            }
           },
         ),
       ),
@@ -681,11 +797,50 @@ Downloaded & Saved via EchoSphere Smart Campus System
     );
   }
 
+  void _showArchiveConfirm(BuildContext context, AnnouncementController controller) {
+    final reasonCtrl = TextEditingController(text: 'Archived by administrator');
+    showDialog(
+      context: context,
+      builder: (ctx) => EchoSphereDialog(
+        title: 'Archive Announcement?',
+        contentWidget: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Archiving will move this announcement to historical archives and remove it from active campus feeds.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Archive Reason',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        confirmText: 'Archive',
+        onConfirm: () async {
+          final success = await controller.archiveAnnouncement(
+            announcement.id,
+            reason: reasonCtrl.text.trim().isNotEmpty ? reasonCtrl.text.trim() : 'Archived by administrator',
+          );
+          if (success) {
+            snackBar('Announcement moved to archive!');
+            Get.back();
+          } else {
+            errorSnackBar('Failed to archive announcement.');
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildStatusBadge(String status) {
     Color bg = Colors.green;
     if (status == 'SUBMITTED' || status == 'DRAFT') bg = Colors.orange;
     if (status == 'SCHEDULED') bg = Colors.blue;
     if (status == 'REJECTED') bg = Colors.red;
+    if (status == 'ARCHIVED') bg = Colors.blueGrey;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

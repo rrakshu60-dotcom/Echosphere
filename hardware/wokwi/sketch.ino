@@ -108,16 +108,35 @@ void registerNodeWithBackend() {
 void executeCommand(const char* cmd, const char* title) {
     Serial.printf("\n📢 [COMMAND RECEIVED] Action: %s | Title: '%s'\n", cmd, title);
 
-    if (String(cmd) == "PLAY_EMERGENCY") {
+    String action = String(cmd);
+    if (action == "PLAY_EMERGENCY") {
         playEmergencySiren();
-    } else if (String(cmd) == "TEST_SPEAKER") {
+    } else if (action == "TEST_SPEAKER") {
         playTestTone();
-    } else if (String(cmd) == "RESTART") {
+    } else if (action == "PLAY_ANNOUNCEMENT" || action == "PLAY") {
+        playNoticeTone();
+    } else if (action == "PAUSE") {
+        Serial.println("⏸️ [PAUSE] Speaker playback paused.");
+        noTone(SPEAKER_PIN);
+        digitalWrite(LED_NOTICE_PIN, LOW);
+    } else if (action == "RESUME") {
+        Serial.println("▶️ [RESUME] Speaker playback resumed.");
+        digitalWrite(LED_NOTICE_PIN, HIGH);
+        delay(100);
+        digitalWrite(LED_NOTICE_PIN, LOW);
+    } else if (action == "STOP" || action == "CANCEL" || action == "SKIP") {
+        Serial.println("⏹️ [STOP/SKIP] Playback terminated.");
+        noTone(SPEAKER_PIN);
+        digitalWrite(LED_NOTICE_PIN, LOW);
+    } else if (action == "SET_VOLUME") {
+        Serial.println("🔊 [VOLUME] Volume updated on speaker node.");
+    } else if (action == "RESTART") {
         Serial.println("🔄 [RESTART] Rebooting hardware subsystem...");
         digitalWrite(LED_ONLINE_PIN, LOW);
         delay(400);
         digitalWrite(LED_ONLINE_PIN, HIGH);
     } else {
+        // Fallback for any unknown notice action
         playNoticeTone();
     }
 }

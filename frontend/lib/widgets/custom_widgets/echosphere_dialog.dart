@@ -13,6 +13,7 @@ class EchoSphereDialog extends StatelessWidget {
   final EdgeInsets padding;
   final bool showCancelButton;
   final String confirmText;
+  final bool autoCloseOnConfirm;
 
   const EchoSphereDialog({
     super.key,
@@ -24,6 +25,7 @@ class EchoSphereDialog extends StatelessWidget {
     this.padding = const EdgeInsets.all(25),
     this.showCancelButton = true,
     this.confirmText = 'Confirm',
+    this.autoCloseOnConfirm = true,
   });
 
   void show(BuildContext context) {
@@ -34,6 +36,7 @@ class EchoSphereDialog extends StatelessWidget {
         message: message,
         contentWidget: contentWidget,
         onConfirm: onConfirm,
+        autoCloseOnConfirm: autoCloseOnConfirm,
       ),
     );
   }
@@ -65,11 +68,15 @@ class EchoSphereDialog extends StatelessWidget {
             Flexible(
               child: message != null
                   ? SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
                       child: EchoSphereText(
                           text: message!, textAlign: TextAlign.center, size: 14),
                     )
                   : (contentWidget != null
-                      ? SingleChildScrollView(child: contentWidget!)
+                      ? SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: contentWidget!,
+                        )
                       : const SizedBox.shrink()),
             ),
             const SizedBox(height: 16),
@@ -101,7 +108,9 @@ class EchoSphereDialog extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () {
-                      Get.back();
+                      if (autoCloseOnConfirm) {
+                        Get.back();
+                      }
                       onConfirm.call();
                     },
                     style: ElevatedButton.styleFrom(

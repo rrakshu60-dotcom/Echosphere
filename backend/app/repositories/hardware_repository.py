@@ -95,18 +95,33 @@ def add_to_speaker_queue(
     announcement_id: int,
     scheduled_time: Optional[datetime] = None,
     speaker_node_id: Optional[int] = None,
+    status: Optional[str] = None,
+    duration_seconds: Optional[int] = 0,
 ) -> SpeakerQueue:
     existing = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
     if existing:
         return existing
 
     max_pos = db.query(SpeakerQueue).count()
+    active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
+
+    if status:
+        item_status = status
+    elif active_playing is None:
+        item_status = "Playing"
+    elif max_pos == 1:
+        item_status = "Next in Queue"
+    else:
+        item_status = "Queued"
+
     queue_item = SpeakerQueue(
         announcement_id=announcement_id,
         speaker_node_id=speaker_node_id,
         queue_position=max_pos + 1,
-        status="Queued",
+        status=item_status,
         scheduled_time=scheduled_time or datetime.utcnow(),
+        played_at=datetime.utcnow() if item_status == "Playing" else None,
+        duration_seconds=duration_seconds or 0,
     )
     db.add(queue_item)
     db.commit()
@@ -130,6 +145,25 @@ def update_queue_item_status(
             item.error_count += 1
         db.commit()
         db.refresh(item)
+    return item
+
+
+def reorder_speaker_queue(db: Session, ordered_ids: List[int]) -> List[SpeakerQueue]:
+    """
+    Updates the queue_position of speaker queue items according to the provided ordered ID list.
+    """
+    items = []
+    for pos, q_id in enumerate(ordered_ids, start=1):
+        item = db.query(SpeakerQueue).filter(SpeakerQueue.id == q_id).first()
+        if item:
+            item.queue_position = pos
+            items.append(item)
+    db.commit()
+    for item in items:
+        db.refresh(item)
+    return items
+
+
 def delete_speaker_node(db: Session, node_id: int) -> bool:
     node = get_speaker_node_by_id(db, node_id)
     if not node:
@@ -155,4 +189,68 @@ def clear_speaker_queue(db: Session, status: Optional[str] = None) -> int:
     deleted_count = query.delete(synchronize_session=False)
     db.commit()
     return deleted_count
+
+
+def seed_default_speaker_nodes_if_empty(db: Session):
+    """
+    Seeds default campus speaker nodes if none exist in the database,
+    providing realistic hardware endpoints out-of-the-box.
+    """
+    existing_count = db.query(SpeakerNode).count()
+    if existing_count > 0:
+        return
+
+    default_nodes = [
+        {
+            "name": "Wokwi ESP32 Speaker Node #1",
+            "mac_address": "24:0A:C4:00:11:22",
+            "ip_address": "10.0.1.15",
+            "zone": "Block A - CSE Quad",
+            "volume": 90,
+            "status": "ONLINE",
+            "cpu_usage": 16.4,
+            "memory_usage": 34.2,
+            "disk_space": 72.5,
+        },
+        {
+            "name": "Central Auditorium PA System",
+            "mac_address": "AA:BB:CC:DD:EE:02",
+            "ip_address": "192.168.1.102",
+            "zone": "Auditorium",
+            "volume": 85,
+            "status": "ONLINE",
+            "cpu_usage": 18.6,
+            "memory_usage": 41.0,
+            "disk_space": 65.0,
+        },
+        {
+            "name": "Library Reading Hall Speaker",
+            "mac_address": "AA:BB:CC:DD:EE:03",
+            "ip_address": "192.168.1.103",
+            "zone": "Library",
+            "volume": 70,
+            "status": "OFFLINE",
+            "cpu_usage": 0.0,
+            "memory_usage": 0.0,
+            "disk_space": 50.0,
+        },
+    ]
+
+    for data in default_nodes:
+        node = SpeakerNode(
+            name=data["name"],
+            mac_address=data["mac_address"],
+            ip_address=data["ip_address"],
+            zone=data["zone"],
+            volume=data["volume"],
+            status=data["status"],
+            cpu_usage=data["cpu_usage"],
+            memory_usage=data["memory_usage"],
+            disk_space=data["disk_space"],
+            last_heartbeat=datetime.utcnow(),
+            is_active=True,
+        )
+        db.add(node)
+    db.commit()
+
 

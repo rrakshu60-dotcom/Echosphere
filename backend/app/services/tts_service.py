@@ -50,9 +50,9 @@ def generate_synthesized_wav_fallback(file_path: str, text: str):
         wav_file.writeframes(b"".join(samples))
 
 
-async def generate_announcement_audio(announcement_id: int, text: str) -> dict:
+def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     """
-    Generates text-to-speech audio stream for a given announcement ID.
+    Synchronously generates text-to-speech audio stream for a given announcement ID.
     Attempts Google TTS (gTTS) first, falling back to clean WAV tone stream if offline.
     """
     ensure_audio_dir_exists()
@@ -81,3 +81,11 @@ async def generate_announcement_audio(announcement_id: int, text: str) -> dict:
             "url_path": f"/static/audio_streams/{wav_filename}",
             "type": "wav",
         }
+
+
+async def generate_announcement_audio(announcement_id: int, text: str) -> dict:
+    """
+    Async wrapper for announcement audio generation.
+    """
+    return generate_announcement_audio_sync(announcement_id, text)
+

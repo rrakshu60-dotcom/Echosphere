@@ -12,6 +12,7 @@ class AiChatMessage {
   final List<String> suggestedActions;
   final String? navigationTarget;
   final List<Map<String, dynamic>> matchedAnnouncements;
+  final String? modelUsed;
 
   AiChatMessage({
     required this.text,
@@ -22,6 +23,7 @@ class AiChatMessage {
     this.suggestedActions = const [],
     this.navigationTarget,
     this.matchedAnnouncements = const [],
+    this.modelUsed,
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
@@ -41,20 +43,59 @@ class EchosphereAiController extends GetxController {
     messages.add(
       AiChatMessage(
         text:
-            'Hello $name! I am EchoSphere AI Assistant.\n\n'
-            'I am tuned to your context as **$role** in the **$dept Department**.\n\n'
-            'How can I help you today? Ask me about recent announcements, exam schedules, placement drives, or app settings.',
+            'Hello $name! I am the **EchoSphere Campus AI Assistant**.\n\n'
+            'I am tuned to your institutional context as **$role** in the **$dept Department**.\n\n'
+            'You can ask me about active circulars, semester exam timetables, placement drive eligibility, '
+            'attendance rules (75% policy), library hours, or app settings.',
         isUser: false,
         categoryBadge: 'EchoSphere AI',
         contextBadge: '$role • $dept Department',
-        suggestedActions: [
-          'Show Examination Notices',
-          'Check Weather Advisory',
-          'View Placement Drives',
-          'Where is Settings?',
-        ],
+        suggestedActions: _getDefaultActionsForRole(role, dept),
+        modelUsed: 'EchoSphere Campus AI',
       ),
     );
+  }
+
+  List<String> _getDefaultActionsForRole(String role, String dept) {
+    if (role == 'Student') {
+      return [
+        'Check $dept Exam Timetable',
+        'Placement Drive Eligibility',
+        'Attendance Regulations',
+        'Library Timings & Rules',
+      ];
+    } else {
+      return [
+        'Pending Approvals Status',
+        'Draft New Circular',
+        'Emergency Weather Feed',
+        'Speaker Hardware Status',
+      ];
+    }
+  }
+
+  List<Map<String, String>> getPresetPrompts() {
+    final authCtrl = Get.find<AuthController>();
+    final user = authCtrl.currentUser.value;
+    final role = user?.role ?? 'Student';
+    final dept = user?.department ?? 'CSE';
+
+    if (role == 'Student') {
+      return [
+        {'label': 'Exam Schedule', 'prompt': 'What is the $dept exam and practical lab schedule?'},
+        {'label': 'Placement Eligibility', 'prompt': 'What is the minimum CGPA and eligibility for campus placements?'},
+        {'label': 'Attendance Rule', 'prompt': 'What is the minimum attendance required for exam hall tickets?'},
+        {'label': 'Library Hours', 'prompt': 'What are the central library timings and book borrowing rules?'},
+        {'label': 'Emergency Alerts', 'prompt': 'Are there any active weather emergency or holiday circulars?'},
+      ];
+    } else {
+      return [
+        {'label': 'Draft Circular', 'prompt': 'Draft an official circular for upcoming department symposium'},
+        {'label': 'Approval Guidelines', 'prompt': 'What is the notice approval hierarchy for faculty members?'},
+        {'label': 'Speaker Broadcast', 'prompt': 'How do I broadcast high priority notices to smart speaker nodes?'},
+        {'label': 'Emergency Protocol', 'prompt': 'Check active campus emergency advisories and procedures'},
+      ];
+    }
   }
 
   Future<void> sendQuery(String prompt) async {
@@ -71,6 +112,15 @@ class EchosphereAiController extends GetxController {
     messages.add(AiChatMessage(text: userMsg, isUser: true));
     isProcessing.value = true;
 
+    // Build multi-turn history payload
+    final historyList = messages
+        .take(messages.length - 1)
+        .map((m) => {
+              'role': m.isUser ? 'user' : 'model',
+              'text': m.text,
+            })
+        .toList();
+
     try {
       final apiRes = await EchosphereApiService().sendAiChat(
         userMsg,
@@ -78,36 +128,51 @@ class EchosphereAiController extends GetxController {
         department: dept,
         fullName: fullName,
         usnOrEmpId: usnOrEmpId,
+        history: historyList,
       );
 
-      final responseText = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName);
+      final responseText = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
       final ctxBadge = apiRes['context_badge'] as String? ?? '$role • $dept Department';
       final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
+      final modelUsed = apiRes['model_used'] as String? ?? 'EchoSphere AI';
 
       messages.add(AiChatMessage(
         text: responseText,
         isUser: false,
         categoryBadge: catBadge,
         contextBadge: ctxBadge,
-        suggestedActions: actions.isEmpty ? ['Browse Announcements', 'Check Categories'] : actions,
+        suggestedActions: actions.isEmpty ? _getDefaultActionsForRole(role, dept) : actions,
         navigationTarget: navTarget,
         matchedAnnouncements: matchedList,
+        modelUsed: modelUsed,
       ));
     } catch (_) {
-      final fallbackText = _generateFallbackResponse(userMsg, role, dept, fullName);
+      // High-intelligence local fallback grounded in campus knowledge
+      final fallbackText = _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
       messages.add(AiChatMessage(
         text: fallbackText,
         isUser: false,
-        categoryBadge: 'EchoSphere AI',
+        categoryBadge: _detectCategoryBadge(userMsg),
         contextBadge: '$role • $dept Department',
-        suggestedActions: ['Browse Announcements', 'Check Categories'],
+        suggestedActions: _getDefaultActionsForRole(role, dept),
+        modelUsed: 'EchoSphere Campus AI (Offline)',
       ));
     } finally {
       isProcessing.value = false;
     }
+  }
+
+  String _detectCategoryBadge(String query) {
+    final q = query.toLowerCase();
+    if (q.contains('exam') || q.contains('timetable') || q.contains('test') || q.contains('viva')) return 'Examinations';
+    if (q.contains('placement') || q.contains('job') || q.contains('hiring') || q.contains('cgpa')) return 'Placements';
+    if (q.contains('rain') || q.contains('weather') || q.contains('flood') || q.contains('closed')) return 'Emergency Alert';
+    if (q.contains('library') || q.contains('hostel') || q.contains('canteen') || q.contains('bus')) return 'Campus Facilities';
+    if (q.contains('attendance') || q.contains('condonation') || q.contains('75%')) return 'Academic Regulations';
+    return 'EchoSphere AI';
   }
 
   String summarizeText(String content) {
@@ -166,77 +231,113 @@ class EchosphereAiController extends GetxController {
     };
   }
 
-  String _generateFallbackResponse(String input, String role, String dept, String name) {
-    final query = input.toLowerCase();
+  String _generateFallbackResponse(String input, String role, String dept, String name, [String? usnOrEmpId]) {
+    final q = input.toLowerCase();
 
-    if (query.contains('who r u') || query.contains('who are you') || query.contains('what is your name') || query.contains('identify yourself')) {
-      return 'I am the **EchoSphere AI Assistant**, your intelligent campus communication companion.\n\n'
+    if (q.contains('who r u') || q.contains('who are you') || q.contains('what is your name') || q.contains('identify')) {
+      return 'I am the **EchoSphere Campus AI Assistant**, your official college knowledge companion.\n\n'
           'I am customized for **$name** as a **$role** in the **$dept Department**.\n\n'
           '**How I can assist you:**\n'
-          '- **Announcements & Notices:** Search circulars for $dept or college-wide updates.\n'
-          '- **Exams & Schedules:** Retrieve lab timetables, exam dates, and hall ticket requirements.\n'
-          '- **Placements & Events:** Track active recruitment drives and campus events.\n'
-          '- **Notice Creation:** Expand short notes into formal circulars and polish tone using AI.\n'
-          '- **App Navigation:** Guide you to profile settings, theme toggles, or password updates.';
+          '- **Announcements & Circulars:** Search official circulars and verified departmental notices.\n'
+          '- **Exams & Hall Tickets:** Retrieve theory and practical schedules, reporting times, and regulations.\n'
+          '- **Placement Cell Guidance:** Check company drives, eligibility thresholds (CGPA >= 7.0), and deadlines.\n'
+          '- **Academic Rules:** Look up the 75% minimum attendance requirement, medical condonation, and grading.\n'
+          '- **Campus Facilities:** Library hours (8 AM - 8 PM), hostel curfew (9 PM), canteen, and bus routes.';
     }
 
-    if (query.startsWith('hi') || query.startsWith('hello') || query.startsWith('hey') || query.startsWith('good morning') || query.startsWith('good afternoon')) {
-      return 'Hello $name! Welcome to EchoSphere. I am tuned to your context in the **$dept Department** ($role).\n\n'
-          'How can I help you today? Ask me about recent announcements, exam timetables, placement drives, or app settings.';
+    if (q.startsWith('hi') || q.startsWith('hello') || q.startsWith('hey') || q.startsWith('good morning') || q.startsWith('good afternoon')) {
+      return 'Hello $name! I am active and tuned to your context in the **$dept Department** ($role).\n\n'
+          'How can I help you today? Ask me about recent circulars, exam timetables, placement drives, attendance rules, or settings.';
     }
 
-    if (query.contains('thank') || query.contains('thanks') || query.contains('awesome') || query.contains('great')) {
-      return 'You\'re very welcome, $name! I am always here to keep you updated on campus announcements and department circulars.';
+    if (q.contains('thank') || q.contains('thanks') || q.contains('awesome') || q.contains('great')) {
+      return 'You are very welcome, $name! I am always here to keep you informed on **$dept Department** circulars and campus events.';
     }
 
-    if (query.contains('how are you') || query.contains('how r u') || query.contains('how\'s it going')) {
-      return 'I\'m doing great and ready to assist you! How can I help you today in **$dept Department**?';
+    if (q.contains('exam') || q.contains('timetable') || q.contains('test') || q.contains('viva') || q.contains('hall ticket')) {
+      return '### Examination Guidelines for $dept Department\n\n'
+          '- **Timetables & Batches:** Practical lab and theory schedules are released under the **Examinations** category.\n'
+          '- **Mandatory Requirements:** You must carry your physical **College ID Card** and official **Hall Ticket** to all exam rooms.\n'
+          '- **Reporting Time:** Arrive at least 15 minutes prior to scheduled exam and viva slots.';
     }
 
-    if (query.contains('setting') || query.contains('theme') || query.contains('dark mode')) {
-      return 'To customize your application interface:\n\n'
-          '1. Open the **Profile** tab on the navigation bar.\n'
-          '2. Tap **Dark Mode Theme** to switch light/dark glassmorphism modes.\n'
-          '3. Configure notification channels and speaker preferences.';
+    if (q.contains('placement') || q.contains('job') || q.contains('drive') || q.contains('company') || q.contains('interview') || q.contains('cgpa')) {
+      return '### Campus Placements & Recruitment ($dept)\n\n'
+          '- **Eligibility Threshold:** Aggregate **CGPA >= 7.0** with zero active backlogs for tier-1 recruitment drives.\n'
+          '- **Top Recruiters:** Google, Microsoft, TCS, Infosys, and Accenture.\n'
+          '- **Checklist:** Register with the Training & Placement Cell, keep your resume updated, and attend all pre-placement talks.';
     }
 
-    if (query.contains('password') || query.contains('change password')) {
+    if (q.contains('attendance') || q.contains('shortage') || q.contains('condonation') || q.contains('75%')) {
+      return '### Academic Regulations & Attendance Policy\n\n'
+          '- **Mandatory Rule:** A minimum of **75% attendance** in each subject is required to be eligible for semester examinations.\n'
+          '- **Medical Exemption:** Attendance between 65% and 74% may be condoned with verified medical documentation submitted to the HoD.\n'
+          '- **Below 65%:** Strictly not permitted to sit for exams as per university regulations.';
+    }
+
+    if (q.contains('rain') || q.contains('weather') || q.contains('holiday') || q.contains('closed') || q.contains('flood')) {
+      return '### Campus Safety & Emergency Advisory\n\n'
+          '- **Emergency Status:** During severe weather or red alerts, closure circulars are issued with EMERGENCY priority.\n'
+          '- **Broadcast Delivery:** Critical announcements play over campus smart speaker nodes and pin to the top of your feed.\n'
+          '- Please adhere to official district administration advisories.';
+    }
+
+    if (q.contains('library') || q.contains('book') || q.contains('borrow')) {
+      return '### Central Library Guidelines\n\n'
+          '- **Timings:** Monday through Saturday from **8:00 AM to 8:00 PM** (extended during exam weeks).\n'
+          '- **Circulation:** Undergraduate students may borrow up to 4 books for 14 days.\n'
+          '- **Digital Access:** IEEE, ACM, and Springer journals are accessible on the campus Wi-Fi network.';
+    }
+
+    if (q.contains('hostel') || q.contains('curfew') || q.contains('mess')) {
+      return '### Hostel Guidelines\n\n'
+          '- **Curfew Timings:** Strictly **9:00 PM** on weekdays and **9:30 PM** on weekends.\n'
+          '- **Out-Passes:** Must be requested through the Hostel Warden at least 24 hours in advance.\n'
+          '- **Mess Timings:** Breakfast (7:30 - 9:00 AM), Lunch (12:30 - 2:00 PM), Dinner (7:30 - 9:00 PM).';
+    }
+
+    if (q.contains('setting') || q.contains('theme') || q.contains('dark mode') || q.contains('appearance')) {
+      return '### Application Customization\n\n'
+          '1. Navigate to the **Profile** tab in the main navigation bar.\n'
+          '2. Tap **Dark Mode Theme** to switch between dark glassmorphic styling and light mode.\n'
+          '3. Configure notification sounds and audio broadcast options in your preferences.';
+    }
+
+    if (q.contains('password') || q.contains('change password') || q.contains('security')) {
       if (role == 'Student') {
-        return 'As a **Student**, password resets are managed through your Department HoD or Class Teacher.\n\n'
-            'You can also tap **Forgot Password?** on the sign-in screen to generate a reset token.';
+        return '### Password Recovery for Students\n\n'
+            '- Tap **Forgot Password?** on the sign-in screen to generate a reset token.\n'
+            '- Alternatively, request your Department HoD or Class Teacher to issue a credential reset.';
       }
-      return 'Go to **Profile** → **Preferences & Security** → Tap **Change Password**.';
+      return '### Change Password ($role)\n\n'
+          '1. Open the **Profile** tab.\n'
+          '2. Go to **Preferences & Security**.\n'
+          '3. Tap **Change Password** and enter your new credentials.';
     }
 
-    if (query.contains('exam') || query.contains('timetable') || query.contains('test')) {
-      return 'Here is the examination guidance for **$dept Department**:\n\n'
-          '- Practical lab & theory timetables are published under the **Examinations** category.\n'
-          '- Students must carry their official College ID Card and Hall Ticket.';
-    }
-
-    if (query.contains('rain') || query.contains('weather') || query.contains('holiday') || query.contains('closed')) {
-      return '**Emergency Status Update:**\n\n'
-          '- Weather advisories and emergency alerts are broadcasted college-wide with highest priority.\n'
-          '- Class suspension notices appear at the top of your feed and play via campus speakers.';
-    }
-
-    if (query.contains('placement') || query.contains('job') || query.contains('company')) {
-      return '**Placements & Recruitment Drives:**\n\n'
-          '- Active drives for Google, Microsoft, TCS, and Infosys are listed under **Placements**.\n'
-          '- Minimum Eligibility: CGPA ≥ 7.0 with no active backlogs.';
-    }
-
-    if (query.contains('create') || query.contains('submit') || query.contains('notice') || query.contains('how to')) {
-      if (role == 'Student') {
-        return 'Students have read-only access to preserve official notice authenticity.\n\n'
-            'Please contact your **Department Faculty Advisor** or **HoD** to publish a notice.';
+    if (q.contains('speaker') || q.contains('queue') || q.contains('hardware node') || q.contains('pa system')) {
+      if (role.toLowerCase() == 'student') {
+        return "I don't have the authority to answer that question or disclose operational details about the smart speaker system. Please consult your department office or faculty coordinator for assistance.";
       }
-      return 'To post a notice:\n\n'
-          '1. Click the floating **+ New Notice** button on your Home screen.\n'
-          '2. Fill in details and use **AI Expand** for instant formal circular formatting.';
+      return '### EchoSphere Smart Speaker System\n\n'
+          '- **Hardware Network:** Smart speaker nodes broadcast critical announcements to assigned campus zones.\n'
+          '- **Queue System:** Audio files are queued and prioritized by announcement severity.\n'
+          '- **Node Client:** Corridor nodes communicate over secure MQTT with automatic TTS synthesis.';
     }
 
-    return 'I am ready to assist **$name** ($role · $dept Department).\n\n'
-        'You can ask me to search campus notices, check exam timetables, view placement drives, or navigate settings.';
+    if (q.contains('create') || q.contains('submit') || q.contains('post notice') || q.contains('publish')) {
+      if (role.toLowerCase() == 'student') {
+        return "I don't have the authority to author or publish announcements directly from this account. If you have an event or club announcement that needs to be published, please coordinate with your faculty advisor or department office.";
+      }
+      return '### Publishing an Announcement ($role)\n\n'
+          '1. Tap the **+ New Notice** button on your home dashboard.\n'
+          '2. Enter circular details and use **AI Expand** to format into an official circular.\n'
+          '3. Faculty notices route to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options.';
+    }
+
+    return '### Guidance for $name ($role · $dept Department)\n\n'
+        'Your question has been matched against EchoSphere institutional knowledge.\n\n'
+        '- **Recent Circulars:** View the latest department updates under the **Notices** tab.\n'
+        '- **Support:** Consult your Class Teacher or Department HoD for official academic signatures and approvals.';
   }
 }

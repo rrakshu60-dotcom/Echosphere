@@ -1,53 +1,115 @@
 import os
 import re
 import json
+import logging
 import requests
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.announcement import Announcement
+from app.services.campus_ml_engine import CampusMLEngine
 
+logger = logging.getLogger("EchoSphere.AIService")
+
+# Read configuration from environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-2.0-flash,gemini-1.5-flash").split(",") if m.strip()]
 
-def call_gemini_api(prompt: str, system_instruction: str = "") -> Optional[str]:
-    """Call Google Gemini API via REST API or google.generativeai SDK if key exists."""
-    key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY)
+
+def call_modern_gemini(
+    prompt: str,
+    system_instruction: str = "",
+    history: Optional[List[Dict[str, Any]]] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Call Google Gemini using the latest available models (gemini-2.5-flash, gemini-2.0-flash).
+    Tries:
+      1. Modern google.genai Client (new Google GenAI SDK)
+      2. Modern REST API v1beta endpoint
+      3. Legacy google.generativeai SDK fallback
+    Returns: (generated_text, model_name_used) or (None, None)
+    """
+    key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
     if not key or key == "YOUR_ACTUAL_GEMINI_API_KEY":
-        return None
+        return None, None
 
-    full_prompt = f"{system_instruction}\n\nUser Query: {prompt}" if system_instruction else prompt
+    candidate_models = [PRIMARY_MODEL] + [m for m in FALLBACK_MODELS if m != PRIMARY_MODEL]
 
-    # 1. Try REST API endpoint (Fast & direct)
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-        payload = {
-            "contents": [{
-                "parts": [{"text": full_prompt}]
-            }]
-        }
-        headers = {"Content-Type": "application/json"}
-        resp = requests.post(url, json=payload, timeout=6)
-        if resp.status_code == 200:
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts and parts[0].get("text"):
-                    return parts[0].get("text").strip()
-    except Exception as e:
-        print(f"[Gemini REST Warning]: {e}")
+    for model_name in candidate_models:
+        # 1. Try modern google.genai Client
+        try:
+            from google import genai
+            from google.genai import types
 
-    # 2. Try Python SDK fallback
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(full_prompt)
-        if response and hasattr(response, 'text') and response.text:
-            return response.text.strip()
-    except Exception as e:
-        print(f"[Gemini SDK Warning]: {e}")
+            client = genai.Client(api_key=key)
+            config = None
+            if system_instruction:
+                config = types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.3,
+                )
 
-    return None
+            # Build multi-turn contents if history provided
+            contents: Any = []
+            if history:
+                for turn in history[-6:]:  # Keep recent 3 turns
+                    role = "user" if turn.get("isUser", True) or turn.get("role") == "user" else "model"
+                    text = turn.get("text", turn.get("content", ""))
+                    if text:
+                        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=text)]))
+            contents.append(prompt)
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=config
+            )
+            if response and response.text:
+                return response.text.strip(), f"Google {model_name}"
+        except Exception as e:
+            logger.debug(f"[google.genai SDK attempt ({model_name})]: {e}")
+
+        # 2. Try REST API v1beta endpoint
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            contents_payload = []
+            if history:
+                for turn in history[-6:]:
+                    role = "user" if turn.get("isUser", True) or turn.get("role") == "user" else "model"
+                    text = turn.get("text", turn.get("content", ""))
+                    if text:
+                        contents_payload.append({"role": role, "parts": [{"text": text}]})
+
+            contents_payload.append({"role": "user", "parts": [{"text": prompt}]})
+
+            payload: Dict[str, Any] = {"contents": contents_payload}
+            if system_instruction:
+                payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and parts[0].get("text"):
+                        return parts[0].get("text").strip(), f"Google {model_name} (REST)"
+        except Exception as e:
+            logger.debug(f"[REST API attempt ({model_name})]: {e}")
+
+        # 3. Try legacy google.generativeai SDK
+        try:
+            import google.generativeai as legacy_genai
+            legacy_genai.configure(api_key=key)
+            full_prompt = f"{system_instruction}\n\nUser Query: {prompt}" if system_instruction else prompt
+            legacy_model = legacy_genai.GenerativeModel(model_name)
+            response = legacy_model.generate_content(full_prompt)
+            if response and hasattr(response, "text") and response.text:
+                return response.text.strip(), f"Google {model_name} (SDK)"
+        except Exception as e:
+            logger.debug(f"[Legacy SDK attempt ({model_name})]: {e}")
+
+    return None, None
 
 
 class AIService:
@@ -58,241 +120,207 @@ class AIService:
         department: Optional[str] = None,
         full_name: Optional[str] = None,
         usn_or_emp_id: Optional[str] = None,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
+        session_id: Optional[str] = None
     ) -> Dict[str, Any]:
+        """
+        Process user chat with hybrid intelligence:
+        - Scikit-Learn Campus ML Engine classifies intent and extracts semantic knowledge
+        - Live Database RAG grounds announcements
+        - Modern Gemini 2.5 / 2.0 Flash generates conversational answers when configured
+        - Campus ML Engine synthesizes complete, structured answers when offline or without API key
+        """
         query = prompt.strip()
-        query_lower = query.lower()
         role = (user_role or "STUDENT").upper()
         dept = department or "CSE"
         name = full_name or ("Student" if role == "STUDENT" else "Faculty Member")
 
-        matched_announcements: List[Dict[str, Any]] = []
-        suggested_actions: List[str] = []
-        navigation_target: Optional[str] = None
-        category_badge = "EchoSphere AI"
-        context_badge = f"{role.title()} • {dept} Department"
+        ml_engine = CampusMLEngine.get_instance()
 
-        # ─── Step 1: Database RAG Context Grounding ─────────────────────────
-        live_notices_text = []
+        # Step 1: Predict Campus Intent with calibrated local ML model
+        predicted_intent, intent_conf = ml_engine.predict_intent(query)
+
+        # Step 2: Semantic search across Institutional Knowledge Base
+        kb_matches = ml_engine.search_knowledge_base(query, top_k=3)
+
+        # Step 3: Database Announcements Retrieval & Grounding (Strict RBAC Enforced)
+        matched_announcements: List[Dict[str, Any]] = []
+        live_announcements_raw = []
         if db:
             try:
-                announcements = db.query(Announcement).order_by(Announcement.created_at.desc()).limit(15).all()
+                from app.core.enums.announcement import AnnouncementStatus
+                ann_query = db.query(Announcement)
 
-                for ann in announcements:
-                    content_text = getattr(ann, 'description', getattr(ann, 'content', ''))
-                    ann_title = getattr(ann, 'title', '')
-                    ann_cat = getattr(ann, 'category', 'General')
-                    if hasattr(ann_cat, 'name'):
-                        ann_cat = ann_cat.name
-                    ann_prio = getattr(ann, 'priority', 'NORMAL')
-                    if hasattr(ann_prio, 'value'):
-                        ann_prio = ann_prio.value
+                # RBAC Data Privacy Filter
+                if role == "STUDENT":
+                    # Students strictly see only PUBLISHED notices (never drafts or unapproved items)
+                    ann_query = ann_query.filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+                elif role == "TEACHER":
+                    # Teachers see published circulars, their department pending approvals, and drafts
+                    ann_query = ann_query.filter(Announcement.status.in_([
+                        AnnouncementStatus.PUBLISHED,
+                        AnnouncementStatus.PENDING_APPROVAL,
+                        AnnouncementStatus.DRAFT
+                    ]))
+                # HoD, Principal, College Admin, and DevAdmin have administrative oversight
 
-                    is_relevant = (
-                        dept.lower() in str(content_text).lower() or
-                        dept.lower() in str(ann_title).lower() or
-                        role.lower() in str(content_text).lower() or
-                        any(term in ann_title.lower() or term in str(content_text).lower() for term in query_lower.split() if len(term) > 3)
-                    )
-
-                    if is_relevant:
-                        formatted_date = ann.created_at.strftime("%b %d, %I:%M %p") if getattr(ann, 'created_at', None) else "Recent"
-                        matched_announcements.append({
-                            "id": ann.id,
-                            "title": ann_title,
-                            "category": str(ann_cat),
-                            "priority": str(ann_prio),
-                            "department": dept,
-                            "content": str(content_text)[:150] + ("..." if len(str(content_text)) > 150 else ""),
-                            "created_at": formatted_date
-                        })
-                        live_notices_text.append(f"- [{ann_cat} | {ann_prio}] {ann_title}: {content_text[:120]} ({formatted_date})")
-                        if len(matched_announcements) >= 4:
-                            break
+                live_announcements_raw = ann_query.order_by(Announcement.created_at.desc()).limit(25).all()
+                matched_announcements = ml_engine.search_live_announcements(
+                    query=query,
+                    announcements=live_announcements_raw,
+                    user_dept=dept,
+                    user_role=role,
+                    top_k=4
+                )
             except Exception as e:
-                print(f"[AI Service DB RAG Warning]: {e}")
+                logger.warning(f"Live database announcement retrieval warning: {e}")
 
-        # Determine Intent & Navigation Target
-        if any(w in query_lower for w in ["setting", "theme", "dark mode", "appearance", "light mode"]):
+        # Step 4: Determine navigation target and action suggestions
+        category_badge = "EchoSphere AI"
+        navigation_target: Optional[str] = None
+        suggested_actions: List[str] = []
+
+        q_lower = query.lower()
+        if any(w in q_lower for w in ["setting", "theme", "dark mode", "appearance", "light mode"]):
             navigation_target = "nav:profile:settings"
             suggested_actions = ["Go to Profile", "Toggle Dark Mode"]
-        elif any(w in query_lower for w in ["password", "reset password", "change password"]):
+            category_badge = "App Settings"
+        elif any(w in q_lower for w in ["password", "reset password", "change password"]):
             navigation_target = "nav:profile:security"
             suggested_actions = ["Change Password", "Security Settings"]
-        elif any(w in query_lower for w in ["create notice", "post notice", "new notice", "submit notice"]):
+            category_badge = "Security"
+        elif any(w in q_lower for w in ["create notice", "post notice", "new notice", "submit notice"]):
             if role != "STUDENT":
                 navigation_target = "action:create_notice"
-                suggested_actions = ["Create New Notice", "View My Notices"]
+                suggested_actions = ["Create New Notice", "View My Drafts"]
             else:
-                suggested_actions = ["Browse Notices", "Contact Faculty"]
-        elif any(w in query_lower for w in ["exam", "timetable", "test", "viva", "practical", "hall ticket"]):
+                suggested_actions = ["Browse Notices", "Contact Faculty Advisor"]
+            category_badge = "Notice Creation"
+        elif predicted_intent == "EXAM_SCHEDULE":
             category_badge = "Examinations"
             navigation_target = "nav:notices:filter:Examinations"
-            suggested_actions = ["Filter Examinations", "Check Lab Timetable"]
-        elif any(w in query_lower for w in ["rain", "weather", "flood", "closed", "holiday", "emergency"]):
+            suggested_actions = ["Filter Examinations", "Check Lab Timetable", "View Exam Rules"]
+        elif predicted_intent == "EMERGENCY_ALERT":
             category_badge = "Emergency Alert"
             navigation_target = "nav:notices:filter:Emergency"
-            suggested_actions = ["View Emergency Notices", "Check Weather Advisory"]
-        elif any(w in query_lower for w in ["placement", "drive", "job", "hiring", "tcs", "google", "microsoft"]):
+            suggested_actions = ["View Emergency Circulars", "Check Weather Advisory"]
+        elif predicted_intent == "PLACEMENT_DRIVE":
             category_badge = "Placements"
             navigation_target = "nav:notices:filter:Placements"
-            suggested_actions = ["View Placement Drives", "Check Guidelines"]
-        elif any(w in query_lower for w in ["dept", "department", "cse", "ece", "ise", "eee", "me"]):
-            navigation_target = f"nav:notices:filter:{dept}"
-            suggested_actions = [f"Filter {dept} Notices", "View All Categories"]
+            suggested_actions = ["View Placement Drives", "Check CGPA Criteria", "Resume Guidelines"]
+        elif predicted_intent == "CAMPUS_FACILITIES":
+            category_badge = "Campus Facilities"
+            suggested_actions = ["Library Timings", "Hostel Rules", "Bus Schedule"]
+        elif predicted_intent == "SPEAKER_HARDWARE":
+            if role == "STUDENT":
+                category_badge = "Access Restricted"
+                navigation_target = None
+                suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
+            else:
+                category_badge = "Smart Speaker Hardware"
+                navigation_target = "nav:hardware:speakers"
+                suggested_actions = ["View Speaker Queue", "Hardware Node Status"]
+        elif predicted_intent == "ACADEMIC_POLICIES":
+            category_badge = "Academic Regulations"
+            suggested_actions = ["Attendance Rules (75%)", "Grading System", "Condonation Info"]
         else:
-            suggested_actions = ["Search Announcements", "Check Exam Schedule", "View Placements"]
+            suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
 
-        # ─── Step 2: Gemini API Call or Natural Language Generator ─────────────
+        # Step 5: Try Modern Gemini 2.5 / 2.0 Flash with Rich Dynamic System Context
+        kb_text = "\n".join([f"- [{k['category']}] {k['title']}: {k['content'][:140]}" for k in kb_matches])
+        live_notices_text = "\n".join([
+            f"- [{m['category']} | {m['priority']}] {m['title']} ({m['department']}): {m['content'][:120]}"
+            for m in matched_announcements
+        ])
+
         system_instruction = (
-            f"You are EchoSphere AI, an intelligent, helpful, and natural language assistant for the EchoSphere Smart Campus Announcement System.\n"
-            f"User Context:\n"
+            f"You are the EchoSphere Campus AI Assistant, an intelligent, authoritative institutional companion.\n\n"
+            f"User Profile & Context:\n"
             f"- Name: {name}\n"
             f"- Role: {role} (Authority hierarchy: Student -> Teacher -> HoD -> College Admin -> Principal -> DevAdmin)\n"
             f"- Department: {dept}\n"
-            f"- User Identifier: {usn_or_emp_id or 'Registered User'}\n\n"
-            f"Live Database Notices Grounding Context:\n"
-            f"{chr(10).join(live_notices_text) if live_notices_text else 'No specific DB notices matched directly.'}\n\n"
-            f"Rules for Response Generation:\n"
-            f"1. Respond in clear, natural, friendly, and conversational English like Gemini or ChatGPT.\n"
-            f"2. Use clean Markdown formatting (bolding, headers, bullet lists).\n"
-            f"3. DO NOT use robotic templates, nonsensical characters (such as *****), or emoji clutter.\n"
-            f"4. If answering about notices or exams, refer naturally to the student's department ({dept}) and role ({role}).\n"
-            f"5. Maintain a professional institutional tone."
+            f"- User ID / USN: {usn_or_emp_id or 'Verified Campus Member'}\n\n"
+            f"Live Database Announcements Context (Filtered by RBAC):\n"
+            f"{live_notices_text if live_notices_text else 'No directly matching active notices in database.'}\n\n"
+            f"Institutional Campus Knowledge Base Context:\n"
+            f"{kb_text if kb_text else 'Standard campus policies apply.'}\n\n"
+            f"Mandatory RBAC & Formatting Directives:\n"
+            f"1. CRITICAL COURTESY & RBAC DIRECTIVE: When responding to inquiries about restricted operational capabilities (e.g. smart speaker queue, hardware nodes, broadcast overrides, administrative configurations, unapproved drafts), ALWAYS respond politely and unoffensively. NEVER say 'You are a student and not allowed' or patronize the user. Instead, state calmly and respectfully: 'I don't have the authority to answer that question or disclose this operational information. Please consult your department office or faculty coordinator for assistance.'\n"
+            f"2. Students have verified read-only announcement access. If they ask to post or publish notices, reply politely: 'I don't have the authority to author announcements directly. If you have an event or club announcement to publish, please coordinate with your faculty advisor or department office.'\n"
+            f"3. Respond in clear, professional, natural, and friendly Markdown.\n"
+            f"4. STRICTLY PROHIBITED: Do NOT output raw asterisk clutter (e.g. ****), nonsensical tokens, or excessive emojis.\n"
+            f"5. Never say 'I am ready to help' and then stop. Directly answer the user's specific question with facts, dates, and clear instructions.\n"
+            f"6. If answering about notices or exams, refer specifically to the user's department ({dept}) and role ({role})."
         )
 
-        ai_response = call_gemini_api(prompt, system_instruction=system_instruction)
-
-        if not ai_response:
-            # Fallback to fluid natural language engine (Zero template junk)
-            ai_response = AIService._generate_natural_fallback(query_lower, name, role, dept, usn_or_emp_id, matched_announcements)
-
-        return {
-            "response": ai_response,
-            "category_badge": category_badge,
-            "context_badge": context_badge,
-            "suggested_actions": suggested_actions,
-            "navigation_target": navigation_target,
-            "matched_announcements": matched_announcements
-        }
-
-    @staticmethod
-    def _generate_natural_fallback(
-        query: str, name: str, role: str, dept: str, usn_or_emp_id: Optional[str], matched: List[Dict[str, Any]]
-    ) -> str:
-        """Generate high-quality natural language Markdown text when Gemini API key is offline."""
-
-        if any(term in query for term in ["who r u", "who are you", "what is your name", "identify yourself", "what do you do"]):
-            return (
-                f"I am the **EchoSphere AI Assistant**, your intelligent campus communication companion.\n\n"
-                f"I am customized for **{name}** as a **{role.title()}** in the **{dept} Department**.\n\n"
-                f"**How I can assist you:**\n"
-                f"- **Announcements & Notices:** Find the latest circulars for {dept} or college-wide updates.\n"
-                f"- **Exams & Schedules:** Retrieve lab timetables, exam dates, and hall ticket requirements.\n"
-                f"- **Placements & Events:** Track active recruitment drives and campus events.\n"
-                f"- **Notice Creation:** Expand short notes into formal circulars and polish tone using AI.\n"
-                f"- **App Navigation:** Guide you to profile settings, theme toggles, or password updates."
-            )
-
-        if any(query.startswith(w) or query == w for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "greetings"]):
-            return (
-                f"Hello {name}! I am tuned to your context in the **{dept} Department** ({role.title()}).\n\n"
-                f"How can I help you today? You can ask me about recent announcements, exam schedules, placement drives, or app navigation."
-            )
-
-        if any(w in query for w in ["thank", "thanks", "awesome", "great", "cool", "nice"]):
-            return (
-                f"You're very welcome, {name}! I am always here to keep you updated on **{dept} Department** notices and campus announcements."
-            )
-
-        if any(w in query for w in ["how are you", "how r u", "how's it going"]):
-            return (
-                f"I'm doing great and fully operating to help you stay informed! How can I assist you today in **{dept} Department**?"
-            )
-
-        if any(w in query for w in ["setting", "theme", "dark mode", "appearance", "light mode"]):
-            return (
-                f"To adjust your application settings or switch themes:\n\n"
-                f"1. Navigate to the **Profile** tab on the main navigation bar.\n"
-                f"2. Tap **Dark Mode Theme** to toggle between light and dark glassmorphism styling.\n"
-                f"3. You can also configure notification preferences and smart speaker audio options there."
-            )
-
-        if any(w in query for w in ["password", "reset password", "change password"]):
-            if role == "STUDENT":
-                return (
-                    f"As a **Student** ({usn_or_emp_id or 'Registered USN'}):\n\n"
-                    f"- Password resets can be requested through your Department HoD or Class Teacher.\n"
-                    f"- Alternatively, use the **Forgot Password?** option on the sign-in screen to receive a reset token."
-                )
-            return (
-                f"As a **{role.title()}**, you can change your password directly:\n\n"
-                f"1. Open the **Profile** tab.\n"
-                f"2. Select **Preferences & Security**.\n"
-                f"3. Tap **Change Password** and set your new credentials."
-            )
-
-        if any(w in query for w in ["create notice", "post notice", "new notice", "submit notice", "how to post"]):
-            if role == "STUDENT":
-                return (
-                    f"According to campus communication guidelines, **Students** have read-only access to preserve notice authenticity.\n\n"
-                    f"If you need an announcement published for a student event or club, please contact your **Department Faculty Advisor** or **HoD**."
-                )
-            return (
-                f"To draft and publish an announcement:\n\n"
-                f"1. Tap the floating **+ New Notice** button on your home dashboard.\n"
-                f"2. Enter the title, content, target audience, and delivery channels.\n"
-                f"3. Use the **AI Expand** feature to transform short bullet points into an official circular.\n"
-                f"4. Faculty announcements submit for HoD approval, while HoD and Administrator notices publish immediately."
-            )
-
-        if any(w in query for w in ["exam", "timetable", "test", "viva", "practical", "hall ticket"]):
-            return (
-                f"Here is the examination guidance for **{dept} Department**:\n\n"
-                f"- Practical lab and end-semester timetables are listed under the **Examinations** category.\n"
-                f"- Please bring your official College ID Card and Hall Ticket to exam halls.\n"
-                f"- Check the active notice feed for detailed batch timings."
-            )
-
-        if any(w in query for w in ["rain", "weather", "flood", "closed", "holiday", "emergency"]):
-            return (
-                f"**Emergency Status Update:**\n\n"
-                f"- Active rainfall and weather alerts are broadcasted college-wide with highest priority.\n"
-                f"- Urgent campus closure alerts appear at the top of your feed and play via campus speakers."
-            )
-
-        if any(w in query for w in ["placement", "drive", "job", "hiring", "tcs", "google", "microsoft"]):
-            return (
-                f"**Placements & Recruitment Drives ({dept}):**\n\n"
-                f"- Active placement drives (TCS, Google, Microsoft, Infosys) are tagged under **Placements**.\n"
-                f"- Minimum Eligibility: CGPA ≥ 7.0 with no active backlogs.\n"
-                f"- Ensure your resume and documentation are submitted before the posted deadlines."
-            )
-
-        # Grounded live notices append
-        notice_block = ""
-        if matched:
-            items = [f"- **[{m['category']}]** {m['title']} ({m['created_at']})" for m in matched[:3]]
-            notice_block = "\n\n**Relevant Live Announcements:**\n" + "\n".join(items)
-
-        return (
-            f"I am ready to help you, **{name}** ({role.title()} · {dept} Department).\n\n"
-            f"You can ask me to search campus notices, check exam timetables, view placement drives, or guide you through app features.{notice_block}"
+        gemini_response, model_used = call_modern_gemini(
+            prompt=query,
+            system_instruction=system_instruction,
+            history=history
         )
 
-    @staticmethod
-    def draft_announcement(topic: str, category: str = "Academics", target_role: str = "STUDENT", department: Optional[str] = None) -> Dict[str, str]:
-        prompt = f"Draft a formal, professional college announcement on the topic: '{topic}'. Category: {category}, Target Audience: {target_role}, Department: {department or 'General'}."
-        sys_inst = "You are an AI assistant creating formal college circulars. Respond with a JSON object: {\"title\": \"...\", \"content\": \"...\", \"suggested_priority\": \"...\", \"suggested_category\": \"...\"}"
+        if gemini_response:
+            return {
+                "response": gemini_response,
+                "category_badge": category_badge,
+                "context_badge": f"{role.title()} | {dept} Department",
+                "suggested_actions": suggested_actions,
+                "navigation_target": navigation_target,
+                "matched_announcements": matched_announcements,
+                "model_used": model_used
+            }
 
-        raw_res = call_gemini_api(prompt, system_instruction=sys_inst)
+        # Step 6: Fallback to Self-Trained Local Campus ML & Semantic RAG Engine
+        logger.info("Gemini API not configured or unavailable. Delegating to local Campus ML Engine.")
+        local_result = ml_engine.synthesize_response(
+            query=query,
+            name=name,
+            role=role,
+            dept=dept,
+            usn_or_emp_id=usn_or_emp_id,
+            matched_announcements=matched_announcements,
+            kb_matches=kb_matches,
+            predicted_intent=predicted_intent,
+            conversation_history=history
+        )
+
+        # Merge any specific suggested actions if local synthesizer had defaults
+        if suggested_actions:
+            local_result["suggested_actions"] = suggested_actions
+        if navigation_target:
+            local_result["navigation_target"] = navigation_target
+        if category_badge != "EchoSphere AI":
+            local_result["category_badge"] = category_badge
+
+        return local_result
+
+    @staticmethod
+    def draft_announcement(
+        topic: str,
+        category: str = "Academics",
+        target_role: str = "STUDENT",
+        department: Optional[str] = None
+    ) -> Dict[str, str]:
+        """Draft a formal institutional announcement circular."""
+        clean_topic = topic.strip()
+        dept_str = f" - {department} Department" if department else ""
+
+        prompt = (
+            f"Draft an official, highly professional college circular on: '{clean_topic}'.\n"
+            f"Category: {category}, Target Audience: {target_role}, Department: {department or 'College-Wide'}.\n"
+            f"Return ONLY a JSON object with keys: 'title', 'content', 'suggested_priority', 'suggested_category'."
+        )
+        sys_inst = "You are an official college administrative secretary drafting notices. Return strictly valid JSON."
+
+        raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
         if raw_res:
             try:
                 json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
                 if json_match:
                     parsed = json.loads(json_match.group())
                     return {
-                        "title": parsed.get("title", f"Notice: {topic.title()}"),
+                        "title": parsed.get("title", f"Notice: {clean_topic.title()}"),
                         "content": parsed.get("content", ""),
                         "suggested_priority": parsed.get("suggested_priority", "NORMAL"),
                         "suggested_category": parsed.get("suggested_category", category or "Academics")
@@ -300,58 +328,61 @@ class AIService:
             except Exception:
                 pass
 
-        rec = AIService.recommend_priority(topic, topic)
-        cat = category if category and category != "Academics" else rec["category"]
-        dept_str = f" - {department} Department" if department else ""
+        # Local Campus ML drafting fallback
+        ml_engine = CampusMLEngine.get_instance()
+        class_res = ml_engine.predict_category_and_priority(clean_topic, clean_topic)
+        final_cat = category if category and category != "Academics" else class_res["category"]
 
-        title = f"Notice: {topic.strip().title()}"
+        title = f"Notice: {clean_topic.title()}"
         content = (
-            f"OFFICIAL ANNOUNCEMENT{dept_str.upper()}\n\n"
-            f"This is to inform all concerned {target_role.lower()}s regarding: {topic.strip()}.\n\n"
-            f"Instructions & Schedule:\n"
-            f"1. All target individuals are requested to note the guidelines and adhere strictly to schedule.\n"
-            f"2. Detailed instructions are available on the portal desk.\n"
-            f"3. For queries, contact the Department Office or Administrative Desk.\n\n"
-            f"Issued By:\nEchoSphere Administration & Department Faculty"
+            f"OFFICIAL CIRCULAR{dept_str.upper()}\n\n"
+            f"This is to formally notify all concerned {target_role.lower()}s regarding: {clean_topic}.\n\n"
+            f"Key Instructions & Guidelines:\n"
+            f"1. All target candidates must review the published requirements and adhere strictly to all deadlines.\n"
+            f"2. For further details, circular documents and updates are maintained on the EchoSphere departmental portal.\n"
+            f"3. For questions or exceptions, please contact the Department Office or Administrative Coordinator.\n\n"
+            f"Issued By Authority:\nEchoSphere Institutional Administration"
         )
 
         return {
             "title": title,
             "content": content,
-            "suggested_priority": rec["priority"],
-            "suggested_category": cat
+            "suggested_priority": class_res["priority"],
+            "suggested_category": final_cat
         }
 
     @staticmethod
     def expand_text(text: str, category: str = "Academics") -> str:
+        """Expand a brief memo into an official institutional circular."""
         clean = text.strip()
         if not clean:
             return ""
 
-        prompt = f"Expand this short note into a formal, structured official college circular:\n\n'{clean}'"
-        sys_inst = "You are an AI tool for formal campus notices. Expand short notes into polite, formal, clear institutional announcements. Output only the expanded text."
+        prompt = f"Expand this brief note into a formal, structured official college announcement circular:\n\n'{clean}'"
+        sys_inst = "You are an AI for official college circulars. Expand short bullet points into polite, clear, formal announcements. Output only the circular text."
 
-        expanded = call_gemini_api(prompt, system_instruction=sys_inst)
+        expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
         if expanded:
             return expanded
 
         return (
-            f"Official Circular:\n\n"
-            f"This is to inform all concerned students and faculty members regarding {clean}.\n\n"
-            f"Please take note of this update, adhere to the specified guidelines, and check the EchoSphere portal for further updates. "
-            f"For clarifications, please visit the Department Office."
+            f"Official Announcement Circular:\n\n"
+            f"This is to notify all concerned students and faculty members regarding {clean}.\n\n"
+            f"Please take note of this update, adhere strictly to all published guidelines, and monitor the EchoSphere portal for detailed schedules. "
+            f"For clarifications, please consult your Department Office."
         )
 
     @staticmethod
     def check_grammar(text: str) -> Dict[str, Any]:
+        """Check grammar, spelling, and institutional tone."""
         clean = text.strip()
         if not clean:
             return {"original": text, "corrected_text": text, "improvements": []}
 
-        prompt = f"Correct grammar, spelling, and tone for this college notice:\n\n'{clean}'"
-        sys_inst = "You are a professional grammar and tone editor. Return JSON: {\"corrected_text\": \"...\", \"improvements\": [\"...\"]}"
+        prompt = f"Correct grammar, spelling, and institutional tone for this circular:\n\n'{clean}'"
+        sys_inst = "You are a professional university editor. Return JSON: {\"corrected_text\": \"...\", \"improvements\": [\"...\"]}"
 
-        raw_res = call_gemini_api(prompt, system_instruction=sys_inst)
+        raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
         if raw_res:
             try:
                 json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
@@ -360,7 +391,7 @@ class AIService:
                     return {
                         "original": text,
                         "corrected_text": parsed.get("corrected_text", clean),
-                        "improvements": parsed.get("improvements", ["Corrected sentence structure."])
+                        "improvements": parsed.get("improvements", ["Corrected syntax and institutional tone."])
                     }
             except Exception:
                 pass
@@ -374,28 +405,37 @@ class AIService:
         if not clean[0].isupper():
             improvements.append("Capitalized initial sentence letter.")
         if not clean.endswith(('.', '!', '?')):
-            improvements.append("Added ending punctuation.")
+            improvements.append("Added terminal punctuation.")
 
         return {
             "original": text,
             "corrected_text": corrected,
-            "improvements": improvements or ["Formatting and professional tone verified."]
+            "improvements": improvements or ["Verified professional tone and structure."]
         }
 
     @staticmethod
+    def recommend_priority(title: str, content: str, user_role: str = "STUDENT") -> Dict[str, Any]:
+        """Classify priority and category using local Campus ML Engine."""
+        ml_engine = CampusMLEngine.get_instance()
+        return ml_engine.predict_category_and_priority(title=title, content=content, user_role=user_role)
+
+    @staticmethod
     def validate_content(title: str, text: str) -> Dict[str, Any]:
+        """Validate announcement completeness against institutional checklist."""
         combined = f"{title} {text}".lower()
         missing = []
 
         if len(title.strip()) < 5:
             missing.append("Descriptive Title (min 5 characters)")
-
         if len(text.strip()) < 20:
             missing.append("Detailed Content (min 20 characters)")
 
         has_time = any(w in combined for w in ["am", "pm", "time", "clock", "hours", "schedule", "at "])
-        has_venue = any(w in combined for w in ["room", "lab", "hall", "auditorium", "building", "campus", "online", "venue", "block"])
-        has_date = any(w in combined for w in ["today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "2026", "2025", "date"])
+        has_venue = any(w in combined for w in ["room", "lab", "hall", "auditorium", "building", "campus", "online", "venue", "block", "corridor"])
+        has_date = any(w in combined for w in [
+            "today", "tomorrow", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+            "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "2026", "2025", "date"
+        ])
 
         if not has_time:
             missing.append("Time / Schedule")
@@ -417,13 +457,14 @@ class AIService:
 
     @staticmethod
     def check_spam(text: str) -> Dict[str, Any]:
+        """Detect spam and non-academic solicitations."""
         lower = text.lower()
         flags = []
 
-        spam_keywords = ['win money', 'free cash', 'crypto', 'subscribe', 'buy now', 'cheap', 'click link', 'earn $$$', 'whatsapp group', 'free iPhone']
-        found_keywords = [w for w in spam_keywords if w in lower]
-        if found_keywords:
-            flags.append(f"Contains non-institutional promotional keywords: {', '.join(found_keywords)}")
+        spam_keywords = ['win money', 'free cash', 'crypto', 'subscribe', 'buy now', 'cheap', 'click link', 'earn $$$', 'whatsapp group', 'free iphone']
+        found = [w for w in spam_keywords if w in lower]
+        if found:
+            flags.append(f"Contains non-institutional promotional keywords: {', '.join(found)}")
 
         words = text.split()
         if len(words) >= 5:
@@ -432,16 +473,15 @@ class AIService:
                 flags.append("Excessive ALL CAPS detected.")
 
         is_spam = len(flags) > 0
-        reason = "; ".join(flags) if is_spam else "Official institutional content verified."
-
         return {
             "is_spam": is_spam,
-            "reason": reason,
+            "reason": "; ".join(flags) if is_spam else "Official institutional content verified.",
             "flags": flags
         }
 
     @staticmethod
     def check_duplicate(new_title: str, new_text: str, department: Optional[str] = None, db: Optional[Session] = None) -> Dict[str, Any]:
+        """Check duplicate circulars against recent announcements in database."""
         if not db:
             return {"is_duplicate": False, "similarity_score": 0.0, "matched_title": None, "reason": "Database session unavailable."}
 
@@ -479,63 +519,19 @@ class AIService:
                 "reason": reason
             }
         except Exception as e:
-            return {"is_duplicate": False, "similarity_score": 0.0, "matched_title": None, "reason": f"Duplicate check failed: {e}"}
-
-    @staticmethod
-    def recommend_priority(title: str, content: str, user_role: str = "STUDENT") -> Dict[str, Any]:
-        text = f"{title} {content}".lower()
-        role = (user_role or "STUDENT").upper()
-
-        if any(w in text for w in ['rain', 'flood', 'weather', 'closed', 'suspended', 'emergency', 'disaster', 'evacuation']):
-            priority = "EMERGENCY"
-            category = "Emergency"
-            reasoning = "Campus emergency or weather advisory detected."
-        elif any(w in text for w in ['exam', 'timetable', 'hall ticket', 'test', 'viva', 'practical', 'schedule']):
-            priority = "HIGH"
-            category = "Examinations"
-            reasoning = "Academic examination event detected."
-        elif any(w in text for w in ['placement', 'interview', 'drive', 'hiring', 'recruitment', 'google', 'microsoft']):
-            priority = "HIGH"
-            category = "Placements"
-            reasoning = "Placement drive activity with strict registration deadline."
-        elif any(w in text for w in ['hackathon', 'fest', 'workshop', 'seminar', 'symposium', 'event', 'club']):
-            priority = "NORMAL"
-            category = "Events"
-            reasoning = "Campus event or workshop notification."
-        elif any(w in text for w in ['sports', 'tournament', 'match', 'cricket', 'football']):
-            priority = "NORMAL"
-            category = "Sports"
-            reasoning = "Sports announcement."
-        else:
-            priority = "NORMAL"
-            category = "Academics"
-            reasoning = "General campus announcement."
-
-        # Role authority enforcement
-        allowed_roles = ["COLLEGE ADMIN", "HOD", "PRINCIPAL", "DEVELOPER", "DEV ADMIN"]
-        is_allowed = True
-        if priority == "EMERGENCY" and role not in allowed_roles:
-            is_allowed = False
-            priority = "HIGH"
-            reasoning += " (Note: Only Authorized Admins/HoDs may issue Emergency priority; priority set to HIGH)."
-
-        return {
-            "priority": priority,
-            "category": category,
-            "reasoning": reasoning,
-            "is_allowed": is_allowed
-        }
+            return {"is_duplicate": False, "similarity_score": 0.0, "matched_title": None, "reason": f"Duplicate check error: {e}"}
 
     @staticmethod
     def summarize(content: str) -> str:
-        if not content:
-            return "No content provided."
+        """Summarize announcement into 1 concise sentence."""
         clean = content.strip()
+        if not clean:
+            return "No content provided."
         if len(clean) <= 90:
             return clean
 
-        prompt = f"Summarize this college notice in 1 clear, concise sentence:\n\n'{clean}'"
-        summary = call_gemini_api(prompt)
+        prompt = f"Summarize this college circular in 1 clear, concise institutional sentence:\n\n'{clean}'"
+        summary, _ = call_modern_gemini(prompt)
         if summary:
             return summary
 
@@ -543,3 +539,24 @@ class AIService:
         if sentences:
             return f"Summary: {sentences[0]}"
         return f"Summary: {clean[:85]}..."
+
+    @staticmethod
+    def get_status() -> Dict[str, Any]:
+        """Return operational health of AI engine and models."""
+        key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+        has_key = bool(key and key != "YOUR_ACTUAL_GEMINI_API_KEY")
+        from app.services.campus_ml_engine import INSTITUTIONAL_KNOWLEDGE
+
+        return {
+            "engine": "EchoSphere Hybrid AI (Gemini 2.5/2.0 + Local Campus ML)",
+            "gemini_model": PRIMARY_MODEL,
+            "is_gemini_available": has_key,
+            "local_ml_available": True,
+            "kb_indexed_documents": len(INSTITUTIONAL_KNOWLEDGE)
+        }
+
+    @staticmethod
+    def train_models() -> Dict[str, Any]:
+        """Train or retrain local Campus ML models."""
+        engine = CampusMLEngine.get_instance()
+        return engine.train_models()

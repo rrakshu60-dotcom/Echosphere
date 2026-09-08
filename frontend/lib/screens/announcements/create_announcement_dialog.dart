@@ -29,6 +29,8 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool deliverInApp = true;
   bool deliverPush = true;
   bool deliverSpeaker = false;
+  int? selectedSpeakerNodeId;
+  List<Map<String, dynamic>> availableSpeakerNodes = [];
 
   bool isScheduleLater = false;
   DateTime scheduledDateTime = DateTime.now().add(const Duration(hours: 1));
@@ -41,6 +43,18 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   String? aiDuplicateWarning;
 
   List<PlatformFile> attachedFiles = [];
+
+  Future<void> _loadSpeakerNodes() async {
+    try {
+      final nodes = await EchosphereApiService().getSpeakerNodes();
+      if (mounted) {
+        setState(() {
+          availableSpeakerNodes =
+              nodes.whereType<Map>().map((n) => Map<String, dynamic>.from(n)).toList();
+        });
+      }
+    } catch (_) {}
+  }
 
   Future<void> _pickAttachmentFiles() async {
     try {
@@ -89,6 +103,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     super.initState();
     titleController.addListener(_autoDetectAndValidate);
     descController.addListener(_autoDetectAndValidate);
+    _loadSpeakerNodes();
   }
 
   @override
@@ -249,6 +264,32 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     final annController = Get.find<AnnouncementController>();
     final user = authController.currentUser.value;
     final theme = Theme.of(context);
+    final isStudent = user == null || user.role.toLowerCase() == 'student';
+
+    if (isStudent) {
+      return EchoSphereDialog(
+        title: 'Access Restricted',
+        showCancelButton: false,
+        confirmText: 'Dismiss',
+        onConfirm: () => Navigator.of(context).pop(),
+        contentWidget: const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.gpp_bad_rounded, color: Colors.redAccent, size: 40),
+              SizedBox(height: 12),
+              Text(
+                "I don't have the authority to author or publish announcements directly from this account. If you have an announcement proposal, please coordinate with your faculty advisor or department office.",
+                style: TextStyle(fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final textLength = descController.text.trim().length;
 
     return EchoSphereDialog(
@@ -493,6 +534,62 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                 ),
               ],
             ),
+            if (deliverSpeaker) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.volume_up_rounded, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Target Speaker Node (Auto-plays if idle)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('All Nodes (College-Wide)', style: TextStyle(fontSize: 11)),
+                          selected: selectedSpeakerNodeId == null,
+                          onSelected: (val) {
+                            if (val) setState(() => selectedSpeakerNodeId = null);
+                          },
+                        ),
+                        ...availableSpeakerNodes.map((node) {
+                          final nId = node['id'] as int?;
+                          final nName = (node['name'] ?? 'Speaker #$nId').toString();
+                          final isSel = selectedSpeakerNodeId == nId;
+                          return ChoiceChip(
+                            label: Text(nName, style: const TextStyle(fontSize: 11)),
+                            selected: isSel,
+                            onSelected: (val) {
+                              setState(() => selectedSpeakerNodeId = val ? nId : null);
+                            },
+                          );
+                        }),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             const SizedBox(height: 14),
 
@@ -591,10 +688,10 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           }
         }
 
-        final isTeacher = user?.role == 'Teacher';
-        final isHod = user?.role == 'HoD';
+        final isTeacher = user.role == 'Teacher';
+        final isHod = user.role == 'HoD';
         final target = selectedAudience.trim().toLowerCase();
-        final userDept = (user?.department ?? 'AIML').trim().toLowerCase();
+        final userDept = (user.department ?? 'AIML').trim().toLowerCase();
         final isHodCrossDept = isHod && (!target.contains(userDept) || target.contains('entire') || target.contains('all'));
 
         String statusMessage = '';
@@ -617,12 +714,17 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           description: desc,
           category: aiDetectedCategory,
           priority: aiDetectedPriority,
-          creatorRole: user?.role ?? 'Teacher',
-          creatorName: user?.fullName ?? 'Faculty',
-          department: user?.department ?? 'AIML',
+          creatorRole: user.role,
+          creatorName: user.fullName,
+          department: user.department ?? 'AIML',
           targetAudience: selectedAudience,
           isScheduleLater: isScheduleLater,
           scheduledDateTime: scheduledDateTime,
+          deliverSpeaker: deliverSpeaker,
+          deliverInApp: deliverInApp,
+          deliverPush: deliverPush,
+          speakerNodeId: selectedSpeakerNodeId,
+          attachments: attachedFiles.map((f) => f.name).toList(),
         );
 
         if (ok) {

@@ -17,14 +17,22 @@ from app.api.v1.password_reset import router as password_reset_router
 from app.api.v1.user_management import router as user_management_router
 from app.core.rate_limiter import limiter
 from app.db.database import Base, engine
-import app.models  # Ensure all SQLAlchemy models are registered
-
 Base.metadata.create_all(bind=engine)
+
+# Seed default speaker nodes if table is empty
+try:
+    from app.db.database import SessionLocal
+    from app.repositories.hardware_repository import seed_default_speaker_nodes_if_empty
+    with SessionLocal() as db_session:
+        seed_default_speaker_nodes_if_empty(db_session)
+except Exception:
+    pass
 
 app = FastAPI(
     title="EchoSphere Backend",
     version="1.0.0",
 )
+
 
 # -------------------------
 # CORS Middleware
