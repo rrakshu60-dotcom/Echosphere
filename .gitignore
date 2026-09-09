@@ -39,6 +39,7 @@ frontend/android/.gradle/
 frontend/android/app/build/
 
 # Media, Screenshots, Temp & Docs
+*.apk
 *.mp4
 *.zip
 *.pdf
