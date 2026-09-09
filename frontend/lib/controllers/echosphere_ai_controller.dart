@@ -1,4 +1,5 @@
 import 'package:anymex/controllers/auth_controller.dart';
+import 'package:anymex/services/copilot_client.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:get/get.dart';
@@ -54,6 +55,44 @@ class EchosphereAiController extends GetxController {
         modelUsed: 'EchoSphere Campus AI',
       ),
     );
+  }
+
+  String sanitizeClientMarkdown(String text) {
+    var cleaned = text;
+    // Strip [[ACTION:...]] tags from visible bubble
+    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[^\]]+\]\]'), '');
+    // Fix dollar-prefixed headers (##$ or ###$)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$([a-zA-Z0-9_]+)', multiLine: true), (m) => '${m[1]} ${m[2]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$', multiLine: true), (m) => '${m[1]} ');
+    // Strip raw asterisks / dashes clutter (---, ***, ___, ****)
+    cleaned = cleaned.replaceAll(RegExp(r'\*{4,}'), '**');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*(\*{3,}|-{3,}|_{3,}|={3,})[ \t]*$', multiLine: true), '\n');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*{3}([^\*\n]+)\*{3}'), (m) => '**${m[1]}**');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*\*{3}[ \t]*', multiLine: true), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[ \t]*\*{3}[ \t]*$', multiLine: true), '');
+    // Space after **: or :** if immediately followed by text
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(:\*\*)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(\*\*:)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(\*\*:\*\*)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
+    // Ensure list items are preceded by a newline for CommonMark
+    final lines = cleaned.split('\n');
+    final processed = <String>[];
+    bool inList = false;
+    for (final line in lines) {
+      final isItem = RegExp(r'^[ \t]*[-•*]\s+').hasMatch(line) || RegExp(r'^[ \t]*\d+\.\s+').hasMatch(line);
+      if (isItem) {
+        if (!inList && processed.isNotEmpty && processed.last.trim().isNotEmpty) {
+          processed.add('');
+        }
+        inList = true;
+      } else if (line.trim().isEmpty) {
+        inList = false;
+      } else {
+        inList = false;
+      }
+      processed.add(line);
+    }
+    return processed.join('\n').trim();
   }
 
   List<String> _getDefaultActionsForRole(String role, String dept) {
@@ -131,13 +170,29 @@ class EchosphereAiController extends GetxController {
         history: historyList,
       );
 
-      final responseText = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
+      final rawResponse = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
+      final responseText = sanitizeClientMarkdown(rawResponse);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
       final ctxBadge = apiRes['context_badge'] as String? ?? '$role • $dept Department';
       final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
       final modelUsed = apiRes['model_used'] as String? ?? 'EchoSphere AI';
+
+      // Execute CopilotKit / Gemma action if returned by the backend
+      final copilotAction = apiRes['copilot_action'];
+      if (copilotAction is Map<String, dynamic>) {
+        CopilotClient().executeAction(copilotAction);
+      } else if (navTarget != null && navTarget.isNotEmpty) {
+        if (navTarget.contains('speaker')) {
+          CopilotClient().executeAction({'action': 'navigate', 'parameters': {'screen': 'speaker_queue'}});
+        } else if (navTarget.contains('filter:')) {
+          final cat = navTarget.split(':').last;
+          CopilotClient().executeAction({'action': 'navigate', 'parameters': {'screen': 'notices', 'filter_category': cat}});
+        } else if (navTarget.contains('create_notice')) {
+          CopilotClient().executeAction({'action': 'create_announcement_draft', 'parameters': {}});
+        }
+      }
 
       messages.add(AiChatMessage(
         text: responseText,
@@ -151,7 +206,8 @@ class EchosphereAiController extends GetxController {
       ));
     } catch (_) {
       // High-intelligence local fallback grounded in campus knowledge
-      final fallbackText = _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
+      final rawFallback = _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
+      final fallbackText = sanitizeClientMarkdown(rawFallback);
       messages.add(AiChatMessage(
         text: fallbackText,
         isUser: false,

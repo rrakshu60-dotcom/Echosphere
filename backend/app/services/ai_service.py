@@ -7,6 +7,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.announcement import Announcement
 from app.services.campus_ml_engine import CampusMLEngine
+from app.services.ai_text_sanitizer import sanitize_ai_markdown
+from app.services.model_router import ModelRouter
 
 logger = logging.getLogger("EchoSphere.AIService")
 
@@ -254,46 +256,22 @@ class AIService:
             f"6. If answering about notices or exams, refer specifically to the user's department ({dept}) and role ({role})."
         )
 
-        gemini_response, model_used = call_modern_gemini(
+        # Step 5: Route through Multi-Model Congestion-Aware Router (Gemma -> Cloudflare LLaMA / Gemini 2.5 -> Campus ML)
+        router = ModelRouter.get_instance()
+        return router.route_and_generate(
             prompt=query,
+            user_role=role,
+            department=dept,
+            full_name=name,
             system_instruction=system_instruction,
-            history=history
-        )
-
-        if gemini_response:
-            return {
-                "response": gemini_response,
-                "category_badge": category_badge,
-                "context_badge": f"{role.title()} | {dept} Department",
-                "suggested_actions": suggested_actions,
-                "navigation_target": navigation_target,
-                "matched_announcements": matched_announcements,
-                "model_used": model_used
-            }
-
-        # Step 6: Fallback to Self-Trained Local Campus ML & Semantic RAG Engine
-        logger.info("Gemini API not configured or unavailable. Delegating to local Campus ML Engine.")
-        local_result = ml_engine.synthesize_response(
-            query=query,
-            name=name,
-            role=role,
-            dept=dept,
-            usn_or_emp_id=usn_or_emp_id,
+            history=history,
+            category_badge=category_badge,
+            suggested_actions=suggested_actions,
+            navigation_target=navigation_target,
             matched_announcements=matched_announcements,
             kb_matches=kb_matches,
-            predicted_intent=predicted_intent,
-            conversation_history=history
+            predicted_intent=predicted_intent
         )
-
-        # Merge any specific suggested actions if local synthesizer had defaults
-        if suggested_actions:
-            local_result["suggested_actions"] = suggested_actions
-        if navigation_target:
-            local_result["navigation_target"] = navigation_target
-        if category_badge != "EchoSphere AI":
-            local_result["category_badge"] = category_badge
-
-        return local_result
 
     @staticmethod
     def draft_announcement(
@@ -321,7 +299,7 @@ class AIService:
                     parsed = json.loads(json_match.group())
                     return {
                         "title": parsed.get("title", f"Notice: {clean_topic.title()}"),
-                        "content": parsed.get("content", ""),
+                        "content": sanitize_ai_markdown(parsed.get("content", "")),
                         "suggested_priority": parsed.get("suggested_priority", "NORMAL"),
                         "suggested_category": parsed.get("suggested_category", category or "Academics")
                     }
@@ -346,7 +324,7 @@ class AIService:
 
         return {
             "title": title,
-            "content": content,
+            "content": sanitize_ai_markdown(content),
             "suggested_priority": class_res["priority"],
             "suggested_category": final_cat
         }
@@ -363,14 +341,15 @@ class AIService:
 
         expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
         if expanded:
-            return expanded
+            return sanitize_ai_markdown(expanded)
 
-        return (
+        fallback_text = (
             f"Official Announcement Circular:\n\n"
             f"This is to notify all concerned students and faculty members regarding {clean}.\n\n"
             f"Please take note of this update, adhere strictly to all published guidelines, and monitor the EchoSphere portal for detailed schedules. "
             f"For clarifications, please consult your Department Office."
         )
+        return sanitize_ai_markdown(fallback_text)
 
     @staticmethod
     def check_grammar(text: str) -> Dict[str, Any]:
@@ -528,31 +507,36 @@ class AIService:
         if not clean:
             return "No content provided."
         if len(clean) <= 90:
-            return clean
+            return sanitize_ai_markdown(clean)
 
         prompt = f"Summarize this college circular in 1 clear, concise institutional sentence:\n\n'{clean}'"
         summary, _ = call_modern_gemini(prompt)
         if summary:
-            return summary
+            return sanitize_ai_markdown(summary)
 
         sentences = re.split(r'(?<=[.!?])\s+', clean)
         if sentences:
-            return f"Summary: {sentences[0]}"
-        return f"Summary: {clean[:85]}..."
+            return sanitize_ai_markdown(f"Summary: {sentences[0]}")
+        return sanitize_ai_markdown(f"Summary: {clean[:85]}...")
 
     @staticmethod
     def get_status() -> Dict[str, Any]:
-        """Return operational health of AI engine and models."""
+        """Return operational health of AI engine, models, and router stats."""
         key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
-        has_key = bool(key and key != "YOUR_ACTUAL_GEMINI_API_KEY")
+        has_gemini = bool(key and key != "YOUR_ACTUAL_GEMINI_API_KEY")
+        cf_token = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+        has_cf = bool(cf_token and cf_token != "YOUR_CLOUDFLARE_API_TOKEN")
         from app.services.campus_ml_engine import INSTITUTIONAL_KNOWLEDGE
 
+        router = ModelRouter.get_instance()
         return {
-            "engine": "EchoSphere Hybrid AI (Gemini 2.5/2.0 + Local Campus ML)",
+            "engine": "EchoSphere Tri-Model AI (Gemma + Gemini 2.5 + Cloudflare LLaMA + Campus ML)",
             "gemini_model": PRIMARY_MODEL,
-            "is_gemini_available": has_key,
+            "is_gemini_available": has_gemini,
+            "is_cloudflare_available": has_cf,
             "local_ml_available": True,
-            "kb_indexed_documents": len(INSTITUTIONAL_KNOWLEDGE)
+            "kb_indexed_documents": len(INSTITUTIONAL_KNOWLEDGE),
+            "router_metrics": router.get_router_status()
         }
 
     @staticmethod

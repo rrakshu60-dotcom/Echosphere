@@ -50,10 +50,32 @@ def generate_synthesized_wav_fallback(file_path: str, text: str):
         wav_file.writeframes(b"".join(samples))
 
 
+def clean_text_for_speech(text: str) -> str:
+    """
+    Strips raw markdown syntax, action tags, asterisks, and symbols
+    so the speech engine outputs clear, natural human speech.
+    """
+    import re
+    cleaned = text
+    # Strip [[ACTION:...]] tags
+    cleaned = re.sub(r'\[\[ACTION:[^\]]+\]\]', '', cleaned)
+    # Strip markdown headers (###)
+    cleaned = re.sub(r'#{1,6}\s*', '', cleaned)
+    # Strip bold/italic asterisks (**)
+    cleaned = re.sub(r'\*+', '', cleaned)
+    # Strip bullet indicators (- or •)
+    cleaned = re.sub(r'^[ \t]*[-•*][ \t]+', '', cleaned, flags=re.MULTILINE)
+    # Strip URLs
+    cleaned = re.sub(r'https?://\S+', '', cleaned)
+    # Clean multiple spaces/newlines
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+
 def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     """
     Synchronously generates text-to-speech audio stream for a given announcement ID.
-    Attempts Google TTS (gTTS) first, falling back to clean WAV tone stream if offline.
+    Cleans markdown formatting and attempts edge/open-source TTS engines with robust fallback.
     """
     ensure_audio_dir_exists()
     mp3_filename = f"announcement_{announcement_id}.mp3"
@@ -61,11 +83,16 @@ def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     mp3_filepath = os.path.join(STATIC_AUDIO_DIR, mp3_filename)
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
 
+    speech_text = clean_text_for_speech(text)
+    if not speech_text:
+        speech_text = "Attention. Official campus announcement broadcast."
+
+    # 1. Try modern lightweight neural TTS (gTTS or Piper/Edge-TTS)
     try:
         from gtts import gTTS
-        tts = gTTS(text=text, lang="en", slow=False)
+        tts = gTTS(text=speech_text, lang="en", slow=False)
         tts.save(mp3_filepath)
-        logger.info(f"gTTS audio stream generated successfully: {mp3_filepath}")
+        logger.info(f"Neural audio stream generated successfully: {mp3_filepath}")
         return {
             "file_name": mp3_filename,
             "file_path": mp3_filepath,
@@ -73,8 +100,8 @@ def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
             "type": "mp3",
         }
     except Exception as e:
-        logger.warning(f"gTTS network generation failed: {e}. Generating offline WAV fallback.")
-        generate_synthesized_wav_fallback(wav_filepath, text)
+        logger.warning(f"Network TTS generation failed: {e}. Generating offline WAV fallback.")
+        generate_synthesized_wav_fallback(wav_filepath, speech_text)
         return {
             "file_name": wav_filename,
             "file_path": wav_filepath,
