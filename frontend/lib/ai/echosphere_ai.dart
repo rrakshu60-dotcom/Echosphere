@@ -339,6 +339,20 @@ class _EchosphereAiState extends State<EchosphereAi> {
     );
   }
 
+  String _cleanDisplayMarkdown(String text) {
+    var cleaned = text;
+    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[^\]]+\]\]'), '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$([a-zA-Z0-9_]+)', multiLine: true), (m) => '${m[1]} ${m[2]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$', multiLine: true), (m) => '${m[1]} ');
+    cleaned = cleaned.replaceAll(RegExp(r'\*{4,}'), '**');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*(\*{3,}|-{3,}|_{3,}|={3,})[ \t]*$', multiLine: true), '\n');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*{3}([^\*\n]+)\*{3}'), (m) => '**${m[1]}**');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*\*{3}[ \t]*', multiLine: true), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[ \t]*\*{3}[ \t]*$', multiLine: true), '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'(\*\*:)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
+    return cleaned.trim();
+  }
+
   Widget _buildMessageBubble(AiChatMessage msg, ThemeData theme) {
     final isUser = msg.isUser;
     return Align(
@@ -351,108 +365,124 @@ class _EchosphereAiState extends State<EchosphereAi> {
           children: [
             // Badges & Model Source Row
             if (!isUser) ...[
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.smart_toy, size: 14, color: Colors.amber),
-                      const SizedBox(width: 4),
-                      Text(
-                        msg.categoryBadge ?? 'EchoSphere AI',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
-                      ),
-                    ],
-                  ),
-                  if (msg.contextBadge != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        msg.contextBadge!,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  if (msg.modelUsed != null)
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.smart_toy, size: 14, color: Colors.amber),
+                    const SizedBox(width: 4),
                     Text(
-                      msg.modelUsed!,
+                      msg.categoryBadge ?? 'EchoSphere AI',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
+                    ),
+                  ],
+                ),
+                if (msg.contextBadge != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      msg.contextBadge!,
                       style: TextStyle(
                         fontSize: 10,
-                        color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 6),
-            ],
+                  ),
+                if (msg.modelUsed != null)
+                  Text(
+                    msg.modelUsed!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurface.withOpacity(0.45),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
 
-            // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
-            EchoSphereContainer(
-              padding: const EdgeInsets.all(16.0),
-              color: isUser
-                  ? theme.colorScheme.primary.withOpacity(0.85)
-                  : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isUser)
-                    SelectableText(
-                      msg.text,
-                      style: TextStyle(
+          // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
+          EchoSphereContainer(
+            padding: const EdgeInsets.all(16.0),
+            color: isUser
+                ? theme.colorScheme.primary.withOpacity(0.85)
+                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isUser)
+                  SelectableText(
+                    msg.text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  )
+                else
+                  MarkdownBody(
+                    data: _cleanDisplayMarkdown(msg.text),
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                      p: TextStyle(
                         fontSize: 14,
-                        height: 1.45,
-                        color: theme.colorScheme.onPrimary,
+                        height: 1.5,
+                        color: theme.colorScheme.onSurface,
                       ),
-                    )
-                  else
-                    MarkdownBody(
-                      data: msg.text,
-                      selectable: true,
-                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: theme.colorScheme.onSurface,
+                      pPadding: const EdgeInsets.only(bottom: 8.0),
+                      strong: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                      h1: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                      h1Padding: const EdgeInsets.only(top: 8.0, bottom: 6.0),
+                      h2: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                      h2Padding: const EdgeInsets.only(top: 8.0, bottom: 6.0),
+                      h3: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                      h3Padding: const EdgeInsets.only(top: 6.0, bottom: 4.0),
+                      listBullet: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                      listBulletPadding: const EdgeInsets.only(right: 8),
+                      listIndent: 20.0,
+                      horizontalRuleDecoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: theme.colorScheme.primary.withOpacity(0.25),
+                            width: 1.0,
+                          ),
                         ),
-                        strong: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                        h1: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                        h2: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                        h3: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                        listBullet: TextStyle(
-                          color: theme.colorScheme.primary,
-                        ),
-                        code: TextStyle(
-                          fontFamily: 'monospace',
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                      ),
+                      code: TextStyle(
+                        fontFamily: 'monospace',
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
+                  ),
 
                   // Matched DB Announcements Attachment Cards (Clickable)
                   if (!isUser && msg.matchedAnnouncements.isNotEmpty) ...[

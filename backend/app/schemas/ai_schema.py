@@ -29,6 +29,7 @@ class AiChatResponse(BaseModel):
     navigation_target: Optional[str] = None
     matched_announcements: List[MatchedAnnouncementItem] = []
     model_used: Optional[str] = "EchoSphere Campus ML Engine (Local)"
+    copilot_action: Optional[Dict[str, Any]] = None
 
 class AiTrainResponse(BaseModel):
     status: str
@@ -40,8 +41,10 @@ class AiStatusResponse(BaseModel):
     engine: str
     gemini_model: str
     is_gemini_available: bool
+    is_cloudflare_available: Optional[bool] = False
     local_ml_available: bool
     kb_indexed_documents: int
+    router_metrics: Optional[Dict[str, Any]] = None
 
 class AiDraftRequest(BaseModel):
     topic: str

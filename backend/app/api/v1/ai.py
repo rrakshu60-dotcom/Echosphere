@@ -38,6 +38,12 @@ def ai_train(
     res = AIService.train_models()
     return AiTrainResponse(**res)
 
+@router.get("/router/status")
+def ai_router_status():
+    """Return real-time metrics across Gemma, Cloudflare LLaMA, Gemini, and Campus ML."""
+    from app.services.model_router import ModelRouter
+    return ModelRouter.get_instance().get_router_status()
+
 @router.post("/chat", response_model=AiChatResponse)
 def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
     try:
@@ -59,8 +65,36 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
             suggested_actions=res.get("suggested_actions", []),
             navigation_target=res.get("navigation_target"),
             matched_announcements=matched,
-            model_used=res.get("model_used", "EchoSphere Campus ML Engine (Local)")
+            model_used=res.get("model_used", "EchoSphere Campus ML Engine (Local)"),
+            copilot_action=res.get("copilot_action")
         )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("/copilot/chat")
+def ai_copilot_chat(req: Dict[str, Any]):
+    """
+    CopilotKit Agent Protocol Endpoint.
+    Processes conversational instructions with active app state and dispatches in-app actions.
+    """
+    from app.services.copilot_runtime import CopilotRuntime
+    try:
+        message = req.get("message", "")
+        app_state = req.get("app_state", {})
+        user_role = req.get("user_role", "STUDENT")
+        department = req.get("department", "CSE")
+        full_name = req.get("full_name", "Campus Member")
+        history = req.get("history", [])
+
+        res = CopilotRuntime.process_copilot_request(
+            message=message,
+            app_state=app_state,
+            user_role=user_role,
+            department=department,
+            full_name=full_name,
+            history=history
+        )
+        return res
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
