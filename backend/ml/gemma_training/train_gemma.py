@@ -86,33 +86,51 @@ def run_training(
     model.print_trainable_parameters()
 
     logger.info("Configuring SFT Trainer arguments...")
+    import inspect
     try:
         from trl import SFTConfig
-        training_args = SFTConfig(
-            output_dir=output_dir,
-            num_train_epochs=epochs,
-            per_device_train_batch_size=batch_size,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            learning_rate=learning_rate,
-            lr_scheduler_type="cosine",
-            warmup_steps=20,
-            optim="paged_adamw_8bit",
-            logging_steps=25,
-            save_strategy="epoch",
-            fp16=not torch.cuda.is_bf16_supported(),
-            bf16=torch.cuda.is_bf16_supported(),
-            report_to="none",
-            dataset_text_field="text",
-            max_seq_length=max_seq_length,
-        )
-        trainer = SFTTrainer(
-            model=model,
-            train_dataset=dataset,
-            peft_config=peft_config,
-            tokenizer=tokenizer,
-            args=training_args,
-        )
-    except (ImportError, TypeError, Exception):
+        sft_params = inspect.signature(SFTConfig.__init__).parameters
+        cfg_kwargs = {
+            "output_dir": output_dir,
+            "num_train_epochs": epochs,
+            "per_device_train_batch_size": batch_size,
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "learning_rate": learning_rate,
+            "lr_scheduler_type": "cosine",
+            "warmup_steps": 20,
+            "optim": "paged_adamw_8bit",
+            "logging_steps": 25,
+            "save_strategy": "epoch",
+            "fp16": not torch.cuda.is_bf16_supported(),
+            "bf16": torch.cuda.is_bf16_supported(),
+            "report_to": "none",
+        }
+        if "max_length" in sft_params:
+            cfg_kwargs["max_length"] = max_seq_length
+        elif "max_seq_length" in sft_params:
+            cfg_kwargs["max_seq_length"] = max_seq_length
+
+        if "dataset_text_field" in sft_params:
+            cfg_kwargs["dataset_text_field"] = "text"
+
+        training_args = SFTConfig(**cfg_kwargs)
+
+        trainer_kwargs = {
+            "model": model,
+            "train_dataset": dataset,
+            "peft_config": peft_config,
+            "tokenizer": tokenizer,
+            "args": training_args,
+        }
+        trainer_params = inspect.signature(SFTTrainer.__init__).parameters
+        if "dataset_text_field" in trainer_params and "dataset_text_field" not in cfg_kwargs:
+            trainer_kwargs["dataset_text_field"] = "text"
+        if "max_seq_length" in trainer_params and "max_length" not in cfg_kwargs and "max_seq_length" not in cfg_kwargs:
+            trainer_kwargs["max_seq_length"] = max_seq_length
+
+        trainer = SFTTrainer(**trainer_kwargs)
+    except Exception as e:
+        logger.info(f"Using fallback TrainingArguments: {e}")
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=epochs,
@@ -133,7 +151,6 @@ def run_training(
             train_dataset=dataset,
             peft_config=peft_config,
             dataset_text_field="text",
-            max_seq_length=max_seq_length,
             tokenizer=tokenizer,
             args=training_args,
         )
