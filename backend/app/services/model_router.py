@@ -36,6 +36,8 @@ CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
 CLOUDFLARE_MODEL = os.getenv("CLOUDFLARE_MODEL", "@cf/meta/llama-3.1-8b-instruct").strip()
 
 SPECULATIVE_RACING = os.getenv("AI_SPECULATIVE_RACING", "false").lower() in ["true", "1", "yes"]
+USE_FINE_TUNED_GEMMA = os.getenv("USE_FINE_TUNED_GEMMA", "true").lower() in ["true", "1", "yes"]
+GEMMA_ADAPTER_ID = os.getenv("GEMMA_ADAPTER_ID", "RakshiRoxy/echosphere-campus-gemma-2b").strip()
 
 
 class ProviderStats:
@@ -232,6 +234,81 @@ class GemmaActionEngine:
         return None
 
 
+class FineTunedGemmaProvider:
+    """
+    Local / Fine-Tuned Gemma 2 2B-IT Provider.
+    Trained on 5,000 campus dialogue scenarios (RakshiRoxy/echosphere-campus-gemma-2b).
+    Provides instant institutional answers and CopilotKit in-app navigation actions.
+    """
+    def __init__(self, adapter_path: Optional[str] = None):
+        self.adapter_path = adapter_path or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "ml", "gemma_training", "output_gemma_campus_model", "final_adapter"
+        )
+        self.model_id = "google/gemma-2-2b-it"
+        self._model = None
+        self._tokenizer = None
+        self._loaded = False
+
+    def is_configured(self) -> bool:
+        return os.path.isdir(self.adapter_path) or USE_FINE_TUNED_GEMMA
+
+    def load_model(self) -> bool:
+        if self._loaded:
+            return True
+        try:
+            import torch
+            from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+            from peft import PeftModel
+
+            if not torch.cuda.is_available():
+                return False
+
+            target = self.adapter_path if os.path.isdir(self.adapter_path) else GEMMA_ADAPTER_ID
+            hf_token = os.getenv("HF_TOKEN", "").strip() or None
+            self._tokenizer = AutoTokenizer.from_pretrained(target, token=hf_token)
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+            )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                quantization_config=bnb_config,
+                device_map="auto",
+                torch_dtype=torch.bfloat16,
+                token=hf_token,
+            )
+            self._model = PeftModel.from_pretrained(base_model, target, token=hf_token)
+            self._model.eval()
+            self._loaded = True
+            logger.info("Fine-Tuned Gemma 2 model loaded successfully on local GPU!")
+            return True
+        except Exception as e:
+            logger.debug(f"Fine-tuned Gemma load failed: {e}")
+            return False
+
+    def generate(self, prompt: str, timeout: float = 6.0) -> Optional[str]:
+        if not self.load_model():
+            return None
+        try:
+            import torch
+            chat_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+            inputs = self._tokenizer(chat_prompt, return_tensors="pt").to("cuda")
+            with torch.no_grad():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=256,
+                    do_sample=False
+                )
+            reply = self._tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+            return reply.strip()
+        except Exception as e:
+            logger.debug(f"Fine-tuned Gemma inference error: {e}")
+            return None
+
+
 class CloudflareLlamaProvider:
     """
     Cloudflare Workers AI LLaMA Provider.
@@ -389,6 +466,7 @@ class ModelRouter:
 
     def __init__(self):
         self.gemma_action_engine = GemmaActionEngine()
+        self.fine_tuned_gemma = FineTunedGemmaProvider()
         self.cloudflare_provider = CloudflareLlamaProvider(
             account_id=CLOUDFLARE_ACCOUNT_ID,
             api_token=CLOUDFLARE_API_TOKEN,
@@ -405,6 +483,7 @@ class ModelRouter:
             "gemini": ProviderStats("Google Gemini"),
             "cloudflare": ProviderStats("Cloudflare LLaMA"),
             "gemma": ProviderStats("Gemma Action Engine"),
+            "fine_tuned_gemma": ProviderStats("Fine-Tuned Gemma 2 (Local GPU)"),
             "campus_ml": ProviderStats("Campus ML Engine"),
         }
 
@@ -450,6 +529,22 @@ class ModelRouter:
                 "matched_announcements": announcements,
                 "model_used": action_result.get("model_used", "Gemma Action Engine (Local)")
             }
+
+        # TIER 1.5: Fine-Tuned Gemma 2 Campus Model (Local GPU or HuggingFace weights)
+        if USE_FINE_TUNED_GEMMA and self.fine_tuned_gemma.is_configured():
+            start_gemma = time.time()
+            gemma_reply = self.fine_tuned_gemma.generate(query)
+            if gemma_reply:
+                self.stats["fine_tuned_gemma"].record_success((time.time() - start_gemma) * 1000.0)
+                return {
+                    "response": sanitize_ai_markdown(gemma_reply),
+                    "category_badge": "Gemma Campus AI",
+                    "context_badge": f"{user_role.title()} | {department} Department",
+                    "suggested_actions": actions,
+                    "navigation_target": navigation_target,
+                    "matched_announcements": announcements,
+                    "model_used": f"Fine-Tuned Gemma 2 ({GEMMA_ADAPTER_ID})"
+                }
 
         # TIER 2: Evaluate Cloud Providers Availability & Congestion
         gemini_ready = self.gemini_provider.is_configured() and self.stats["gemini"].is_available()
@@ -602,6 +697,11 @@ class ModelRouter:
                 "gemma_action_engine": {
                     "configured": True,
                     "stats": self.stats["gemma"].to_dict()
+                },
+                "fine_tuned_gemma": {
+                    "configured": self.fine_tuned_gemma.is_configured(),
+                    "model": GEMMA_ADAPTER_ID,
+                    "stats": self.stats["fine_tuned_gemma"].to_dict()
                 },
                 "campus_ml_fallback": {
                     "configured": True,

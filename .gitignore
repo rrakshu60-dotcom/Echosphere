@@ -11,9 +11,21 @@
 __pycache__/
 *.pyc
 .venv/
-venv/
+**/venv/
+**/.venv/
 *.sqlite3
 *.db
+
+# ML Models, Weights & Training Outputs
+output_gemma_campus_model/
+**/output_gemma_campus_model/
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+checkpoint-*/
+**/checkpoint-*/
 
 # Flutter & Dart
 .dart_tool/
