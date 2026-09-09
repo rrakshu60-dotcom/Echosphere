@@ -28,8 +28,8 @@ logger = logging.getLogger("EchoSphere.ModelRouter")
 
 # Configuration from Environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
-GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-2.0-flash,gemini-1.5-flash").split(",") if m.strip()]
+GEMINI_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-flash-latest,gemini-2.5-flash-lite,gemini-2.5-flash").split(",") if m.strip()]
 
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
@@ -568,7 +568,7 @@ class ModelRouter:
             future_cf = executor.submit(self.cloudflare_provider.generate, prompt, system_instruction, history)
 
             futures = {
-                future_gemini: ("gemini", "Google Gemini 2.5 Flash"),
+                future_gemini: ("gemini", f"Google {GEMINI_PRIMARY_MODEL}"),
                 future_cf: ("cloudflare", "Cloudflare LLaMA 3.1 (Edge)")
             }
 
