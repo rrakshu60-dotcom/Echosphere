@@ -15,11 +15,15 @@ concurrency:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   deploy-web:
     name: Deploy Web to Cloudflare Pages
     runs-on: ubuntu-latest
+    environment:
+      name: 'Cloudflare Pages'
+      url: https://echosphere-2jf.pages.dev/
     steps:
       - name: Shallow Checkout Repository
         uses: actions/checkout@v4
@@ -65,6 +69,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy frontend/build/web --project-name=echosphere --branch=main --commit-dirty=true
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
