@@ -22,6 +22,12 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Stabilize Network (Force IPv4 & Configure cURL Retries)
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 || true
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 || true
+          echo "--retry 5 --retry-delay 3 --retry-all-errors" >> ~/.curlrc
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
