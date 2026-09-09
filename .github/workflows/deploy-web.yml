@@ -38,6 +38,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Precache Web Engine Only
+        run: flutter precache --web
+
       - name: Cache Pub Dependencies & Dart Tool
         uses: actions/cache@v4
         with:
@@ -52,7 +55,7 @@ jobs:
         run: |
           cd frontend
           flutter pub get
-          flutter build web --release --no-pub --no-wasm-dry-run --base-href / --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
+          flutter build web --release --no-pub --no-wasm-dry-run --base-href / --pwa-strategy=none --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
           cp web/_redirects build/web/_redirects
           cp web/_headers build/web/_headers
 
