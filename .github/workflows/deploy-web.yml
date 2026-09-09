@@ -22,7 +22,7 @@ jobs:
     name: Deploy Web to Cloudflare Pages
     runs-on: ubuntu-latest
     environment:
-      name: 'Cloudflare Pages'
+      name: 'Production'
       url: https://echosphere-2jf.pages.dev/
     steps:
       - name: Shallow Checkout Repository
@@ -73,3 +73,63 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Purge Stale Vercel Deployments & Sync Live URL
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Attempt to update the repository homepage URL on GitHub
+            try {
+              await github.rest.repos.update({
+                owner: owner,
+                repo: repo,
+                homepage: 'https://echosphere-2jf.pages.dev/'
+              });
+              console.log('Successfully set repo homepage to https://echosphere-2jf.pages.dev/');
+            } catch (err) {
+              console.log('Homepage update notice (requires admin):', err.message);
+            }
+
+            // Find and delete any old Vercel deployments
+            try {
+              const res = await github.rest.repos.listDeployments({
+                owner: owner,
+                repo: repo,
+                per_page: 100
+              });
+              for (const dep of (res.data || [])) {
+                const env = (dep.environment || '').toLowerCase();
+                const desc = (dep.description || '').toLowerCase();
+                const creator = (dep.creator?.login || '').toLowerCase();
+                if (env.includes('vercel') || desc.includes('vercel') || creator.includes('vercel')) {
+                  console.log(`Deactivating stale deployment ${dep.id} (${dep.environment})...`);
+                  try {
+                    await github.rest.repos.createDeploymentStatus({
+                      owner,
+                      repo,
+                      deployment_id: dep.id,
+                      state: 'inactive'
+                    });
+                  } catch (e) {
+                    console.warn(`Could not set status inactive for ${dep.id}:`, e.message);
+                  }
+                  try {
+                    await github.rest.repos.deleteDeployment({
+                      owner,
+                      repo,
+                      deployment_id: dep.id
+                    });
+                    console.log(`Deleted stale deployment ${dep.id}`);
+                  } catch (e) {
+                    console.warn(`Could not delete deployment ${dep.id}:`, e.message);
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('Deployment cleanup notice:', err.message);
+            }
