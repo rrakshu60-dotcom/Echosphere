@@ -1,0 +1,75 @@
+name: EchoSphere Windows Desktop Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    paths:
+      - '.github/workflows/build-windows.yml'
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-app:
+    name: Build & Release Windows App
+    runs-on: windows-latest
+    steps:
+      - name: Shallow Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Precache Windows Engine Only
+        run: flutter precache --windows
+
+      - name: Cache Pub Dependencies & Dart Tool
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\Pub\Cache
+            frontend\.dart_tool
+          key: pub-cache-windows-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: |
+            pub-cache-windows-
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Dependencies
+        run: cd frontend && flutter pub get
+
+      - name: Build Windows App
+        run: cd frontend && flutter build windows --release --no-pub
+
+      - name: Compress Windows Build
+        run: Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip
+
+      - name: Publish Windows App to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "EchoSphere Latest Build"
+          draft: false
+          prerelease: false
+          files: frontend/echosphere-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Temporary Windows Artifact (1-Day Retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: echosphere-windows-app
+          path: frontend/echosphere-windows.zip
+          retention-days: 1
