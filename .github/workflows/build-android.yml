@@ -64,11 +64,11 @@ jobs:
       - name: Install Dependencies
         run: cd frontend && flutter pub get
 
-      - name: Build Android Debug APK (Arm64 Optimized)
-        run: cd frontend && flutter build apk --debug --no-pub --target-platform android-arm64 --android-skip-build-dependency-validation
+      - name: Build Android Release APK (Arm64 Optimized - ~15-20 MB)
+        run: cd frontend && flutter build apk --release --no-pub --target-platform android-arm64 --android-skip-build-dependency-validation
 
       - name: Copy & Rename APK
-        run: cp frontend/build/app/outputs/flutter-apk/app-debug.apk frontend/echosphere-app-debug.apk
+        run: cp frontend/build/app/outputs/flutter-apk/app-release.apk frontend/echosphere-app.apk
 
       - name: Publish to GitHub Releases (Immediate Direct Download)
         uses: softprops/action-gh-release@v2
@@ -76,13 +76,13 @@ jobs:
           tag_name: latest
           name: "EchoSphere Latest Build"
           body: |
-            ## EchoSphere Automated Build
+            ## EchoSphere Automated Build (Compact Release ~15-20 MB)
             
             ### 📱 Android Installation:
-            Download **`echosphere-app-debug.apk`** below directly to your Android device, open it, and tap **Install**.
+            Download **`echosphere-app.apk`** below directly to your Android device, open it, and tap **Install**.
           draft: false
           prerelease: false
-          files: frontend/echosphere-app-debug.apk
+          files: frontend/echosphere-app.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -90,5 +90,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: echosphere-android-apk
-          path: frontend/echosphere-app-debug.apk
+          path: frontend/echosphere-app.apk
           retention-days: 1

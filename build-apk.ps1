@@ -1,5 +1,5 @@
 # EchoSphere Fast Local APK Builder
-# Builds debug APK for modern Android phones in ~30 seconds using local CPU/GPU power
+# Builds compact release APK (~15-20 MB) for modern Android phones in ~30 seconds
 param(
     [switch]$InstallToDevice
 )
@@ -16,14 +16,14 @@ Write-Host ""
 
 Set-Location "$root\frontend"
 
-Write-Host "  [1/2] Building Android Debug APK (Arm64)..." -ForegroundColor Yellow
+Write-Host "  [1/2] Building Android Release APK (Arm64)..." -ForegroundColor Yellow
 $buildStart = $timer.Elapsed
-flutter build apk --debug --target-platform android-arm64 --android-skip-build-dependency-validation
+flutter build apk --release --target-platform android-arm64 --no-pub --android-skip-build-dependency-validation
 $buildTime = [math]::Round(($timer.Elapsed - $buildStart).TotalSeconds, 1)
 Write-Host "  [1/2] Built in ${buildTime}s!" -ForegroundColor Green
 
-$apkPath = "$root\frontend\build\app\outputs\flutter-apk\app-debug.apk"
-$targetPath = "$root\echosphere-app-debug.apk"
+$apkPath = "$root\frontend\build\app\outputs\flutter-apk\app-release.apk"
+$targetPath = "$root\echosphere-app.apk"
 if (Test-Path $apkPath) {
     Copy-Item $apkPath $targetPath -Force
     $sizeMB = [math]::Round((Get-Item $targetPath).Length / 1MB, 1)
