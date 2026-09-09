@@ -72,10 +72,14 @@ def clean_text_for_speech(text: str) -> str:
     return cleaned
 
 
+TTS_ENGINE = os.getenv("TTS_ENGINE", "edge_tts").lower()
+KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
+
+
 def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     """
     Synchronously generates text-to-speech audio stream for a given announcement ID.
-    Cleans markdown formatting and attempts edge/open-source TTS engines with robust fallback.
+    Cleans markdown formatting and attempts Kokoro-82M, Edge-TTS, and gTTS with robust fallback.
     """
     ensure_audio_dir_exists()
     mp3_filename = f"announcement_{announcement_id}.mp3"
@@ -87,7 +91,34 @@ def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # 1. Try modern high-fidelity neural TTS (Microsoft Edge-TTS)
+    # 1. Try Kokoro-82M if configured or preferred
+    if TTS_ENGINE == "kokoro":
+        try:
+            import importlib
+            kokoro = importlib.import_module("kokoro")
+            sf = importlib.import_module("soundfile")
+            np = importlib.import_module("numpy")
+            KPipeline = getattr(kokoro, "KPipeline")
+
+            pipeline = KPipeline(lang_code="a")
+            generator = pipeline(speech_text, voice=KOKORO_VOICE, speed=1.0)
+            audio_segments = []
+            for gs, ps, audio in generator:
+                audio_segments.append(audio)
+            if audio_segments:
+                combined = np.concatenate(audio_segments)
+                sf.write(wav_filepath, combined, 24000)
+                logger.info(f"Kokoro-82M neural audio stream generated successfully: {wav_filepath}")
+                return {
+                    "file_name": wav_filename,
+                    "file_path": wav_filepath,
+                    "url_path": f"/static/audio_streams/{wav_filename}",
+                    "type": "wav",
+                }
+        except Exception as k_err:
+            logger.debug(f"Kokoro-82M attempt skipped/failed: {k_err}. Falling back to Edge-TTS.")
+
+    # 2. Try modern high-fidelity neural TTS (Microsoft Edge-TTS)
     try:
         import asyncio
         import edge_tts
