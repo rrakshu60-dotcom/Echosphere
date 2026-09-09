@@ -291,7 +291,23 @@ class AIService:
         )
         sys_inst = "You are an official college administrative secretary drafting notices. Return strictly valid JSON."
 
-        raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+        raw_res = None
+        router = ModelRouter.get_instance()
+
+        # 1. Try Cloudflare Workers AI first for fast sub-4-second structured drafting
+        if router.cloudflare_provider.is_configured():
+            try:
+                raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=6.0)
+            except Exception as e:
+                logger.debug(f"[Cloudflare draft attempt]: {e}")
+
+        # 2. Try Google Gemini if Cloudflare is unconfigured or failed
+        if not raw_res:
+            try:
+                raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+            except Exception as e:
+                logger.debug(f"[Gemini draft attempt]: {e}")
+
         if raw_res:
             try:
                 json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)

@@ -369,7 +369,9 @@ class CloudflareLlamaProvider:
                     result = data.get("result", {})
                     response_text = result.get("response", "")
                     if response_text:
-                        return response_text.strip()
+                        if isinstance(response_text, dict):
+                            return json.dumps(response_text)
+                        return str(response_text).strip()
             elif resp.status_code == 429:
                 raise requests.exceptions.HTTPError("Cloudflare Workers AI Rate Limit (429)", response=resp)
             else:
