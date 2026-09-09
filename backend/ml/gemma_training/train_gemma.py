@@ -85,32 +85,58 @@ def run_training(
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        learning_rate=learning_rate,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.05,
-        optim="paged_adamw_8bit",
-        logging_steps=25,
-        save_strategy="epoch",
-        fp16=not torch.cuda.is_bf16_supported(),
-        bf16=torch.cuda.is_bf16_supported(),
-        report_to="none"
-    )
-
-    logger.info("Starting Supervised Fine-Tuning (SFTTrainer)...")
-    trainer = SFTTrainer(
-        model=model,
-        train_dataset=dataset,
-        peft_config=peft_config,
-        dataset_text_field="text",
-        max_seq_length=max_seq_length,
-        tokenizer=tokenizer,
-        args=training_args,
-    )
+    logger.info("Configuring SFT Trainer arguments...")
+    try:
+        from trl import SFTConfig
+        training_args = SFTConfig(
+            output_dir=output_dir,
+            num_train_epochs=epochs,
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            learning_rate=learning_rate,
+            lr_scheduler_type="cosine",
+            warmup_steps=20,
+            optim="paged_adamw_8bit",
+            logging_steps=25,
+            save_strategy="epoch",
+            fp16=not torch.cuda.is_bf16_supported(),
+            bf16=torch.cuda.is_bf16_supported(),
+            report_to="none",
+            dataset_text_field="text",
+            max_seq_length=max_seq_length,
+        )
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=dataset,
+            peft_config=peft_config,
+            tokenizer=tokenizer,
+            args=training_args,
+        )
+    except (ImportError, TypeError, Exception):
+        training_args = TrainingArguments(
+            output_dir=output_dir,
+            num_train_epochs=epochs,
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            learning_rate=learning_rate,
+            lr_scheduler_type="cosine",
+            warmup_steps=20,
+            optim="paged_adamw_8bit",
+            logging_steps=25,
+            save_strategy="epoch",
+            fp16=not torch.cuda.is_bf16_supported(),
+            bf16=torch.cuda.is_bf16_supported(),
+            report_to="none"
+        )
+        trainer = SFTTrainer(
+            model=model,
+            train_dataset=dataset,
+            peft_config=peft_config,
+            dataset_text_field="text",
+            max_seq_length=max_seq_length,
+            tokenizer=tokenizer,
+            args=training_args,
+        )
 
     trainer.train()
     trainer.model.save_pretrained(os.path.join(output_dir, "final_adapter"))
