@@ -87,27 +87,45 @@ def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # 1. Try modern lightweight neural TTS (gTTS or Piper/Edge-TTS)
+    # 1. Try modern high-fidelity neural TTS (Microsoft Edge-TTS)
     try:
-        from gtts import gTTS
-        tts = gTTS(text=speech_text, lang="en", slow=False)
-        tts.save(mp3_filepath)
-        logger.info(f"Neural audio stream generated successfully: {mp3_filepath}")
+        import asyncio
+        import edge_tts
+
+        async def _run_edge():
+            comm = edge_tts.Communicate(speech_text, "en-IN-NeerjaNeural")
+            await comm.save(mp3_filepath)
+
+        asyncio.run(_run_edge())
+        logger.info(f"Edge-TTS neural audio stream generated successfully: {mp3_filepath}")
         return {
             "file_name": mp3_filename,
             "file_path": mp3_filepath,
             "url_path": f"/static/audio_streams/{mp3_filename}",
             "type": "mp3",
         }
-    except Exception as e:
-        logger.warning(f"Network TTS generation failed: {e}. Generating offline WAV fallback.")
-        generate_synthesized_wav_fallback(wav_filepath, speech_text)
-        return {
-            "file_name": wav_filename,
-            "file_path": wav_filepath,
-            "url_path": f"/static/audio_streams/{wav_filename}",
-            "type": "wav",
-        }
+    except Exception as edge_err:
+        logger.debug(f"Edge-TTS attempt skipped/failed: {edge_err}. Trying gTTS fallback...")
+        try:
+            from gtts import gTTS
+            tts = gTTS(text=speech_text, lang="en", slow=False)
+            tts.save(mp3_filepath)
+            logger.info(f"gTTS audio stream generated successfully: {mp3_filepath}")
+            return {
+                "file_name": mp3_filename,
+                "file_path": mp3_filepath,
+                "url_path": f"/static/audio_streams/{mp3_filename}",
+                "type": "mp3",
+            }
+        except Exception as e:
+            logger.warning(f"Network TTS generation failed: {e}. Generating offline WAV fallback.")
+            generate_synthesized_wav_fallback(wav_filepath, speech_text)
+            return {
+                "file_name": wav_filename,
+                "file_path": wav_filepath,
+                "url_path": f"/static/audio_streams/{wav_filename}",
+                "type": "wav",
+            }
 
 
 async def generate_announcement_audio(announcement_id: int, text: str) -> dict:
