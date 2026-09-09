@@ -17,21 +17,15 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Job 1: Build Android Debug APK
+  # Job 1: Build Android Debug APK (Primary Target - ~4 mins)
   # ------------------------------------------------------------------
   build-android-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Free Disk Space (Ubuntu)
+      - name: Fast Disk Space Optimization (Ubuntu)
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo docker image prune --all --force || true
-          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /opt/ghc || true
           df -h
 
       - name: Checkout Code
@@ -42,6 +36,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Stabilize Network (Force IPv4 & Configure cURL Retries)
         run: |
@@ -55,6 +50,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Cache Pub Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-cache-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: |
+            pub-cache-${{ runner.os }}-
+
       - name: Install Dependencies
         run: cd frontend && flutter pub get
 
@@ -62,70 +65,9 @@ jobs:
         run: cd frontend && flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Copy & Rename APK
-        run: |
-          cp frontend/build/app/outputs/flutter-apk/app-debug.apk frontend/echosphere-app-debug.apk
+        run: cp frontend/build/app/outputs/flutter-apk/app-debug.apk frontend/echosphere-app-debug.apk
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: echosphere-android-apk
-          path: frontend/echosphere-app-debug.apk
-
-  # ------------------------------------------------------------------
-  # Job 2: Build Windows Desktop App
-  # ------------------------------------------------------------------
-  build-windows-app:
-    name: Build Windows Desktop App
-    runs-on: windows-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Enable Windows Desktop
-        run: flutter config --enable-windows-desktop
-
-      - name: Install Dependencies
-        run: cd frontend && flutter pub get
-
-      - name: Build Windows App
-        run: cd frontend && flutter build windows --release --no-pub
-
-      - name: Compress Windows Build
-        run: Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip
-
-      - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: echosphere-windows-app
-          path: frontend/echosphere-windows.zip
-
-  # ------------------------------------------------------------------
-  # Job 3: Publish to GitHub Releases (Direct 1-Click APK Download)
-  # ------------------------------------------------------------------
-  release-builds:
-    name: Publish to GitHub Releases
-    needs: [build-android-apk, build-windows-app]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download Android APK Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: echosphere-android-apk
-          path: release-assets
-
-      - name: Download Windows Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: echosphere-windows-app
-          path: release-assets
-
-      - name: Create or Update GitHub Release
+      - name: Publish Android APK to GitHub Releases (Immediate Availability)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
@@ -140,9 +82,68 @@ jobs:
             Download **`echosphere-windows.zip`**, extract the folder, and run `echosphere.exe`.
           draft: false
           prerelease: false
-          files: |
-            release-assets/echosphere-app-debug.apk
-            release-assets/echosphere-windows.zip
+          files: frontend/echosphere-app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload Temporary APK Artifact (1-Day Retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: echosphere-android-apk
+          path: frontend/echosphere-app-debug.apk
+          retention-days: 1
+
+  # ------------------------------------------------------------------
+  # Job 2: Build Windows Desktop App (Independent Parallel Job)
+  # ------------------------------------------------------------------
+  build-windows-app:
+    name: Build Windows Desktop App
+    if: "!contains(github.event.head_commit.message, '[skip-windows]')"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Cache Pub Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Pub\Cache
+          key: pub-cache-windows-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: |
+            pub-cache-windows-
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Dependencies
+        run: cd frontend && flutter pub get
+
+      - name: Build Windows App
+        run: cd frontend && flutter build windows --release --no-pub
+
+      - name: Compress Windows Build
+        run: Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip
+
+      - name: Publish Windows App to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "EchoSphere Latest Build"
+          draft: false
+          prerelease: false
+          files: frontend/echosphere-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Temporary Windows Artifact (1-Day Retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: echosphere-windows-app
+          path: frontend/echosphere-windows.zip
+          retention-days: 1
