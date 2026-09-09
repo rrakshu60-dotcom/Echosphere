@@ -504,6 +504,98 @@ class ModelRouter:
             cls._instance = cls()
         return cls._instance
 
+    @staticmethod
+    def _extract_copilot_action(
+        text: str,
+        navigation_target: Optional[str] = None,
+        raw_action: Optional[Dict[str, Any]] = None
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Extract any [[ACTION:name:{...}]] tags or map navigation_target to a structured CopilotKit action.
+        Returns: (clean_text, copilot_action_dict)
+        """
+        extracted_action: Optional[Dict[str, Any]] = None
+        cleaned_text = text
+
+        # 1. Action dictionary from GemmaActionEngine
+        if raw_action:
+            act = raw_action.get("action")
+            target = raw_action.get("navigation_target")
+            if act == "navigate" and target:
+                if "speaker" in target:
+                    extracted_action = {"action": "navigate", "parameters": {"screen": "speaker_queue"}}
+                elif "profile:security" in target:
+                    extracted_action = {"action": "navigate", "parameters": {"screen": "security_preferences"}}
+                elif "profile" in target:
+                    extracted_action = {"action": "navigate", "parameters": {"screen": "profile"}}
+                elif "filter:" in target:
+                    cat = target.split(":")[-1]
+                    extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
+            elif act == "create_notice":
+                extracted_action = {"action": "create_announcement_draft", "parameters": {}}
+            elif act == "theme" and target:
+                mode = target.split(":")[-1] if ":" in target else "toggle"
+                extracted_action = {"action": "toggle_theme", "parameters": {"mode": mode}}
+            elif act == "filter" and target:
+                cat = target.split(":")[-1]
+                extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
+
+        # 2. Check for embedded [[ACTION:name:params]] tag in text
+        if not extracted_action:
+            import re
+            match = re.search(r'\[\[ACTION:([a-zA-Z0-9_]+):(\{.*?\})\]\]', cleaned_text)
+            if match:
+                try:
+                    act_name = match.group(1)
+                    params = json.loads(match.group(2))
+                    extracted_action = {"action": act_name, "parameters": params}
+                    cleaned_text = cleaned_text.replace(match.group(0), "").strip()
+                except Exception:
+                    pass
+
+        # 3. Fallback from navigation_target string
+        if not extracted_action and navigation_target:
+            if "speaker" in navigation_target:
+                extracted_action = {"action": "navigate", "parameters": {"screen": "speaker_queue"}}
+            elif "create_notice" in navigation_target:
+                extracted_action = {"action": "create_announcement_draft", "parameters": {}}
+            elif "theme" in navigation_target:
+                mode = navigation_target.split(":")[-1] if ":" in navigation_target else "toggle"
+                extracted_action = {"action": "toggle_theme", "parameters": {"mode": mode}}
+            elif "filter:" in navigation_target:
+                cat = navigation_target.split(":")[-1]
+                extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
+            elif "security" in navigation_target:
+                extracted_action = {"action": "navigate", "parameters": {"screen": "security_preferences"}}
+            elif "profile" in navigation_target:
+                extracted_action = {"action": "navigate", "parameters": {"screen": "profile"}}
+
+        return sanitize_ai_markdown(cleaned_text), extracted_action
+
+    def _build_response(
+        self,
+        raw_text: str,
+        category_badge: str,
+        user_role: str,
+        department: str,
+        suggested_actions: List[str],
+        navigation_target: Optional[str],
+        matched_announcements: List[Dict[str, Any]],
+        model_used: str,
+        raw_action: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        clean_text, copilot_act = self._extract_copilot_action(raw_text, navigation_target, raw_action)
+        return {
+            "response": clean_text,
+            "category_badge": category_badge,
+            "context_badge": f"{user_role.title()} | {department} Department",
+            "suggested_actions": suggested_actions,
+            "navigation_target": navigation_target,
+            "matched_announcements": matched_announcements,
+            "model_used": model_used,
+            "copilot_action": copilot_act
+        }
+
     def route_and_generate(
         self,
         prompt: str,
@@ -531,15 +623,17 @@ class ModelRouter:
         action_result = self.gemma_action_engine.match_action(query, user_role, department)
         if action_result:
             self.stats["gemma"].record_success(duration_ms=15.0)
-            return {
-                "response": sanitize_ai_markdown(action_result["response"]),
-                "category_badge": action_result.get("category_badge", category_badge),
-                "context_badge": f"{user_role.title()} | {department} Department",
-                "suggested_actions": action_result.get("suggested_actions", actions),
-                "navigation_target": action_result.get("navigation_target", navigation_target),
-                "matched_announcements": announcements,
-                "model_used": action_result.get("model_used", "Gemma Action Engine (Local)")
-            }
+            return self._build_response(
+                raw_text=action_result["response"],
+                category_badge=action_result.get("category_badge", category_badge),
+                user_role=user_role,
+                department=department,
+                suggested_actions=action_result.get("suggested_actions", actions),
+                navigation_target=action_result.get("navigation_target", navigation_target),
+                matched_announcements=announcements,
+                model_used=action_result.get("model_used", "Gemma Action Engine (Local)"),
+                raw_action=action_result
+            )
 
         # TIER 1.5: Fine-Tuned Gemma 2 Campus Model (Local GPU or HuggingFace weights)
         if USE_FINE_TUNED_GEMMA and self.fine_tuned_gemma.is_configured():
@@ -547,15 +641,16 @@ class ModelRouter:
             gemma_reply = self.fine_tuned_gemma.generate(query)
             if gemma_reply:
                 self.stats["fine_tuned_gemma"].record_success((time.time() - start_gemma) * 1000.0)
-                return {
-                    "response": sanitize_ai_markdown(gemma_reply),
-                    "category_badge": "Gemma Campus AI",
-                    "context_badge": f"{user_role.title()} | {department} Department",
-                    "suggested_actions": actions,
-                    "navigation_target": navigation_target,
-                    "matched_announcements": announcements,
-                    "model_used": f"Fine-Tuned Gemma 2 ({GEMMA_ADAPTER_ID})"
-                }
+                return self._build_response(
+                    raw_text=gemma_reply,
+                    category_badge="Gemma Campus AI",
+                    user_role=user_role,
+                    department=department,
+                    suggested_actions=actions,
+                    navigation_target=navigation_target,
+                    matched_announcements=announcements,
+                    model_used=f"Fine-Tuned Gemma 2 ({GEMMA_ADAPTER_ID})"
+                )
 
         # TIER 2: Evaluate Cloud Providers Availability & Congestion
         gemini_ready = self.gemini_provider.is_configured() and self.stats["gemini"].is_available()
@@ -566,15 +661,16 @@ class ModelRouter:
             racing_res = self._speculative_race(query, system_instruction, history)
             if racing_res:
                 text, model_name = racing_res
-                return {
-                    "response": sanitize_ai_markdown(text),
-                    "category_badge": category_badge,
-                    "context_badge": f"{user_role.title()} | {department} Department",
-                    "suggested_actions": actions,
-                    "navigation_target": navigation_target,
-                    "matched_announcements": announcements,
-                    "model_used": model_name
-                }
+                return self._build_response(
+                    raw_text=text,
+                    category_badge=category_badge,
+                    user_role=user_role,
+                    department=department,
+                    suggested_actions=actions,
+                    navigation_target=navigation_target,
+                    matched_announcements=announcements,
+                    model_used=model_name
+                )
 
         # ADAPTIVE TRAFFIC BALANCER:
         # Determine priority provider based on current latency EMA and health
@@ -599,15 +695,16 @@ class ModelRouter:
                         duration = (time.time() - start_t) * 1000.0
                         self.stats["gemini"].record_success(duration)
                         logger.info(f"Answer generated via Google Gemini in {duration:.1f}ms")
-                        return {
-                            "response": sanitize_ai_markdown(text),
-                            "category_badge": category_badge,
-                            "context_badge": f"{user_role.title()} | {department} Department",
-                            "suggested_actions": actions,
-                            "navigation_target": navigation_target,
-                            "matched_announcements": announcements,
-                            "model_used": model_name or "Google Gemini 2.5 Flash"
-                        }
+                        return self._build_response(
+                            raw_text=text,
+                            category_badge=category_badge,
+                            user_role=user_role,
+                            department=department,
+                            suggested_actions=actions,
+                            navigation_target=navigation_target,
+                            matched_announcements=announcements,
+                            model_used=model_name or "Google Gemini 2.5 Flash"
+                        )
                 except requests.exceptions.HTTPError as e:
                     is_429 = "429" in str(e)
                     self.stats["gemini"].record_error(is_rate_limit=is_429)
@@ -623,15 +720,16 @@ class ModelRouter:
                         duration = (time.time() - start_t) * 1000.0
                         self.stats["cloudflare"].record_success(duration)
                         logger.info(f"Answer generated via Cloudflare Workers AI (LLaMA) in {duration:.1f}ms")
-                        return {
-                            "response": sanitize_ai_markdown(text),
-                            "category_badge": category_badge,
-                            "context_badge": f"{user_role.title()} | {department} Department",
-                            "suggested_actions": actions,
-                            "navigation_target": navigation_target,
-                            "matched_announcements": announcements,
-                            "model_used": f"Cloudflare LLaMA 3.1 (Edge)"
-                        }
+                        return self._build_response(
+                            raw_text=text,
+                            category_badge=category_badge,
+                            user_role=user_role,
+                            department=department,
+                            suggested_actions=actions,
+                            navigation_target=navigation_target,
+                            matched_announcements=announcements,
+                            model_used="Cloudflare LLaMA 3.1 (Edge)"
+                        )
                 except requests.exceptions.HTTPError as e:
                     is_429 = "429" in str(e)
                     self.stats["cloudflare"].record_error(is_rate_limit=is_429)
@@ -664,7 +762,12 @@ class ModelRouter:
         if category_badge != "EchoSphere AI":
             local_result["category_badge"] = category_badge
 
-        local_result["response"] = sanitize_ai_markdown(local_result.get("response", ""))
+        clean_text, copilot_act = self._extract_copilot_action(
+            local_result.get("response", ""),
+            local_result.get("navigation_target")
+        )
+        local_result["response"] = clean_text
+        local_result["copilot_action"] = copilot_act
         return local_result
 
     def _speculative_race(self, prompt: str, system_instruction: str, history: Optional[List[Dict[str, Any]]]) -> Optional[Tuple[str, str]]:

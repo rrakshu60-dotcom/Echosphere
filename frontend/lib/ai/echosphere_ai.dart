@@ -657,7 +657,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                     const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
-                                        'Architecture: ${aiStatus?["engine"] ?? "Hybrid AI"}',
+                                        'Architecture: ${aiStatus?["engine"] ?? "Tri-Model AI"}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -665,13 +665,33 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '• Primary LLM: ${aiStatus?["gemini_model"] ?? "gemini-2.5-flash"}\n'
-                                  '• Cloud API Online: ${aiStatus?["is_gemini_available"] == true ? "YES (Active)" : "Offline / Unset (Local ML Active)"}\n'
-                                  '• Local ML Engine: ${aiStatus?["local_ml_available"] == true ? "Operational" : "Unavailable"}\n'
-                                  '• Indexed Knowledge Base: ${aiStatus?["kb_indexed_documents"] ?? 0} circular vectors',
-                                  style: const TextStyle(fontSize: 11, height: 1.5),
+                                const SizedBox(height: 8),
+                                Builder(
+                                  builder: (context) {
+                                    final routerMetrics = aiStatus?["router_metrics"] as Map<String, dynamic>?;
+                                    final providers = routerMetrics?["active_providers"] as Map<String, dynamic>?;
+                                    final gemini = providers?["gemini"] as Map<String, dynamic>?;
+                                    final cf = providers?["cloudflare"] as Map<String, dynamic>?;
+                                    final gemma = providers?["fine_tuned_gemma"] as Map<String, dynamic>?;
+
+                                    final geminiLatency = (gemini?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 350.0;
+                                    final cfLatency = (cf?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 290.0;
+                                    final racing = routerMetrics?["speculative_racing_enabled"] == true;
+
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '• Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          '• Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          '• Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
+                                          '• Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
+                                          '• Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
+                                          style: const TextStyle(fontSize: 11, height: 1.5),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ],
                             ),

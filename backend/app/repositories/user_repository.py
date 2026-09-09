@@ -1,5 +1,5 @@
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.user import User
 
@@ -12,7 +12,12 @@ def get_user_by_email(
     Fetch a user by official email.
     """
 
-    return db.query(User).filter(User.official_email == official_email).first()
+    return (
+        db.query(User)
+        .options(joinedload(User.role), joinedload(User.department))
+        .filter(User.official_email == official_email)
+        .first()
+    )
 
 
 def get_user_by_identifier(
@@ -25,6 +30,7 @@ def get_user_by_identifier(
 
     return (
         db.query(User)
+        .options(joinedload(User.role), joinedload(User.department))
         .filter(
             or_(
                 User.employee_id == identifier,

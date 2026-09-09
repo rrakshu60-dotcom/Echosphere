@@ -141,3 +141,21 @@ class AiIntentRequest(BaseModel):
 
 class AiIntentResponse(BaseModel):
     intent: str
+
+class CopilotChatRequest(BaseModel):
+    message: str
+    app_state: Optional[Dict[str, Any]] = None
+    user_role: Optional[str] = "STUDENT"
+    department: Optional[str] = "CSE"
+    full_name: Optional[str] = "Campus Member"
+    history: Optional[List[Dict[str, Any]]] = None
+
+class CopilotChatResponse(BaseModel):
+    response: str
+    copilot_action: Optional[Dict[str, Any]] = None
+    category_badge: Optional[str] = "EchoSphere Copilot"
+    context_badge: Optional[str] = None
+    model_used: Optional[str] = None
+    suggested_actions: List[str] = []
+    navigation_target: Optional[str] = None
+
