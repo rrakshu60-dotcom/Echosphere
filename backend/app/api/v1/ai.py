@@ -1,3 +1,4 @@
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -14,7 +15,8 @@ from app.schemas.ai_schema import (
     AiDuplicateRequest, AiDuplicateResponse,
     AiClassifyRequest, AiClassifyResponse,
     AiIntentRequest, AiIntentResponse,
-    AiStatusResponse, AiTrainResponse
+    AiStatusResponse, AiTrainResponse,
+    CopilotChatRequest, CopilotChatResponse
 )
 from app.core.dependencies import require_roles
 from app.models.user import User
@@ -71,30 +73,31 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/copilot/chat")
-def ai_copilot_chat(req: Dict[str, Any]):
+@router.post("/copilot/chat", response_model=CopilotChatResponse)
+def ai_copilot_chat(req: CopilotChatRequest):
     """
     CopilotKit Agent Protocol Endpoint.
     Processes conversational instructions with active app state and dispatches in-app actions.
     """
     from app.services.copilot_runtime import CopilotRuntime
     try:
-        message = req.get("message", "")
-        app_state = req.get("app_state", {})
-        user_role = req.get("user_role", "STUDENT")
-        department = req.get("department", "CSE")
-        full_name = req.get("full_name", "Campus Member")
-        history = req.get("history", [])
-
         res = CopilotRuntime.process_copilot_request(
-            message=message,
-            app_state=app_state,
-            user_role=user_role,
-            department=department,
-            full_name=full_name,
-            history=history
+            message=req.message,
+            app_state=req.app_state or {},
+            user_role=req.user_role or "STUDENT",
+            department=req.department or "CSE",
+            full_name=req.full_name or "Campus Member",
+            history=req.history
         )
-        return res
+        return CopilotChatResponse(
+            response=res["response"],
+            copilot_action=res.get("copilot_action"),
+            category_badge=res.get("category_badge", "EchoSphere Copilot"),
+            context_badge=res.get("context_badge"),
+            model_used=res.get("model_used"),
+            suggested_actions=res.get("suggested_actions", []),
+            navigation_target=res.get("navigation_target")
+        )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 

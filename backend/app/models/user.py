@@ -74,11 +74,13 @@ class User(TimestampMixin, Base):
     role = relationship(
         "Role",
         back_populates="users",
+        lazy="joined",
     )
 
     department = relationship(
         "Department",
         back_populates="users",
+        lazy="joined",
     )
 
     announcements = relationship(

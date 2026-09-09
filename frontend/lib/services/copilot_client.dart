@@ -112,7 +112,11 @@ class CopilotClient {
 
     showDialog(
       context: context,
-      builder: (_) => const CreateAnnouncementDialog(),
+      builder: (_) => CreateAnnouncementDialog(
+        initialTitle: params['title'] as String? ?? params['topic'] as String?,
+        initialContent: params['content'] as String?,
+        initialCategory: params['category'] as String?,
+      ),
     );
     return true;
   }

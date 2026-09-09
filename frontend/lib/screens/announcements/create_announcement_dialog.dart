@@ -12,7 +12,16 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 class CreateAnnouncementDialog extends StatefulWidget {
-  const CreateAnnouncementDialog({super.key});
+  final String? initialTitle;
+  final String? initialContent;
+  final String? initialCategory;
+
+  const CreateAnnouncementDialog({
+    super.key,
+    this.initialTitle,
+    this.initialContent,
+    this.initialCategory,
+  });
 
   @override
   State<CreateAnnouncementDialog> createState() => _CreateAnnouncementDialogState();
@@ -37,6 +46,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
   bool isAiExpanding = false;
   bool isAiPolishing = false;
+  bool isAiDrafting = false;
 
   String? aiValidationWarning;
   String? aiSpamWarning;
@@ -59,24 +69,22 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   Future<void> _pickAttachmentFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          // Documents
-          'pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt', 'csv', 'ppt', 'pptx',
-          // Images
-          'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'ico',
-        ],
         allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'],
       );
 
       if (result != null && result.files.isNotEmpty) {
         setState(() {
-          attachedFiles.addAll(result.files);
+          for (final f in result.files) {
+            if (!attachedFiles.any((existing) => existing.name == f.name)) {
+              attachedFiles.add(f);
+            }
+          }
         });
-        snackBar('Attached ${result.files.length} file${result.files.length == 1 ? '' : 's'}!');
+        snackBar('Attached ${result.files.length} file(s)');
       }
     } catch (e) {
-      debugPrint('File picker error: $e');
       snackBar('File picker error or cancelled.');
     }
   }
@@ -101,9 +109,59 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialTitle != null && widget.initialTitle!.isNotEmpty) {
+      titleController.text = widget.initialTitle!;
+    }
+    if (widget.initialContent != null && widget.initialContent!.isNotEmpty) {
+      descController.text = widget.initialContent!;
+    }
+    if (widget.initialCategory != null && widget.initialCategory!.isNotEmpty) {
+      aiDetectedCategory = widget.initialCategory!;
+    }
     titleController.addListener(_autoDetectAndValidate);
     descController.addListener(_autoDetectAndValidate);
     _loadSpeakerNodes();
+  }
+
+  Future<void> _generateDraftWithAi() async {
+    final topic = titleController.text.trim().isNotEmpty
+        ? titleController.text.trim()
+        : descController.text.trim();
+    if (topic.isEmpty) {
+      errorSnackBar('Please enter a brief topic or title first (e.g. "Annual Hackathon 2026").');
+      return;
+    }
+
+    setState(() => isAiDrafting = true);
+
+    try {
+      final res = await EchosphereApiService().generateAiDraft(
+        topic,
+        category: aiDetectedCategory,
+        targetRole: 'STUDENT',
+      );
+      if (mounted) {
+        setState(() {
+          if (res['title'] != null && res['title'].toString().isNotEmpty) {
+            titleController.text = res['title'];
+          }
+          if (res['content'] != null && res['content'].toString().isNotEmpty) {
+            descController.text = res['content'];
+          }
+          if (res['suggested_category'] != null) {
+            aiDetectedCategory = res['suggested_category'];
+          }
+          if (res['suggested_priority'] != null) {
+            aiDetectedPriority = res['suggested_priority'];
+          }
+        });
+        snackBar('AI drafted an official institutional announcement from your topic.', title: 'AI Announcement Drafter');
+      }
+    } catch (e) {
+      errorSnackBar('Failed to generate draft: $e');
+    } finally {
+      if (mounted) setState(() => isAiDrafting = false);
+    }
   }
 
   @override
@@ -299,8 +357,22 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
-            const Text('Announcement Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                const Text('Announcement Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ActionChip(
+                  avatar: const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                  label: isAiDrafting
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('AI Auto-Draft', style: TextStyle(fontSize: 11)),
+                  onPressed: isAiDrafting ? null : _generateDraftWithAi,
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             TextField(
               controller: titleController,
