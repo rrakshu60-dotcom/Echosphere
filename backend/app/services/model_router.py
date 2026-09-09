@@ -257,9 +257,15 @@ class FineTunedGemmaProvider:
         if self._loaded:
             return True
         try:
-            import torch
-            from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-            from peft import PeftModel
+            import importlib
+            torch = importlib.import_module("torch")
+            transformers = importlib.import_module("transformers")
+            peft = importlib.import_module("peft")
+
+            AutoTokenizer = getattr(transformers, "AutoTokenizer")
+            AutoModelForCausalLM = getattr(transformers, "AutoModelForCausalLM")
+            BitsAndBytesConfig = getattr(transformers, "BitsAndBytesConfig")
+            PeftModel = getattr(peft, "PeftModel")
 
             if not torch.cuda.is_available():
                 return False
@@ -282,6 +288,7 @@ class FineTunedGemmaProvider:
             )
             self._model = PeftModel.from_pretrained(base_model, target, token=hf_token)
             self._model.eval()
+            self._torch = torch
             self._loaded = True
             logger.info("Fine-Tuned Gemma 2 model loaded successfully on local GPU!")
             return True
@@ -293,7 +300,11 @@ class FineTunedGemmaProvider:
         if not self.load_model():
             return None
         try:
-            import torch
+            torch = getattr(self, "_torch", None)
+            if torch is None:
+                import importlib
+                torch = importlib.import_module("torch")
+
             chat_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
             inputs = self._tokenizer(chat_prompt, return_tensors="pt").to("cuda")
             with torch.no_grad():
