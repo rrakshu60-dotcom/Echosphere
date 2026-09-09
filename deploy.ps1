@@ -21,6 +21,8 @@ if (-not $SkipBuild) {
     Write-Host "  [1/3] Building Flutter Web..." -ForegroundColor Yellow
     Set-Location "$root\frontend"
     flutter build web --release --no-wasm-dry-run --base-href / 2>&1 | Out-Null
+    if (Test-Path "web\_redirects") { Copy-Item "web\_redirects" "build\web\_redirects" -Force }
+    if (Test-Path "web\_headers") { Copy-Item "web\_headers" "build\web\_headers" -Force }
     $buildTime = ($timer.Elapsed - $buildStart).TotalSeconds
     $buildTimeRounded = [math]::Round($buildTime, 1)
     Write-Host "  [1/3] Built in ${buildTimeRounded}s" -ForegroundColor Green
@@ -46,13 +48,12 @@ else {
 }
 Write-Host "  [2/3] Deployed in ${deployTimeRounded}s" -ForegroundColor Green
 
-# Step 3: Commit and Push to GitHub
+# Step 3: Commit and Push Source Changes to GitHub (Excluding build binaries)
 if (-not $SkipPush) {
     $pushStart = $timer.Elapsed
-    Write-Host "  [3/3] Pushing build to GitHub..." -ForegroundColor Yellow
+    Write-Host "  [3/3] Pushing source code to GitHub..." -ForegroundColor Yellow
     Set-Location $root
-    cmd /c "git add frontend/build/web -f 2>&1" | Out-Null
-    cmd /c "git add deploy.ps1 2>&1" | Out-Null
+    cmd /c "git add deploy.ps1 wrangler.json 2>&1" | Out-Null
     cmd /c "git diff --cached --quiet 2>&1"
     $hasChanges = ($LASTEXITCODE -ne 0)
     if ($hasChanges) {
