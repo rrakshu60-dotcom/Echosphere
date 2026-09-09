@@ -21,7 +21,7 @@ jobs:
     name: Deploy Web to Cloudflare Pages
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Shallow Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -38,19 +38,21 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Cache Pub Dependencies
+      - name: Cache Pub Dependencies & Dart Tool
         uses: actions/cache@v4
         with:
-          path: ~/.pub-cache
-          key: pub-cache-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
+          path: |
+            ~/.pub-cache
+            frontend/.dart_tool
+          key: flutter-cache-web-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
           restore-keys: |
-            pub-cache-${{ runner.os }}-
+            flutter-cache-web-${{ runner.os }}-
 
       - name: Build Flutter Web & Copy Cloudflare Rules
         run: |
           cd frontend
           flutter pub get
-          flutter build web --release --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
+          flutter build web --release --no-pub --no-wasm-dry-run --base-href / --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
           cp web/_redirects build/web/_redirects
           cp web/_headers build/web/_headers
 
