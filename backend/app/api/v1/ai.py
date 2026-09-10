@@ -49,12 +49,27 @@ def ai_router_status():
 @router.post("/chat", response_model=AiChatResponse)
 def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
     try:
+        user_name = req.full_name
+        user_role = req.user_role or "STUDENT"
+        user_dept = req.department
+        usn_id = req.usn_or_emp_id
+
+        if db and req.user_id and (not user_name or user_name in ["Student", "User", "Faculty Member"]):
+            db_user = db.query(User).filter(User.id == req.user_id).first()
+            if db_user:
+                user_name = db_user.full_name or user_name
+                if db_user.role:
+                    user_role = db_user.role.name or user_role
+                if db_user.department:
+                    user_dept = db_user.department.code or db_user.department.name or user_dept
+                usn_id = db_user.usn or db_user.employee_id or usn_id
+
         res = AIService.process_chat(
             prompt=req.prompt,
-            user_role=req.user_role or "STUDENT",
-            department=req.department,
-            full_name=req.full_name,
-            usn_or_emp_id=req.usn_or_emp_id,
+            user_role=user_role,
+            department=user_dept,
+            full_name=user_name,
+            usn_or_emp_id=usn_id,
             db=db,
             history=req.history,
             session_id=req.session_id

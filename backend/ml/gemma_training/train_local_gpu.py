@@ -60,12 +60,13 @@ OLD_ADAPTER = os.path.join(OLD_OUTPUT_DIR, "final_adapter")
 print("=" * 72, flush=True)
 print("  ECHOSPHERE SOTA GEMMA 2 TRAINING ENGINE (CLAUDE / CHATGPT PROFILE)", flush=True)
 print("  Target Hardware:    NVIDIA GeForce RTX 4060 Laptop (8 GB VRAM)", flush=True)
-print("  RSLoRA Tuning:      ENABLED (r=32, alpha=64, all 7 linear projections)", flush=True)
+print("  Deep LoRA Depth:    20 Deep Transformer Layers (Layers 6 to 25)", flush=True)
+print("  RSLoRA Tuning:      ENABLED (r=64, alpha=128, all 7 linear projections)", flush=True)
 print("  Loss Masking:       ENABLED (Completion-only on assistant response tokens)", flush=True)
-print("  NEFTune Noise:      ENABLED (alpha=5.0 for conversational generalization)", flush=True)
-print("  Target Steps:       400 Steps (Effective batch 16, ~60-90 min budget)", flush=True)
-print("  Early Stopping:     ENABLED (Patience: 5, Threshold: 0.001)", flush=True)
-print("  Validation Curve:   ENABLED (Evaluated every 20 steps)", flush=True)
+print("  NEFTune Noise:      ENABLED (alpha=7.0 for conversational generalization)", flush=True)
+print("  Target Steps:       800 Steps (Effective batch 16, ~90-150 min budget)", flush=True)
+print("  Early Stopping:     ENABLED (Patience: 8, Threshold: 0.001)", flush=True)
+print("  Validation Curve:   ENABLED (Evaluated every 40 steps)", flush=True)
 print("=" * 72, flush=True)
 
 if not torch.cuda.is_available():
@@ -91,7 +92,10 @@ print(f"      Train split: {len(train_raw)} | Focused validation slice: {len(eva
 # 3. Model & Tokenizer Setup (4-Bit NF4 with BF16 compute)
 MODEL_ID = "google/gemma-2-2b-it"
 print(f"\n[2/5] Loading Gemma 2 Base Model: {MODEL_ID}", flush=True)
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN)
+try:
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, local_files_only=True)
+except Exception:
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=HF_TOKEN)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "right"
 
@@ -102,31 +106,44 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID,
-    quantization_config=bnb_config,
-    device_map="auto",
-    torch_dtype=torch.bfloat16,
-    attn_implementation="sdpa",
-    token=HF_TOKEN
-)
+try:
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+        attn_implementation="sdpa",
+        local_files_only=True
+    )
+except Exception:
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+        attn_implementation="sdpa",
+        token=HF_TOKEN
+    )
 model = prepare_model_for_kbit_training(model)
 
-# 4. LoRA Setup (Rank-Stabilized RSLoRA r=32, alpha=64 across all 7 linear projections)
+# 4. LoRA Setup (20 Deep Transformer Layers: 6 to 25 across all 7 linear projections)
+DEEP_LAYERS = list(range(6, 26))  # 20 deep layers
+print(f"[LoRA] Targeting {len(DEEP_LAYERS)} deep transformer layers (indices 6 to 25)...", flush=True)
 peft_config = LoraConfig(
-    r=32,
-    lora_alpha=64,
+    r=64,
+    lora_alpha=128,
     use_rslora=True,
+    layers_to_transform=DEEP_LAYERS,
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    lora_dropout=0.05,
+    lora_dropout=0.08,
     bias="none",
     task_type="CAUSAL_LM"
 )
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
 
-# 5. Tokenization with SOTA Completion-Only Loss Masking (384 Sequence Length)
-MAX_SEQ_LEN = 384
+# 5. Tokenization with SOTA Completion-Only Loss Masking (512 Sequence Length)
+MAX_SEQ_LEN = 512
 MODEL_MARKER = "<start_of_turn>model\n"
 print(f"\n[3/5] Tokenizing dataset with Completion Loss Masking (max length: {MAX_SEQ_LEN})...", flush=True)
 
@@ -255,23 +272,23 @@ class SafeTerminalProgressCallback(TrainerCallback):
 
 
 # 7. SOTA Ultra-Safe Training Arguments for Laptop RTX 4060 (Claude / ChatGPT Profile)
-MAX_STEPS = 400
-EVAL_STEPS = 20
-WARMUP_STEPS = 20
+MAX_STEPS = 800
+EVAL_STEPS = 40
+WARMUP_STEPS = 40
 
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     max_steps=MAX_STEPS,
     per_device_train_batch_size=1,       # Micro-batch size 1 guarantees peak VRAM < 4.2 GB
-    gradient_accumulation_steps=16,     # Effective batch size = 16 (6,400 samples evaluated)
+    gradient_accumulation_steps=16,     # Effective batch size = 16 (12,800 samples evaluated)
     per_device_eval_batch_size=1,        # Minimal eval batch size
     prediction_loss_only=True,           # NEVER hoard logits on GPU/RAM
     eval_accumulation_steps=1,           # Move loss to CPU immediately
-    learning_rate=1.8e-4,
+    learning_rate=1.5e-4,
     lr_scheduler_type="cosine",
     warmup_steps=WARMUP_STEPS,
     optim="paged_adamw_8bit",
-    neftune_noise_alpha=5.0,            # NEFTune noise injection for high generalization
+    neftune_noise_alpha=7.0,            # NEFTune noise injection for high generalization
     logging_steps=5,
     eval_strategy="steps",
     eval_steps=EVAL_STEPS,
@@ -288,7 +305,7 @@ training_args = TrainingArguments(
 )
 
 early_stopping_cb = EarlyStoppingCallback(
-    early_stopping_patience=5,
+    early_stopping_patience=8,
     early_stopping_threshold=0.001
 )
 terminal_curve_cb = SafeTerminalProgressCallback(total_steps=MAX_STEPS)

@@ -175,6 +175,7 @@ class EchosphereAiController extends GetxController {
         department: dept,
         fullName: fullName,
         usnOrEmpId: usnOrEmpId,
+        userId: user?.id,
         history: historyList,
       );
 

@@ -56,6 +56,7 @@ backend/app/static/audio_streams/*.mp3
 
 # Helper & Generator Scripts
 generate_*.py
+!backend/ml/gemma_training/generate_echosphere_dataset.py
 refactor_*.py
 fix_*.py
 *_progress.txt
