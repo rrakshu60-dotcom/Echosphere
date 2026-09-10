@@ -1,4 +1,5 @@
 import 'package:anymex/controllers/auth_controller.dart';
+import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -152,7 +153,23 @@ class AnnouncementController extends GetxController {
   final RxBool showTodayOnly = false.obs;
   final RxBool isLoading = false.obs;
   final RxString sortBy = 'Newest First'.obs;
+  final RxMap<int, CalendarEventData> calendarEvents = <int, CalendarEventData>{}.obs;
   static int _idCounter = 0;
+
+  Future<CalendarEventData?> getOrFetchCalendarEvent(AnnouncementModel notice) async {
+    if (calendarEvents.containsKey(notice.id)) {
+      return calendarEvents[notice.id];
+    }
+    final ev = await EchosphereApiService().getAnnouncementCalendarEvent(
+      notice.id,
+      title: notice.title,
+      content: notice.description,
+    );
+    if (ev != null) {
+      calendarEvents[notice.id] = ev;
+    }
+    return ev;
+  }
 
   static const List<String> sortOptions = [
     'Newest First',

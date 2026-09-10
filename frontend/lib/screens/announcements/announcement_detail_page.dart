@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
+import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/widgets/common/glow.dart';
+import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -32,11 +34,33 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   AnnouncementModel get announcement => widget.announcement;
   String? _aiSummary;
   bool _isSummarizing = false;
+  CalendarEventData? _calendarEvent;
 
   @override
   void initState() {
     super.initState();
     _aiSummary = widget.announcement.aiSummary;
+    _fetchCalendarEvent();
+  }
+
+  Future<void> _fetchCalendarEvent() async {
+    try {
+      CalendarEventData? ev;
+      if (Get.isRegistered<AnnouncementController>()) {
+        ev = await Get.find<AnnouncementController>().getOrFetchCalendarEvent(widget.announcement);
+      } else {
+        ev = await EchosphereApiService().getAnnouncementCalendarEvent(
+          widget.announcement.id,
+          title: widget.announcement.title,
+          content: widget.announcement.description,
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _calendarEvent = ev;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _generateAiSummary() async {
@@ -395,7 +419,153 @@ Downloaded & Saved via EchoSphere Smart Campus System
                           title: announcement.title,
                           hasAiSummary: (_aiSummary != null && _aiSummary!.isNotEmpty),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
+
+                        // AI Calendar Event Card (If dates/deadlines extracted)
+                        if (_calendarEvent != null && _calendarEvent!.hasEvent) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16.0),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF10B981).withOpacity(0.28),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withOpacity(0.16),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.event_available_rounded,
+                                        color: Color(0xFF10B981),
+                                        size: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Event & Deadline Detected',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.2,
+                                          color: Colors.green.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      DateFormat('MMM d, yyyy').format(_calendarEvent!.startTime),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.green.shade800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  _calendarEvent!.title,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFF10B981)),
+                                    const SizedBox(width: 5),
+                                    Expanded(
+                                      child: Text(
+                                        '${DateFormat('EEEE, h:mm a').format(_calendarEvent!.startTime)} (${_calendarEvent!.location})',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.75),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_calendarEvent!.actionRequired.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.task_alt_rounded, size: 13, color: Colors.blue),
+                                      const SizedBox(width: 5),
+                                      Expanded(
+                                        child: Text(
+                                          _calendarEvent!.actionRequired,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: theme.colorScheme.onSurface.withOpacity(0.85),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                // 1-Tap Action Row: Responsive Wrap to guarantee zero overflow on 320px
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () => showCalendarSyncSheet(context, _calendarEvent!),
+                                      icon: const Icon(Icons.calendar_month_rounded, size: 14),
+                                      label: const Text(
+                                        'Add to Calendar',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF10B981),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () async {
+                                        final ok = await CalendarSyncService.exportAndShareIcs(_calendarEvent!);
+                                        if (context.mounted && ok) {
+                                          snackBar('Exported .ics event');
+                                        }
+                                      },
+                                      icon: const Icon(Icons.share_outlined, size: 13),
+                                      label: const Text(
+                                        'Export .ics',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                        side: BorderSide(color: const Color(0xFF10B981).withOpacity(0.4)),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
 
                         // Main Description Content
                         EchoSphereContainer(

@@ -3,6 +3,7 @@ import re
 import json
 import logging
 import requests
+import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.announcement import Announcement
@@ -775,6 +776,236 @@ class AIService:
         return sanitize_ai_markdown(f"Summary: {clean[:85]}...")
 
     summarize_content = summarize
+
+    @staticmethod
+    def extract_calendar_event(title: str, content: str) -> Dict[str, Any]:
+        """
+        Extract date, deadline, location, and actionable items from notice text.
+        Combines AI LLM extraction with deterministic campus heuristic fallback.
+        """
+        clean_content = sanitize_ai_markdown(content).strip() if content else ""
+        clean_title = sanitize_ai_markdown(title).strip() if title else ""
+        if not clean_content and not clean_title:
+            return {"has_event": False}
+
+        # Step 1: Attempt LLM extraction with structured JSON prompt
+        router = ModelRouter.get_instance()
+        sys_inst = (
+            "You are an academic calendar event extractor for campus circulars and notices. "
+            "Analyze the given title and text for any event, submission deadline, meeting, exam, fest, or schedule. "
+            "If NO specific date or deadline is mentioned, reply ONLY with: {\"has_event\": false}\n"
+            "If an event or deadline IS mentioned, reply ONLY with valid JSON with these exact keys:\n"
+            "{\n"
+            '  "has_event": true,\n'
+            '  "title": "Short event or deadline title",\n'
+            '  "start_time": "YYYY-MM-DDTHH:MM:SS",\n'
+            '  "end_time": "YYYY-MM-DDTHH:MM:SS",\n'
+            '  "location": "Room/Venue or College Campus",\n'
+            '  "description": "Short explanation of the requirement",\n'
+            '  "action_required": "Action needed (e.g. Submit form with fee)",\n'
+            '  "alert_hours_before": 24\n'
+            "}"
+        )
+        prompt = f"Extract event from this notice:\nTitle: {clean_title}\nContent: {clean_content}"
+
+        llm_response = None
+        # Tier 1: Local fine-tuned Qwen / Model Router
+        if router.fine_tuned_qwen.is_configured():
+            try:
+                llm_response = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=4.0, max_new_tokens=150)
+            except Exception as e:
+                logger.debug(f"[Qwen event extraction attempt]: {e}")
+
+        # Tier 2: Cloudflare LLaMA 3.1
+        if not llm_response and router.cloudflare_provider.is_configured():
+            try:
+                llm_response = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=4.0)
+            except Exception as e:
+                logger.debug(f"[Cloudflare event extraction attempt]: {e}")
+
+        # Tier 3: Gemini
+        if not llm_response:
+            try:
+                llm_response, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+            except Exception as e:
+                logger.debug(f"[Gemini event extraction attempt]: {e}")
+
+        # Try parsing LLM JSON output
+        if llm_response:
+            try:
+                json_match = re.search(r'\{[\s\S]*\}', llm_response)
+                if json_match:
+                    parsed = json.loads(json_match.group(0))
+                    if isinstance(parsed, dict) and "has_event" in parsed:
+                        if parsed["has_event"] is False:
+                            return {"has_event": False}
+                        parsed["title"] = parsed.get("title") or clean_title[:60]
+                        parsed["location"] = parsed.get("location") or "College Campus"
+                        parsed["description"] = parsed.get("description") or clean_content[:200]
+                        parsed["action_required"] = parsed.get("action_required") or "Check notice details"
+                        parsed["alert_hours_before"] = parsed.get("alert_hours_before", 24)
+                        parsed["extraction_source"] = "ai_model"
+                        if "start_time" in parsed and "end_time" in parsed:
+                            return parsed
+            except Exception as e:
+                logger.debug(f"[Failed parsing LLM event JSON]: {e}")
+
+        # Step 2: Resilient deterministic heuristic fallback
+        return AIService._extract_calendar_event_heuristic(clean_title, clean_content)
+
+    @staticmethod
+    def _extract_calendar_event_heuristic(title: str, text: str, now: Optional[datetime.datetime] = None) -> Dict[str, Any]:
+        """Deterministic regex-based campus date, time, venue, and deadline parser."""
+        if now is None:
+            now = datetime.datetime.now()
+
+        month_map = {
+            'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+            'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+            'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, 'october': 10,
+            'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+        }
+
+        combined = f"{title}\n{text}"
+
+        # 1. Location / Venue
+        venue_match = re.search(
+            r'\b(?:in|at|to)\s+(the\s+)?([A-Za-z0-9\s\-]+?(?:Auditorium|Seminar Hall|Room\s*\d+|Lab\s*\d+|Placement Cell|Library|Ground|Campus))\b',
+            combined,
+            re.IGNORECASE
+        )
+        if venue_match:
+            location = venue_match.group(2).strip()
+        else:
+            direct_venue = re.search(
+                r'\b((?:Room|Hall|Lab|Auditorium|Cabin|Block)\s*#?[A-Za-z0-9\-]+|Central Auditorium|Seminar Hall|Placement Cell)\b',
+                combined,
+                re.IGNORECASE
+            )
+            location = direct_venue.group(1).strip() if direct_venue else "College Campus"
+
+        # 2. Action / Fee
+        fee_match = re.search(r'(?:₹|Rs\.?|INR)\s*([0-9,]+)', combined, re.IGNORECASE)
+        fee_str = f"Fee: ₹{fee_match.group(1)}" if fee_match else ""
+
+        action_match = re.search(
+            r'\b(submit[^\.\n,;]+|register[^\.\n,;]+|pay[^\.\n,;]+|attend[^\.\n,;]+|report to[^\.\n,;]+)\b',
+            combined,
+            re.IGNORECASE
+        )
+        if action_match:
+            action = action_match.group(1).strip()
+            if fee_str and fee_str not in action:
+                action = f"{action} ({fee_str})"
+        elif fee_str:
+            action = fee_str
+        else:
+            action = "Check notice instructions"
+
+        # 3. Time
+        hour = 10
+        minute = 0
+        time_match = re.search(r'\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(AM|PM|am|pm)\b', combined)
+        if time_match:
+            h = int(time_match.group(1))
+            m = int(time_match.group(2)) if time_match.group(2) else 0
+            ampm = time_match.group(3).upper()
+            if ampm == "PM" and h < 12:
+                h += 12
+            elif ampm == "AM" and h == 12:
+                h = 0
+            hour = h
+            minute = m
+        else:
+            time_24 = re.search(r'\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b', combined)
+            if time_24:
+                hour = int(time_24.group(1))
+                minute = int(time_24.group(2))
+            elif re.search(r'\b(deadline|submit|submission)\b', combined, re.IGNORECASE):
+                hour = 17
+                minute = 0
+
+        # 4. Date
+        event_date = None
+        year = now.year
+
+        m_a = re.search(
+            r'\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(\d{4}))?\b',
+            combined,
+            re.IGNORECASE
+        )
+        m_b = re.search(
+            r'\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s*,?\s*(\d{4}))?\b',
+            combined,
+            re.IGNORECASE
+        )
+        m_c = re.search(r'\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b', combined)
+        m_d = re.search(r'\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b', combined)
+
+        if m_a:
+            m_name = m_a.group(1).lower()
+            month = month_map.get(m_name, 1)
+            day = int(m_a.group(2))
+            if m_a.group(3):
+                year = int(m_a.group(3))
+            try:
+                event_date = datetime.date(year, month, day)
+            except ValueError:
+                pass
+        elif m_b:
+            day = int(m_b.group(1))
+            m_name = m_b.group(2).lower()
+            month = month_map.get(m_name, 1)
+            if m_b.group(3):
+                year = int(m_b.group(3))
+            try:
+                event_date = datetime.date(year, month, day)
+            except ValueError:
+                pass
+        elif m_c:
+            year = int(m_c.group(1))
+            month = int(m_c.group(2))
+            day = int(m_c.group(3))
+            try:
+                event_date = datetime.date(year, month, day)
+            except ValueError:
+                pass
+        elif m_d:
+            day = int(m_d.group(1))
+            month = int(m_d.group(2))
+            year = int(m_d.group(3))
+            try:
+                event_date = datetime.date(year, month, day)
+            except ValueError:
+                pass
+
+        if not event_date:
+            if re.search(r'\btomorrow\b', combined, re.IGNORECASE):
+                event_date = (now + datetime.timedelta(days=1)).date()
+            elif re.search(r'\bnext week\b', combined, re.IGNORECASE):
+                event_date = (now + datetime.timedelta(days=7)).date()
+
+        if not event_date:
+            return {"has_event": False}
+
+        start_dt = datetime.datetime(event_date.year, event_date.month, event_date.day, hour, minute)
+        end_dt = start_dt + datetime.timedelta(hours=1)
+
+        event_title = title.strip()
+        if len(event_title) > 60:
+            event_title = event_title[:57] + "..."
+
+        return {
+            "has_event": True,
+            "title": event_title,
+            "start_time": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "end_time": end_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "location": location,
+            "description": text[:300].strip(),
+            "action_required": action,
+            "alert_hours_before": 24,
+            "extraction_source": "heuristic"
+        }
 
     @staticmethod
     def get_status() -> Dict[str, Any]:
