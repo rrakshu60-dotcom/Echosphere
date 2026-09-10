@@ -70,3 +70,44 @@ def authenticate_user(
 
     return access_token, user
 
+
+def refresh_token_service(db: Session, token: str) -> Tuple[str, User]:
+    """
+    Silently renew an access token for an active user.
+    """
+    from app.core.jwt_handler import decode_expired_token, create_access_token
+
+    payload = decode_expired_token(token)
+    sub = payload.get("sub")
+    if not sub:
+        raise ValueError("Invalid token payload claims.")
+
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.official_email == sub,
+                User.usn == sub,
+                User.username == sub,
+                User.employee_id == sub,
+            )
+        )
+        .first()
+    )
+
+    if user is None:
+        raise ValueError("User account not found.")
+
+    role_name = user.role.name if user.role else "Student"
+
+    new_access_token = create_access_token(
+        {
+            "sub": user.official_email or user.usn or user.username,
+            "role": role_name,
+            "user_id": user.id,
+        }
+    )
+
+    return new_access_token, user
+
+
