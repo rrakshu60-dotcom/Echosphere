@@ -69,6 +69,7 @@ jobs:
 
       - name: Upload Temporary Windows Artifact (1-Day Retention)
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: echosphere-windows-app
           path: frontend/echosphere-windows.zip

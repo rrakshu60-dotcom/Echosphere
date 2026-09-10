@@ -1,9 +1,10 @@
 name: Clean Up GitHub Actions Storage
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
   schedule:
-    # Optional: Automatically purge expired artifacts weekly on Sunday at midnight
     - cron: '0 0 * * 0'
 
 permissions:
