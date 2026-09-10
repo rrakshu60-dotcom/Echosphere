@@ -1,0 +1,10 @@
+{
+  "extraPaths": [
+    "c:/echosphere v2.2/backend/ml/gemma_training/.venv/Lib/site-packages",
+    "backend/ml/gemma_training/.venv/Lib/site-packages",
+    "c:/echosphere v2.2/backend",
+    "backend"
+  ],
+  "reportMissingImports": "none",
+  "pythonPlatform": "Windows"
+}

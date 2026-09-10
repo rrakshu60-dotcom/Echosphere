@@ -6,7 +6,7 @@ import requests
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.announcement import Announcement
-from app.services.campus_ml_engine import CampusMLEngine
+from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 from app.services.ai_text_sanitizer import sanitize_ai_markdown
 from app.services.model_router import ModelRouter
 
@@ -211,9 +211,10 @@ class AIService:
             category_badge = "Placements"
             navigation_target = "nav:notices:filter:Placements"
             suggested_actions = ["View Placement Drives", "Check CGPA Criteria", "Resume Guidelines"]
-        elif predicted_intent == "CAMPUS_FACILITIES":
-            category_badge = "Campus Facilities"
-            suggested_actions = ["Library Timings", "Hostel Rules", "Bus Schedule"]
+        elif predicted_intent == "EVENTS_HACKATHONS":
+            category_badge = "Events & Hackathons"
+            navigation_target = "nav:notices:filter:Events"
+            suggested_actions = ["View Hackathons", "Register for Workshops", "Cultural Fest Notices"]
         elif predicted_intent == "SPEAKER_HARDWARE":
             if role == "STUDENT":
                 category_badge = "Access Restricted"
@@ -223,11 +224,24 @@ class AIService:
                 category_badge = "Smart Speaker Hardware"
                 navigation_target = "nav:hardware:speakers"
                 suggested_actions = ["View Speaker Queue", "Hardware Node Status"]
-        elif predicted_intent == "ACADEMIC_POLICIES":
-            category_badge = "Academic Regulations"
-            suggested_actions = ["Attendance Rules (75%)", "Grading System", "Condonation Info"]
+        elif predicted_intent == "BRANCH_STUDIES":
+            category_badge = "Branch Coursework"
+            suggested_actions = ["Explain Machine Learning", "Data Structures & Algos", "Operating Systems Paging"]
         else:
             suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
+
+        # Step 4.5: Student Guardrail Check: Direct, natural refusal for non-permitted prompts
+        if role == "STUDENT" and predicted_intent == "STUDENT_CHITCHAT_REFUSAL":
+            return {
+                "response": "Sorry, I'm not allowed to do that.",
+                "category_badge": "Academic Scope",
+                "context_badge": f"{role.title()} | {dept} Department",
+                "suggested_actions": ["Ask an ML Question", "Check Exam Circulars", "Browse Placements"],
+                "navigation_target": None,
+                "matched_announcements": [],
+                "model_used": "EchoSphere Student Guardrail",
+                "copilot_action": None
+            }
 
         # Step 5: Try Modern Gemini 2.5 / 2.0 Flash with Rich Dynamic System Context
         kb_text = "\n".join([f"- [{k['category']}] {k['title']}: {k['content'][:140]}" for k in kb_matches])
@@ -237,23 +251,28 @@ class AIService:
         ])
 
         system_instruction = (
-            f"You are the EchoSphere Campus AI Assistant, an intelligent, authoritative institutional companion.\n\n"
-            f"User Profile & Context:\n"
-            f"- Name: {name}\n"
-            f"- Role: {role} (Authority hierarchy: Student -> Teacher -> HoD -> College Admin -> Principal -> DevAdmin)\n"
-            f"- Department: {dept}\n"
-            f"- User ID / USN: {usn_or_emp_id or 'Verified Campus Member'}\n\n"
+            f"You are the EchoSphere Campus AI Assistant, an intelligent, helpful institutional companion.\n\n"
+            f"Institutional Purpose:\n"
+            f"EchoSphere is an institutional announcement, circular, event, and smart speaker broadcast platform. "
+            f"It is NOT an academic ERP ledger (do NOT discuss attendance percentages, condonation ledgers, hostel curfew hours, or mess food rules).\n\n"
+            f"Internal User Context (FOR AUTHORIZATION ONLY - DO NOT RECITE TO USER):\n"
+            f"- Active User: {name}\n"
+            f"- Role: {role}\n"
+            f"- Department: {dept}\n\n"
             f"Live Database Announcements Context (Filtered by RBAC):\n"
             f"{live_notices_text if live_notices_text else 'No directly matching active notices in database.'}\n\n"
-            f"Institutional Campus Knowledge Base Context:\n"
+            f"Institutional Knowledge Base Context:\n"
             f"{kb_text if kb_text else 'Standard campus policies apply.'}\n\n"
-            f"Mandatory RBAC & Formatting Directives:\n"
-            f"1. CRITICAL COURTESY & RBAC DIRECTIVE: When responding to inquiries about restricted operational capabilities (e.g. smart speaker queue, hardware nodes, broadcast overrides, administrative configurations, unapproved drafts), ALWAYS respond politely and unoffensively. NEVER say 'You are a student and not allowed' or patronize the user. Instead, state calmly and respectfully: 'I don't have the authority to answer that question or disclose this operational information. Please consult your department office or faculty coordinator for assistance.'\n"
-            f"2. Students have verified read-only announcement access. If they ask to post or publish notices, reply politely: 'I don't have the authority to author announcements directly. If you have an event or club announcement to publish, please coordinate with your faculty advisor or department office.'\n"
-            f"3. Respond in clear, professional, natural, and friendly Markdown.\n"
-            f"4. STRICTLY PROHIBITED: Do NOT output raw asterisk clutter (e.g. ****), nonsensical tokens, or excessive emojis.\n"
-            f"5. Never say 'I am ready to help' and then stop. Directly answer the user's specific question with facts, dates, and clear instructions.\n"
-            f"6. If answering about notices or exams, refer specifically to the user's department ({dept}) and role ({role})."
+            f"Mandatory Guidelines:\n"
+            f"1. NATURAL CONVERSATIONAL TONE (Like ChatGPT / Claude / Gemini): Speak naturally, warmly, and directly. Never recite your full name, title, or institutional purpose on every response. Answer the question directly without boilerplate greetings or robotic corporate disclaimers.\n"
+            f"2. APP KNOWLEDGE & NAVIGATION: Answer all questions about EchoSphere features, notice creation, approval workflows, corridor smart speakers, category filtering, bookmarks, and appearance.\n"
+            f"3. BRANCH STUDY TUTORING: When a student asks about their branch coursework (e.g. Machine Learning, Backpropagation, CNNs, Data Structures, Algorithms, Operating Systems, Computer Networks, Circuits, Thermodynamics), act as a top-tier academic tutor providing clear, accurate, technical, and educational explanations.\n"
+            f"4. STUDENT NON-PERMITTED PROMPT GUARDRAIL: When a student asks casual chit-chat, entertainment, jokes, movies, gaming, or general non-permitted questions, do NOT recite a long speech or tell your name and purpose. Simply reply directly: 'Sorry, I'm not allowed to do that.' (or 'Sorry, I'm not allowed to do that. I can only help with questions about the EchoSphere app or your coursework.').\n"
+            f"5. STAFF GENERAL ASSISTANT: Faculty, HoDs, and Admins have full general assistant capabilities (drafting formal circulars, organizing events, summarizing memos, and hardware management).\n"
+            f"6. NO PROFILE REGURGITATION: NEVER recite or quote the user's role, ID, USN, or hierarchy back to them. NEVER say 'Given your profile as {role}'. Speak naturally.\n"
+            f"7. FORMATTING CLEANLINESS: STRICTLY PROHIBITED: Do NOT output raw divider lines (----, ---), stray slashes (///), or raw asterisk clutter (****). Do not use bold asterisks (**) around names in conversational greetings.\n"
+            f"8. RBAC COURTESY DIRECTIVE: When responding to inquiries about restricted operational capabilities (e.g. smart speaker queue, hardware nodes, broadcast overrides, unapproved drafts), ALWAYS respond politely: 'I don't have the authority to answer that question or disclose this operational information.'\n"
+            f"9. Students have verified read-only announcement access. If they ask to post or publish notices, reply politely: 'I don't have the authority to author announcements directly. If you have an event or club announcement to publish, please coordinate with your faculty advisor or department office.'"
         )
 
         # Step 5: Route through Multi-Model Congestion-Aware Router (Gemma -> Cloudflare LLaMA / Gemini 2.5 -> Campus ML)
@@ -542,7 +561,7 @@ class AIService:
         has_gemini = bool(key and key != "YOUR_ACTUAL_GEMINI_API_KEY")
         cf_token = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
         has_cf = bool(cf_token and cf_token != "YOUR_CLOUDFLARE_API_TOKEN")
-        from app.services.campus_ml_engine import INSTITUTIONAL_KNOWLEDGE
+        from app.services.echosphere_ml_engine import INSTITUTIONAL_KNOWLEDGE
 
         router = ModelRouter.get_instance()
         return {

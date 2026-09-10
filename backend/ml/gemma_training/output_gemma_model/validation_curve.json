@@ -1,0 +1,128 @@
+{
+  "total_steps": 300,
+  "best_step": 300,
+  "best_eval_loss": 0.002136616036295891,
+  "total_runtime_minutes": 32.8,
+  "history": [
+    {
+      "step": 20,
+      "train_loss": 0.2817,
+      "eval_loss": 0.1314,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 40,
+      "train_loss": 0.0617,
+      "eval_loss": 0.055,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 60,
+      "train_loss": 0.0656,
+      "eval_loss": 0.054,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 80,
+      "train_loss": 0.0255,
+      "eval_loss": 0.0367,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 100,
+      "train_loss": 0.0368,
+      "eval_loss": 0.0365,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 120,
+      "train_loss": 0.0185,
+      "eval_loss": 0.0444,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": false
+    },
+    {
+      "step": 140,
+      "train_loss": 0.0655,
+      "eval_loss": 0.0215,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 160,
+      "train_loss": 0.0054,
+      "eval_loss": 0.0139,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 180,
+      "train_loss": 0.0046,
+      "eval_loss": 0.0075,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 200,
+      "train_loss": 0.0082,
+      "eval_loss": 0.0033,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 220,
+      "train_loss": 0.0007,
+      "eval_loss": 0.0044,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": false
+    },
+    {
+      "step": 240,
+      "train_loss": 0.0005,
+      "eval_loss": 0.0042,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": false
+    },
+    {
+      "step": 260,
+      "train_loss": 0.0003,
+      "eval_loss": 0.0029,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    },
+    {
+      "step": 280,
+      "train_loss": 0.0001,
+      "eval_loss": 0.0029,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": false
+    },
+    {
+      "step": 300,
+      "train_loss": 0.0001,
+      "eval_loss": 0.0021,
+      "lr": "-",
+      "vram_gb": 3.38,
+      "is_best": true
+    }
+  ]
+}

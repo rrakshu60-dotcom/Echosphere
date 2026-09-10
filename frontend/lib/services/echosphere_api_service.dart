@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EchosphereApiService {
   static final EchosphereApiService _instance = EchosphereApiService._internal();
@@ -34,12 +34,11 @@ class EchosphereApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 45),
+        receiveTimeout: const Duration(seconds: 45),
         headers: {'Content-Type': 'application/json'},
       ),
     );
-
 
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -57,14 +56,60 @@ class EchosphereApiService {
     );
   }
 
+  String get baseUrl => _baseUrl;
+
   void setBaseUrl(String url) {
-    _baseUrl = url;
-    _dio.options.baseUrl = url;
+    var cleanUrl = url.trim();
+    if (cleanUrl.endsWith('/')) {
+      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    }
+    _baseUrl = cleanUrl;
+    _dio.options.baseUrl = cleanUrl;
+  }
+
+  Future<void> loadSavedBaseUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('custom_echosphere_api_url');
+      if (saved != null && saved.trim().isNotEmpty) {
+        setBaseUrl(saved.trim());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> saveBaseUrl(String url) async {
+    setBaseUrl(url);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('custom_echosphere_api_url', _baseUrl);
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>> checkServerHealth() async {
+    try {
+      final response = await _dio.get(
+        '/ai/status',
+        options: Options(
+          sendTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 4),
+        ),
+      );
+      return {
+        'online': true,
+        'data': response.data is Map ? response.data as Map<String, dynamic> : {},
+      };
+    } catch (e) {
+      return {
+        'online': false,
+        'error': e.toString(),
+      };
+    }
   }
 
   void setAuthToken(String? token) {
     _authToken = token;
   }
+
 
   // --- Auth Endpoints ---
   Future<Map<String, dynamic>> login({

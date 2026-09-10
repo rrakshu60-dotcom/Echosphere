@@ -100,8 +100,8 @@ flutter:
 
 inno_bundle:
     id: 8fbd47cb-d6e1-5343-a9f6-61661647c94c
-    publisher: Ryan Yuuki
+    publisher: EchoSphere
     name: EchoSphere
-    version: 3.1.1
+    version: 1.0.0
     admin: auto
-    installer_icon: ./echosphere.ico
+    installer_icon: ./windows/runner/resources/app_icon.ico

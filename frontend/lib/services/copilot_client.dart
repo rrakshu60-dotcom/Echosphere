@@ -95,6 +95,9 @@ class CopilotClient {
       case 'profile':
       case 'profile_settings':
       case 'security_preferences':
+      case 'preferences':
+      case 'settings':
+      case 'smart_notes':
         Get.toNamed('/profile');
         return true;
 

@@ -15,7 +15,7 @@ from app.db.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.role import Role
 from app.services.ai_service import AIService
-from app.services.campus_ml_engine import CampusMLEngine
+from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 from fastapi.testclient import TestClient
 from app.main import app
 

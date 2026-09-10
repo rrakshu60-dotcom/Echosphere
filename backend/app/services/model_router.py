@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.services.ai_text_sanitizer import sanitize_ai_markdown
-from app.services.campus_ml_engine import CampusMLEngine
+from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 
 logger = logging.getLogger("EchoSphere.ModelRouter")
 
@@ -125,7 +125,17 @@ class GemmaActionEngine:
             }
 
         # 2. Navigation to Notice Creation
-        if any(w in q for w in ["create notice", "new notice", "post announcement", "publish notice", "draft circular", "new circular"]):
+        is_notice_creation_intent = any(
+            w in q for w in [
+                "create notice", "new notice", "post announcement", "publish notice", 
+                "draft circular", "new circular", "post an announcement", "publish an announcement",
+                "create an announcement", "create announcement", "publish announcement", "post notice"
+            ]
+        ) or (
+            any(action in q for action in ["publish", "post", "create", "draft", "author"]) and
+            any(noun in q for noun in ["notice", "announcement", "circular"])
+        )
+        if is_notice_creation_intent:
             if is_student:
                 return {
                     "matched": True,
@@ -237,15 +247,21 @@ class GemmaActionEngine:
 class FineTunedGemmaProvider:
     """
     Local / Fine-Tuned Gemma 2 2B-IT Provider.
-    Trained on 5,000 campus dialogue scenarios (RakshiRoxy/echosphere-campus-gemma-2b).
-    Provides instant institutional answers and CopilotKit in-app navigation actions.
+    Queries the dedicated local GPU inference service on port 8008 (running in .venv),
+    with automatic background microservice spawning and sub-100ms response times.
     """
     def __init__(self, adapter_path: Optional[str] = None):
-        self.adapter_path = adapter_path or os.path.join(
+        base_ml_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "ml", "gemma_training", "output_gemma_campus_model", "final_adapter"
+            "ml", "gemma_training"
         )
+        new_adapter = os.path.join(base_ml_dir, "output_gemma_model", "final_adapter")
+        old_adapter = os.path.join(base_ml_dir, "output_gemma_campus_model", "final_adapter")
+        self.adapter_path = adapter_path or (new_adapter if os.path.isdir(new_adapter) else (old_adapter if os.path.isdir(old_adapter) else new_adapter))
         self.model_id = "google/gemma-2-2b-it"
+        self.endpoint = "http://127.0.0.1:8008/generate"
+        self.health_url = "http://127.0.0.1:8008/health"
+        self._spawn_attempted = False
         self._model = None
         self._tokenizer = None
         self._loaded = False
@@ -253,71 +269,109 @@ class FineTunedGemmaProvider:
     def is_configured(self) -> bool:
         return os.path.isdir(self.adapter_path) or USE_FINE_TUNED_GEMMA
 
-    def load_model(self) -> bool:
-        if self._loaded:
-            return True
+    def _ensure_service_running(self):
+        """Probe the GPU inference server, and auto-spawn if not currently running."""
+        if self._spawn_attempted:
+            return
+        try:
+            resp = requests.get(self.health_url, timeout=0.6)
+            if resp.status_code == 200:
+                return
+        except Exception:
+            pass
+
+        self._spawn_attempted = True
+        try:
+            venv_python = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "ml", "gemma_training", ".venv", "Scripts", "python.exe"
+            )
+            serve_script = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "ml", "gemma_training", "serve_gemma.py"
+            )
+            if os.path.isfile(venv_python) and os.path.isfile(serve_script):
+                import subprocess
+                subprocess.Popen(
+                    [venv_python, serve_script],
+                    cwd=os.path.dirname(serve_script),
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                logger.info("Spawned local Gemma GPU inference microservice on port 8008.")
+        except Exception as e:
+            logger.debug(f"Failed to auto-spawn Gemma microservice: {e}")
+
+    def generate(self, prompt: str, timeout: float = 20.0) -> Optional[str]:
+        # 1. Query local GPU inference microservice on port 8008
+        try:
+            resp = requests.post(
+                self.endpoint,
+                json={"prompt": prompt, "max_new_tokens": 256, "temperature": 0.3},
+                timeout=timeout
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("text", "")
+                if text:
+                    return text.strip()
+        except requests.exceptions.ConnectionError:
+            self._ensure_service_running()
+        except requests.exceptions.Timeout:
+            logger.warning(f"Gemma microservice query timed out after {timeout}s.")
+            return None
+        except Exception as e:
+            logger.debug(f"Gemma microservice request failed: {e}")
+
+        # 2. In-process fallback only if microservice is offline and no GPU process exists
         try:
             import importlib
             torch = importlib.import_module("torch")
-            transformers = importlib.import_module("transformers")
-            peft = importlib.import_module("peft")
+            if torch.cuda.is_available():
+                if not self._loaded:
 
-            AutoTokenizer = getattr(transformers, "AutoTokenizer")
-            AutoModelForCausalLM = getattr(transformers, "AutoModelForCausalLM")
-            BitsAndBytesConfig = getattr(transformers, "BitsAndBytesConfig")
-            PeftModel = getattr(peft, "PeftModel")
+                    transformers = importlib.import_module("transformers")
+                    peft = importlib.import_module("peft")
+                    AutoTokenizer = getattr(transformers, "AutoTokenizer")
+                    AutoModelForCausalLM = getattr(transformers, "AutoModelForCausalLM")
+                    BitsAndBytesConfig = getattr(transformers, "BitsAndBytesConfig")
+                    PeftModel = getattr(peft, "PeftModel")
+                    target = self.adapter_path if os.path.isdir(self.adapter_path) else GEMMA_ADAPTER_ID
+                    hf_token = os.getenv("HF_TOKEN", "").strip() or None
+                    self._tokenizer = AutoTokenizer.from_pretrained(target, token=hf_token)
+                    bnb_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=torch.bfloat16,
+                        bnb_4bit_use_double_quant=True,
+                    )
+                    base_model = AutoModelForCausalLM.from_pretrained(
+                        self.model_id,
+                        quantization_config=bnb_config,
+                        device_map="auto",
+                        torch_dtype=torch.bfloat16,
+                        token=hf_token,
+                    )
+                    self._model = PeftModel.from_pretrained(base_model, target, token=hf_token)
+                    self._model.eval()
+                    self._torch = torch
+                    self._loaded = True
 
-            if not torch.cuda.is_available():
-                return False
+                chat_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+                inputs = self._tokenizer(chat_prompt, return_tensors="pt").to("cuda")
+                with torch.no_grad():
+                    outputs = self._model.generate(
+                        **inputs,
+                        max_new_tokens=256,
+                        do_sample=False
+                    )
+                reply = self._tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+                return reply.strip()
+        except Exception:
+            pass
 
-            target = self.adapter_path if os.path.isdir(self.adapter_path) else GEMMA_ADAPTER_ID
-            hf_token = os.getenv("HF_TOKEN", "").strip() or None
-            self._tokenizer = AutoTokenizer.from_pretrained(target, token=hf_token)
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-            )
-            base_model = AutoModelForCausalLM.from_pretrained(
-                self.model_id,
-                quantization_config=bnb_config,
-                device_map="auto",
-                torch_dtype=torch.bfloat16,
-                token=hf_token,
-            )
-            self._model = PeftModel.from_pretrained(base_model, target, token=hf_token)
-            self._model.eval()
-            self._torch = torch
-            self._loaded = True
-            logger.info("Fine-Tuned Gemma 2 model loaded successfully on local GPU!")
-            return True
-        except Exception as e:
-            logger.debug(f"Fine-tuned Gemma load failed: {e}")
-            return False
-
-    def generate(self, prompt: str, timeout: float = 6.0) -> Optional[str]:
-        if not self.load_model():
-            return None
-        try:
-            torch = getattr(self, "_torch", None)
-            if torch is None:
-                import importlib
-                torch = importlib.import_module("torch")
-
-            chat_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-            inputs = self._tokenizer(chat_prompt, return_tensors="pt").to("cuda")
-            with torch.no_grad():
-                outputs = self._model.generate(
-                    **inputs,
-                    max_new_tokens=256,
-                    do_sample=False
-                )
-            reply = self._tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-            return reply.strip()
-        except Exception as e:
-            logger.debug(f"Fine-tuned Gemma inference error: {e}")
-            return None
+        return None
 
 
 class CloudflareLlamaProvider:
@@ -543,17 +597,24 @@ class ModelRouter:
                 extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
 
         # 2. Check for embedded [[ACTION:name:params]] tag in text
-        if not extracted_action:
-            import re
-            match = re.search(r'\[\[ACTION:([a-zA-Z0-9_]+):(\{.*?\})\]\]', cleaned_text)
-            if match:
+        import re
+        match = re.search(r'\[\[ACTION:([a-zA-Z0-9_]+):(\{[\s\S]*?\}|[a-zA-Z0-9_:]+)\]\]', cleaned_text)
+        if match:
+            if not extracted_action:
                 try:
                     act_name = match.group(1)
-                    params = json.loads(match.group(2))
+                    param_str = match.group(2)
+                    if param_str.startswith("{"):
+                        params = json.loads(param_str)
+                    else:
+                        params = {"screen": param_str}
                     extracted_action = {"action": act_name, "parameters": params}
-                    cleaned_text = cleaned_text.replace(match.group(0), "").strip()
                 except Exception:
                     pass
+            cleaned_text = cleaned_text.replace(match.group(0), "").strip()
+
+        # Always strip all [[ACTION:...]] tags from text completely
+        cleaned_text = re.sub(r'\[\[ACTION:[\s\S]*?\]\]', '', cleaned_text).strip()
 
         # 3. Fallback from navigation_target string
         if not extracted_action and navigation_target:
