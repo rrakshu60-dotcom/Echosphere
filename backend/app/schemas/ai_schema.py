@@ -42,6 +42,7 @@ class AiStatusResponse(BaseModel):
     gemini_model: str
     is_gemini_available: bool
     is_cloudflare_available: Optional[bool] = False
+    is_qwen_available: Optional[bool] = False
     local_ml_available: bool
     kb_indexed_documents: int
     router_metrics: Optional[Dict[str, Any]] = None
