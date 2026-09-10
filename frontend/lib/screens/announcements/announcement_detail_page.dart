@@ -45,7 +45,7 @@ TITLE: ${announcement.title}
 DEPARTMENT: ${announcement.department}
 CATEGORY: ${announcement.category}
 PRIORITY: ${announcement.priority}
-ISSUED BY: ${announcement.creatorName}
+ISSUED BY: ${announcement.creatorName} (Designation: ${announcement.creatorRole})
 DATE: ${DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt)}
 
 --------------------------------------------------------------------------------
@@ -186,16 +186,17 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          announcement.creatorName,
+                                          '${announcement.creatorName} • Designation: ${announcement.creatorRole}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
                                             fontSize: 14,
+                                            color: theme.colorScheme.primary,
                                           ),
                                         ),
                                         Text(
-                                          DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt),
+                                          'Department: ${announcement.department} • ${DateFormat("MMMM dd, yyyy • hh:mm a").format(announcement.createdAt)}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -203,6 +204,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                             color: theme.colorScheme.onSurface.withOpacity(0.6),
                                           ),
                                         ),
+
                                       ],
                                     ),
                                   ),

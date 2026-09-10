@@ -44,15 +44,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    if (!_isStudent) {
-      _fetchHardwareData();
-      _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-        if (mounted && !_isStudent) {
-          _fetchHardwareData(silent: true);
-        }
-      });
-    }
+    _fetchHardwareData();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) {
+        _fetchHardwareData(silent: true);
+      }
+    });
   }
+
 
   @override
   void dispose() {
@@ -85,7 +84,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
 
         if (fetchedNodes.isNotEmpty) {
           speakerNodes = fetchedNodes;
-        } else {
+        } else if (speakerNodes.isEmpty) {
           speakerNodes = [
             {
               'id': 1,
@@ -113,6 +112,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
             },
           ];
         }
+
 
         queueItems = remoteQueue
             .whereType<Map>()
