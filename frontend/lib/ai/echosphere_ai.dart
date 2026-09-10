@@ -172,11 +172,29 @@ class _EchosphereAiState extends State<EchosphereAi> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    final user = authController.currentUser.value;
+    if (aiController.messages.isEmpty ||
+        (user != null && aiController.messages.first.text.contains('Hello Student') && user.role != 'Student')) {
+      aiController.resetGreeting();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'CSE');
-    final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal');
+    final role = user?.role ?? 'Dev Admin';
+    String dept = 'College-Wide';
+    if (user?.department != null && user!.department!.trim().isNotEmpty) {
+      dept = user.department!.trim();
+    } else if (user?.usn != null && user!.usn!.trim().isNotEmpty) {
+      dept = detectDepartmentFromUsn(user.usn!);
+    } else if (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal') {
+      dept = 'College-Wide';
+    }
+    final isAdminRole = user != null && (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal');
 
     return Column(
       children: [
@@ -225,34 +243,12 @@ class _EchosphereAiState extends State<EchosphereAi> {
               ],
               Flexible(
                 child: EchoSphereChip(
-                  label: '$dept Dept',
+                  label: isAdminRole ? role : '$dept Dept',
                   isSelected: true,
                   onSelected: (_) {},
                 ),
               ),
             ],
-          ),
-        ),
-        const Divider(height: 1),
-
-        // Dynamic Role-Adaptive Quick Prompts Bar
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: aiController.getPresetPrompts().map((p) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: ActionChip(
-                    avatar: const Icon(Icons.help_outline_rounded, size: 14),
-                    label: Text(p['label']!, style: const TextStyle(fontSize: 12)),
-                    onPressed: () => _sendMessage(p['prompt']),
-                  ),
-                );
-              }).toList(),
-            ),
           ),
         ),
         const Divider(height: 1),

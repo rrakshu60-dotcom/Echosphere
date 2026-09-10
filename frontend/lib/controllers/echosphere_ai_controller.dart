@@ -38,19 +38,40 @@ class EchosphereAiController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    resetGreeting();
+    final authCtrl = Get.find<AuthController>();
+    ever(authCtrl.currentUser, (_) {
+      resetGreeting();
+    });
+  }
+
+  void resetGreeting() {
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
-    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
-    final role = user?.role ?? 'Student';
-    final name = user?.fullName ?? 'Student';
+    final role = user?.role ?? 'Dev Admin';
+    final name = user?.fullName ?? 'Dev Admin';
 
+    String dept = 'College-Wide';
+    if (user?.department != null && user!.department!.trim().isNotEmpty) {
+      dept = user.department!.trim();
+    } else if (user?.usn != null && user!.usn!.trim().isNotEmpty) {
+      dept = detectDepartmentFromUsn(user.usn!);
+    } else if (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal') {
+      dept = 'College-Wide';
+    }
+
+    final contextLabel = (role == 'Dev Admin' || role == 'College Admin' || role == 'Principal' || role == 'Developer')
+        ? '$role • College-Wide'
+        : '$role • $dept Department';
+
+    messages.clear();
     messages.add(
       AiChatMessage(
         text: 'Hello $name! How can I help you today?',
         isUser: false,
         categoryBadge: 'EchoSphere AI',
-        contextBadge: '$role • $dept Department',
-        suggestedActions: _getDefaultActionsForRole(role, dept),
+        contextBadge: contextLabel,
+        suggestedActions: const [],
         modelUsed: 'EchoSphere Campus AI',
       ),
     );
@@ -104,45 +125,11 @@ class EchosphereAiController extends GetxController {
   }
 
   List<String> _getDefaultActionsForRole(String role, String dept) {
-    if (role.toLowerCase() == 'student') {
-      return [
-        'Check $dept Exam Timetable',
-        'Placement Drive Circulars',
-        'Ask an ML / Branch Question',
-        'Upcoming Hackathons & Events',
-      ];
-    } else {
-      return [
-        'Pending Approvals Status',
-        'Draft New Circular',
-        'Emergency Broadcast Feed',
-        'Speaker Hardware Status',
-      ];
-    }
+    return const [];
   }
 
   List<Map<String, String>> getPresetPrompts() {
-    final authCtrl = Get.find<AuthController>();
-    final user = authCtrl.currentUser.value;
-    final role = user?.role ?? 'Student';
-    final dept = user?.department ?? 'CSE';
-
-    if (role.toLowerCase() == 'student') {
-      return [
-        {'label': 'Exam Schedule', 'prompt': 'What is the $dept exam and practical lab schedule?'},
-        {'label': 'Placement Circulars', 'prompt': 'What are the latest placement drives and eligibility criteria?'},
-        {'label': 'ML Coursework', 'prompt': 'Explain backpropagation in machine learning'},
-        {'label': 'App Guide', 'prompt': 'How do I bookmark circulars and switch to dark mode?'},
-        {'label': 'Events & Hackathons', 'prompt': 'Are there any upcoming hackathons or technical events?'},
-      ];
-    } else {
-      return [
-        {'label': 'Draft Circular', 'prompt': 'Draft an official circular for upcoming department symposium'},
-        {'label': 'Approval Guidelines', 'prompt': 'What is the notice approval hierarchy for faculty members?'},
-        {'label': 'Speaker Broadcast', 'prompt': 'How do I broadcast high priority notices to smart speaker nodes?'},
-        {'label': 'Emergency Protocol', 'prompt': 'Check active campus emergency advisories and procedures'},
-      ];
-    }
+    return const [];
   }
 
   Future<void> sendQuery(String prompt) async {
@@ -150,9 +137,16 @@ class EchosphereAiController extends GetxController {
 
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
-    final role = user?.role ?? 'Student';
-    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
-    final fullName = user?.fullName ?? 'Student';
+    final role = user?.role ?? 'Dev Admin';
+    String dept = 'College-Wide';
+    if (user?.department != null && user!.department!.trim().isNotEmpty) {
+      dept = user.department!.trim();
+    } else if (user?.usn != null && user!.usn!.trim().isNotEmpty) {
+      dept = detectDepartmentFromUsn(user.usn!);
+    } else if (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal') {
+      dept = 'College-Wide';
+    }
+    final fullName = user?.fullName ?? 'Dev Admin';
     final usnOrEmpId = user?.usn ?? user?.employeeId ?? '';
 
     final userMsg = prompt.trim();
