@@ -43,34 +43,26 @@ class AnnouncementModel {
 
   factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
     final catId = json['category_id'] ?? 1;
-    String catName = 'Academic';
-    if (catId == 2) catName = 'Examination';
-    if (catId == 3) catName = 'Event';
+    String catName = 'Academics';
+    if (catId == 2) catName = 'Examinations';
+    if (catId == 3) catName = 'Events';
     if (catId == 4) catName = 'Sports';
-    if (catId == 5) catName = 'Placement';
+    if (catId == 5) catName = 'Placements';
     if (catId == 6) catName = 'Emergency';
-    if (catId == 7) catName = 'Circular';
-    if (catId == 8) catName = 'Cultural';
-    if (catId == 9) catName = 'Fee Payment';
-    if (catId == 10) catName = 'Holiday';
-    if (catId == 11) catName = 'Miscellaneous';
-
-    final rawStatus = (json['status'] ?? 'PUBLISHED').toString().trim().toUpperCase();
-    final rawPriority = (json['priority'] ?? 'NORMAL').toString().trim().toUpperCase();
-    final rawEmergency = (json['emergency_level'] ?? 'NORMAL').toString().trim().toUpperCase();
 
     return AnnouncementModel(
       id: json['id'] ?? 0,
       title: json['title'] ?? '',
       description: json['description'] ?? '',
-      priority: rawPriority,
-      emergencyLevel: rawEmergency,
-      status: rawStatus,
-      creatorName: json['creator_name'] ?? json['creatorName'] ?? 'Faculty / Official',
+      priority: json['priority'] ?? 'NORMAL',
+      emergencyLevel: json['emergency_level'] ?? 'NORMAL',
+      status: json['status'] ?? 'PUBLISHED',
+      creatorName: json['creator_name'] ?? 'Faculty',
       creatorRole: json['creator_role'] ?? json['creator_designation'] ?? json['designation'] ?? json['role'] ?? 'Faculty / Official',
-      department: json['department_name'] ?? json['department'] ?? 'College-Wide',
-      targetAudience: json['target_audience'] ?? json['targetAudience'] ?? 'Entire College',
-      category: json['category_name'] ?? json['category'] ?? catName,
+      department: json['department_name'] ?? 'AIML',
+
+      targetAudience: json['target_audience'] ?? 'Entire College',
+      category: json['category_name'] ?? catName,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
           : DateTime.now(),
@@ -170,32 +162,29 @@ class AnnouncementController extends GetxController {
     return sorted;
   }
 
-  // Active announcements restricted strictly to approved/published notices
+  // Active announcements restricted strictly to approved/published notices within the current week (past 7 days)
   List<AnnouncementModel> get announcements {
     final now = DateTime.now();
     final authController = Get.find<AuthController>();
     final user = authController.currentUser.value;
-    final role = user?.role ?? 'Dev Admin';
+    final role = user?.role ?? 'Student';
     final userDept = (user?.department ?? 'AIML').trim().toLowerCase();
     final semester = user?.semester ?? 5;
 
     final filtered = _rawAnnouncements.where((a) {
-      final statusUpper = a.status.toUpperCase();
       final diffDays = now.difference(a.createdAt).inDays;
 
-      final isScheduledDue = statusUpper == 'SCHEDULED' &&
+      final isScheduledDue = a.status == 'SCHEDULED' &&
           a.scheduledAt != null &&
           !a.scheduledAt!.isAfter(now);
 
-      final isApproved = statusUpper == 'PUBLISHED' ||
-          statusUpper == 'APPROVED' ||
+      final isApproved = a.status == 'PUBLISHED' ||
+          a.status == 'APPROVED' ||
           isScheduledDue;
 
-      if (!isApproved) return false;
-      if (statusUpper == 'ARCHIVED') return false;
-      if (diffDays > 30) return false;
+      if (diffDays > 7 || !isApproved) return false;
 
-      // Staff/Faculty roles (Teacher, HoD, Principal, College Admin, Dev Admin, Developer)
+      // Staff/Faculty roles (Teacher, HoD, Principal, College Admin, Dev Admin)
       // MUST see ALL notices (including student-targeted notices)!
       if (role != 'Student') return true;
 
@@ -203,19 +192,18 @@ class AnnouncementController extends GetxController {
       final target = a.targetAudience.trim().toLowerCase();
 
       // 1. Entire College or Faculty & Staff
-      if (target.isEmpty ||
-          target.contains('entire') ||
-          target.contains('all') ||
-          target.contains('college')) {
-        return true;
-      }
+      if (target.contains('entire') || target.contains('all')) return true;
 
       // 2. Department Specific (e.g. 'AIML Department', 'CSE Department')
       if (target.contains('department') || target.contains('dept')) {
-        if (!target.contains(userDept) && !userDept.contains('aiml')) return false;
+        if (!target.contains(userDept)) return false;
       }
 
       // 3. Year Specific Calculation from Semester (Each year has 2 semesters: Sems 1-8)
+      // Semester 1, 2 -> 1st Year
+      // Semester 3, 4 -> 2nd Year
+      // Semester 5, 6 -> 3rd Year
+      // Semester 7, 8 -> 4th Year
       int studentYear = 1;
       if (semester >= 1 && semester <= 2) {
         studentYear = 1;
@@ -307,41 +295,14 @@ class AnnouncementController extends GetxController {
     await _loadStatusOverrides();
     try {
       final data = await EchosphereApiService().getAnnouncements();
-      final sampleList = _getSampleAnnouncements();
-      final remoteModels = data
-          .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-
-      final remoteIds = remoteModels.map((m) => m.id).toSet();
-      final remoteTitles = remoteModels.map((m) => m.title.trim().toLowerCase()).toSet();
-
-      // Preserve any locally created notices that haven't hit the backend yet
-      final localOnly = _rawAnnouncements.where((local) {
-        final isSample = local.id >= 5000 && local.id <= 5050;
-        final inRemote = remoteIds.contains(local.id) ||
-            remoteTitles.contains(local.title.trim().toLowerCase());
-        return !isSample && !inRemote;
-      }).toList();
-
-      final merged = <AnnouncementModel>[];
-      // 1. User's active local submissions first
-      merged.addAll(localOnly);
-      // 2. Remote announcements from backend
-      merged.addAll(remoteModels);
-      // 3. Sample announcements for rich campus life demo
-      final existingTitles = merged.map((m) => m.title.trim().toLowerCase()).toSet();
-      final existingIds = merged.map((m) => m.id).toSet();
-      for (final s in sampleList) {
-        if (!existingIds.contains(s.id) &&
-            !existingTitles.contains(s.title.trim().toLowerCase())) {
-          merged.add(s);
-        }
+      if (data.isNotEmpty) {
+        _rawAnnouncements.value = data
+            .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        _applyStatusOverrides();
+        isLoading.value = false;
+        return;
       }
-
-      _rawAnnouncements.value = merged;
-      _applyStatusOverrides();
-      isLoading.value = false;
-      return;
     } catch (e) {
       debugPrint('Live backend announcements fetch notice: $e');
     }
@@ -801,7 +762,7 @@ class AnnouncementController extends GetxController {
     final now = DateTime.now();
     return [
       AnnouncementModel(
-        id: 5001,
+        id: 1,
         title: 'EMERGENCY: Heavy Rainfall Alert - Campus Closed Today',
         description:
             'Due to severe weather warnings and flooding in the city, all offline classes and lab sessions are suspended for today. Online classes will resume as per schedule.',
@@ -809,14 +770,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'CRITICAL',
         status: 'PUBLISHED',
         creatorName: 'Dr. Principal',
-        creatorRole: 'Principal',
         department: 'Institution',
         category: 'Emergency',
         createdAt: now.subtract(const Duration(minutes: 30)),
         aiSummary: 'Campus closed today due to heavy rain. Online classes continue as scheduled.',
       ),
       AnnouncementModel(
-        id: 5002,
+        id: 2,
         title: 'End-Semester Lab Examination Timetable (5th & 7th Sem AIML)',
         description:
             'The detailed schedule for the 5th and 7th Semester AIML Practical Examinations has been published. All students must bring their signed lab records and college ID cards.',
@@ -824,14 +784,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'AIML HoD',
-        creatorRole: 'HoD',
         department: 'AIML',
         category: 'Examination',
         createdAt: now.subtract(const Duration(hours: 2)),
         aiSummary: 'Lab exam schedule released for 5th & 7th Sem AIML. Mandatory ID & records required.',
       ),
       AnnouncementModel(
-        id: 5003,
+        id: 3,
         title: 'Campus Placement Drive: Google & Microsoft Registration Open',
         description:
             'Registration is now open for the upcoming campus recruitment drive. Eligible streams: AIML, CSE, ISE, ECE with CGPA 7.5 and above without active backlogs.',
@@ -839,14 +798,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Placement Cell',
-        creatorRole: 'Placement Officer',
         department: 'Placements',
         category: 'Placement',
         createdAt: now.subtract(const Duration(hours: 3)),
         aiSummary: 'Registration open for Google & Microsoft placement drive for eligible AIML/CSE/ISE/ECE students.',
       ),
       AnnouncementModel(
-        id: 5004,
+        id: 4,
         title: 'Annual Technical Symposium - HackEcho 2026',
         description:
             'Register your teams for HackEcho 2026, a 24-hour national level hackathon featuring prizes worth ₹1,50,000. Tracks include AI/ML, CyberSecurity, and Web3.',
@@ -854,14 +812,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
-        creatorRole: 'Professor & Convenor',
         department: 'AIML',
         category: 'Event',
         createdAt: now.subtract(const Duration(hours: 4)),
         aiSummary: 'HackEcho 2026 24hr Hackathon registrations open with prizes worth ₹1.5 Lakhs.',
       ),
       AnnouncementModel(
-        id: 5005,
+        id: 5,
         title: 'Guest Lecture on Generative AI & Large Language Models',
         description:
             'Department of AIML is hosting an expert guest lecture on GenAI architecture and LLM fine-tuning by Google Senior AI Research Scientist in Seminar Hall 1.',
@@ -869,14 +826,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
-        creatorRole: 'Professor & Convenor',
         department: 'AIML',
         category: 'Academic',
         createdAt: now.subtract(const Duration(hours: 5)),
         aiSummary: 'Expert talk on GenAI & LLMs by Google AI Lead today at 2:00 PM in Seminar Hall 1.',
       ),
       AnnouncementModel(
-        id: 5006,
+        id: 6,
         title: 'Circular: Biometric Attendance & Identity Card Compliance',
         description:
             'All faculty, staff, and students are required to complete biometric verification at the main gate. Wearing college ID cards is strictly mandatory on campus premise.',
@@ -884,14 +840,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'College Admin',
-        creatorRole: 'College Admin',
         department: 'Administration',
         category: 'Circular',
         createdAt: now.subtract(const Duration(hours: 6)),
         aiSummary: 'Mandatory biometric verification and ID card compliance notice for all campus members.',
       ),
       AnnouncementModel(
-        id: 5007,
+        id: 7,
         title: 'VTU Inter-College Cricket Tournament Squad Selection Trials',
         description:
             'Selection trials for the college cricket team participating in the upcoming VTU State Level Tournament will take place today at the main sports ground.',
@@ -899,14 +854,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Sports Director',
-        creatorRole: 'Physical Education Director',
         department: 'Sports',
         category: 'Sports',
         createdAt: now.subtract(const Duration(hours: 7)),
         aiSummary: 'Cricket team selection trials for VTU tournament today at 3:30 PM on main ground.',
       ),
       AnnouncementModel(
-        id: 5008,
+        id: 8,
         title: 'Cultural Fest "Aura 2026" Music & Dance Auditions',
         description:
             'Auditions for Western/Classical dance and vocal music performances for the annual cultural extravaganza Aura 2026 will start at 4 PM in the Amphitheatre.',
@@ -914,14 +868,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Cultural Committee',
-        creatorRole: 'Cultural Secretary',
         department: 'Cultural',
         category: 'Cultural',
         createdAt: now.subtract(const Duration(hours: 8)),
         aiSummary: 'Auditions for Aura 2026 fest dance and music performances today at 4:00 PM.',
       ),
       AnnouncementModel(
-        id: 5009,
+        id: 9,
         title: 'Notification: Even Semester Tuition Fee Payment Portal Active',
         description:
             'The online payment portal for 2026 Even Semester tuition and examination fee is now live. Students can pay via UPI, NetBanking, or Credit Cards without late fee.',
@@ -929,14 +882,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Accounts Office',
-        creatorRole: 'Finance Officer',
         department: 'Finance',
         category: 'Fee Payment',
         createdAt: now.subtract(const Duration(hours: 9)),
         aiSummary: 'Online fee payment portal live for Even Semester tuition and VTU exam fees.',
       ),
       AnnouncementModel(
-        id: 5010,
+        id: 10,
         title: 'Institutional Holiday Announcement: General Election Day',
         description:
             'In accordance with state government directives, the institution will remain closed on Friday for polling. Examinations scheduled for that day are postponed.',
@@ -944,14 +896,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Principal Office',
-        creatorRole: 'Principal',
         department: 'Administration',
         category: 'Holiday',
         createdAt: now.subtract(const Duration(hours: 10)),
         aiSummary: 'College holiday declared for upcoming Election Friday. Exams rescheduled.',
       ),
       AnnouncementModel(
-        id: 5011,
+        id: 11,
         title: 'Miscellaneous: Recovered Laptop Charger & Earbuds at Central Library',
         description:
             'A Dell 65W USB-C charger and a pair of wireless earbuds were found in the 2nd floor library reading room. Owner can collect them from the Chief Librarian office.',
@@ -959,14 +910,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Chief Librarian',
-        creatorRole: 'Chief Librarian',
         department: 'Library',
         category: 'Miscellaneous',
         createdAt: now.subtract(const Duration(hours: 11)),
         aiSummary: 'Lost items (USB-C charger & earbuds) available at Chief Librarian office.',
       ),
       AnnouncementModel(
-        id: 5012,
+        id: 12,
         title: 'Draft Notice: Guest Lecture on Distributed Cloud Systems',
         description:
             'Draft proposal for hosting an expert talk by AWS Lead Architect next Friday in Auditorium 2.',
@@ -974,14 +924,13 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'SUBMITTED',
         creatorName: 'Dr. B Kursheed',
-        creatorRole: 'Professor & Convenor',
         department: 'AIML',
         category: 'Academic',
         createdAt: now.subtract(const Duration(hours: 2)),
         aiSummary: 'Pending HoD approval for guest lecture on Cloud Systems next Friday.',
       ),
       AnnouncementModel(
-        id: 5013,
+        id: 13,
         title: 'Archived: Mid-Term Examination Retest Guidelines & Instructions',
         description:
             'Official guidelines for students eligible for the Mid-Term Retests. Submissions must be approved by respective HoDs before the deadline.',
@@ -989,7 +938,6 @@ class AnnouncementController extends GetxController {
         emergencyLevel: 'NORMAL',
         status: 'ARCHIVED',
         creatorName: 'Academic Controller',
-        creatorRole: 'Academic Dean',
         department: 'Examinations',
         category: 'Examination',
         createdAt: now.subtract(const Duration(days: 12)),
