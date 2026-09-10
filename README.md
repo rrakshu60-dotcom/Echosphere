@@ -92,19 +92,26 @@ flowchart LR
 
 ---
 
-## 🚀 Local Quickstart
+## 🚀 Local Quickstart & Deployment
 
-### 1. Web Instant Deployment (30s)
+### 1. Direct Web Instant Deployment to Cloudflare Pages (30s)
 ```powershell
 .\deploy.ps1
 ```
 
-### 2. Build Android APK Locally (30s)
+### 2. Publish Android APK & Windows App to GitHub Releases (1-Click)
 ```powershell
-.\build-apk.ps1
+.\publish-release.ps1
+```
+*Builds Android APK & Windows Desktop binaries locally and uploads them directly to [GitHub Releases `latest`](https://github.com/rrakshu60-dotcom/Echosphere/releases/tag/latest).*
+
+### 3. Fast Local Builds Only
+```powershell
+.\build-apk.ps1       # Build Android APK locally (~15 MB)
+.\build-windows.ps1   # Build Windows Desktop App locally
 ```
 
-### 3. Run Backend Server
+### 4. Run Backend Server
 ```bash
 cd backend
 python -m venv .venv
@@ -112,6 +119,7 @@ source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
+
 
 ---
 
