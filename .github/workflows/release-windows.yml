@@ -1,0 +1,68 @@
+name: EchoSphere Release Windows Desktop
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/release-windows.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release-windows:
+    name: Build & Publish Windows App to GitHub Releases
+    runs-on: windows-latest
+    steps:
+      - name: Shallow Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Precache Windows Engine Only
+        run: flutter precache --windows
+
+      - name: Cache Pub Dependencies & Dart Tool
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\Pub\Cache
+            frontend\.dart_tool
+          key: pub-cache-windows-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: |
+            pub-cache-windows-
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Dependencies
+        run: cd frontend && flutter pub get
+
+      - name: Build Windows Desktop App
+        run: cd frontend && flutter build windows --release --no-pub
+
+      - name: Compress Windows Build
+        run: Compress-Archive -Path frontend/build/windows/x64/runner/Release/* -DestinationPath frontend/echosphere-windows.zip -Force
+
+      - name: Publish Direct to GitHub Releases (Unlimited Storage)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "EchoSphere Latest Release"
+          draft: false
+          prerelease: false
+          files: frontend/echosphere-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
