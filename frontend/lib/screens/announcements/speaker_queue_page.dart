@@ -25,8 +25,12 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   late TabController _tabController;
   late final SpeakerQueueController _queueCtrl;
 
-  Timer? _autoPlayTimer;
-  int _playCountdownSeconds = 0;
+  bool get _isStudent {
+    if (!Get.isRegistered<AuthController>()) return false;
+    final user = Get.find<AuthController>().currentUser.value;
+    if (user == null) return false;
+    return user.role.toLowerCase() == 'student';
+  }
 
   @override
   void initState() {
