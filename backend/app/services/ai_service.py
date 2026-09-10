@@ -9,6 +9,7 @@ from app.models.announcement import Announcement
 from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 from app.services.ai_text_sanitizer import sanitize_ai_markdown
 from app.services.model_router import ModelRouter
+from app.services.neural_rag import NeuralRAG
 
 logger = logging.getLogger("EchoSphere.AIService")
 
@@ -277,9 +278,24 @@ class AIService:
                 predicted_intent="USER_IDENTITY",
                 conversation_history=history
             )
-        elif is_educational_query and predicted_intent == "STUDENT_CHITCHAT_REFUSAL":
-            predicted_intent = "BRANCH_STUDIES"
-            category_badge = "Branch Coursework"
+        elif is_educational_query:
+            # High-yield Instant Academic Primer match (< 10ms instant delivery for core engineering topics)
+            academic_kb = [k for k in (kb_matches or []) if k.get("category") == "Academics" and k.get("id") != "kb_branch_studies"]
+            if academic_kb and any(w in q_lower for w in ["explain", "what is", "how does", "vs", "versus", "difference"]):
+                return ml_engine.synthesize_response(
+                    query=query,
+                    name=name,
+                    role=role,
+                    dept=dept,
+                    usn_or_emp_id=usn_or_emp_id,
+                    matched_announcements=matched_announcements,
+                    kb_matches=academic_kb,
+                    predicted_intent="BRANCH_STUDIES",
+                    conversation_history=history
+                )
+            if predicted_intent == "STUDENT_CHITCHAT_REFUSAL":
+                predicted_intent = "BRANCH_STUDIES"
+                category_badge = "Branch Coursework"
 
         # Nuanced, confidence-threshold refusal ONLY if classifier confidence > 0.85 for off-scope casual chitchat
         if role == "STUDENT" and predicted_intent == "STUDENT_CHITCHAT_REFUSAL" and intent_conf > 0.85:
@@ -295,7 +311,18 @@ class AIService:
             }
 
         # Step 5: Try Modern Gemini 2.5 / 2.0 Flash with Rich Dynamic System Context
-        kb_text = "\n".join([f"- [{k['category']}] {k['title']}: {k['content'][:140]}" for k in kb_matches])
+        try:
+            rag_context = NeuralRAG.get_instance().build_grounding_context(
+                query=query,
+                db_session=db,
+                department=dept,
+                top_k=3
+            )
+        except Exception as e:
+            logger.debug(f"NeuralRAG retrieval exception: {e}")
+            rag_context = ""
+
+        kb_text = rag_context if rag_context else "\n".join([f"- [{k['category']}] {k['title']}: {k['content'][:140]}" for k in kb_matches])
         live_notices_text = "\n".join([
             f"- [{m['category']} | {m['priority']}] {m['title']} ({m['department']}): {m['content'][:120]}"
             for m in matched_announcements
