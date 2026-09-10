@@ -33,12 +33,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   List<Map<String, dynamic>> queueItems = [];
   List<Map<String, dynamic>> speakerNodes = [];
 
-  bool get _isStudent {
-    if (!Get.isRegistered<AuthController>()) return false;
-    final user = Get.find<AuthController>().currentUser.value;
-    if (user == null) return false;
-    return user.role.toLowerCase() == 'student';
-  }
+
 
   @override
   void initState() {
