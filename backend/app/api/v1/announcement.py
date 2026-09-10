@@ -301,7 +301,7 @@ def get_announcement_audio_endpoint(
 
     # Prepare speech text (Full notice or AI Summary)
     if is_summary:
-        summary = AIService.summarize_content(notice.description)
+        summary = AIService.summarize(notice.description)
         speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
     else:
         speech_text = f"{notice.title}. {notice.description}"
@@ -356,7 +356,7 @@ def stream_announcement_audio_endpoint(
         return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"announcement_{announcement_id}_{tag}.mp3")
 
     if is_summary:
-        summary = AIService.summarize_content(notice.description)
+        summary = AIService.summarize(notice.description)
         speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
     else:
         speech_text = f"{notice.title}. {notice.description}"
