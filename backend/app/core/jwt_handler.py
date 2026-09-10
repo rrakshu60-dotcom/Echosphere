@@ -49,3 +49,20 @@ def verify_access_token(token: str) -> dict:
 
     except JWTError as exc:
         raise ValueError("Invalid or expired token.") from exc
+
+
+def decode_expired_token(token: str) -> dict:
+    """
+    Decode a JWT access token ignoring expiration to extract payload claims for silent renewal.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+        return payload
+    except JWTError as exc:
+        raise ValueError("Invalid token structure.") from exc
+

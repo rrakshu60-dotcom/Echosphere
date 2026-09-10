@@ -49,8 +49,30 @@ class EchosphereApiService {
           }
           return handler.next(options);
         },
-        onError: (DioException error, handler) {
+        onError: (DioException error, handler) async {
           debugPrint('API Error [${error.response?.statusCode}]: ${error.response?.data}');
+          if (error.response?.statusCode == 401 && _authToken != null && _authToken!.isNotEmpty) {
+            try {
+              debugPrint('🔄 Silent token auto-renewal triggered...');
+              final refreshResp = await _dio.post(
+                '/auth/refresh',
+                data: {'token': _authToken},
+              );
+              if (refreshResp.statusCode == 200 && refreshResp.data != null) {
+                final newToken = refreshResp.data['access_token'] as String?;
+                if (newToken != null && newToken.isNotEmpty) {
+                  _authToken = newToken;
+                  debugPrint('✅ Silent token auto-renewal successful! Retrying request...');
+                  final opts = error.requestOptions;
+                  opts.headers['Authorization'] = 'Bearer $newToken';
+                  final cloneReq = await _dio.fetch(opts);
+                  return handler.resolve(cloneReq);
+                }
+              }
+            } catch (rErr) {
+              debugPrint('Token auto-renewal failed: $rErr');
+            }
+          }
           return handler.next(error);
         },
       ),
