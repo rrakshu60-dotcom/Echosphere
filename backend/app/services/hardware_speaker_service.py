@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set
 from datetime import datetime
 
 import paho.mqtt.client as mqtt
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.speaker_node import SpeakerNode
@@ -509,7 +510,7 @@ def auto_advance_speaker_queue(
         if force_advance:
             should_advance = True
         else:
-            duration = current_playing.duration_seconds or 15
+            duration = (current_playing.duration_seconds or 15) + 30
             if current_playing.played_at:
                 elapsed = (now - current_playing.played_at).total_seconds()
                 if elapsed >= duration:
@@ -522,12 +523,15 @@ def auto_advance_speaker_queue(
             current_playing.status = "Completed"
             db.commit()
             db.refresh(current_playing)
-            logger.info(f"Speaker queue item #{current_playing.id} completed playback.")
+            logger.info(f"Speaker queue item #{current_playing.id} completed playback after notice duration + 30s gap.")
     else:
-        # Check if there are queued items waiting to start
+        # Check if there are queued items waiting to start (due for scheduled_time or immediate)
         waiting_item = (
             db.query(SpeakerQueue)
-            .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
+            .filter(
+                SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
+                or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
+            )
             .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
             .first()
         )
@@ -537,10 +541,13 @@ def auto_advance_speaker_queue(
     if not should_advance:
         return None
 
-    # Find the next item to play
+    # Find the next item to play (scheduled_time <= now or immediate)
     next_item = (
         db.query(SpeakerQueue)
-        .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
+        .filter(
+            SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
+            or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
+        )
         .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
         .first()
     )

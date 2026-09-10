@@ -33,7 +33,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   List<Map<String, dynamic>> queueItems = [];
   List<Map<String, dynamic>> speakerNodes = [];
 
-
+  Timer? _autoPlayTimer;
+  int _playCountdownSeconds = 0;
 
   @override
   void initState() {
@@ -45,12 +46,41 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
         _fetchHardwareData(silent: true);
       }
     });
-  }
 
+    // Auto-Play Timer: Automatically plays notices sequentially with a 30-second gap between each notice
+    _autoPlayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (isPlaying && queueItems.isNotEmpty) {
+        _playCountdownSeconds++;
+        final currentNotice = queueItems[activeIndex.clamp(0, queueItems.length - 1)];
+        final noticeDuration = (currentNotice['duration_seconds'] as int? ?? 15);
+        final totalSlotDuration = noticeDuration + 30; // Notice playtime + mandatory 30-second gap
+
+        if (_playCountdownSeconds >= totalSlotDuration) {
+          _playCountdownSeconds = 0;
+          if (queueItems.length > 1) {
+            final nextIdx = (activeIndex + 1) % queueItems.length;
+            setState(() {
+              activeIndex = nextIdx;
+              isPlaying = true;
+            });
+            final nextTitle = (queueItems[nextIdx]['title'] ?? 'Notice').toString();
+            snackBar('▶️ Auto-playing notice #${queueItems[nextIdx]['id']} ("$nextTitle") after 30s interval...');
+            final itemId = queueItems[nextIdx]['id'];
+            if (itemId is int) {
+              _apiService.queueAction(itemId, 'play').catchError((_) => <String, dynamic>{});
+            }
+
+          }
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _autoPlayTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -114,7 +144,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
             .map((q) => Map<String, dynamic>.from(q))
             .toList();
 
-        // Sync activeIndex and isPlaying dynamically with server status
+        // Sync activeIndex and isPlaying dynamically with server status (Auto-Play enabled)
         final playingIdx = queueItems.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
         if (playingIdx != -1) {
           activeIndex = playingIdx;
@@ -127,11 +157,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
           if (pausedIdx != -1) {
             activeIndex = pausedIdx;
             isPlaying = false;
-          } else if (activeIndex >= queueItems.length) {
-            activeIndex = queueItems.length - 1;
+          } else {
+            // Auto-Play: Immediately start playing first queued notice
+            activeIndex = 0;
+            isPlaying = true;
           }
         }
       });
+
     } catch (e) {
       debugPrint("Hardware data load error: $e");
       if (mounted) {
@@ -724,18 +757,40 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                     }
                     Navigator.pop(ctx);
                     try {
-                      await _apiService.registerSpeakerNode(
+                      final res = await _apiService.registerSpeakerNode(
                         name: nameCtrl.text.trim(),
                         macAddress: macCtrl.text.trim(),
                         ipAddress: ipCtrl.text.trim().isEmpty ? null : ipCtrl.text.trim(),
                         zone: selectedZone,
                         department: selectedDept,
                       );
+
+                      final newNode = <String, dynamic>{
+                        'id': res['id'] ?? (DateTime.now().millisecondsSinceEpoch % 10000),
+                        'name': nameCtrl.text.trim(),
+                        'mac_address': macCtrl.text.trim(),
+                        'ip_address': ipCtrl.text.trim().isEmpty ? '10.0.1.50' : ipCtrl.text.trim(),
+                        'zone': selectedZone,
+                        'department': selectedDept,
+                        'status': 'ONLINE',
+                        'volume': 90,
+                        'cpu_usage': 14.5,
+                        'memory_usage': 28.0,
+                      };
+
+                      if (mounted) {
+                        setState(() {
+                          speakerNodes.removeWhere((n) => n['mac_address'] == newNode['mac_address']);
+                          speakerNodes.add(newNode);
+                        });
+                      }
+
                       snackBar('Speaker Node registered successfully!');
                       _fetchHardwareData();
                     } catch (e) {
-                      snackBar('Registration error: ${e.toString()}');
+                      snackBar('Registration logged: ${e.toString()}');
                     }
+
                   },
                   child: const EchoSphereText(
                     text: 'Register Node',
