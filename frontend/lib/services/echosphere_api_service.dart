@@ -381,6 +381,7 @@ class EchosphereApiService {
     String? department,
     String? fullName,
     String? usnOrEmpId,
+    int? userId,
     List<Map<String, dynamic>>? history,
     String? sessionId,
   }) async {
@@ -393,6 +394,7 @@ class EchosphereApiService {
           'department': department,
           'full_name': fullName,
           'usn_or_emp_id': usnOrEmpId,
+          if (userId != null && userId > 0) 'user_id': userId,
           if (history != null && history.isNotEmpty) 'history': history,
           if (sessionId != null) 'session_id': sessionId,
         },

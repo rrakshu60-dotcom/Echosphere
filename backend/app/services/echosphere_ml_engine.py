@@ -17,6 +17,7 @@ try:
     import numpy as np
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
+    from sklearn.neural_network import MLPClassifier
     from sklearn.pipeline import Pipeline
     from sklearn.metrics.pairwise import cosine_similarity
     import joblib
@@ -27,6 +28,7 @@ except (ImportError, Exception):
     joblib = None
     TfidfVectorizer = None
     LogisticRegression = None
+    MLPClassifier = None
     Pipeline = None
     cosine_similarity = None
 
@@ -88,6 +90,59 @@ INSTITUTIONAL_KNOWLEDGE: List[Dict[str, Any]] = [
             "Operating Systems (paging, deadlocks), Computer Networks (TCP/IP), Signals & Systems, Circuits, and Thermodynamics."
         ),
         "tags": ["ml", "machine learning", "dsa", "algorithms", "coursework", "branch", "cse", "aiml", "ece", "mech", "civil", "studies"]
+    },
+    {
+        "id": "kb_ml_backprop",
+        "category": "Academics",
+        "title": "Machine Learning: Backpropagation & Gradient Descent",
+        "content": (
+            "Backpropagation computes the gradient of the loss function with respect to each network weight using the multivariate chain rule: "
+            "1. Forward Pass: Compute layer activations a^[l] = sigma(W^[l] a^[l-1] + b^[l]) and final loss L(y_hat, y). "
+            "2. Backward Pass: Compute output error delta^[L] = nabla_a L odot sigma'(z^[L]), then backpropagate delta^[l] = ((W^[l+1])^T delta^[l+1]) odot sigma'(z^[l]). "
+            "3. Weight Update: Gradient step W^[l] := W^[l] - alpha (delta^[l] (a^[l-1])^T), where alpha is the learning rate."
+        ),
+        "tags": ["backprop", "backpropagation", "gradient descent", "loss", "neural network", "deep learning", "chain rule"]
+    },
+    {
+        "id": "kb_dsa_shortest_path",
+        "category": "Academics",
+        "title": "Data Structures & Algorithms: Dijkstra vs Bellman-Ford Shortest Path",
+        "content": (
+            "Shortest path algorithms in weighted directed graphs:\n"
+            "1. Dijkstra's Algorithm: Greedy approach for graphs with non-negative edge weights. "
+            "Maintains a Min-Heap priority queue of tentative distances. Repeatedly extracts minimum dist vertex and relaxes adjacent edges. "
+            "Time Complexity: O((V + E) log V); Space: O(V). Cannot handle negative edge weights.\n"
+            "2. Bellman-Ford Algorithm: Dynamic programming approach that relaxes all |V|-1 edges iteratively. "
+            "Can handle negative edge weights and detects negative weight cycles in graphs. "
+            "Time Complexity: O(V * E); Space: O(V).\n"
+            "3. Key Trade-off: Dijkstra is asymptotically faster for sparse/dense positive graphs; Bellman-Ford is mandatory when edges can carry negative costs or currency arbitrage."
+        ),
+        "tags": ["dijkstra", "bellman ford", "bellman-ford", "shortest path", "graph", "algorithms", "dsa", "min heap", "relaxation", "negative cycle"]
+    },
+    {
+        "id": "kb_os_virtual_memory",
+        "category": "Academics",
+        "title": "Operating Systems: Virtual Memory, Paging & Page Tables",
+        "content": (
+            "Virtual memory decouples logical address space from physical RAM: "
+            "1. Logical Address: Split by MMU into Page Number (p) and Page Offset (d). "
+            "2. Page Table: Maps page p to physical Frame Number (f). Physical Address = (f << offset_bits) | d. "
+            "3. Translation Lookaside Buffer (TLB): High-speed hardware associative cache. On TLB miss, page table is walked in memory. "
+            "4. Page Fault: Triggered when valid bit is 0. OS traps, fetches page from swap backing store into a free frame, updates page table, and restarts instruction."
+        ),
+        "tags": ["paging", "virtual memory", "operating systems", "os", "page fault", "tlb", "mmu", "frame"]
+    },
+    {
+        "id": "kb_cn_tcp_handshake",
+        "category": "Academics",
+        "title": "Computer Networks: TCP/IP 3-Way Handshake & Connection Flow",
+        "content": (
+            "TCP establishes a reliable, bidirectional byte-stream connection via the 3-Way Handshake: "
+            "1. Client -> Server (SYN): Client picks initial sequence number x, sends SYN flag set (Seq=x). Client enters SYN_SENT state. "
+            "2. Server -> Client (SYN-ACK): Server acknowledges with Ack=x+1, picks server sequence number y, sends SYN+ACK (Seq=y, Ack=x+1). Server enters SYN_RCVD. "
+            "3. Client -> Server (ACK): Client acknowledges with Ack=y+1 (Seq=x+1, Ack=y+1). Both sockets transition to ESTABLISHED state for data payload transfer."
+        ),
+        "tags": ["tcp", "handshake", "networks", "computer networks", "syn", "ack", "osi", "transport layer"]
     },
     {
         "id": "kb_exam_circulars",
@@ -250,19 +305,37 @@ INTENT_TRAINING_DATA = [
     ("explain depth first search vs breadth first search", "BRANCH_STUDIES"),
     ("how does quicksort algorithm work", "BRANCH_STUDIES"),
 
-    # STUDENT_CHITCHAT_REFUSAL (Non-academic chit-chat politely blocked for students)
-    ("tell me a joke", "STUDENT_CHITCHAT_REFUSAL"),
+    # USER_IDENTITY (Who Am I, Designation, Role & Profile)
+    ("who am i", "USER_IDENTITY"),
+    ("what is my name", "USER_IDENTITY"),
+    ("whats my name", "USER_IDENTITY"),
+    ("what is my designation", "USER_IDENTITY"),
+    ("whats my designation", "USER_IDENTITY"),
+    ("what is my role", "USER_IDENTITY"),
+    ("whats my role", "USER_IDENTITY"),
+    ("tell me my designation", "USER_IDENTITY"),
+    ("tell me my name", "USER_IDENTITY"),
+    ("do you know my name", "USER_IDENTITY"),
+    ("do you know who i am", "USER_IDENTITY"),
+    ("who am i logged in as", "USER_IDENTITY"),
+    ("which department do i belong to", "USER_IDENTITY"),
+    ("what department am i in", "USER_IDENTITY"),
+    ("what is my employee id", "USER_IDENTITY"),
+    ("what is my usn", "USER_IDENTITY"),
+    ("check my current profile", "USER_IDENTITY"),
+
+    # STUDENT_CHITCHAT_REFUSAL (Purely Out-of-Scope Entertainment/Jokes)
+    ("tell me a funny joke", "STUDENT_CHITCHAT_REFUSAL"),
     ("who is your favorite actor", "STUDENT_CHITCHAT_REFUSAL"),
     ("what is the best movie to watch", "STUDENT_CHITCHAT_REFUSAL"),
-    ("let's play a game", "STUDENT_CHITCHAT_REFUSAL"),
+    ("let's play a roleplay game", "STUDENT_CHITCHAT_REFUSAL"),
     ("tell me about marvel movies", "STUDENT_CHITCHAT_REFUSAL"),
     ("who won the cricket match yesterday", "STUDENT_CHITCHAT_REFUSAL"),
-    ("write a love poem for me", "STUDENT_CHITCHAT_REFUSAL"),
-    ("what should i eat for dinner", "STUDENT_CHITCHAT_REFUSAL"),
-    ("can we just chat casually", "STUDENT_CHITCHAT_REFUSAL"),
-    ("tell me a story about aliens", "STUDENT_CHITCHAT_REFUSAL"),
-    ("who is the president of france", "STUDENT_CHITCHAT_REFUSAL"),
+    ("write a romantic poem for me", "STUDENT_CHITCHAT_REFUSAL"),
+    ("what should i eat for dinner tonight", "STUDENT_CHITCHAT_REFUSAL"),
+    ("tell me a fiction story about aliens", "STUDENT_CHITCHAT_REFUSAL"),
     ("talk to me about video games", "STUDENT_CHITCHAT_REFUSAL"),
+    ("give me dating tips", "STUDENT_CHITCHAT_REFUSAL"),
 
     # EVENTS_HACKATHONS (Continued)
     ("annual college exhibition and project expo", "EVENTS_HACKATHONS"),
@@ -276,17 +349,29 @@ INTENT_TRAINING_DATA = [
     ("broadcast audio message to zone 1", "SPEAKER_HARDWARE"),
     ("hardware speaker node client info", "SPEAKER_HARDWARE"),
 
-    # CONVERSATIONAL
+    # CONVERSATIONAL (Greetings & Pleasantries - GUARANTEED NO REFUSAL)
+    ("hi", "CONVERSATIONAL"),
+    ("hi!", "CONVERSATIONAL"),
     ("hello", "CONVERSATIONAL"),
-    ("hi there", "CONVERSATIONAL"),
+    ("hello!", "CONVERSATIONAL"),
     ("hey", "CONVERSATIONAL"),
+    ("heyy", "CONVERSATIONAL"),
+    ("hey there", "CONVERSATIONAL"),
+    ("hi assistant", "CONVERSATIONAL"),
+    ("hello echosphere", "CONVERSATIONAL"),
     ("who are you", "CONVERSATIONAL"),
     ("what can you do", "CONVERSATIONAL"),
     ("what is your name", "CONVERSATIONAL"),
     ("thank you", "CONVERSATIONAL"),
+    ("thanks", "CONVERSATIONAL"),
     ("thanks for helping", "CONVERSATIONAL"),
     ("how are you doing", "CONVERSATIONAL"),
+    ("how are you", "CONVERSATIONAL"),
     ("good morning", "CONVERSATIONAL"),
+    ("good afternoon", "CONVERSATIONAL"),
+    ("good evening", "CONVERSATIONAL"),
+    ("bye", "CONVERSATIONAL"),
+    ("goodbye", "CONVERSATIONAL"),
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -393,9 +478,17 @@ class EchoSphereMLEngine:
         X_intent = [text for text, _ in INTENT_TRAINING_DATA]
         y_intent = [label for _, label in INTENT_TRAINING_DATA]
 
+        try:
+            if MLPClassifier is not None:
+                clf = MLPClassifier(hidden_layer_sizes=(128, 64), max_iter=400, random_state=42)
+            else:
+                clf = LogisticRegression(max_iter=1000, C=10.0)
+        except Exception:
+            clf = LogisticRegression(max_iter=1000, C=10.0)
+
         intent_pipeline = Pipeline([
             ("tfidf", TfidfVectorizer(ngram_range=(1, 2), min_df=1, sublinear_tf=True)),
-            ("clf", LogisticRegression(max_iter=1000, C=5.0))
+            ("clf", clf)
         ])
         intent_pipeline.fit(X_intent, y_intent)
         self._intent_model = intent_pipeline
@@ -410,7 +503,7 @@ class EchoSphereMLEngine:
 
         cat_pipeline = Pipeline([
             ("tfidf", TfidfVectorizer(ngram_range=(1, 2), min_df=1)),
-            ("clf", LogisticRegression(max_iter=1000))
+            ("clf", LogisticRegression(max_iter=1000, C=5.0))
         ])
         cat_pipeline.fit(X_cat, y_cat)
         self._category_model = cat_pipeline
@@ -425,7 +518,7 @@ class EchoSphereMLEngine:
 
         prio_pipeline = Pipeline([
             ("tfidf", TfidfVectorizer(ngram_range=(1, 2), min_df=1)),
-            ("clf", LogisticRegression(max_iter=1000))
+            ("clf", LogisticRegression(max_iter=1000, C=5.0))
         ])
         prio_pipeline.fit(X_prio, y_prio)
         self._priority_model = prio_pipeline
@@ -460,6 +553,67 @@ class EchoSphereMLEngine:
         if not clean:
             return ("CONVERSATIONAL", 1.0)
 
+        clean_lower = clean.lower()
+
+        # 1. Deterministic Fast-Path: Greetings & Pleasantries (guarantees zero false refusal)
+        greeting_words = {"hi", "hello", "hey", "heyy", "heya", "howdy", "hola", "greetings", "gm", "gn"}
+        clean_words = set(re.findall(r'[a-zA-Z]+', clean_lower))
+        if clean_words and clean_words.issubset(greeting_words | {"there", "assistant", "echosphere", "bot", "friend", "everyone", "all", "sir", "maam"}):
+            return ("CONVERSATIONAL", 1.0)
+        if clean_lower in [
+            "good morning", "good afternoon", "good evening", "how are you", 
+            "how are you doing", "what's up", "whats up", "thanks", "thank you", 
+            "thanks a lot", "thank you so much", "bye", "goodbye", "see you"
+        ]:
+            return ("CONVERSATIONAL", 1.0)
+
+        # 2. Deterministic Fast-Path: User Identity & Designation
+        identity_triggers = [
+            "who am i", "what is my name", "whats my name", "what's my name",
+            "what is my designation", "whats my designation", "what's my designation",
+            "what is my role", "whats my role", "what's my role",
+            "tell me my designation", "tell me my name", "tell me my role",
+            "do you know my name", "do you know who i am", "who am i logged in as",
+            "my profile details", "which department am i in", "what is my department",
+            "what is my usn", "what is my employee id", "what is my id", "my profile"
+        ]
+        if any(trig in clean_lower for trig in identity_triggers):
+            return ("USER_IDENTITY", 1.0)
+
+        # 3. Deterministic Fast-Path: Branch Coursework & Engineering Subjects
+        edu_triggers = [
+            "backpropagation", "gradient descent", "dijkstra", "shortest path",
+            "bellman ford", "bellman-ford", "convolutional neural", "cnn", "virtual memory", "paging", "page table",
+            "tcp handshake", "three way handshake", "tcp 3-way", "tcp/ip", "fourier transform", "carnot cycle",
+            "support vector machine", "svm", "quicksort", "binary search tree",
+            "normalization in dbms", "dynamic programming", "depth first search", "breadth first search"
+        ]
+        if any(ed in clean_lower for ed in edu_triggers):
+            return ("BRANCH_STUDIES", 1.0)
+
+        # 4. Deterministic Fast-Path: Capability & Role Discernment Questions
+        discern_triggers = [
+            "can i broadcast", "can i send emergency", "can i control the speaker",
+            "can a student broadcast", "can student broadcast", "can i announce",
+            "can i trigger", "can i create notice", "can a student post",
+            "am i allowed to broadcast", "am i allowed to send", "as a student can i"
+        ]
+        if any(dt in clean_lower for dt in discern_triggers):
+            if any(w in clean_lower for w in ["speaker", "broadcast", "alert", "siren", "corridor", "pa system", "node"]):
+                return ("SPEAKER_HARDWARE", 1.0)
+            if any(w in clean_lower for w in ["notice", "announcement", "circular", "post"]):
+                return ("NOTICE_CREATION", 1.0)
+
+        # 5. Deterministic Fast-Path: Off-Scope Entertainment & Casual Chitchat
+        chitchat_triggers = [
+            "tell me a joke", "tell me a funny joke", "dating tips", "dating advice",
+            "relationship advice", "movie recommendation", "best movie", "celebrity gossip",
+            "who is your favorite actor", "write a love poem", "tell me a fiction story",
+            "horoscope", "astrology"
+        ]
+        if any(ct in clean_lower for ct in chitchat_triggers):
+            return ("STUDENT_CHITCHAT_REFUSAL", 0.95)
+
         if HAS_SKLEARN and self._intent_model and np is not None:
             try:
                 probs = self._intent_model.predict_proba([clean])[0]
@@ -470,7 +624,6 @@ class EchoSphereMLEngine:
                 pass
 
         # Pure-Python high-precision intent matcher
-        clean_lower = clean.lower()
         query_words = set(re.findall(r'\w+', clean_lower))
         best_intent = "CONVERSATIONAL"
         best_score = 0.0
@@ -692,11 +845,12 @@ class EchoSphereMLEngine:
 
         # Intercept unauthorized operational or administrative queries for lower roles
         if is_student:
-            if any(k in q_lower for k in ["speaker", "queue", "hardware", "broadcast siren", "pa system", "siren override"]):
+            if any(k in q_lower for k in ["speaker", "queue", "hardware", "broadcast siren", "pa system", "siren override", "broadcast to", "broadcast an", "corridor speaker"]):
                 return {
                     "response": (
                         "I don't have the authority to answer that question or disclose operational details "
-                        "about the smart speaker system. Please consult your department office or faculty coordinator for assistance."
+                        "about the smart speaker system. Broadcast permissions are strictly restricted to faculty "
+                        "and campus administrators. Please consult your department office or faculty coordinator for assistance."
                     ),
                     "category_badge": "Access Restricted",
                     "context_badge": f"{role.title()} | {dept} Department",
@@ -719,24 +873,48 @@ class EchoSphereMLEngine:
                     "model_used": "EchoSphere Campus ML Engine (Local)"
                 }
 
-        if predicted_intent == "CONVERSATIONAL":
+        role_key = (role or "").upper()
+        designation_map = {
+            "DEV ADMIN": "Developer Administrator",
+            "DEVELOPER": "Developer Administrator",
+            "COLLEGE ADMIN": "College Administrator",
+            "PRINCIPAL": "Principal / Head of Institution",
+            "HOD": "Head of Department (HoD)",
+            "TEACHER": "Faculty Member / Assistant Professor",
+            "STUDENT": "Undergraduate / Postgraduate Student"
+        }
+        human_designation = designation_map.get(role_key, role.title() if role else "Campus Member")
+
+        if predicted_intent == "USER_IDENTITY":
+            category_badge = "User Profile"
+            navigation_target = "nav:profile"
+            id_info = f"- **Identifier (USN / ID):** `{usn_or_emp_id}`\n" if usn_or_emp_id else ""
+            text = (
+                f"### Verified Institutional Identity\n\n"
+                f"- **Full Name:** {name}\n"
+                f"- **Designation:** {human_designation}\n"
+                f"- **Role Hierarchy:** {role.title()}\n"
+                f"- **Department:** {dept} Department\n"
+                f"{id_info}\n"
+                f"Your active workspace permissions, notification streams, and notice visibility are actively synchronized with this verified campus profile."
+            )
+            suggested_actions = ["Go to Profile", "Security Preferences", "Browse Announcements"]
+
+        elif predicted_intent == "CONVERSATIONAL":
             if any(w in q_lower for w in ["who are you", "who r u", "what is your name", "what do you do", "identify"]):
                 text = (
-                    f"I am the **EchoSphere Campus AI Assistant**, your institutional knowledge companion for "
-                    f"**{dept} Department**.\n\n"
-                    f"**Core Capabilities:**\n"
-                    f"- **Live Announcements:** Search and filter active circulars, emergency advisories, and notices.\n"
-                    f"- **Branch Coursework:** Answer academic study questions across machine learning, algorithms, and engineering subjects.\n"
-                    f"- **Examinations & Timetables:** Retrieve schedule details, hall ticket guidelines, and lab slots.\n"
-                    f"- **Placements & Drives:** Check corporate visit dates, eligibility criteria, and interview timelines.\n"
-                    f"- **App Navigation:** Direct you to profile settings, dark mode theme toggles, and notice authoring."
+                    f"I am the **EchoSphere Campus AI Assistant**, your institutional companion for **{dept} Department**.\n\n"
+                    f"**How I can assist you:**\n"
+                    f"- **Branch Coursework:** Deep explanations of engineering concepts, algorithms, derivations, and study methods.\n"
+                    f"- **Campus Notices:** Timely circulars, exam timetables, placement drives, and emergency alerts.\n"
+                    f"- **App Features:** Navigation, dark mode toggles, bookmarks, and account security."
                 )
             elif any(w in q_lower for w in ["thank", "thanks", "great", "awesome"]):
-                text = f"You are very welcome, {name}! I am always here to assist you with updates and studies across the **{dept} Department**."
+                text = f"You are very welcome, {name}! Let me know whenever you need assistance with your coursework or campus notices."
             else:
                 text = (
-                    f"Hello {name}! I am active and tuned to your context as a **{role.title()}** in the **{dept} Department**.\n\n"
-                    f"How can I assist you today? You can ask me about recent circulars, exam dates, placement drives, app features, or your branch coursework."
+                    f"Hello {name}! How can I help you today? "
+                    f"Feel free to ask about your branch coursework, upcoming exams, placement drives, or campus notices."
                 )
             suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
 
@@ -871,17 +1049,31 @@ class EchoSphereMLEngine:
 
         elif predicted_intent == "STUDENT_CHITCHAT_REFUSAL" and is_student:
             category_badge = "Academic Scope"
-            text = "Sorry, I'm not allowed to do that."
+            text = (
+                "That's outside my academic scope — I'm best at campus notices, engineering coursework, and study skills. "
+                "Would you like help with your branch studies, exam timetables, or placement circulars?"
+            )
             suggested_actions = ["Ask an ML Question", "Check Exam Circulars", "Browse Placements"]
 
         elif predicted_intent == "BRANCH_STUDIES":
             category_badge = f"{dept} Studies"
-            text = (
-                f"### {dept} Academic & Engineering Coursework Assistance\n\n"
-                f"EchoSphere AI serves as your academic tutor for **{dept} Department** coursework.\n\n"
-                f"- **Core Subjects:** Machine Learning, Data Structures & Algorithms, Operating Systems, Computer Networks, and Circuit Analysis.\n"
-                f"- **Concept Tutoring:** Ask me to explain complex algorithms, step-by-step mathematical proofs, or system architectures."
-            )
+            # If an academic knowledge item matched, provide comprehensive engineering breakdown
+            academic_kb = [k for k in (kb_matches or []) if k.get("category") == "Academics"]
+            if academic_kb:
+                top_doc = academic_kb[0]
+                text = (
+                    f"### {top_doc['title']}\n\n"
+                    f"{top_doc['content']}\n\n"
+                    f"**Key Engineering Takeaway:**\n"
+                    f"Mastering this concept is essential for {dept} semester evaluations, lab practicals, and technical placement interviews."
+                )
+            else:
+                text = (
+                    f"### {dept} Academic & Engineering Coursework Assistance\n\n"
+                    f"EchoSphere AI serves as your academic tutor for **{dept} Department** coursework.\n\n"
+                    f"- **Core Subjects:** Machine Learning, Data Structures & Algorithms, Operating Systems, Computer Networks, and Circuit Analysis.\n"
+                    f"- **Concept Tutoring:** Ask me to explain complex algorithms, step-by-step mathematical proofs, or system architectures."
+                )
             suggested_actions = ["Explain Backpropagation", "Explain Dijkstra Algorithm", "Paging in Operating Systems"]
 
         elif predicted_intent == "SPEAKER_HARDWARE":
@@ -890,7 +1082,8 @@ class EchoSphereMLEngine:
                 navigation_target = None
                 text = (
                     "I don't have the authority to answer that question or disclose operational details "
-                    "about the smart speaker system. Please consult your department office or faculty coordinator for assistance."
+                    "about the smart speaker system. Broadcast permissions are strictly restricted to faculty "
+                    "and campus administrators. Please consult your department office or faculty coordinator for assistance."
                 )
                 suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
             else:

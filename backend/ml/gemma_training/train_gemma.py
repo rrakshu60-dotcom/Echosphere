@@ -58,26 +58,43 @@ def run_training(
         bnb_4bit_use_double_quant=True,
     )
 
-    logger.info(f"Downloading tokenizer & base model weights: {model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    logger.info(f"Loading tokenizer & base model weights: {model_id}")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, local_files_only=True)
+    except Exception:
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-        trust_remote_code=True
-    )
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            trust_remote_code=True,
+            local_files_only=True
+        )
+    except Exception:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+            trust_remote_code=True
+        )
     model = prepare_model_for_kbit_training(model)
 
-    # LoRA target modules for Gemma 2
+    # LoRA target modules for Gemma 2 (20 Deep Transformer Layers: 6 to 25)
+    deep_layers = list(range(6, 26))
+    logger.info(f"Targeting {len(deep_layers)} deep transformer layers (indices 6 to 25)...")
     peft_config = LoraConfig(
-        r=32,
-        lora_alpha=64,
+        r=64,
+        lora_alpha=128,
+        use_rslora=True,
+        layers_to_transform=deep_layers,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_dropout=0.05,
+        lora_dropout=0.08,
         bias="none",
         task_type="CAUSAL_LM"
     )

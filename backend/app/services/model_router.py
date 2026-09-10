@@ -54,22 +54,22 @@ class ProviderStats:
         self.total_requests += 1
         self.total_successes += 1
         self.consecutive_errors = 0
+        self.rate_limited_until = 0.0
         # Exponential Moving Average with alpha = 0.3
         self.latency_ema_ms = (0.3 * duration_ms) + (0.7 * self.latency_ema_ms)
 
     def record_error(self, is_rate_limit: bool = False, backoff_seconds: float = 60.0) -> None:
         self.total_requests += 1
         self.consecutive_errors += 1
+        self.rate_limited_until = time.time() + backoff_seconds
         if is_rate_limit:
-            self.rate_limited_until = time.time() + backoff_seconds
             logger.warning(f"[{self.name}] Rate-limited (HTTP 429). Backing off for {backoff_seconds}s.")
+        else:
+            logger.warning(f"[{self.name}] Error or timeout. Backing off for {backoff_seconds}s.")
 
     def is_available(self) -> bool:
         if time.time() < self.rate_limited_until:
             return False
-        if self.consecutive_errors >= 4:
-            # Temporary circuit breaker trip: allow probe after 30s
-            return (time.time() - self.rate_limited_until) > 30.0
         return True
 
     def to_dict(self) -> Dict[str, Any]:
@@ -96,7 +96,7 @@ class GemmaActionEngine:
         is_student = role_upper in ["STUDENT", "STUDENTS", "PUPIL", "USER", "GUEST"]
 
         # 1. Navigation to Speaker Hardware (RBAC Protected)
-        if any(w in q for w in ["speaker queue", "speaker hardware", "smart speaker", "node client", "pa system", "speaker status"]):
+        if any(w in q for w in ["speaker queue", "speaker hardware", "smart speaker", "node client", "pa system", "speaker status", "speaker node", "corridor speaker", "broadcast to speaker", "broadcast an emergency alert", "broadcast alert", "broadcast to all corridor"]):
             if is_student:
                 return {
                     "matched": True,
@@ -105,7 +105,8 @@ class GemmaActionEngine:
                     "category_badge": "Access Restricted",
                     "response": (
                         "I don't have the authority to disclose operational details or controls "
-                        "for the campus smart speaker system. Please consult your department office or faculty coordinator."
+                        "for the campus smart speaker system. Broadcast permissions are strictly restricted to faculty "
+                        "and administrators. Please consult your department office or faculty coordinator."
                     ),
                     "suggested_actions": ["Browse Announcements", "Check Exam Timetable", "View Placements"],
                     "model_used": "Gemma Action Engine (Local)"
@@ -303,8 +304,21 @@ class FineTunedGemmaProvider:
         except Exception as e:
             logger.debug(f"Failed to auto-spawn Gemma microservice: {e}")
 
-    def generate(self, prompt: str, timeout: float = 20.0) -> Optional[str]:
-        # 1. Query local GPU inference microservice on port 8008
+    def generate(self, prompt: str, timeout: float = 3.5) -> Optional[str]:
+        # 1. Fast health check to port 8008 first (at most 250ms)
+        try:
+            h_resp = requests.get(self.health_url, timeout=0.25)
+            if h_resp.status_code != 200:
+                self._ensure_service_running()
+                return None
+            h_data = h_resp.json()
+            if h_data.get("status") != "ready":
+                return None
+        except Exception:
+            self._ensure_service_running()
+            return None
+
+        # 2. Query local GPU inference microservice on port 8008 with tight timeout
         try:
             resp = requests.post(
                 self.endpoint,
@@ -316,60 +330,11 @@ class FineTunedGemmaProvider:
                 text = data.get("text", "")
                 if text:
                     return text.strip()
-        except requests.exceptions.ConnectionError:
-            self._ensure_service_running()
         except requests.exceptions.Timeout:
             logger.warning(f"Gemma microservice query timed out after {timeout}s.")
             return None
         except Exception as e:
             logger.debug(f"Gemma microservice request failed: {e}")
-
-        # 2. In-process fallback only if microservice is offline and no GPU process exists
-        try:
-            import importlib
-            torch = importlib.import_module("torch")
-            if torch.cuda.is_available():
-                if not self._loaded:
-
-                    transformers = importlib.import_module("transformers")
-                    peft = importlib.import_module("peft")
-                    AutoTokenizer = getattr(transformers, "AutoTokenizer")
-                    AutoModelForCausalLM = getattr(transformers, "AutoModelForCausalLM")
-                    BitsAndBytesConfig = getattr(transformers, "BitsAndBytesConfig")
-                    PeftModel = getattr(peft, "PeftModel")
-                    target = self.adapter_path if os.path.isdir(self.adapter_path) else GEMMA_ADAPTER_ID
-                    hf_token = os.getenv("HF_TOKEN", "").strip() or None
-                    self._tokenizer = AutoTokenizer.from_pretrained(target, token=hf_token)
-                    bnb_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_quant_type="nf4",
-                        bnb_4bit_compute_dtype=torch.bfloat16,
-                        bnb_4bit_use_double_quant=True,
-                    )
-                    base_model = AutoModelForCausalLM.from_pretrained(
-                        self.model_id,
-                        quantization_config=bnb_config,
-                        device_map="auto",
-                        torch_dtype=torch.bfloat16,
-                        token=hf_token,
-                    )
-                    self._model = PeftModel.from_pretrained(base_model, target, token=hf_token)
-                    self._model.eval()
-                    self._torch = torch
-                    self._loaded = True
-
-                chat_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-                inputs = self._tokenizer(chat_prompt, return_tensors="pt").to("cuda")
-                with torch.no_grad():
-                    outputs = self._model.generate(
-                        **inputs,
-                        max_new_tokens=256,
-                        do_sample=False
-                    )
-                reply = self._tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-                return reply.strip()
-        except Exception:
-            pass
 
         return None
 
@@ -384,11 +349,14 @@ class CloudflareLlamaProvider:
         self.api_token = api_token
         self.model = model
         self.endpoint = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+        self._circuit_breaker_until: float = 0.0
 
     def is_configured(self) -> bool:
+        if time.time() < self._circuit_breaker_until:
+            return False
         return bool(self.account_id and self.api_token and self.account_id != "YOUR_CLOUDFLARE_ACCOUNT_ID")
 
-    def generate(self, prompt: str, system_instruction: str = "", history: Optional[List[Dict[str, Any]]] = None, timeout: float = 6.0) -> Optional[str]:
+    def generate(self, prompt: str, system_instruction: str = "", history: Optional[List[Dict[str, Any]]] = None, timeout: float = 1.2) -> Optional[str]:
         if not self.is_configured():
             return None
 
@@ -427,10 +395,12 @@ class CloudflareLlamaProvider:
                             return json.dumps(response_text)
                         return str(response_text).strip()
             elif resp.status_code == 429:
+                self._circuit_breaker_until = time.time() + 60.0
                 raise requests.exceptions.HTTPError("Cloudflare Workers AI Rate Limit (429)", response=resp)
             else:
                 logger.debug(f"Cloudflare Workers AI status {resp.status_code}: {resp.text[:150]}")
         except Exception as e:
+            self._circuit_breaker_until = time.time() + 60.0
             logger.debug(f"Cloudflare Workers AI generation error: {e}")
             raise e
 
