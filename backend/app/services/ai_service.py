@@ -769,11 +769,12 @@ class AIService:
         if summary and len(summary.strip()) >= 10:
             return sanitize_ai_markdown(summary.strip())
 
-        # Tier 4: Sentence boundary heuristic fallback
         sentences = re.split(r'(?<=[.!?])\s+', clean)
         if sentences and len(sentences[0]) > 15:
             return sanitize_ai_markdown(f"Summary: {sentences[0]}")
         return sanitize_ai_markdown(f"Summary: {clean[:85]}...")
+
+    summarize_content = summarize
 
     @staticmethod
     def get_status() -> Dict[str, Any]:
