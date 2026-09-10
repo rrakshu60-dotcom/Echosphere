@@ -20,6 +20,11 @@ class AnnouncementModel {
   final String? aiSummary;
   final String? remarks;
   final List<String> attachments;
+  final bool deliverSpeaker;
+  final int? speakerNodeId;
+  final String? speakerStatus;
+  final bool playedOnSpeaker;
+  final int durationSeconds;
 
   AnnouncementModel({
     required this.id,
@@ -37,6 +42,11 @@ class AnnouncementModel {
     this.aiSummary,
     this.remarks,
     this.attachments = const [],
+    this.deliverSpeaker = false,
+    this.speakerNodeId,
+    this.speakerStatus,
+    this.playedOnSpeaker = false,
+    this.durationSeconds = 15,
   });
 
   factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
@@ -47,6 +57,10 @@ class AnnouncementModel {
     if (catId == 4) catName = 'Sports';
     if (catId == 5) catName = 'Placements';
     if (catId == 6) catName = 'Emergency';
+
+    final bool delivSpk = json['deliver_speaker'] == true ||
+        json['deliverSpeaker'] == true ||
+        (json['priority']?.toString().toUpperCase() == 'EMERGENCY');
 
     return AnnouncementModel(
       id: json['id'] ?? 0,
@@ -70,18 +84,71 @@ class AnnouncementModel {
       attachments: json['attachments'] != null
           ? List<String>.from(json['attachments'])
           : const [],
+      deliverSpeaker: delivSpk,
+      speakerNodeId: json['speaker_node_id'] ?? json['speakerNodeId'],
+      speakerStatus: json['speaker_status'] ?? json['speakerStatus'] ?? (delivSpk ? 'Queued' : null),
+      playedOnSpeaker: json['played_on_speaker'] == true || json['playedOnSpeaker'] == true,
+      durationSeconds: json['duration_seconds'] ?? json['durationSeconds'] ?? 15,
+    );
+  }
+
+  AnnouncementModel copyWith({
+    int? id,
+    String? title,
+    String? description,
+    String? priority,
+    String? emergencyLevel,
+    String? status,
+    String? creatorName,
+    String? department,
+    String? targetAudience,
+    String? category,
+    DateTime? createdAt,
+    DateTime? scheduledAt,
+    String? aiSummary,
+    String? remarks,
+    List<String>? attachments,
+    bool? deliverSpeaker,
+    int? speakerNodeId,
+    String? speakerStatus,
+    bool? playedOnSpeaker,
+    int? durationSeconds,
+  }) {
+    return AnnouncementModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      emergencyLevel: emergencyLevel ?? this.emergencyLevel,
+      status: status ?? this.status,
+      creatorName: creatorName ?? this.creatorName,
+      department: department ?? this.department,
+      targetAudience: targetAudience ?? this.targetAudience,
+      category: category ?? this.category,
+      createdAt: createdAt ?? this.createdAt,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      aiSummary: aiSummary ?? this.aiSummary,
+      remarks: remarks ?? this.remarks,
+      attachments: attachments ?? this.attachments,
+      deliverSpeaker: deliverSpeaker ?? this.deliverSpeaker,
+      speakerNodeId: speakerNodeId ?? this.speakerNodeId,
+      speakerStatus: speakerStatus ?? this.speakerStatus,
+      playedOnSpeaker: playedOnSpeaker ?? this.playedOnSpeaker,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
     );
   }
 }
 
 class AnnouncementController extends GetxController {
   final RxList<AnnouncementModel> _rawAnnouncements = <AnnouncementModel>[].obs;
+  RxList<AnnouncementModel> get rxAnnouncements => _rawAnnouncements;
   final RxString selectedCategory = 'All'.obs;
   final RxString selectedPriority = 'All'.obs;
   final RxString searchQuery = ''.obs;
   final RxBool showTodayOnly = false.obs;
   final RxBool isLoading = false.obs;
   final RxString sortBy = 'Newest First'.obs;
+  static int _idCounter = 0;
 
   static const List<String> sortOptions = [
     'Newest First',
@@ -289,18 +356,20 @@ class AnnouncementController extends GetxController {
   Future<void> fetchAnnouncements() async {
     isLoading.value = true;
     await _loadStatusOverrides();
-    try {
-      final data = await EchosphereApiService().getAnnouncements();
-      if (data.isNotEmpty) {
-        _rawAnnouncements.value = data
-            .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
-            .toList();
-        _applyStatusOverrides();
-        isLoading.value = false;
-        return;
+    if (!Get.testMode) {
+      try {
+        final data = await EchosphereApiService().getAnnouncements();
+        if (data.isNotEmpty) {
+          _rawAnnouncements.value = data
+              .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+          _applyStatusOverrides();
+          isLoading.value = false;
+          return;
+        }
+      } catch (e) {
+        debugPrint('Live backend announcements fetch notice: $e');
       }
-    } catch (e) {
-      debugPrint('Live backend announcements fetch notice: $e');
     }
 
     // Seed/Sample announcements for instant demonstration & offline resilience
@@ -475,7 +544,10 @@ class AnnouncementController extends GetxController {
       initialStatus = 'PUBLISHED';
     }
 
-    final newId = DateTime.now().millisecondsSinceEpoch % 100000;
+    final newId = (DateTime.now().millisecondsSinceEpoch + (++_idCounter)) % 1000000;
+    final words = ('$title $description').split(' ').length;
+    final durSecs = (words / 2.5).round().clamp(10, 60);
+
     final newNotice = AnnouncementModel(
       id: newId,
       title: title,
@@ -491,6 +563,11 @@ class AnnouncementController extends GetxController {
       scheduledAt: isScheduleLater ? scheduledDateTime : null,
       aiSummary: 'Summary: $title',
       attachments: attachments,
+      deliverSpeaker: deliverSpeaker,
+      speakerNodeId: speakerNodeId,
+      speakerStatus: deliverSpeaker ? 'Queued' : null,
+      playedOnSpeaker: false,
+      durationSeconds: durSecs,
     );
 
     // 0ms Instant Local Insertion for snappy responsiveness
@@ -500,64 +577,50 @@ class AnnouncementController extends GetxController {
     update();
 
     // Background Async Backend Sync & AI Summarization (non-blocking)
-    Future.microtask(() async {
-      try {
-        final res = await EchosphereApiService().createAnnouncement(
-          title: title,
-          description: description,
-          categoryId: catId,
-          priority: priority,
-          emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
-          scheduledAt: isScheduleLater && scheduledDateTime != null
-              ? scheduledDateTime.toIso8601String()
-              : null,
-          deliverSpeaker: deliverSpeaker,
-          deliverInApp: deliverInApp,
-          deliverPush: deliverPush,
-          targetAudience: targetAudience,
-          speakerNodeId: speakerNodeId,
-        );
-        final backendId = res['id'];
-        if (backendId != null && backendId is int && deliverSpeaker) {
-          try {
-            await EchosphereApiService().enqueueAnnouncement(
-              announcementId: backendId,
-              speakerNodeId: speakerNodeId,
-            );
-          } catch (_) {
-            // Already automatically enqueued by backend service
-          }
-        }
-      } catch (e) {
-        debugPrint('Async backend create announcement log: $e');
-      }
-
-      try {
-        final summary = await EchosphereApiService().summarizeContent(description);
-        final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
-        if (idx != -1 && summary.isNotEmpty) {
-          final old = _rawAnnouncements[idx];
-          _rawAnnouncements[idx] = AnnouncementModel(
-            id: old.id,
-            title: old.title,
-            description: old.description,
-            priority: old.priority,
-            emergencyLevel: old.emergencyLevel,
-            status: old.status,
-            creatorName: old.creatorName,
-            department: old.department,
-            targetAudience: old.targetAudience,
-            category: old.category,
-            createdAt: old.createdAt,
-            scheduledAt: old.scheduledAt,
-            aiSummary: summary,
-            remarks: old.remarks,
-            attachments: old.attachments,
+    if (!Get.testMode) {
+      Future.microtask(() async {
+        try {
+          final res = await EchosphereApiService().createAnnouncement(
+            title: title,
+            description: description,
+            categoryId: catId,
+            priority: priority,
+            emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
+            scheduledAt: isScheduleLater && scheduledDateTime != null
+                ? scheduledDateTime.toIso8601String()
+                : null,
+            deliverSpeaker: deliverSpeaker,
+            deliverInApp: deliverInApp,
+            deliverPush: deliverPush,
+            targetAudience: targetAudience,
+            speakerNodeId: speakerNodeId,
           );
-          _rawAnnouncements.refresh();
+          final backendId = res['id'];
+          if (backendId != null && backendId is int && deliverSpeaker) {
+            try {
+              await EchosphereApiService().enqueueAnnouncement(
+                announcementId: backendId,
+                speakerNodeId: speakerNodeId,
+              );
+            } catch (_) {
+              // Already automatically enqueued by backend service
+            }
+          }
+        } catch (e) {
+          debugPrint('Async backend create announcement log: $e');
         }
-      } catch (_) {}
-    });
+
+        try {
+          final summary = await EchosphereApiService().summarizeContent(description);
+          final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
+          if (idx != -1 && summary.isNotEmpty) {
+            final old = _rawAnnouncements[idx];
+            _rawAnnouncements[idx] = old.copyWith(aiSummary: summary);
+            _rawAnnouncements.refresh();
+          }
+        } catch (_) {}
+      });
+    }
 
     return true;
   }
@@ -610,23 +673,29 @@ class AnnouncementController extends GetxController {
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
-        title: old.title,
-        description: old.description,
-        priority: old.priority,
-        emergencyLevel: old.emergencyLevel,
+      _rawAnnouncements[idx] = old.copyWith(
         status: 'PUBLISHED',
-        creatorName: old.creatorName,
-        department: old.department,
-        category: old.category,
-        createdAt: old.createdAt,
-        aiSummary: old.aiSummary,
         remarks: remarks ?? 'Approved by Executive Administrator',
+        speakerStatus: old.deliverSpeaker ? 'Queued' : old.speakerStatus,
       );
       _rawAnnouncements.refresh();
+      update();
     }
     return true;
+  }
+
+  /// Marks an announcement as played on the smart speaker queue
+  void markNoticePlayedOnSpeaker(int id) {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx != -1) {
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = old.copyWith(
+        playedOnSpeaker: true,
+        speakerStatus: 'Completed',
+      );
+      _rawAnnouncements.refresh();
+      update();
+    }
   }
 
   /// Checks whether a scheduled announcement can be modified.

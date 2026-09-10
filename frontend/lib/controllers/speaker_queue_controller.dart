@@ -1,0 +1,663 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
+import 'package:anymex/controllers/announcement_controller.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/widgets/non_widgets/snackbar.dart';
+
+class SpeakerQueueController extends GetxController {
+  final EchosphereApiService _apiService = EchosphereApiService();
+
+  final RxList<Map<String, dynamic>> queueItems = <Map<String, dynamic>>[].obs;
+  final RxList<Map<String, dynamic>> speakerNodes = <Map<String, dynamic>>[].obs;
+
+  final RxBool isPlaying = false.obs;
+  final RxInt activeIndex = 0.obs;
+  final RxInt currentElapsedSeconds = 0.obs;
+  final RxInt currentTotalDuration = 15.obs;
+
+  final RxBool isLoading = false.obs;
+  final RxString errorMessage = ''.obs;
+
+  Timer? _playbackTimer;
+  Timer? _pollTimer;
+
+  // Fallback initial speaker nodes: Exactly 2 canonical nodes (Wokwi + Hardware Client)
+  static final List<Map<String, dynamic>> defaultSpeakerNodes = [
+    {
+      'id': 14,
+      'name': 'Wokwi ESP32 Speaker Node',
+      'mac_address': '24:0A:C4:00:01:10',
+      'ip_address': '10.0.1.15',
+      'zone': 'Block A - CSE Quad',
+      'department': 'CSE',
+      'status': 'OFFLINE',
+      'volume': 90,
+      'cpu_usage': 0.0,
+      'memory_usage': 0.0,
+    },
+    {
+      'id': 15,
+      'name': 'Hardware Speaker Client',
+      'mac_address': 'D4:F3:2D:22:2A:CB',
+      'ip_address': '127.0.0.1',
+      'zone': 'Auditorium / Campus',
+      'department': 'College-Wide',
+      'status': 'OFFLINE',
+      'volume': 85,
+      'cpu_usage': 0.0,
+      'memory_usage': 0.0,
+    },
+  ];
+
+  @override
+  void onInit() {
+    super.onInit();
+    speakerNodes.assignAll(defaultSpeakerNodes);
+    refreshQueue();
+
+    // Auto-poll to keep remote state and nodes in sync (skip in testMode)
+    if (!Get.testMode) {
+      _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+        refreshQueue(silent: true);
+      });
+    }
+
+    // Also listen to changes in AnnouncementController to immediately pick up new notices
+    if (Get.isRegistered<AnnouncementController>()) {
+      final annCtrl = Get.find<AnnouncementController>();
+      ever(annCtrl.rxAnnouncements, (_) {
+        _syncWithLocalAnnouncements();
+      });
+    }
+  }
+
+  void cancelAllTimers() {
+    _playbackTimer?.cancel();
+    _pollTimer?.cancel();
+  }
+
+  @override
+  void onClose() {
+    cancelAllTimers();
+    super.onClose();
+  }
+
+  /// Syncs speaker notices directly from AnnouncementController
+  void _syncWithLocalAnnouncements() {
+    if (!Get.isRegistered<AnnouncementController>()) return;
+    final annCtrl = Get.find<AnnouncementController>();
+
+    // All published announcements marked for speaker broadcast that haven't completed playback
+    final speakerNotices = annCtrl.allAnnouncements.where((a) {
+      final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
+      final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
+      return isApproved && isSpeaker && !a.playedOnSpeaker;
+    }).toList();
+
+    bool changed = false;
+    for (var notice in speakerNotices) {
+      final exists = queueItems.any((q) =>
+          (q['announcement_id'] == notice.id || q['id'] == notice.id) &&
+          q['status'] != 'Completed');
+      if (!exists) {
+        final nodeName = _getNodeName(notice.speakerNodeId);
+        queueItems.add({
+          'id': notice.id,
+          'announcement_id': notice.id,
+          'title': notice.title,
+          'description': notice.description,
+          'department': notice.department,
+          'priority': notice.priority,
+          'category': notice.category,
+          'type': 'AI Speech',
+          'status': queueItems.isEmpty ? 'Playing' : 'Queued',
+          'queue_position': queueItems.length + 1,
+          'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
+          'speaker_node_id': notice.speakerNodeId,
+          'node_name': nodeName,
+          'duration_seconds': notice.durationSeconds,
+          'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
+        });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _updateActiveNoticeMetrics();
+      queueItems.refresh();
+    }
+  }
+
+  String _getNodeName(int? nodeId) {
+    if (nodeId == null) return 'All Nodes (College-Wide)';
+    final match = speakerNodes.firstWhereOrNull((n) => n['id'] == nodeId);
+    if (match != null) return match['name'] ?? 'Speaker #$nodeId';
+    return 'Speaker Node #$nodeId';
+  }
+
+  /// Refreshes queue and nodes from both local announcements and remote backend
+  Future<void> refreshQueue({bool silent = false}) async {
+    if (!silent) isLoading.value = true;
+    errorMessage.value = '';
+
+    if (Get.testMode) {
+      try {
+        _syncWithLocalAnnouncements();
+      } finally {
+        if (!silent) isLoading.value = false;
+      }
+      return;
+    }
+
+    try {
+      // 1. Fetch remote hardware nodes
+      try {
+        final remoteNodes = await _apiService.getSpeakerNodes();
+        final fetchedNodes = remoteNodes
+            .whereType<Map>()
+            .map((n) => Map<String, dynamic>.from(n))
+            .toList();
+        if (fetchedNodes.isNotEmpty) {
+          speakerNodes.assignAll(fetchedNodes);
+        }
+      } catch (e) {
+        debugPrint('Remote speaker nodes fetch note: $e');
+        if (speakerNodes.isEmpty) {
+          speakerNodes.assignAll(defaultSpeakerNodes);
+        }
+      }
+
+      // 2. Fetch remote queue items
+      List<Map<String, dynamic>> remoteActiveItems = [];
+      try {
+        final remoteQueue = await _apiService.getSpeakerQueue();
+        remoteActiveItems = remoteQueue
+            .whereType<Map>()
+            .map((q) => Map<String, dynamic>.from(q))
+            .where((q) => q['status'] != 'Completed' && q['status'] != 'Cancelled')
+            .toList();
+      } catch (e) {
+        debugPrint('Remote speaker queue fetch note: $e');
+      }
+
+      // 3. Collect local notices from AnnouncementController
+      List<Map<String, dynamic>> combined = [];
+      final Set<int> seenAnnouncementIds = {};
+
+      // Add remote active items first
+      for (var q in remoteActiveItems) {
+        final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+        seenAnnouncementIds.add(annId);
+        combined.add({
+          ...q,
+          'node_name': _getNodeName(q['speaker_node_id'] as int?),
+          'duration_seconds': q['duration_seconds'] ?? 15,
+        });
+      }
+
+      // Add local speaker notices from AnnouncementController
+      if (Get.isRegistered<AnnouncementController>()) {
+        final annCtrl = Get.find<AnnouncementController>();
+        final speakerNotices = annCtrl.allAnnouncements.where((a) {
+          final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
+          final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
+          return isApproved && isSpeaker && !a.playedOnSpeaker;
+        }).toList();
+
+        for (var notice in speakerNotices) {
+          if (!seenAnnouncementIds.contains(notice.id)) {
+            seenAnnouncementIds.add(notice.id);
+            combined.add({
+              'id': notice.id,
+              'announcement_id': notice.id,
+              'title': notice.title,
+              'description': notice.description,
+              'department': notice.department,
+              'priority': notice.priority,
+              'category': notice.category,
+              'type': 'AI Speech',
+              'status': combined.isEmpty ? 'Playing' : 'Queued',
+              'queue_position': combined.length + 1,
+              'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
+              'speaker_node_id': notice.speakerNodeId,
+              'node_name': _getNodeName(notice.speakerNodeId),
+              'duration_seconds': notice.durationSeconds,
+              'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
+            });
+          }
+        }
+      }
+
+      // Preserve playing state if already playing
+      if (isPlaying.value && queueItems.isNotEmpty && activeIndex.value < queueItems.length) {
+        final currentlyPlayingId = queueItems[activeIndex.value]['announcement_id'];
+        final matchIdx = combined.indexWhere((c) => c['announcement_id'] == currentlyPlayingId);
+        if (matchIdx != -1) {
+          activeIndex.value = matchIdx;
+          combined[matchIdx]['status'] = 'Playing';
+        }
+      } else {
+        final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
+        if (playingIdx != -1) {
+          activeIndex.value = playingIdx;
+        } else if (activeIndex.value >= combined.length) {
+          activeIndex.value = combined.isNotEmpty ? combined.length - 1 : 0;
+        }
+      }
+
+      queueItems.assignAll(combined);
+      _updateActiveNoticeMetrics();
+    } catch (e) {
+      debugPrint('Error in SpeakerQueueController refreshQueue: $e');
+      errorMessage.value = e.toString();
+    } finally {
+      if (!silent) isLoading.value = false;
+    }
+  }
+
+  void _updateActiveNoticeMetrics() {
+    if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
+      currentTotalDuration.value = 15;
+      return;
+    }
+    final item = queueItems[activeIndex.value];
+    final dur = item['duration_seconds'] as int? ?? 15;
+    currentTotalDuration.value = dur > 0 ? dur : 15;
+  }
+
+  String get activeTitle {
+    if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
+      return 'No active speaker announcement';
+    }
+    final item = queueItems[activeIndex.value];
+    return (item['title'] ?? 'Untitled Announcement').toString();
+  }
+
+  String get activeSubtitle {
+    if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
+      return 'PA system standing by';
+    }
+    final item = queueItems[activeIndex.value];
+    final dept = item['department']?.toString() ?? 'College-Wide';
+    final node = item['node_name']?.toString() ?? 'All Nodes';
+    return '$dept • $node';
+  }
+
+  String get currentElapsedFormatted {
+    final mins = (currentElapsedSeconds.value ~/ 60).toString().padLeft(2, '0');
+    final secs = (currentElapsedSeconds.value % 60).toString().padLeft(2, '0');
+    return '$mins:$secs';
+  }
+
+  String get currentTotalFormatted {
+    final mins = (currentTotalDuration.value ~/ 60).toString().padLeft(2, '0');
+    final secs = (currentTotalDuration.value % 60).toString().padLeft(2, '0');
+    return '$mins:$secs';
+  }
+
+  double get playbackProgress {
+    if (currentTotalDuration.value <= 0) return 0.0;
+    return (currentElapsedSeconds.value / currentTotalDuration.value).clamp(0.0, 1.0);
+  }
+
+  /// Starts or resumes playing the notice at [index] (or active notice)
+  Future<void> togglePlayPause({int? index}) async {
+    if (queueItems.isEmpty) {
+      snackBar('Speaker queue is currently empty.');
+      return;
+    }
+
+    final targetIdx = index ?? activeIndex.value;
+    if (targetIdx < 0 || targetIdx >= queueItems.length) return;
+
+    if (isPlaying.value && (index == null || index == activeIndex.value)) {
+      // Pause
+      isPlaying.value = false;
+      _playbackTimer?.cancel();
+      queueItems[activeIndex.value]['status'] = 'Paused';
+      queueItems.refresh();
+
+      final item = queueItems[activeIndex.value];
+      final itemId = item['id'];
+      if (!Get.testMode && itemId is int) {
+        _apiService.queueAction(itemId, 'pause').catchError((_) => <String, dynamic>{});
+      }
+      snackBar('Speaker playback paused.');
+      return;
+    }
+
+    // Play/Resume
+    activeIndex.value = targetIdx;
+    currentElapsedSeconds.value = 0;
+    _updateActiveNoticeMetrics();
+
+    // Mark active item as Playing and others as Queued
+    for (int i = 0; i < queueItems.length; i++) {
+      queueItems[i]['status'] = (i == activeIndex.value) ? 'Playing' : 'Queued';
+    }
+    queueItems.refresh();
+
+    isPlaying.value = true;
+    _startPlaybackTimer();
+
+    final item = queueItems[activeIndex.value];
+    final itemId = item['id'];
+    if (!Get.testMode && itemId is int) {
+      _apiService.queueAction(itemId, 'play').catchError((_) => <String, dynamic>{});
+    }
+
+    snackBar('Broadcasting: "${item['title'] ?? 'Announcement'}"');
+  }
+
+  void _startPlaybackTimer() {
+    _playbackTimer?.cancel();
+    if (Get.testMode) return;
+    _playbackTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!isPlaying.value) {
+        timer.cancel();
+        return;
+      }
+
+      currentElapsedSeconds.value++;
+
+      // When duration completes: Notice has played once -> Remove it and advance!
+      if (currentElapsedSeconds.value >= currentTotalDuration.value) {
+        timer.cancel();
+        _onNoticePlaybackCompleted();
+      }
+    });
+  }
+
+  /// Manually or programmatically triggers playback completion (used in tests and skips)
+  Future<void> completeCurrentPlayback() async {
+    _playbackTimer?.cancel();
+    await _onNoticePlaybackCompleted();
+  }
+
+  /// Called automatically when the current notice completes its single playback
+  Future<void> _onNoticePlaybackCompleted() async {
+    if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
+      _playbackTimer?.cancel();
+      isPlaying.value = false;
+      return;
+    }
+
+    final playedItem = queueItems[activeIndex.value];
+    final annId = playedItem['announcement_id'] as int? ?? playedItem['id'] as int? ?? 0;
+    final playedTitle = playedItem['title'] ?? 'Announcement';
+
+    // 1. Mark played in AnnouncementController
+    if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
+      Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
+    }
+
+    // 2. Notify remote backend action
+    final queueId = playedItem['id'];
+    if (!Get.testMode && queueId is int) {
+      _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
+    }
+
+    // 3. Remove notice from queue (requirement: "play them once and then remove them once they are played")
+    queueItems.removeAt(activeIndex.value);
+    currentElapsedSeconds.value = 0;
+
+    snackBar(
+      'Completed broadcast of "$playedTitle". Removed from speaker queue.',
+      title: 'Broadcast Finished',
+    );
+
+    // 4. Advance to next queued notice or finish
+    if (queueItems.isNotEmpty) {
+      if (activeIndex.value >= queueItems.length) {
+        activeIndex.value = 0;
+      }
+      queueItems[activeIndex.value]['status'] = 'Playing';
+      _updateActiveNoticeMetrics();
+      queueItems.refresh();
+      isPlaying.value = true;
+      _startPlaybackTimer();
+
+      final nextItem = queueItems[activeIndex.value];
+      final nextId = nextItem['id'];
+      if (!Get.testMode && nextId is int) {
+        _apiService.queueAction(nextId, 'play').catchError((_) => <String, dynamic>{});
+      }
+    } else {
+      _playbackTimer?.cancel();
+      activeIndex.value = 0;
+      isPlaying.value = false;
+      queueItems.refresh();
+      snackBar('All queued speaker notices have completed broadcast.');
+    }
+  }
+
+  /// Skips the current notice, removes it, and advances to the next
+  Future<void> skipCurrent() async {
+    if (queueItems.isEmpty) return;
+    _playbackTimer?.cancel();
+    await _onNoticePlaybackCompleted();
+  }
+
+  /// Stops current playback
+  Future<void> stopCurrent() async {
+    if (queueItems.isEmpty) return;
+    _playbackTimer?.cancel();
+    isPlaying.value = false;
+    currentElapsedSeconds.value = 0;
+
+    if (activeIndex.value >= 0 && activeIndex.value < queueItems.length) {
+      queueItems[activeIndex.value]['status'] = 'Queued';
+      final item = queueItems[activeIndex.value];
+      final itemId = item['id'];
+      if (!Get.testMode && itemId is int) {
+        _apiService.queueAction(itemId, 'cancel').catchError((_) => <String, dynamic>{});
+      }
+    }
+    queueItems.refresh();
+    snackBar('Playback stopped.');
+  }
+
+  /// Manually dismisses/removes a notice from the queue
+  Future<void> removeNotice(int index) async {
+    if (index < 0 || index >= queueItems.length) return;
+
+    final item = queueItems[index];
+    final isCurrent = (index == activeIndex.value);
+    final itemId = item['id'];
+
+    if (!Get.testMode && itemId is int) {
+      _apiService.queueAction(itemId, 'remove').catchError((_) => <String, dynamic>{});
+    }
+
+    if (isCurrent && isPlaying.value) {
+      _playbackTimer?.cancel();
+      queueItems.removeAt(index);
+      currentElapsedSeconds.value = 0;
+
+      if (queueItems.isNotEmpty) {
+        if (activeIndex.value >= queueItems.length) {
+          activeIndex.value = 0;
+        }
+        queueItems[activeIndex.value]['status'] = 'Playing';
+        _updateActiveNoticeMetrics();
+        queueItems.refresh();
+        isPlaying.value = true;
+        _startPlaybackTimer();
+      } else {
+        activeIndex.value = 0;
+        isPlaying.value = false;
+        queueItems.refresh();
+      }
+    } else {
+      queueItems.removeAt(index);
+      if (index < activeIndex.value) {
+        activeIndex.value--;
+      }
+      queueItems.refresh();
+    }
+
+    snackBar('Notice removed from speaker queue.');
+  }
+
+  /// Explicitly enqueues an announcement into the queue
+  Future<void> enqueueNotice({
+    required int announcementId,
+    String audioType = 'AI Speech',
+    int? speakerNodeId,
+  }) async {
+    try {
+      await _apiService.enqueueAnnouncement(
+        announcementId: announcementId,
+        audioType: audioType,
+        speakerNodeId: speakerNodeId,
+      );
+    } catch (e) {
+      debugPrint('Enqueue remote notice note: $e');
+    }
+
+    // Immediately resolve and add from AnnouncementController if present
+    if (Get.isRegistered<AnnouncementController>()) {
+      final annCtrl = Get.find<AnnouncementController>();
+      final match = annCtrl.allAnnouncements.firstWhereOrNull((a) => a.id == announcementId);
+      if (match != null) {
+        final nodeName = _getNodeName(speakerNodeId ?? match.speakerNodeId);
+        final exists = queueItems.any((q) => q['announcement_id'] == match.id);
+        if (!exists) {
+          queueItems.add({
+            'id': match.id,
+            'announcement_id': match.id,
+            'title': match.title,
+            'description': match.description,
+            'department': match.department,
+            'priority': match.priority,
+            'category': match.category,
+            'type': audioType,
+            'status': queueItems.isEmpty ? 'Playing' : 'Queued',
+            'queue_position': queueItems.length + 1,
+            'scheduled_time': match.scheduledAt?.toIso8601String() ?? match.createdAt.toIso8601String(),
+            'speaker_node_id': speakerNodeId ?? match.speakerNodeId,
+            'node_name': nodeName,
+            'duration_seconds': match.durationSeconds,
+            'audio_url': '/static/audio_streams/announcement_${match.id}.mp3',
+          });
+          queueItems.refresh();
+        }
+      }
+    }
+
+    await refreshQueue(silent: true);
+    snackBar('Notice successfully queued for speaker broadcast!');
+  }
+
+  void reorderQueue(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= queueItems.length || newIndex < 0 || newIndex >= queueItems.length) return;
+    final item = queueItems.removeAt(oldIndex);
+    queueItems.insert(newIndex, item);
+
+    if (activeIndex.value == oldIndex) {
+      activeIndex.value = newIndex;
+    } else if (activeIndex.value == newIndex) {
+      activeIndex.value = oldIndex;
+    }
+
+    queueItems.refresh();
+    final ids = queueItems.map((q) => q['id'] as int? ?? 0).where((id) => id > 0).toList();
+    if (!Get.testMode && ids.isNotEmpty) {
+      _apiService.reorderSpeakerQueue(ids).catchError((_) => <String, dynamic>{});
+    }
+  }
+
+  /// Registers a new physical speaker node
+  Future<void> registerNode({
+    required String name,
+    required String macAddress,
+    String? ipAddress,
+    required String zone,
+    required String department,
+  }) async {
+    try {
+      await _apiService.registerSpeakerNode(
+        name: name,
+        macAddress: macAddress,
+        ipAddress: ipAddress,
+        zone: zone,
+        department: department,
+      );
+      snackBar('Speaker Node registered successfully!');
+    } catch (e) {
+      snackBar('Registration error: ${e.toString()}');
+    }
+    await refreshQueue(silent: true);
+  }
+
+  /// Updates configuration for a speaker node
+  Future<void> updateNode(
+    int nodeId, {
+    String? name,
+    String? zone,
+    String? department,
+    int? volume,
+  }) async {
+    try {
+      await _apiService.updateSpeakerNode(
+        nodeId,
+        name: name,
+        zone: zone,
+        department: department,
+        volume: volume,
+      );
+      snackBar('Speaker Node updated successfully!');
+    } catch (e) {
+      snackBar('Update error: ${e.toString()}');
+    }
+    await refreshQueue(silent: true);
+  }
+
+  /// Deletes a speaker node
+  Future<void> deleteNode(int index, int nodeId) async {
+    try {
+      await _apiService.deleteSpeakerNode(nodeId);
+    } catch (e) {
+      debugPrint('Delete speaker node error: $e');
+    }
+    if (index >= 0 && index < speakerNodes.length) {
+      speakerNodes.removeAt(index);
+    }
+    snackBar('Speaker node removed successfully.');
+  }
+
+  /// Sends control command to a node
+  Future<void> controlNode(int nodeId, String command, String nodeName) async {
+    try {
+      await _apiService.controlSpeakerNode(nodeId, command: command);
+      if (command == 'TEST_SPEAKER') {
+        snackBar('Test tone sent to $nodeName');
+      } else if (command == 'RESTART') {
+        snackBar('Restart signal sent to $nodeName');
+      } else {
+        snackBar('Command sent to $nodeName');
+      }
+    } catch (e) {
+      snackBar('Command sent: ${e.toString()}');
+    }
+  }
+
+  /// Triggers emergency override
+  Future<void> triggerEmergency({
+    required String title,
+    required String message,
+  }) async {
+    try {
+      await _apiService.triggerEmergencyOverride(
+        title: title,
+        message: message,
+      );
+      snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
+    } catch (e) {
+      snackBar('Emergency broadcast sent: ${e.toString()}');
+    }
+    await refreshQueue(silent: true);
+  }
+}
+

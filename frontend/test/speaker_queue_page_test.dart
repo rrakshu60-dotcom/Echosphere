@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:anymex/controllers/auth_controller.dart';
+import 'package:anymex/controllers/speaker_queue_controller.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 
 void main() {
@@ -12,6 +13,9 @@ void main() {
   });
 
   tearDown(() {
+    if (Get.isRegistered<SpeakerQueueController>()) {
+      Get.find<SpeakerQueueController>().cancelAllTimers();
+    }
     Get.reset();
   });
 

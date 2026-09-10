@@ -38,12 +38,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SpeakerNodeClient")
 
+def resolve_server_url() -> str:
+    env_server = os.getenv("ECHOSPHERE_SERVER")
+    if env_server and env_server.strip():
+        return env_server.strip().rstrip("/")
+    # Check if local backend is active on localhost:8000
+    try:
+        r = requests.get("http://127.0.0.1:8000/docs", timeout=1.0)
+        if r.status_code in (200, 307, 404):
+            return "http://127.0.0.1:8000"
+    except Exception:
+        pass
+    return "https://echosphere-backend-9lv8.onrender.com"
+
 # Configurations
-SERVER_URL = os.getenv("ECHOSPHERE_SERVER", "https://echosphere-backend-9lv8.onrender.com")
+SERVER_URL = resolve_server_url()
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 DEPT_CODE = os.getenv("DEPT_CODE", "CSE")
-ZONE_NAME = os.getenv("ZONE_NAME", "Block A - CSE Quad")
+ZONE_NAME = os.getenv("ZONE_NAME", "Auditorium / Campus")
 
 # Persistent MAC address
 MAC_FILE = os.path.join(os.path.dirname(__file__), ".node_mac")
@@ -165,7 +178,7 @@ class SpeakerNodeClient:
     def register_node(self):
         url = f"{SERVER_URL}/api/v1/hardware/speakers/register"
         payload = {
-            "name": f"Laptop Speaker Node ({DEPT_CODE} {ZONE_NAME})",
+            "name": "Hardware Speaker Client",
             "mac_address": self.mac_address,
             "ip_address": self.ip_address,
             "zone": ZONE_NAME,
@@ -181,6 +194,22 @@ class SpeakerNodeClient:
                 logger.info(f"ℹ️ Node already registered (HTTP {resp.status_code}): {resp.text}")
         except Exception as e:
             logger.warning(f"Could not connect to backend server during registration: {e}")
+
+    def send_offline_status(self):
+        try:
+            url = f"{SERVER_URL}/api/v1/hardware/speakers/heartbeat"
+            payload = {
+                "mac_address": self.mac_address,
+                "ip_address": self.ip_address,
+                "cpu_usage": 0.0,
+                "memory_usage": 0.0,
+                "disk_space": 0.0,
+                "status": "OFFLINE",
+            }
+            requests.post(url, json=payload, timeout=3.0)
+            logger.info("🛑 Reported OFFLINE status to backend.")
+        except Exception as e:
+            logger.debug(f"Offline status notification note: {e}")
 
     def send_heartbeat(self):
         url = f"{SERVER_URL}/api/v1/hardware/speakers/heartbeat"
@@ -302,11 +331,12 @@ class SpeakerNodeClient:
         try:
             client_id = f"SpeakerNode_{self.mac_address.replace(':', '')}"
             if hasattr(mqtt, "CallbackAPIVersion"):
-                self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
+                cb_ver = getattr(mqtt.CallbackAPIVersion, "VERSION2", mqtt.CallbackAPIVersion.VERSION1)
+                self.mqtt_client = mqtt.Client(cb_ver, client_id=client_id)
             else:
                 self.mqtt_client = mqtt.Client(client_id=client_id)
 
-            def on_connect(client, userdata, flags, rc):
+            def on_connect(client, userdata, flags, rc, *args):
                 logger.info(f"Connected to MQTT Broker (rc={rc})")
                 client.subscribe(f"echosphere/dept/{DEPT_CODE}/speakers/command")
                 client.subscribe(f"echosphere/zone/{ZONE_NAME}/speakers/command")
@@ -328,18 +358,40 @@ class SpeakerNodeClient:
             logger.info(f"ℹ️ MQTT Broker offline ({e}). Operating in HTTP REST polling mode.")
 
     def run(self):
+        import atexit
+        import signal
+
         logger.info(f"Starting Speaker Node Client (MAC: {self.mac_address}, IP: {self.ip_address})")
+        logger.info(f"Target Server: {SERVER_URL}")
         self.register_node()
         self.setup_mqtt()
 
-        logger.info("🎧 Speaker Node is ACTIVE & LISTENING for broadcasts (Polling every 1.5s)...")
+        def handle_exit(signum=None, frame=None):
+            if self.is_running:
+                logger.info(f"Signal ({signum}) received. Shutting down gracefully...")
+                self.is_running = False
+                self.send_offline_status()
+
+        try:
+            signal.signal(signal.SIGINT, handle_exit)
+            if hasattr(signal, "SIGTERM"):
+                signal.signal(signal.SIGTERM, handle_exit)
+        except Exception:
+            pass
+
+        atexit.register(self.send_offline_status)
+
+        logger.info("🎧 Speaker Node is ONLINE & LISTENING for broadcasts (Heartbeat every 2.5s)...")
         try:
             while self.is_running:
                 self.send_heartbeat()
-                time.sleep(1.5)  # Fast 1.5s polling interval
-        except KeyboardInterrupt:
-            logger.info("Shutting down Speaker Node Client...")
+                time.sleep(2.5)
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
             self.is_running = False
+            self.send_offline_status()
+            logger.info("Speaker Node Client stopped (OFFLINE).")
 
 
 if __name__ == "__main__":

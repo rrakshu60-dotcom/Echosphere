@@ -1,6 +1,7 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
+import 'package:anymex/controllers/speaker_queue_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
@@ -59,11 +60,21 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
       final nodes = await EchosphereApiService().getSpeakerNodes();
       if (mounted) {
         setState(() {
-          availableSpeakerNodes =
-              nodes.whereType<Map>().map((n) => Map<String, dynamic>.from(n)).toList();
+          final fetched = nodes.whereType<Map>().map((n) => Map<String, dynamic>.from(n)).toList();
+          if (fetched.isNotEmpty) {
+            availableSpeakerNodes = fetched;
+          } else if (availableSpeakerNodes.isEmpty) {
+            availableSpeakerNodes = List<Map<String, dynamic>>.from(SpeakerQueueController.defaultSpeakerNodes);
+          }
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted && availableSpeakerNodes.isEmpty) {
+        setState(() {
+          availableSpeakerNodes = List<Map<String, dynamic>>.from(SpeakerQueueController.defaultSpeakerNodes);
+        });
+      }
+    }
   }
 
   Future<void> _pickAttachmentFiles() async {
@@ -120,6 +131,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     }
     titleController.addListener(_autoDetectAndValidate);
     descController.addListener(_autoDetectAndValidate);
+    availableSpeakerNodes = List<Map<String, dynamic>>.from(SpeakerQueueController.defaultSpeakerNodes);
     _loadSpeakerNodes();
   }
 
@@ -778,7 +790,9 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         } else if (isScheduleLater) {
           statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}!';
         } else {
-          statusMessage = 'Notice published successfully to $selectedAudience!';
+          statusMessage = deliverSpeaker
+              ? 'Notice published and queued for speaker broadcast!'
+              : 'Notice published successfully to $selectedAudience!';
         }
 
         final ok = await annController.createAnnouncement(
@@ -800,6 +814,10 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         );
 
         if (ok) {
+          if (Get.isRegistered<SpeakerQueueController>()) {
+            final SpeakerQueueController queueCtrl = Get.find<SpeakerQueueController>();
+            queueCtrl.refreshQueue(silent: true);
+          }
           snackBar(statusMessage);
         }
       },

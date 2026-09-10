@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ def create_speaker_node(db: Session, node_in: SpeakerNodeCreate) -> SpeakerNode:
         zone=node_in.zone,
         volume=node_in.volume,
         status="ONLINE" if node_in.ip_address else "OFFLINE",
-        last_heartbeat=datetime.utcnow(),
+        last_heartbeat=datetime.now(timezone.utc).replace(tzinfo=None) if node_in.ip_address else None,
     )
     db.add(node)
     db.commit()
@@ -25,11 +25,45 @@ def create_speaker_node(db: Session, node_in: SpeakerNodeCreate) -> SpeakerNode:
 
 
 def get_speaker_node_by_id(db: Session, node_id: int) -> Optional[SpeakerNode]:
-    return db.query(SpeakerNode).filter(SpeakerNode.id == node_id).first()
+    node = db.query(SpeakerNode).filter(SpeakerNode.id == node_id).first()
+    if node:
+        refresh_node_online_statuses(db, [node])
+    return node
+
+
+HEARTBEAT_TIMEOUT_SECONDS = 15
+
+
+def refresh_node_online_statuses(db: Session, nodes: List[SpeakerNode]) -> List[SpeakerNode]:
+    """
+    Dynamically computes and updates the online/offline status of speaker nodes
+    based on the freshness of their last heartbeat timestamp.
+    If last_heartbeat is within 15 seconds: ONLINE.
+    Otherwise: OFFLINE.
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    changed = False
+    for node in nodes:
+        last_hb = node.last_heartbeat
+        is_fresh = (
+            last_hb is not None
+            and (now - last_hb).total_seconds() <= HEARTBEAT_TIMEOUT_SECONDS
+        )
+        expected_status = "ONLINE" if is_fresh else "OFFLINE"
+        if node.status != expected_status:
+            node.status = expected_status
+            changed = True
+    if changed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return nodes
 
 
 def get_speaker_node_by_mac(db: Session, mac_address: str) -> Optional[SpeakerNode]:
-    return db.query(SpeakerNode).filter(SpeakerNode.mac_address == mac_address).first()
+    clean_mac = mac_address.strip()
+    return db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(clean_mac)).first()
 
 
 def get_all_speaker_nodes(
@@ -38,14 +72,21 @@ def get_all_speaker_nodes(
     zone: Optional[str] = None,
     status: Optional[str] = None,
 ) -> List[SpeakerNode]:
+    # Ensure canonical 2-node inventory exists
+    sync_canonical_speaker_nodes(db)
+
     query = db.query(SpeakerNode).filter(SpeakerNode.is_active == True)
     if department_id:
         query = query.filter(SpeakerNode.department_id == department_id)
     if zone and zone != "College-Wide":
         query = query.filter(SpeakerNode.zone == zone)
+
+    nodes = query.order_by(SpeakerNode.id.asc()).all()
+    nodes = refresh_node_online_statuses(db, nodes)
+
     if status:
-        query = query.filter(SpeakerNode.status == status)
-    return query.order_by(SpeakerNode.name).all()
+        nodes = [n for n in nodes if n.status == status]
+    return nodes
 
 
 def update_speaker_node(db: Session, node: SpeakerNode, update_data: SpeakerNodeUpdate) -> SpeakerNode:
@@ -59,24 +100,32 @@ def update_speaker_node(db: Session, node: SpeakerNode, update_data: SpeakerNode
 
 def update_speaker_node_heartbeat(db: Session, heartbeat: SpeakerNodeHeartbeat) -> SpeakerNode:
     node = get_speaker_node_by_mac(db, heartbeat.mac_address)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    incoming_status = (heartbeat.status or "ONLINE").upper()
+
     if not node:
-        # Auto-register node if unknown MAC
         node = SpeakerNode(
             name=f"Node {heartbeat.mac_address[-5:]}",
             mac_address=heartbeat.mac_address,
             ip_address=heartbeat.ip_address,
             zone="College-Wide",
-            status=heartbeat.status or "ONLINE",
-            last_heartbeat=datetime.utcnow(),
+            status=incoming_status,
+            last_heartbeat=now if incoming_status == "ONLINE" else None,
         )
         db.add(node)
     else:
         node.ip_address = heartbeat.ip_address or node.ip_address
-        node.status = heartbeat.status or "ONLINE"
-        node.cpu_usage = heartbeat.cpu_usage
-        node.memory_usage = heartbeat.memory_usage
-        node.disk_space = heartbeat.disk_space
-        node.last_heartbeat = datetime.utcnow()
+        node.status = incoming_status
+        if heartbeat.cpu_usage is not None:
+            node.cpu_usage = heartbeat.cpu_usage
+        if heartbeat.memory_usage is not None:
+            node.memory_usage = heartbeat.memory_usage
+        if heartbeat.disk_space is not None:
+            node.disk_space = heartbeat.disk_space
+        if incoming_status == "ONLINE":
+            node.last_heartbeat = now
+        else:
+            node.last_heartbeat = None
 
     db.commit()
     db.refresh(node)
@@ -191,66 +240,71 @@ def clear_speaker_queue(db: Session, status: Optional[str] = None) -> int:
     return deleted_count
 
 
-def seed_default_speaker_nodes_if_empty(db: Session):
+def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
     """
-    Seeds default campus speaker nodes if none exist in the database,
-    providing realistic hardware endpoints out-of-the-box.
+    Enforces that exactly 2 canonical speaker nodes exist in EchoSphere:
+    1. Wokwi ESP32 Speaker Node (MAC: 24:0A:C4:00:01:10)
+    2. Hardware Speaker Client (MAC: D4:F3:2D:22:2A:CB)
+    Prunes legacy/test nodes to maintain a clean, accurate 2-node inventory.
     """
-    existing_count = db.query(SpeakerNode).count()
-    if existing_count > 0:
-        return
-
-    default_nodes = [
+    canonical_specs = [
         {
-            "name": "Wokwi ESP32 Speaker Node #1",
-            "mac_address": "24:0A:C4:00:11:22",
+            "name": "Wokwi ESP32 Speaker Node",
+            "mac_address": "24:0A:C4:00:01:10",
             "ip_address": "10.0.1.15",
             "zone": "Block A - CSE Quad",
             "volume": 90,
-            "status": "ONLINE",
-            "cpu_usage": 16.4,
-            "memory_usage": 34.2,
             "disk_space": 72.5,
         },
         {
-            "name": "Central Auditorium PA System",
-            "mac_address": "AA:BB:CC:DD:EE:02",
-            "ip_address": "192.168.1.102",
-            "zone": "Auditorium",
+            "name": "Hardware Speaker Client",
+            "mac_address": "D4:F3:2D:22:2A:CB",
+            "ip_address": "127.0.0.1",
+            "zone": "Auditorium / Campus",
             "volume": 85,
-            "status": "ONLINE",
-            "cpu_usage": 18.6,
-            "memory_usage": 41.0,
             "disk_space": 65.0,
-        },
-        {
-            "name": "Library Reading Hall Speaker",
-            "mac_address": "AA:BB:CC:DD:EE:03",
-            "ip_address": "192.168.1.103",
-            "zone": "Library",
-            "volume": 70,
-            "status": "OFFLINE",
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-            "disk_space": 50.0,
         },
     ]
 
-    for data in default_nodes:
-        node = SpeakerNode(
-            name=data["name"],
-            mac_address=data["mac_address"],
-            ip_address=data["ip_address"],
-            zone=data["zone"],
-            volume=data["volume"],
-            status=data["status"],
-            cpu_usage=data["cpu_usage"],
-            memory_usage=data["memory_usage"],
-            disk_space=data["disk_space"],
-            last_heartbeat=datetime.utcnow(),
-            is_active=True,
-        )
-        db.add(node)
+    canonical_macs = [s["mac_address"].upper() for s in canonical_specs]
+
+    # Prune any old non-canonical speaker nodes
+    all_nodes = db.query(SpeakerNode).all()
+    for n in all_nodes:
+        if str(n.mac_address).upper() not in canonical_macs:
+            db.delete(n)
     db.commit()
+
+    # Ensure both canonical nodes exist
+    for spec in canonical_specs:
+        existing = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(spec["mac_address"])).first()
+        if not existing:
+            new_node = SpeakerNode(
+                name=spec["name"],
+                mac_address=spec["mac_address"],
+                ip_address=spec["ip_address"],
+                zone=spec["zone"],
+                volume=spec["volume"],
+                status="OFFLINE",
+                cpu_usage=0.0,
+                memory_usage=0.0,
+                disk_space=spec["disk_space"],
+                last_heartbeat=None,
+                is_active=True,
+            )
+            db.add(new_node)
+        else:
+            if existing.name != spec["name"]:
+                setattr(existing, "name", spec["name"])
+            if existing.zone != spec["zone"]:
+                setattr(existing, "zone", spec["zone"])
+    db.commit()
+
+    nodes = db.query(SpeakerNode).order_by(SpeakerNode.id.asc()).all()
+    return refresh_node_online_statuses(db, nodes)
+
+
+def seed_default_speaker_nodes_if_empty(db: Session):
+    sync_canonical_speaker_nodes(db)
 
 

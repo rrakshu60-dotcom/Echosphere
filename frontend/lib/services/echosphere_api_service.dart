@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class EchosphereApiService {
@@ -43,12 +44,24 @@ class EchosphereApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          if (Get.testMode) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                error: 'Network disabled in test mode',
+                type: DioExceptionType.cancel,
+              ),
+            );
+          }
           if (_authToken != null && _authToken!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_authToken';
           }
           return handler.next(options);
         },
         onError: (DioException error, handler) async {
+          if (Get.testMode) {
+            return handler.next(error);
+          }
           debugPrint('API Error [${error.response?.statusCode}]: ${error.response?.data}');
           if (error.response?.statusCode == 401 && _authToken != null && _authToken!.isNotEmpty) {
             try {

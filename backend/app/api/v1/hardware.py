@@ -1,12 +1,14 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
 from app.models.user import User
 from app.models.announcement import Announcement
+from app.models.speaker_node import SpeakerNode
+from app.models.speaker_queue import SpeakerQueue
 from app.core.enums.announcement import AnnouncementPriority, AnnouncementStatus, EmergencyLevel
 from app.repositories.hardware_repository import (
     add_to_speaker_queue,
@@ -121,14 +123,18 @@ def register_speaker_node(
     existing = get_speaker_node_by_mac(db, node_in.mac_address)
     if existing:
         # Idempotent registration / reconnect for hardware nodes
-        existing.name = node_in.name or existing.name
-        existing.ip_address = node_in.ip_address or existing.ip_address
-        existing.zone = node_in.zone or existing.zone
-        existing.volume = node_in.volume if node_in.volume is not None else existing.volume
+        if node_in.name:
+            setattr(existing, "name", node_in.name)
+        if node_in.ip_address:
+            setattr(existing, "ip_address", node_in.ip_address)
+        if node_in.zone:
+            setattr(existing, "zone", node_in.zone)
+        if node_in.volume is not None:
+            setattr(existing, "volume", node_in.volume)
         if node_in.department_id is not None:
-            existing.department_id = node_in.department_id
-        existing.status = "ONLINE"
-        existing.last_heartbeat = datetime.utcnow()
+            setattr(existing, "department_id", node_in.department_id)
+        setattr(existing, "status", "ONLINE")
+        setattr(existing, "last_heartbeat", datetime.now(timezone.utc).replace(tzinfo=None))
         db.commit()
         db.refresh(existing)
         return existing
@@ -220,11 +226,11 @@ async def trigger_speaker_broadcast(
     base_url = str(request.base_url).rstrip("/")
     result = await broadcast_announcement_to_speaker(
         db=db,
-        announcement_id=announcement.id,
-        title=announcement.title,
-        content=announcement.description,
-        department_code=node.department.code if node.department else "ALL",
-        zone=node.zone,
+        announcement_id=int(announcement.id),
+        title=str(announcement.title),
+        content=str(announcement.description),
+        department_code=str(node.department.code) if node.department else "ALL",
+        zone=str(node.zone),
         is_emergency=False,
         base_url=base_url,
     )
@@ -316,7 +322,7 @@ async def trigger_emergency_override(
 
         result = await broadcast_announcement_to_speaker(
             db=db,
-            announcement_id=emergency_ann.id,
+            announcement_id=int(emergency_ann.id),
             title=override_in.title,
             content=override_in.message,
             department_code="ALL",
@@ -368,7 +374,7 @@ def receive_node_heartbeat(
         auto_advance_speaker_queue(db)
     except Exception:
         pass
-    cmds = get_pending_commands_for_mac(node.mac_address)
+    cmds = get_pending_commands_for_mac(str(node.mac_address))
     return {
         "status": "success",
         "node_id": node.id,
@@ -411,7 +417,15 @@ def fetch_speaker_queue(
     except Exception:
         pass
 
-    queue_items = get_speaker_queue(db=db, status=status)
+    if status is None:
+        queue_items = (
+            db.query(SpeakerQueue)
+            .filter(SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]))
+            .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
+            .all()
+        )
+    else:
+        queue_items = get_speaker_queue(db=db, status=status)
     result = []
     for item in queue_items:
         ann = item.announcement
@@ -433,7 +447,7 @@ def fetch_speaker_queue(
 
 
 @router.post("/queue/add")
-def enqueue_announcement_to_speaker_queue(
+def enqueue_speaker_announcement(
     enqueue_in: EnqueueAnnouncementRequest,
     request: Request,
     db: Session = Depends(get_db),
@@ -443,7 +457,10 @@ def enqueue_announcement_to_speaker_queue(
 ):
     ann = get_announcement_by_id(db, enqueue_in.announcement_id)
     if not ann:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Announcement not found.",
+        )
 
     from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
     dept_code = "ALL"
@@ -454,9 +471,9 @@ def enqueue_announcement_to_speaker_queue(
     p_val = ann.priority.value if hasattr(ann.priority, 'value') else str(ann.priority)
     result = enqueue_and_broadcast_announcement(
         db=db,
-        announcement_id=ann.id,
-        title=ann.title,
-        content=ann.description,
+        announcement_id=int(ann.id),
+        title=str(ann.title),
+        content=str(ann.description),
         department_code=dept_code,
         zone="College-Wide",
         is_emergency=(p_val == "EMERGENCY"),
@@ -505,7 +522,9 @@ def update_queue_action(
         "resume": "Playing",
         "skip": "Skipped",
         "cancel": "Cancelled",
+        "stop": "Cancelled",
         "complete": "Completed",
+        "remove": "Completed",
     }
     new_status = status_map.get(action.lower(), "Queued")
     updated = update_queue_item_status(db=db, queue_id=id, status=new_status)
@@ -523,7 +542,7 @@ def update_queue_action(
 
     # Auto-advance to next queued item if current was skipped, cancelled, or completed
     advance_res = None
-    if action.lower() in ("skip", "cancel", "stop", "complete"):
+    if action.lower() in ("skip", "cancel", "stop", "complete", "remove"):
         from app.services.hardware_speaker_service import auto_advance_speaker_queue
         try:
             advance_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)

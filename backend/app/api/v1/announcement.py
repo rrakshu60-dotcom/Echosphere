@@ -41,6 +41,7 @@ def create_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_roles(
+            "Dev Admin",
             "Developer",
             "College Admin",
             "Principal",
