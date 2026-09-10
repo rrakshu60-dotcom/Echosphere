@@ -2,6 +2,9 @@ import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+import 'package:anymex/screens/home_page.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/services/copilot_client.dart';
@@ -59,6 +62,41 @@ class _EchosphereAiState extends State<EchosphereAi> {
         );
       }
     });
+  }
+
+  void _handleSuggestedAction(String action) {
+    final act = action.trim();
+    final lower = act.toLowerCase();
+    final user = authController.currentUser.value;
+    final isStudent = user == null || user.role.toLowerCase() == 'student';
+
+    if (lower.contains('speaker') || lower.contains('queue')) {
+      if (isStudent) {
+        snackBar("I don't have the authority to open or disclose the smart speaker queue.");
+        return;
+      }
+      Get.to(() => const SpeakerQueuePage());
+      return;
+    }
+
+    if (lower.contains('create') && lower.contains('notice')) {
+      if (isStudent) {
+        snackBar("I don't have the authority to author announcements directly. Please coordinate with your department office.");
+        return;
+      }
+      showDialog(
+        context: context,
+        builder: (_) => const CreateAnnouncementDialog(),
+      );
+      return;
+    }
+
+    if (lower.contains('settings') || lower.contains('profile')) {
+      Get.offAll(() => const HomePage());
+      return;
+    }
+
+    _sendMessage(act);
   }
 
   void _openAnnouncementDetail(Map<String, dynamic> ann) {
@@ -134,29 +172,11 @@ class _EchosphereAiState extends State<EchosphereAi> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    final user = authController.currentUser.value;
-    if (aiController.messages.isEmpty ||
-        (user != null && aiController.messages.first.text.contains('Hello Student') && user.role != 'Student')) {
-      aiController.resetGreeting();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final role = user?.role ?? 'Dev Admin';
-    String dept = 'College-Wide';
-    if (user?.department != null && user!.department!.trim().isNotEmpty) {
-      dept = user.department!.trim();
-    } else if (user?.usn != null && user!.usn!.trim().isNotEmpty) {
-      dept = detectDepartmentFromUsn(user.usn!);
-    } else if (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal') {
-      dept = 'College-Wide';
-    }
-    final isAdminRole = user != null && (role == 'Dev Admin' || role == 'Developer' || role == 'College Admin' || role == 'Principal');
+    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'CSE');
+    final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal');
 
     return Column(
       children: [
@@ -205,12 +225,34 @@ class _EchosphereAiState extends State<EchosphereAi> {
               ],
               Flexible(
                 child: EchoSphereChip(
-                  label: isAdminRole ? role : '$dept Dept',
+                  label: '$dept Dept',
                   isSelected: true,
                   onSelected: (_) {},
                 ),
               ),
             ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Dynamic Role-Adaptive Quick Prompts Bar
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: aiController.getPresetPrompts().map((p) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.help_outline_rounded, size: 14),
+                    label: Text(p['label']!, style: const TextStyle(fontSize: 12)),
+                    onPressed: () => _sendMessage(p['prompt']),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         ),
         const Divider(height: 1),
@@ -332,8 +374,55 @@ class _EchosphereAiState extends State<EchosphereAi> {
         child: Column(
           crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
-            EchoSphereContainer(
+            // Badges & Model Source Row
+            if (!isUser) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.smart_toy, size: 14, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text(
+                      msg.categoryBadge ?? 'EchoSphere AI',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
+                    ),
+                  ],
+                ),
+                if (msg.contextBadge != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      msg.contextBadge!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                if (msg.modelUsed != null)
+                  Text(
+                    msg.modelUsed!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: theme.colorScheme.onSurface.withOpacity(0.45),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+
+          // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
+          EchoSphereContainer(
             padding: const EdgeInsets.all(16.0),
             color: isUser
                 ? theme.colorScheme.primary.withOpacity(0.85)
@@ -486,6 +575,22 @@ class _EchosphereAiState extends State<EchosphereAi> {
                 ],
               ),
             ),
+
+            // Interactive Action Chips Row
+            if (!isUser && msg.suggestedActions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: msg.suggestedActions
+                    .map((act) => ActionChip(
+                          avatar: const Icon(Icons.touch_app_rounded, size: 14, color: Colors.blue),
+                          label: Text(act, style: const TextStyle(fontSize: 11)),
+                          onPressed: () => _handleSuggestedAction(act),
+                        ))
+                    .toList(),
+              ),
+            ],
           ],
         ),
       ),
