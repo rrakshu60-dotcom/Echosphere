@@ -899,6 +899,60 @@ class EchosphereApiService {
       throw Exception(e.response?.data?['detail'] ?? 'Failed to delete queue item.');
     }
   }
+
+  String get hostUrl => _baseUrl.replaceAll('/api/v1', '');
+
+  String getStreamUrlForAnnouncement(
+    int id, {
+    String gender = 'female',
+    String accent = 'indian',
+    bool isSummary = false,
+  }) =>
+      '$_baseUrl/announcements/$id/audio/stream?gender=$gender&accent=$accent&is_summary=$isSummary';
+
+  Future<Map<String, dynamic>?> getAnnouncementAudio(
+    int id, {
+    String gender = 'female',
+    String accent = 'indian',
+    bool isSummary = false,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/announcements/$id/audio',
+        queryParameters: {
+          'gender': gender,
+          'accent': accent,
+          'is_summary': isSummary,
+        },
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        return Map<String, dynamic>.from(response.data);
+      }
+    } catch (e) {
+      debugPrint('Error getting announcement audio: $e');
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> synthesizeSpeech(
+    String text, {
+    String gender = 'female',
+    String accent = 'indian',
+  }) async {
+    try {
+      final response = await _dio.post('/ai/synthesize', data: {
+        'text': text,
+        'gender': gender,
+        'accent': accent,
+      });
+      if (response.statusCode == 200 && response.data != null) {
+        return Map<String, dynamic>.from(response.data);
+      }
+    } catch (e) {
+      debugPrint('Error synthesizing speech: $e');
+    }
+    return null;
+  }
 }
 
 

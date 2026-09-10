@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas.ai_schema import (
@@ -244,3 +244,25 @@ def ai_classify(req: AiClassifyRequest):
 def ai_intent(req: AiIntentRequest):
     intent, _ = CampusMLEngine.get_instance().predict_intent(req.question)
     return AiIntentResponse(intent=intent.lower())
+
+
+@router.post("/synthesize")
+def ai_synthesize_speech(req: Dict[str, Any], request: Request):
+    """
+    Synthesizes speech for arbitrary text using Kokoro-82M offline neural TTS (with fallbacks).
+    """
+    from app.services.tts_service import synthesize_text_audio
+    text = req.get("text", "")
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Text is required")
+    base_url = str(request.base_url).rstrip("/")
+    res = synthesize_text_audio(text=text)
+    return {
+        "status": "ready",
+        "audio_url": f"{base_url}{res['url_path']}",
+        "file_name": res["file_name"],
+        "engine": res.get("engine", "Kokoro-82M (Offline Neural)"),
+        "type": res.get("type", "wav"),
+        "duration_sec": res.get("duration_sec"),
+    }
+
