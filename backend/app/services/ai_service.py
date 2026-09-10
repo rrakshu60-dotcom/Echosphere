@@ -404,28 +404,35 @@ class AIService:
         target_role: str = "STUDENT",
         department: Optional[str] = None
     ) -> Dict[str, str]:
-        """Draft a formal institutional announcement circular."""
+        """Draft a formal institutional announcement circular using the 4-tier model hierarchy."""
         clean_topic = topic.strip()
         dept_str = f" - {department} Department" if department else ""
 
         prompt = (
             f"Draft an official, highly professional college circular on: '{clean_topic}'.\n"
             f"Category: {category}, Target Audience: {target_role}, Department: {department or 'College-Wide'}.\n"
-            f"Return ONLY a JSON object with keys: 'title', 'content', 'suggested_priority', 'suggested_category'."
+            f"Return strictly valid JSON with keys: 'title', 'content', 'suggested_priority', 'suggested_category'."
         )
         sys_inst = "You are an official college administrative secretary drafting notices. Return strictly valid JSON."
 
-        raw_res = None
         router = ModelRouter.get_instance()
+        raw_res = None
 
-        # 1. Try Cloudflare Workers AI first for fast sub-4-second structured drafting
-        if router.cloudflare_provider.is_configured():
+        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
+        if router.fine_tuned_qwen.is_configured():
             try:
-                raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=6.0)
+                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=6.0, max_new_tokens=180)
+            except Exception as e:
+                logger.debug(f"[Qwen draft attempt]: {e}")
+
+        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        if not raw_res and router.cloudflare_provider.is_configured():
+            try:
+                raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
             except Exception as e:
                 logger.debug(f"[Cloudflare draft attempt]: {e}")
 
-        # 2. Try Google Gemini if Cloudflare is unconfigured or failed
+        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
         if not raw_res:
             try:
                 raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
@@ -434,19 +441,43 @@ class AIService:
 
         if raw_res:
             try:
-                json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
+                cleaned_raw = re.sub(r'^```(?:json)?\s*', '', raw_res.strip(), flags=re.MULTILINE)
+                cleaned_raw = re.sub(r'```$', '', cleaned_raw.strip())
+                json_match = re.search(r'\{[\s\S]*\}', cleaned_raw)
                 if json_match:
                     parsed = json.loads(json_match.group())
+                    title = parsed.get("title", f"Notice: {clean_topic.title()}")
+                    content = parsed.get("content", "")
+                    prio = str(parsed.get("suggested_priority", "NORMAL")).upper()
+                    if prio not in ["NORMAL", "HIGH", "EMERGENCY"]:
+                        prio = "NORMAL"
+                    cat = parsed.get("suggested_category", category or "Academics")
+                    if content:
+                        return {
+                            "title": title,
+                            "content": sanitize_ai_markdown(content),
+                            "suggested_priority": prio,
+                            "suggested_category": cat
+                        }
+                elif len(raw_res.strip()) > 60:
+                    lines = [l.strip() for l in raw_res.strip().split('\n') if l.strip()]
+                    title_candidate = f"Notice: {clean_topic.title()}"
+                    for line in lines[:5]:
+                        if any(k in line.lower() for k in ["subject:", "title:", "circular:"]):
+                            title_candidate = re.sub(r'(?i)^(subject|title|circular)\s*:\s*', '', line).strip(' *#')
+                            break
+                    ml_engine = CampusMLEngine.get_instance()
+                    class_res = ml_engine.predict_category_and_priority(clean_topic, raw_res)
                     return {
-                        "title": parsed.get("title", f"Notice: {clean_topic.title()}"),
-                        "content": sanitize_ai_markdown(parsed.get("content", "")),
-                        "suggested_priority": parsed.get("suggested_priority", "NORMAL"),
-                        "suggested_category": parsed.get("suggested_category", category or "Academics")
+                        "title": title_candidate[:120],
+                        "content": sanitize_ai_markdown(raw_res),
+                        "suggested_priority": class_res["priority"],
+                        "suggested_category": category if category and category != "Academics" else class_res["category"]
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed parsing LLM draft JSON: {e}")
 
-        # Local Campus ML drafting fallback
+        # Tier 4: Campus ML Engine drafting fallback
         ml_engine = CampusMLEngine.get_instance()
         class_res = ml_engine.predict_category_and_priority(clean_topic, clean_topic)
         final_cat = category if category and category != "Academics" else class_res["category"]
@@ -471,51 +502,110 @@ class AIService:
 
     @staticmethod
     def expand_text(text: str, category: str = "Academics") -> str:
-        """Expand a brief memo into an official institutional circular."""
+        """Expand a brief memo into an official institutional circular using the 4-tier model hierarchy."""
         clean = text.strip()
         if not clean:
             return ""
 
-        prompt = f"Expand this brief note into a formal, structured official college announcement circular:\n\n'{clean}'"
+        prompt = (
+            f"Expand this brief note into a formal, structured official college announcement circular:\n\n"
+            f"'{clean}'\n\n"
+            f"Include an appropriate announcement title header, context details, and clear student/staff instructions."
+        )
         sys_inst = "You are an AI for official college circulars. Expand short bullet points into polite, clear, formal announcements. Output only the circular text."
 
-        expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
-        if expanded:
-            return sanitize_ai_markdown(expanded)
+        router = ModelRouter.get_instance()
+        expanded: Optional[str] = None
 
+        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
+        if router.fine_tuned_qwen.is_configured():
+            try:
+                expanded = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=5.0, max_new_tokens=160)
+            except Exception as e:
+                logger.debug(f"[Qwen expand attempt]: {e}")
+
+        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        if not expanded and router.cloudflare_provider.is_configured():
+            try:
+                expanded = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
+            except Exception as e:
+                logger.debug(f"[Cloudflare expand attempt]: {e}")
+
+        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
+        if not expanded:
+            try:
+                expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+            except Exception as e:
+                logger.debug(f"[Gemini expand attempt]: {e}")
+
+        if expanded and len(expanded.strip()) >= 30:
+            return sanitize_ai_markdown(expanded.strip())
+
+        # Tier 4: Structured Institutional Fallback Template
         fallback_text = (
-            f"Official Announcement Circular:\n\n"
-            f"This is to notify all concerned students and faculty members regarding {clean}.\n\n"
-            f"Please take note of this update, adhere strictly to all published guidelines, and monitor the EchoSphere portal for detailed schedules. "
-            f"For clarifications, please consult your Department Office."
+            f"Official Announcement Circular ({category.upper()}):\n\n"
+            f"This is to formally notify all concerned students and faculty members regarding: {clean}.\n\n"
+            f"Please take note of this update, adhere strictly to all published guidelines, and monitor the EchoSphere portal for detailed schedules and venue notices.\n"
+            f"For questions or clarifications, please consult your Department Office or Faculty Advisor."
         )
         return sanitize_ai_markdown(fallback_text)
 
     @staticmethod
     def check_grammar(text: str) -> Dict[str, Any]:
-        """Check grammar, spelling, and institutional tone."""
+        """Check grammar, spelling, and institutional tone using the 4-tier model hierarchy."""
         clean = text.strip()
         if not clean:
             return {"original": text, "corrected_text": text, "improvements": []}
 
-        prompt = f"Correct grammar, spelling, and institutional tone for this circular:\n\n'{clean}'"
-        sys_inst = "You are a professional university editor. Return JSON: {\"corrected_text\": \"...\", \"improvements\": [\"...\"]}"
+        prompt = (
+            f"Correct grammar, spelling, and institutional tone for this circular:\n\n'{clean}'\n\n"
+            f"Return strictly valid JSON with keys: 'corrected_text' (string) and 'improvements' (list of strings)."
+        )
+        sys_inst = "You are a professional university editor. Return strictly valid JSON: {\"corrected_text\": \"...\", \"improvements\": [\"...\"]}"
 
-        raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+        router = ModelRouter.get_instance()
+        raw_res: Optional[str] = None
+
+        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
+        if router.fine_tuned_qwen.is_configured():
+            try:
+                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=5.0, max_new_tokens=150)
+            except Exception as e:
+                logger.debug(f"[Qwen grammar attempt]: {e}")
+
+        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        if not raw_res and router.cloudflare_provider.is_configured():
+            try:
+                raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
+            except Exception as e:
+                logger.debug(f"[Cloudflare grammar attempt]: {e}")
+
+        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
+        if not raw_res:
+            try:
+                raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+            except Exception as e:
+                logger.debug(f"[Gemini grammar attempt]: {e}")
+
         if raw_res:
             try:
-                json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
+                cleaned_raw = re.sub(r'^```(?:json)?\s*', '', raw_res.strip(), flags=re.MULTILINE)
+                cleaned_raw = re.sub(r'```$', '', cleaned_raw.strip())
+                json_match = re.search(r'\{[\s\S]*\}', cleaned_raw)
                 if json_match:
                     parsed = json.loads(json_match.group())
-                    return {
-                        "original": text,
-                        "corrected_text": parsed.get("corrected_text", clean),
-                        "improvements": parsed.get("improvements", ["Corrected syntax and institutional tone."])
-                    }
-            except Exception:
-                pass
+                    corrected = parsed.get("corrected_text", clean)
+                    improvs = parsed.get("improvements", ["Corrected syntax and institutional tone."])
+                    if corrected:
+                        return {
+                            "original": text,
+                            "corrected_text": sanitize_ai_markdown(corrected),
+                            "improvements": improvs
+                        }
+            except Exception as e:
+                logger.debug(f"Failed parsing LLM grammar JSON: {e}")
 
-        # Rule-based fallback
+        # Tier 4: Rule-based fallback
         corrected = clean[0].upper() + clean[1:]
         if not corrected.endswith(('.', '!', '?')):
             corrected += '.'
@@ -642,7 +732,7 @@ class AIService:
 
     @staticmethod
     def summarize(content: str) -> str:
-        """Summarize announcement into 1 concise sentence."""
+        """Summarize announcement into 1 concise sentence using the 4-tier model hierarchy."""
         clean = content.strip()
         if not clean:
             return "No content provided."
@@ -650,12 +740,38 @@ class AIService:
             return sanitize_ai_markdown(clean)
 
         prompt = f"Summarize this college circular in 1 clear, concise institutional sentence:\n\n'{clean}'"
-        summary, _ = call_modern_gemini(prompt)
-        if summary:
-            return sanitize_ai_markdown(summary)
+        sys_inst = "You are a concise campus editorial AI. Summarize the circular in 1 clear institutional sentence."
 
+        router = ModelRouter.get_instance()
+        summary: Optional[str] = None
+
+        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
+        if router.fine_tuned_qwen.is_configured():
+            try:
+                summary = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=4.0, max_new_tokens=80)
+            except Exception as e:
+                logger.debug(f"[Qwen summarize attempt]: {e}")
+
+        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        if not summary and router.cloudflare_provider.is_configured():
+            try:
+                summary = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=4.0)
+            except Exception as e:
+                logger.debug(f"[Cloudflare summarize attempt]: {e}")
+
+        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
+        if not summary:
+            try:
+                summary, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
+            except Exception as e:
+                logger.debug(f"[Gemini summarize attempt]: {e}")
+
+        if summary and len(summary.strip()) >= 10:
+            return sanitize_ai_markdown(summary.strip())
+
+        # Tier 4: Sentence boundary heuristic fallback
         sentences = re.split(r'(?<=[.!?])\s+', clean)
-        if sentences:
+        if sentences and len(sentences[0]) > 15:
             return sanitize_ai_markdown(f"Summary: {sentences[0]}")
         return sanitize_ai_markdown(f"Summary: {clean[:85]}...")
 
@@ -666,14 +782,25 @@ class AIService:
         has_gemini = bool(key and key != "YOUR_ACTUAL_GEMINI_API_KEY")
         cf_token = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
         has_cf = bool(cf_token and cf_token != "YOUR_CLOUDFLARE_API_TOKEN")
+
+        # Check local Qwen 2.5 3B GPU status
+        has_qwen = False
+        try:
+            h_resp = requests.get("http://127.0.0.1:8009/health", timeout=0.5)
+            if h_resp.status_code == 200 and h_resp.json().get("status") == "ready":
+                has_qwen = True
+        except Exception:
+            pass
+
         from app.services.echosphere_ml_engine import INSTITUTIONAL_KNOWLEDGE
 
         router = ModelRouter.get_instance()
         return {
-            "engine": "EchoSphere Tri-Model AI (Gemma + Gemini 2.5 + Cloudflare LLaMA + Campus ML)",
+            "engine": "EchoSphere Multi-Model AI (Qwen 2.5 3B Local GPU + Cloudflare LLaMA 3.1 + Gemini 2.5 Flash + Campus ML)",
             "gemini_model": PRIMARY_MODEL,
             "is_gemini_available": has_gemini,
             "is_cloudflare_available": has_cf,
+            "is_qwen_available": has_qwen,
             "local_ml_available": True,
             "kb_indexed_documents": len(INSTITUTIONAL_KNOWLEDGE),
             "router_metrics": router.get_router_status()

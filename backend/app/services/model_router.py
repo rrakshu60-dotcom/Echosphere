@@ -356,6 +356,7 @@ class FineTunedQwenProvider:
         self.endpoint = "http://127.0.0.1:8009/generate"
         self.health_url = "http://127.0.0.1:8009/health"
         self._spawn_attempted = False
+        self._last_healthy_time: float = 0.0
 
     def is_configured(self) -> bool:
         return True
@@ -366,6 +367,7 @@ class FineTunedQwenProvider:
         try:
             resp = requests.get(self.health_url, timeout=0.6)
             if resp.status_code == 200:
+                self._last_healthy_time = time.time()
                 return
         except Exception:
             pass
@@ -393,18 +395,21 @@ class FineTunedQwenProvider:
         except Exception as e:
             logger.debug(f"Failed to auto-spawn Qwen microservice: {e}")
 
-    def generate(self, prompt: str, system_instruction: str = "", timeout: float = 20.0) -> Optional[str]:
-        try:
-            h_resp = requests.get(self.health_url, timeout=1.5)
-            if h_resp.status_code != 200:
+    def generate(self, prompt: str, system_instruction: str = "", timeout: float = 12.0, max_new_tokens: int = 256) -> Optional[str]:
+        now = time.time()
+        if (now - self._last_healthy_time) > 15.0:
+            try:
+                h_resp = requests.get(self.health_url, timeout=0.8)
+                if h_resp.status_code != 200:
+                    self._ensure_service_running()
+                    return None
+                h_data = h_resp.json()
+                if h_data.get("status") != "ready":
+                    return None
+                self._last_healthy_time = now
+            except Exception:
                 self._ensure_service_running()
                 return None
-            h_data = h_resp.json()
-            if h_data.get("status") != "ready":
-                return None
-        except Exception:
-            self._ensure_service_running()
-            return None
 
         # Format with ChatML template
         if "<|im_start|>" not in prompt:
@@ -420,10 +425,11 @@ class FineTunedQwenProvider:
         try:
             resp = requests.post(
                 self.endpoint,
-                json={"prompt": chatml_prompt, "max_new_tokens": 256, "temperature": 0.3},
+                json={"prompt": chatml_prompt, "max_new_tokens": max_new_tokens, "temperature": 0.3},
                 timeout=timeout
             )
             if resp.status_code == 200:
+                self._last_healthy_time = time.time()
                 data = resp.json()
                 text = data.get("response", "") or data.get("text", "")
                 if text:
@@ -451,7 +457,7 @@ class CloudflareLlamaProvider:
             return False
         return bool(self.account_id and self.api_token and self.account_id != "YOUR_CLOUDFLARE_ACCOUNT_ID")
 
-    def generate(self, prompt: str, system_instruction: str = "", history: Optional[List[Dict[str, Any]]] = None, timeout: float = 1.2) -> Optional[str]:
+    def generate(self, prompt: str, system_instruction: str = "", history: Optional[List[Dict[str, Any]]] = None, timeout: float = 4.0) -> Optional[str]:
         if not self.is_configured():
             return None
 
@@ -484,20 +490,29 @@ class CloudflareLlamaProvider:
                 data = resp.json()
                 if data.get("success", False):
                     result = data.get("result", {})
+                    # 1. Modern Cloudflare Workers AI choices format
+                    choices = result.get("choices", [])
+                    if choices and isinstance(choices, list) and len(choices) > 0:
+                        msg = choices[0].get("message", {})
+                        content = msg.get("content", "")
+                        if content:
+                            return str(content).strip()
+                    # 2. Legacy Cloudflare Workers AI response format
                     response_text = result.get("response", "")
                     if response_text:
                         if isinstance(response_text, dict):
                             return json.dumps(response_text)
                         return str(response_text).strip()
             elif resp.status_code == 429:
-                self._circuit_breaker_until = time.time() + 60.0
+                self._circuit_breaker_until = time.time() + 30.0
                 raise requests.exceptions.HTTPError("Cloudflare Workers AI Rate Limit (429)", response=resp)
             else:
                 logger.debug(f"Cloudflare Workers AI status {resp.status_code}: {resp.text[:150]}")
+        except requests.exceptions.HTTPError:
+            raise
         except Exception as e:
-            self._circuit_breaker_until = time.time() + 60.0
             logger.debug(f"Cloudflare Workers AI generation error: {e}")
-            raise e
+            # Do not trip long circuit breaker on transient read timeouts
 
         return None
 
@@ -945,6 +960,11 @@ class ModelRouter:
         """Expose real-time provider latency and health metrics."""
         return {
             "active_providers": {
+                "fine_tuned_qwen": {
+                    "configured": self.fine_tuned_qwen.is_configured(),
+                    "model": "Qwen 2.5 3B Frontier (DoRA Merged Standalone GPU)",
+                    "stats": self.stats["fine_tuned_qwen"].to_dict()
+                },
                 "gemini": {
                     "configured": self.gemini_provider.is_configured(),
                     "model": GEMINI_PRIMARY_MODEL,
