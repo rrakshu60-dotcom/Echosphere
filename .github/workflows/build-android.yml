@@ -85,11 +85,3 @@ jobs:
           files: frontend/echosphere-app.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Temporary APK Artifact (1-Day Retention)
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: echosphere-android-apk
-          path: frontend/echosphere-app.apk
-          retention-days: 1
