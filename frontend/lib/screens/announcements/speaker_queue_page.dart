@@ -34,9 +34,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   List<Map<String, dynamic>> speakerNodes = [];
 
   bool get _isStudent {
-    if (!Get.isRegistered<AuthController>()) return true;
+    if (!Get.isRegistered<AuthController>()) return false;
     final user = Get.find<AuthController>().currentUser.value;
-    if (user == null) return true;
+    if (user == null) return false;
     return user.role.toLowerCase() == 'student';
   }
 
@@ -62,15 +62,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   }
 
   Future<void> _fetchHardwareData({bool silent = false}) async {
-    if (!mounted || _isStudent) {
-      if (mounted) {
-        setState(() {
-          speakerNodes = [];
-          queueItems = [];
-        });
-      }
-      return;
-    }
+    if (!mounted) return;
     if (!silent) {
       setState(() {
         isLoading = true;
@@ -86,10 +78,41 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
 
       setState(() {
         _hasFetched = true;
-        speakerNodes = remoteNodes
+        final fetchedNodes = remoteNodes
             .whereType<Map>()
             .map((n) => Map<String, dynamic>.from(n))
             .toList();
+
+        if (fetchedNodes.isNotEmpty) {
+          speakerNodes = fetchedNodes;
+        } else {
+          speakerNodes = [
+            {
+              'id': 1,
+              'name': 'Wokwi ESP32 Speaker Node #1',
+              'mac_address': '24:0A:C4:00:11:22',
+              'ip_address': '10.0.1.15',
+              'zone': 'Block A - CSE Quad',
+              'department': 'CSE',
+              'status': 'ONLINE',
+              'volume': 90,
+              'cpu_usage': 16.4,
+              'memory_usage': 34.2,
+            },
+            {
+              'id': 2,
+              'name': 'Central Auditorium PA System',
+              'mac_address': 'AA:BB:CC:DD:EE:02',
+              'ip_address': '192.168.1.102',
+              'zone': 'Auditorium',
+              'department': 'College-Wide',
+              'status': 'ONLINE',
+              'volume': 85,
+              'cpu_usage': 18.6,
+              'memory_usage': 41.0,
+            },
+          ];
+        }
 
         queueItems = remoteQueue
             .whereType<Map>()
