@@ -16,13 +16,49 @@ import 'package:intl/intl.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:anymex/widgets/notice_audio_player_bar.dart';
 
-class AnnouncementDetailPage extends StatelessWidget {
+class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
 
   const AnnouncementDetailPage({super.key, required this.announcement});
 
+  @override
+  State<AnnouncementDetailPage> createState() => _AnnouncementDetailPageState();
+}
+
+class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
+  AnnouncementModel get announcement => widget.announcement;
+  String? _aiSummary;
+  bool _isSummarizing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _aiSummary = widget.announcement.aiSummary;
+  }
+
+  Future<void> _generateAiSummary() async {
+    setState(() => _isSummarizing = true);
+    try {
+      final summary = await EchosphereApiService().summarizeContent(widget.announcement.description);
+      if (mounted) {
+        setState(() {
+          _aiSummary = summary;
+          _isSummarizing = false;
+        });
+        snackBar('✨ AI Summary generated successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSummarizing = false);
+        snackBar('Failed to generate summary: $e');
+      }
+    }
+  }
+
   Future<void> _downloadAttachment(BuildContext context, String filename) async {
+    final announcement = widget.announcement;
     if (kIsWeb) {
       snackBar("Downloading $filename");
       return;
@@ -54,7 +90,7 @@ OFFICIAL NOTICE DETAILS:
 ${announcement.description}
 
 AI SUMMARY:
-${announcement.aiSummary ?? 'N/A'}
+${_aiSummary ?? announcement.aiSummary ?? 'N/A'}
 
 ================================================================================
 Downloaded & Saved via EchoSphere Smart Campus System
@@ -76,6 +112,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
 
   @override
   Widget build(BuildContext context) {
+    final announcement = widget.announcement;
     final theme = Theme.of(context);
     final authController = Get.find<AuthController>();
     final announcementController = Get.find<AnnouncementController>();
@@ -215,8 +252,58 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         ),
                         const SizedBox(height: 20),
 
-                        // AI Summary Box
-                        if (announcement.aiSummary != null && announcement.aiSummary!.isNotEmpty)
+                        // AI Summary Box (With On-Demand AI Summarizer)
+                        if (_aiSummary != null && _aiSummary!.isNotEmpty)
+                          EchoSphereContainer(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.auto_awesome, color: Colors.amber, size: 24),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'AI Quick Summary',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.amber,
+                                            ),
+                                          ),
+                                          InkWell(
+                                            onTap: _isSummarizing ? null : _generateAiSummary,
+                                            child: Text(
+                                              _isSummarizing ? 'Regenerating...' : 'Regenerate ↻',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.amber.shade700,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _aiSummary!,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.9),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
                           EchoSphereContainer(
                             padding: const EdgeInsets.all(16.0),
                             child: Row(
@@ -228,27 +315,55 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       const Text(
-                                        'AI Quick Summary',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.amber,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        announcement.aiSummary!,
+                                        'No AI Summary Yet',
                                         style: TextStyle(
                                           fontSize: 13,
-                                          color: theme.colorScheme.onSurface.withOpacity(0.9),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Summarize this notice with EchoSphere AI',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.65),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _isSummarizing ? null : _generateAiSummary,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber.shade700,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: _isSummarizing
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : const Icon(Icons.auto_awesome, size: 14),
+                                  label: Text(
+                                    _isSummarizing ? 'Summarizing...' : 'Summarize',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
+                        const SizedBox(height: 16),
+
+                        // Neural Audio Speech Player (Kokoro-82M with Voice & Mode Toggles)
+                        NoticeAudioPlayerBar(
+                          announcementId: announcement.id,
+                          title: announcement.title,
+                          hasAiSummary: (_aiSummary != null && _aiSummary!.isNotEmpty),
+                        ),
                         const SizedBox(height: 20),
 
                         // Main Description Content

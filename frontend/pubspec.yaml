@@ -53,6 +53,7 @@ dependencies:
     palette_generator: ^0.3.3+7
     cross_platform_video_thumbnails: ^0.1.0
     crypto: any
+    audioplayers: ^6.1.0
 
     # Desktop Windows Utilities
     window_manager: ^0.4.3

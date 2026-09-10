@@ -2,7 +2,9 @@ import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -686,6 +688,59 @@ class AnnouncementFeedCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    Obx(() {
+                      final audio = TtsAudioService.instance;
+                      final isThisPlaying = audio.isAnnouncementPlaying(notice.id);
+                      final isThisBuffering = audio.isAnnouncementActive(notice.id) && audio.isBuffering.value;
+                      return InkWell(
+                        onTap: () => audio.playAnnouncement(notice.id),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: isThisPlaying
+                                ? theme.colorScheme.primary.withOpacity(0.18)
+                                : theme.colorScheme.primary.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isThisPlaying
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.primary.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isThisBuffering)
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                                )
+                              else
+                                Icon(
+                                  isThisPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.volume_up_rounded,
+                                  size: 14,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isThisPlaying ? 'Playing' : 'Listen',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),

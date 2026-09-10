@@ -12,6 +12,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
   const SpeakerQueuePage({super.key});
@@ -77,8 +78,18 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       snackBar('No announcement selected for preview.');
       return;
     }
+    final activeItem = _queueCtrl.queueItems.firstWhereOrNull((i) => i['status'] == 'Playing') ??
+        _queueCtrl.queueItems.first;
+    final noticeId = activeItem['announcement_id'] as int?;
     final title = _queueCtrl.activeTitle;
-    snackBar('🔊 Synthesizing and previewing voice announcement: "$title"');
+    final audioUrl = activeItem['audio_url'] as String?;
+
+    if (noticeId != null) {
+      TtsAudioService.instance.playAnnouncement(noticeId, directUrl: audioUrl);
+      snackBar('🔊 Playing voice broadcast: "$title"');
+    } else {
+      snackBar('🔊 Synthesizing and previewing voice announcement: "$title"');
+    }
   }
 
   void _showEmergencyDialog(BuildContext context) {
