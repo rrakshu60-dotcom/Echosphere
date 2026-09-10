@@ -23,7 +23,10 @@ class SpeakerQueuePage extends StatefulWidget {
 class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late final SpeakerQueueController _queueCtrl;
+
+  SpeakerQueueController get _queueCtrl => Get.isRegistered<SpeakerQueueController>()
+      ? Get.find<SpeakerQueueController>()
+      : Get.put(SpeakerQueueController());
 
   bool get _isStudent {
     if (!Get.isRegistered<AuthController>()) return false;
@@ -37,9 +40,6 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     if (!_isStudent) {
-      _queueCtrl = Get.isRegistered<SpeakerQueueController>()
-          ? Get.find<SpeakerQueueController>()
-          : Get.put(SpeakerQueueController());
       _queueCtrl.refreshQueue();
     }
   }
