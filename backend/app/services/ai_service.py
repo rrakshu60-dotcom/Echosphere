@@ -282,17 +282,21 @@ class AIService:
             # High-yield Instant Academic Primer match (< 10ms instant delivery for core engineering topics)
             academic_kb = [k for k in (kb_matches or []) if k.get("category") == "Academics" and k.get("id") != "kb_branch_studies"]
             if academic_kb and any(w in q_lower for w in ["explain", "what is", "how does", "vs", "versus", "difference"]):
-                return ml_engine.synthesize_response(
-                    query=query,
-                    name=name,
-                    role=role,
-                    dept=dept,
-                    usn_or_emp_id=usn_or_emp_id,
-                    matched_announcements=matched_announcements,
-                    kb_matches=academic_kb,
-                    predicted_intent="BRANCH_STUDIES",
-                    conversation_history=history
-                )
+                top_doc = academic_kb[0]
+                # Guarantee topic relevance: only return instant primer if query mentions key topic tags
+                tags = [t.lower() for t in top_doc.get("tags", [])]
+                if any(tag in q_lower for tag in tags):
+                    return ml_engine.synthesize_response(
+                        query=query,
+                        name=name,
+                        role=role,
+                        dept=dept,
+                        usn_or_emp_id=usn_or_emp_id,
+                        matched_announcements=matched_announcements,
+                        kb_matches=academic_kb,
+                        predicted_intent="BRANCH_STUDIES",
+                        conversation_history=history
+                    )
             if predicted_intent == "STUDENT_CHITCHAT_REFUSAL":
                 predicted_intent = "BRANCH_STUDIES"
                 category_badge = "Branch Coursework"
