@@ -124,10 +124,6 @@ class EchosphereAiController extends GetxController {
     return processed.join('\n').trim();
   }
 
-  List<String> _getDefaultActionsForRole(String role, String dept) {
-    return const [];
-  }
-
   List<Map<String, String>> getPresetPrompts() {
     return const [];
   }
@@ -176,7 +172,6 @@ class EchosphereAiController extends GetxController {
       final responseText = sanitizeClientMarkdown(rawResponse);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
       final ctxBadge = apiRes['context_badge'] as String? ?? '$role • $dept Department';
-      final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
       final modelUsed = apiRes['model_used'] as String? ?? 'EchoSphere AI';
@@ -226,7 +221,7 @@ class EchosphereAiController extends GetxController {
         isUser: false,
         categoryBadge: catBadge,
         contextBadge: ctxBadge,
-        suggestedActions: actions.isEmpty ? _getDefaultActionsForRole(role, dept) : actions,
+        suggestedActions: const [],
         navigationTarget: navTarget,
         matchedAnnouncements: matchedList,
         modelUsed: modelUsed,
@@ -241,7 +236,7 @@ class EchosphereAiController extends GetxController {
         isUser: false,
         categoryBadge: _detectCategoryBadge(userMsg),
         contextBadge: '$role • $dept Department',
-        suggestedActions: _getDefaultActionsForRole(role, dept),
+        suggestedActions: const [],
         modelUsed: 'EchoSphere Campus AI (Offline)',
       ));
     } finally {
