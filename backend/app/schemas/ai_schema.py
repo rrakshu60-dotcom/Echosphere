@@ -75,6 +75,7 @@ class AiSummarizeRequest(BaseModel):
 
 class AiSummarizeResponse(BaseModel):
     summary: str
+    model_used: Optional[str] = "Fine-Tuned Qwen 2.5 3B (Local Campus Model)"
 
 class AiExpandRequest(BaseModel):
     text: str

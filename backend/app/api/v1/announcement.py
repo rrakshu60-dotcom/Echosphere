@@ -373,4 +373,31 @@ def stream_announcement_audio_endpoint(
     return FileResponse(file_path, media_type=media_type, filename=res["file_name"])
 
 
+@router.get("/{announcement_id}/summary")
+@router.post("/{announcement_id}/summarize")
+def get_announcement_summary_endpoint(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns an institutional text summary for an announcement using the fine-tuned Qwen 2.5 3B model / AI router.
+    """
+    from app.repositories.announcement_repository import get_announcement_by_id
+    from app.services.ai_service import AIService
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if not notice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
+
+    summary = AIService.summarize(notice.description)
+    return {
+        "status": "ready",
+        "announcement_id": announcement_id,
+        "title": notice.title,
+        "summary": summary,
+        "model_used": "Fine-Tuned Qwen 2.5 3B (Local Campus Model)",
+    }
+
+
+
 

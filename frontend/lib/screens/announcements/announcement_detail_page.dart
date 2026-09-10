@@ -11,6 +11,7 @@ import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
@@ -47,7 +48,10 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           _aiSummary = summary;
           _isSummarizing = false;
         });
-        snackBar('✨ AI Summary generated successfully!');
+        if (Get.isRegistered<AnnouncementController>()) {
+          Get.find<AnnouncementController>().updateAnnouncementSummary(widget.announcement.id, summary);
+        }
+        snackBar('✨ AI Summary generated with Qwen model!');
       }
     } catch (e) {
       if (mounted) {
@@ -253,6 +257,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         const SizedBox(height: 20),
 
                         // AI Summary Box (With On-Demand AI Summarizer)
+                        // AI Summary Box (With On-Demand AI Summarizer powered by trained model)
                         if (_aiSummary != null && _aiSummary!.isNotEmpty)
                           EchoSphereContainer(
                             padding: const EdgeInsets.all(16.0),
@@ -268,32 +273,58 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          const Text(
-                                            'AI Quick Summary',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.amber,
-                                            ),
-                                          ),
-                                          InkWell(
-                                            onTap: _isSummarizing ? null : _generateAiSummary,
+                                          const Expanded(
                                             child: Text(
-                                              _isSummarizing ? 'Regenerating...' : 'Regenerate ↻',
+                                              'EchoSphere Qwen AI Summary',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.amber.shade700,
-                                                fontWeight: FontWeight.w600,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.amber,
                                               ),
                                             ),
                                           ),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  Clipboard.setData(ClipboardData(text: _aiSummary!));
+                                                  snackBar('Summary copied to clipboard');
+                                                },
+                                                borderRadius: BorderRadius.circular(4),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(4.0),
+                                                  child: Icon(
+                                                    Icons.copy_rounded,
+                                                    size: 14,
+                                                    color: Colors.amber.shade700,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              InkWell(
+                                                onTap: _isSummarizing ? null : _generateAiSummary,
+                                                child: Text(
+                                                  _isSummarizing ? 'Regenerating...' : 'Regenerate ↻',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.amber.shade700,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 6),
                                       Text(
                                         _aiSummary!,
                                         style: TextStyle(
                                           fontSize: 13,
+                                          height: 1.4,
                                           color: theme.colorScheme.onSurface.withOpacity(0.9),
                                         ),
                                       ),
@@ -323,7 +354,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        'Summarize this notice with EchoSphere AI',
+                                        'Summarize this notice with trained Qwen model',
                                         style: TextStyle(
                                           fontSize: 11.5,
                                           color: theme.colorScheme.onSurface.withOpacity(0.65),
