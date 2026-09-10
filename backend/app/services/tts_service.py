@@ -72,14 +72,45 @@ def clean_text_for_speech(text: str) -> str:
     return cleaned
 
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "edge_tts").lower()
+TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
+KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
+
+_kokoro_pipeline = None
+_kokoro_lock = None
+
+
+def get_kokoro_pipeline():
+    """Returns a thread-safe cached Kokoro-82M pipeline instance for ultra-fast offline synthesis."""
+    global _kokoro_pipeline, _kokoro_lock
+    if _kokoro_lock is None:
+        import threading
+        _kokoro_lock = threading.Lock()
+    with _kokoro_lock:
+        if _kokoro_pipeline is None:
+            try:
+                from kokoro import KPipeline
+                _kokoro_pipeline = KPipeline(lang_code=KOKORO_LANG, repo_id="hexgrad/Kokoro-82M")
+                logger.info("Initialized and cached Kokoro-82M offline neural TTS pipeline.")
+            except Exception as e:
+                logger.debug(f"Kokoro initialization error: {e}")
+                return None
+        return _kokoro_pipeline
+
+
+def is_kokoro_available() -> bool:
+    """Check whether Kokoro-82M offline neural TTS is installed and operational."""
+    try:
+        pipeline = get_kokoro_pipeline()
+        return pipeline is not None
+    except Exception:
+        return False
 
 
 def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     """
     Synchronously generates text-to-speech audio stream for a given announcement ID.
-    Cleans markdown formatting and attempts Kokoro-82M, Edge-TTS, and gTTS with robust fallback.
+    Cleans markdown formatting and attempts Kokoro-82M (100% offline neural), Edge-TTS, and gTTS with robust fallback.
     """
     ensure_audio_dir_exists()
     mp3_filename = f"announcement_{announcement_id}.mp3"
@@ -91,30 +122,29 @@ def generate_announcement_audio_sync(announcement_id: int, text: str) -> dict:
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # 1. Try Kokoro-82M if configured or preferred
-    if TTS_ENGINE == "kokoro":
+    # 1. Try Kokoro-82M (100% Offline Neural Speech Synthesis)
+    if TTS_ENGINE in ["kokoro", "auto", "offline"]:
         try:
-            import importlib
-            kokoro = importlib.import_module("kokoro")
-            sf = importlib.import_module("soundfile")
-            np = importlib.import_module("numpy")
-            KPipeline = getattr(kokoro, "KPipeline")
+            pipeline = get_kokoro_pipeline()
+            if pipeline is not None:
+                import soundfile as sf
+                import numpy as np
 
-            pipeline = KPipeline(lang_code="a")
-            generator = pipeline(speech_text, voice=KOKORO_VOICE, speed=1.0)
-            audio_segments = []
-            for gs, ps, audio in generator:
-                audio_segments.append(audio)
-            if audio_segments:
-                combined = np.concatenate(audio_segments)
-                sf.write(wav_filepath, combined, 24000)
-                logger.info(f"Kokoro-82M neural audio stream generated successfully: {wav_filepath}")
-                return {
-                    "file_name": wav_filename,
-                    "file_path": wav_filepath,
-                    "url_path": f"/static/audio_streams/{wav_filename}",
-                    "type": "wav",
-                }
+                generator = pipeline(speech_text, voice=KOKORO_VOICE, speed=1.0)
+                audio_segments = [audio for gs, ps, audio in generator]
+                if audio_segments:
+                    combined = np.concatenate(audio_segments)
+                    sf.write(wav_filepath, combined, 24000)
+                    duration = round(len(combined) / 24000.0, 2)
+                    logger.info(f"Kokoro-82M offline neural audio generated successfully ({duration}s): {wav_filepath}")
+                    return {
+                        "file_name": wav_filename,
+                        "file_path": wav_filepath,
+                        "url_path": f"/static/audio_streams/{wav_filename}",
+                        "type": "wav",
+                        "engine": "Kokoro-82M (100% Offline Neural)",
+                        "duration_sec": duration
+                    }
         except Exception as k_err:
             logger.debug(f"Kokoro-82M attempt skipped/failed: {k_err}. Falling back to Edge-TTS.")
 
