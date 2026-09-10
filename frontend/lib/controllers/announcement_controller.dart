@@ -12,6 +12,7 @@ class AnnouncementModel {
   final String emergencyLevel;
   final String status; // DRAFT, SUBMITTED, APPROVED, REJECTED, PUBLISHED, ARCHIVED, SCHEDULED
   final String creatorName;
+  final String creatorRole;
   final String department;
   final String targetAudience;
   final String category;
@@ -34,6 +35,7 @@ class AnnouncementModel {
     required this.emergencyLevel,
     required this.status,
     required this.creatorName,
+    this.creatorRole = 'Faculty / Official',
     required this.department,
     this.targetAudience = 'Entire College',
     required this.category,
@@ -70,7 +72,9 @@ class AnnouncementModel {
       emergencyLevel: json['emergency_level'] ?? 'NORMAL',
       status: json['status'] ?? 'PUBLISHED',
       creatorName: json['creator_name'] ?? 'Faculty',
+      creatorRole: json['creator_role'] ?? json['creator_designation'] ?? json['designation'] ?? json['role'] ?? 'Faculty / Official',
       department: json['department_name'] ?? 'AIML',
+
       targetAudience: json['target_audience'] ?? 'Entire College',
       category: json['category_name'] ?? catName,
       createdAt: json['created_at'] != null

@@ -1,7 +1,7 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -227,21 +227,12 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                           text: isTeacher ? 'My Notice Status' : 'Approval Queue',
                           size: 16,
                           variant: TextVariant.bold,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (isApproverRole) ...[
-                        IconButton(
-                          icon: Icon(Icons.podcasts_rounded, size: 20, color: theme.colorScheme.primary),
-                          tooltip: 'Smart Speaker System',
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
+
+
                   const SizedBox(height: 6),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
