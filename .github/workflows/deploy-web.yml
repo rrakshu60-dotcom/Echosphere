@@ -1,0 +1,75 @@
+name: EchoSphere Web Deploy (Cloudflare Pages)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - 'wrangler.json'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy-web:
+    name: Deploy Web to Cloudflare Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: 'Production'
+      url: https://echosphere-2jf.pages.dev/
+    steps:
+      - name: Shallow Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Stabilize Network (Force IPv4 & Configure cURL Retries)
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 || true
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 || true
+          echo "--retry 5 --retry-delay 3 --retry-all-errors" >> ~/.curlrc
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Precache Web Engine Only
+        run: flutter precache --web
+
+      - name: Cache Pub Dependencies & Dart Tool
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            frontend/.dart_tool
+          key: flutter-cache-web-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: |
+            flutter-cache-web-${{ runner.os }}-
+
+      - name: Build Flutter Web & Copy Cloudflare Rules
+        run: |
+          cd frontend
+          flutter pub get
+          flutter build web --release --no-pub --no-wasm-dry-run --base-href / --pwa-strategy=none --dart-define=ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1
+          cp web/_redirects build/web/_redirects || true
+          cp web/_headers build/web/_headers || true
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/build/web --project-name=echosphere --branch=main --commit-dirty=true
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
