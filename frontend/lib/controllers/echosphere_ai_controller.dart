@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/copilot_client.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
@@ -14,6 +15,7 @@ class AiChatMessage {
   final String? navigationTarget;
   final List<Map<String, dynamic>> matchedAnnouncements;
   final String? modelUsed;
+  final Map<String, dynamic>? copilotAction;
 
   AiChatMessage({
     required this.text,
@@ -25,6 +27,7 @@ class AiChatMessage {
     this.navigationTarget,
     this.matchedAnnouncements = const [],
     this.modelUsed,
+    this.copilotAction,
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
@@ -43,11 +46,7 @@ class EchosphereAiController extends GetxController {
 
     messages.add(
       AiChatMessage(
-        text:
-            'Hello $name! I am the **EchoSphere Campus AI Assistant**.\n\n'
-            'I am tuned to your institutional context as **$role** in the **$dept Department**.\n\n'
-            'You can ask me about active circulars, semester exam timetables, placement drive eligibility, '
-            'attendance rules (75% policy), library hours, or app settings.',
+        text: 'Hello $name! How can I help you today?',
         isUser: false,
         categoryBadge: 'EchoSphere AI',
         contextBadge: '$role • $dept Department',
@@ -59,8 +58,12 @@ class EchosphereAiController extends GetxController {
 
   String sanitizeClientMarkdown(String text) {
     var cleaned = text;
-    // Strip [[ACTION:...]] tags from visible bubble
-    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[^\]]+\]\]'), '');
+    // Strip [[ACTION:...]] tags completely from visible bubble
+    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[\s\S]*?\]\]'), '');
+    // Strip patronizing phrasing
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Feel free to ask about[^\.\n]*\.?', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Ask me about recent circulars[^\.\n]*\.?', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Ask me about[^\.\n]*\.?', caseSensitive: false), '');
     // Fix dollar-prefixed headers (##$ or ###$)
     cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$([a-zA-Z0-9_]+)', multiLine: true), (m) => '${m[1]} ${m[2]}');
     cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$', multiLine: true), (m) => '${m[1]} ');
@@ -70,6 +73,11 @@ class EchosphereAiController extends GetxController {
     cleaned = cleaned.replaceAllMapped(RegExp(r'\*{3}([^\*\n]+)\*{3}'), (m) => '**${m[1]}**');
     cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*\*{3}[ \t]*', multiLine: true), '');
     cleaned = cleaned.replaceAll(RegExp(r'[ \t]*\*{3}[ \t]*$', multiLine: true), '');
+    // De-synthesize bolding in conversational greetings and roles
+    cleaned = cleaned.replaceAllMapped(RegExp(r'I am (?:the )?\*\*([^\*]+)\*\*'), (m) => 'I am ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'Hello,?\s*\*\*([^\*]+)\*\*'), (m) => 'Hello ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'as \*\*([^\*]+)\*\*'), (m) => 'as ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*\*(EchoSphere Campus AI Assistant|EchoSphere AI|EchoSphere|Dev Admin|College Admin|Principal|Teacher|Student|HoD)\*\*', caseSensitive: false), (m) => m[1] ?? '');
     // Space after **: or :** if immediately followed by text
     cleaned = cleaned.replaceAllMapped(RegExp(r'(:\*\*)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
     cleaned = cleaned.replaceAllMapped(RegExp(r'(\*\*:)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
@@ -96,18 +104,18 @@ class EchosphereAiController extends GetxController {
   }
 
   List<String> _getDefaultActionsForRole(String role, String dept) {
-    if (role == 'Student') {
+    if (role.toLowerCase() == 'student') {
       return [
         'Check $dept Exam Timetable',
-        'Placement Drive Eligibility',
-        'Attendance Regulations',
-        'Library Timings & Rules',
+        'Placement Drive Circulars',
+        'Ask an ML / Branch Question',
+        'Upcoming Hackathons & Events',
       ];
     } else {
       return [
         'Pending Approvals Status',
         'Draft New Circular',
-        'Emergency Weather Feed',
+        'Emergency Broadcast Feed',
         'Speaker Hardware Status',
       ];
     }
@@ -119,13 +127,13 @@ class EchosphereAiController extends GetxController {
     final role = user?.role ?? 'Student';
     final dept = user?.department ?? 'CSE';
 
-    if (role == 'Student') {
+    if (role.toLowerCase() == 'student') {
       return [
         {'label': 'Exam Schedule', 'prompt': 'What is the $dept exam and practical lab schedule?'},
-        {'label': 'Placement Eligibility', 'prompt': 'What is the minimum CGPA and eligibility for campus placements?'},
-        {'label': 'Attendance Rule', 'prompt': 'What is the minimum attendance required for exam hall tickets?'},
-        {'label': 'Library Hours', 'prompt': 'What are the central library timings and book borrowing rules?'},
-        {'label': 'Emergency Alerts', 'prompt': 'Are there any active weather emergency or holiday circulars?'},
+        {'label': 'Placement Circulars', 'prompt': 'What are the latest placement drives and eligibility criteria?'},
+        {'label': 'ML Coursework', 'prompt': 'Explain backpropagation in machine learning'},
+        {'label': 'App Guide', 'prompt': 'How do I bookmark circulars and switch to dark mode?'},
+        {'label': 'Events & Hackathons', 'prompt': 'Are there any upcoming hackathons or technical events?'},
       ];
     } else {
       return [
@@ -179,19 +187,44 @@ class EchosphereAiController extends GetxController {
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
       final modelUsed = apiRes['model_used'] as String? ?? 'EchoSphere AI';
 
-      // Execute CopilotKit / Gemma action if returned by the backend
-      final copilotAction = apiRes['copilot_action'];
-      if (copilotAction is Map<String, dynamic>) {
-        CopilotClient().executeAction(copilotAction);
-      } else if (navTarget != null && navTarget.isNotEmpty) {
+      // Parse CopilotKit / Gemma action from API response or embedded tags
+      Map<String, dynamic>? copilotAction;
+      final rawAction = apiRes['copilot_action'];
+      if (rawAction is Map<String, dynamic>) {
+        copilotAction = Map<String, dynamic>.from(rawAction);
+      } else {
+        // Fallback: extract from raw response text if model emitted [[ACTION:name:{...}]]
+        final actionMatch = RegExp(r'\[\[ACTION:([a-zA-Z0-9_]+):(\{[\s\S]*?\}|[a-zA-Z0-9_:]+)\]\]').firstMatch(rawResponse);
+        if (actionMatch != null) {
+          try {
+            final actName = actionMatch.group(1);
+            final paramStr = actionMatch.group(2)!;
+            if (paramStr.startsWith('{')) {
+              final params = jsonDecode(paramStr);
+              copilotAction = {'action': actName, 'parameters': params};
+            } else {
+              copilotAction = {'action': actName, 'parameters': {'screen': paramStr}};
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (copilotAction == null && navTarget != null && navTarget.isNotEmpty) {
         if (navTarget.contains('speaker')) {
-          CopilotClient().executeAction({'action': 'navigate', 'parameters': {'screen': 'speaker_queue'}});
+          copilotAction = {'action': 'navigate', 'parameters': {'screen': 'speaker_queue'}};
         } else if (navTarget.contains('filter:')) {
           final cat = navTarget.split(':').last;
-          CopilotClient().executeAction({'action': 'navigate', 'parameters': {'screen': 'notices', 'filter_category': cat}});
+          copilotAction = {'action': 'navigate', 'parameters': {'screen': 'notices', 'filter_category': cat}};
         } else if (navTarget.contains('create_notice')) {
-          CopilotClient().executeAction({'action': 'create_announcement_draft', 'parameters': {}});
+          copilotAction = {'action': 'create_announcement_draft', 'parameters': {}};
+        } else if (navTarget.contains('profile') || navTarget.contains('preference') || navTarget.contains('security')) {
+          copilotAction = {'action': 'navigate', 'parameters': {'screen': 'profile'}};
         }
+      }
+
+      // Automatically execute immediate visual actions like theme toggling
+      if (copilotAction != null && copilotAction['action'] == 'toggle_theme') {
+        CopilotClient().executeAction(copilotAction);
       }
 
       messages.add(AiChatMessage(
@@ -203,6 +236,7 @@ class EchosphereAiController extends GetxController {
         navigationTarget: navTarget,
         matchedAnnouncements: matchedList,
         modelUsed: modelUsed,
+        copilotAction: copilotAction,
       ));
     } catch (_) {
       // High-intelligence local fallback grounded in campus knowledge
@@ -290,20 +324,19 @@ class EchosphereAiController extends GetxController {
   String _generateFallbackResponse(String input, String role, String dept, String name, [String? usnOrEmpId]) {
     final q = input.toLowerCase();
 
+    // Direct, polite refusal for non-permitted student prompts
+    if (role.toLowerCase() == 'student' &&
+        (q.contains('joke') || q.contains('movie') || q.contains('song') || q.contains('game') ||
+         q.contains('cricket') || q.contains('dating') || q.contains('recipe') || q.contains('funny'))) {
+      return "Sorry, I'm not allowed to do that.";
+    }
+
     if (q.contains('who r u') || q.contains('who are you') || q.contains('what is your name') || q.contains('identify')) {
-      return 'I am the **EchoSphere Campus AI Assistant**, your official college knowledge companion.\n\n'
-          'I am customized for **$name** as a **$role** in the **$dept Department**.\n\n'
-          '**How I can assist you:**\n'
-          '- **Announcements & Circulars:** Search official circulars and verified departmental notices.\n'
-          '- **Exams & Hall Tickets:** Retrieve theory and practical schedules, reporting times, and regulations.\n'
-          '- **Placement Cell Guidance:** Check company drives, eligibility thresholds (CGPA >= 7.0), and deadlines.\n'
-          '- **Academic Rules:** Look up the 75% minimum attendance requirement, medical condonation, and grading.\n'
-          '- **Campus Facilities:** Library hours (8 AM - 8 PM), hostel curfew (9 PM), canteen, and bus routes.';
+      return 'I am the EchoSphere AI Assistant, your campus and academic companion. How can I help you today?';
     }
 
     if (q.startsWith('hi') || q.startsWith('hello') || q.startsWith('hey') || q.startsWith('good morning') || q.startsWith('good afternoon')) {
-      return 'Hello $name! I am active and tuned to your context in the **$dept Department** ($role).\n\n'
-          'How can I help you today? Ask me about recent circulars, exam timetables, placement drives, attendance rules, or settings.';
+      return 'Hello $name! How can I help you today?';
     }
 
     if (q.contains('thank') || q.contains('thanks') || q.contains('awesome') || q.contains('great')) {

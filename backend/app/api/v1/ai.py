@@ -21,7 +21,7 @@ from app.schemas.ai_schema import (
 from app.core.dependencies import require_roles
 from app.models.user import User
 from app.services.ai_service import AIService
-from app.services.campus_ml_engine import CampusMLEngine
+from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 
 router = APIRouter(prefix="/ai", tags=["EchoSphere AI"])
 

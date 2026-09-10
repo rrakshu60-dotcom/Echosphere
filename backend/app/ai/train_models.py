@@ -11,7 +11,7 @@ backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from app.services.campus_ml_engine import CampusMLEngine, INTENT_TRAINING_DATA
+from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine, INTENT_TRAINING_DATA
 
 def main():
     print("=" * 60)
@@ -32,10 +32,11 @@ def main():
         ("Are classes cancelled tomorrow because of cyclone rain?", "EMERGENCY_ALERT"),
         ("What companies are coming for placements and what is the CGPA required?", "PLACEMENT_DRIVE"),
         ("Where can I find the CSE department head?", "FACULTY_DEPARTMENT"),
-        ("What are the library opening and closing hours?", "CAMPUS_FACILITIES"),
+        ("Upcoming college hackathon and coding contest?", "EVENTS_HACKATHONS"),
         ("How do I turn on dark mode in the profile settings?", "APP_NAVIGATION"),
         ("How to create an announcement circular for approval?", "NOTICE_CREATION"),
-        ("Is 75 percent attendance strictly required for hall ticket?", "ACADEMIC_POLICIES"),
+        ("Explain backpropagation algorithm in machine learning", "BRANCH_STUDIES"),
+        ("Tell me a funny joke or riddle", "STUDENT_CHITCHAT_REFUSAL"),
         ("Hello, who are you?", "CONVERSATIONAL"),
     ]
 

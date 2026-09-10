@@ -359,7 +359,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
 
                 // 4. Log Out Action Button
                 EchoSphereButton(

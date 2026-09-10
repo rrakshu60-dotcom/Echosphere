@@ -7,6 +7,7 @@ import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/home_page.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
+import 'package:anymex/services/copilot_client.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
@@ -341,14 +342,24 @@ class _EchosphereAiState extends State<EchosphereAi> {
 
   String _cleanDisplayMarkdown(String text) {
     var cleaned = text;
-    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[^\]]+\]\]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\[\[ACTION:[\s\S]*?\]\]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Feel free to ask about[^\.\n]*\.?', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Ask me about recent circulars[^\.\n]*\.?', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s*Ask me about[^\.\n]*\.?', caseSensitive: false), '');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*///+[ \t]*', multiLine: true), '');
+    cleaned = cleaned.replaceAll(RegExp(r'///+'), '');
     cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$([a-zA-Z0-9_]+)', multiLine: true), (m) => '${m[1]} ${m[2]}');
     cleaned = cleaned.replaceAllMapped(RegExp(r'^(#{1,6})\s*\$', multiLine: true), (m) => '${m[1]} ');
     cleaned = cleaned.replaceAll(RegExp(r'\*{4,}'), '**');
-    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*(\*{3,}|-{3,}|_{3,}|={3,})[ \t]*$', multiLine: true), '\n');
+    cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*(-{3,}|\*{3,}|_{3,}|={3,})[ \t]*$', multiLine: true), '\n');
+    cleaned = cleaned.replaceAll(RegExp(r'\n[ \t]*-{3,}[ \t]*\n'), '\n\n');
     cleaned = cleaned.replaceAllMapped(RegExp(r'\*{3}([^\*\n]+)\*{3}'), (m) => '**${m[1]}**');
     cleaned = cleaned.replaceAll(RegExp(r'^[ \t]*\*{3}[ \t]*', multiLine: true), '');
     cleaned = cleaned.replaceAll(RegExp(r'[ \t]*\*{3}[ \t]*$', multiLine: true), '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'I am (?:the )?\*\*([^\*]+)\*\*'), (m) => 'I am ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'Hello,?\s*\*\*([^\*]+)\*\*'), (m) => 'Hello ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'as \*\*([^\*]+)\*\*'), (m) => 'as ${m[1]}');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*\*(EchoSphere Campus AI Assistant|EchoSphere AI|EchoSphere|Dev Admin|College Admin|Principal|Teacher|Student|HoD)\*\*', caseSensitive: false), (m) => m[1] ?? '');
     cleaned = cleaned.replaceAllMapped(RegExp(r'(\*\*:)([^\s\n])'), (m) => '${m[1]} ${m[2]}');
     return cleaned.trim();
   }
@@ -484,6 +495,10 @@ class _EchosphereAiState extends State<EchosphereAi> {
                     ),
                   ),
 
+                  // Interactive Action Card (Claude / ChatGPT Style)
+                  if (!isUser && msg.copilotAction != null)
+                    _buildInteractiveActionCard(msg, theme),
+
                   // Matched DB Announcements Attachment Cards (Clickable)
                   if (!isUser && msg.matchedAnnouncements.isNotEmpty) ...[
                     const SizedBox(height: 14),
@@ -578,6 +593,202 @@ class _EchosphereAiState extends State<EchosphereAi> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInteractiveActionCard(AiChatMessage msg, ThemeData theme) {
+    final action = msg.copilotAction;
+    if (action == null) return const SizedBox.shrink();
+
+    final actionName = action['action'] as String? ?? 'action';
+    final params = Map<String, dynamic>.from(action['parameters'] ?? {});
+
+    IconData iconData = Icons.auto_awesome_rounded;
+    Color accentColor = theme.colorScheme.primary;
+    String title = 'Action Ready';
+    String description = '';
+    String buttonText = 'Open Screen ➔';
+
+    if (actionName == 'navigate') {
+      final screen = (params['screen'] as String? ?? 'notices').toLowerCase();
+      final cat = params['filter_category'] as String?;
+      final dept = params['filter_dept'] as String?;
+      final section = params['section'] as String?;
+
+      if (screen.contains('speaker')) {
+        iconData = Icons.volume_up_rounded;
+        accentColor = Colors.orange;
+        title = 'Speaker Audio Queue';
+        description = 'Corridor broadcast nodes & audio queue';
+        buttonText = 'Open Speaker Queue ➔';
+      } else if (screen.contains('preference') || screen.contains('profile') || screen.contains('security') || screen.contains('smart_notes') || screen.contains('setting')) {
+        iconData = Icons.tune_rounded;
+        accentColor = Colors.teal;
+        final secName = section != null ? section.replaceAll('_', ' ') : 'Preferences';
+        title = 'Preferences • ${secName.toUpperCase()}';
+        description = 'Profile, credentials, and app preferences';
+        buttonText = 'Open Preferences ➔';
+      } else if (cat != null && cat.isNotEmpty) {
+        iconData = Icons.filter_alt_rounded;
+        accentColor = Colors.indigoAccent;
+        title = '$cat Circulars';
+        description = 'Department notices matching $cat';
+        buttonText = 'View Circulars ➔';
+      } else if (dept != null && dept.isNotEmpty) {
+        iconData = Icons.apartment_rounded;
+        accentColor = Colors.deepPurpleAccent;
+        title = '$dept Department Notices';
+        description = 'Filtered departmental circulars';
+        buttonText = 'View Notices ➔';
+      } else if (screen.contains('approval')) {
+        iconData = Icons.verified_user_rounded;
+        accentColor = Colors.green;
+        title = 'Announcement Approvals';
+        description = 'Review pending broadcast circulars';
+        buttonText = 'Review Approvals ➔';
+      } else {
+        iconData = Icons.explore_rounded;
+        accentColor = theme.colorScheme.primary;
+        title = 'Navigate to ${screen.replaceAll('_', ' ')}';
+        description = 'Quick access screen link';
+        buttonText = 'Open Screen ➔';
+      }
+    } else if (actionName == 'toggle_theme') {
+      final mode = (params['mode'] as String? ?? 'toggle').toLowerCase();
+      iconData = mode == 'dark' ? Icons.dark_mode_rounded : Icons.light_mode_rounded;
+      accentColor = mode == 'dark' ? Colors.amber : Colors.blue;
+      title = 'Appearance Customization';
+      description = 'Switched app display to ${mode == 'dark' ? 'Dark' : 'Light'} Mode';
+      buttonText = 'Apply Theme';
+    } else if (actionName == 'create_announcement_draft') {
+      iconData = Icons.edit_note_rounded;
+      accentColor = Colors.green;
+      title = 'Draft Announcement';
+      description = 'Open verified circular publishing studio';
+      buttonText = 'Open Composer ➔';
+    } else if (actionName == 'control_speaker_queue') {
+      iconData = Icons.speaker_group_rounded;
+      accentColor = Colors.orange;
+      title = 'Speaker Hardware Command';
+      description = 'Dispatch hardware control to corridor nodes';
+      buttonText = 'Dispatch Command';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12.0),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: accentColor.withOpacity(0.35),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7.0),
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(iconData, color: accentColor, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: accentColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'ACTION',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: accentColor,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withOpacity(0.65),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  CopilotClient().executeAction(action);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        buttonText,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

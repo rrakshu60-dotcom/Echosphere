@@ -17,6 +17,7 @@ import 'package:anymex/screens/admin/announcement_management_page.dart';
 import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/notifications/notifications_page.dart';
 import 'package:anymex/screens/profile/profile_page.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/utils/external_font_loader.dart';
 import 'package:anymex/utils/logger.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_splash_screen.dart';
@@ -27,6 +28,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -66,6 +68,10 @@ Future<void> safeCall(FutureOr<void> Function() function,
 void main(List<String> args) async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    await safeCall(() async {
+      await dotenv.load(fileName: ".env");
+    }, errorMessage: 'Failed to load .env configuration');
 
     await safeCall(() async {
       await Supabase.initialize(
@@ -144,8 +150,10 @@ void main(List<String> args) async {
   ));
 }
 
+
 void _initializeGetxController() async {
-  await safeCall(() {
+  await safeCall(() async {
+    await EchosphereApiService().loadSavedBaseUrl();
     Get.put(Settings());
     Get.put(AuthController(), permanent: true);
     Get.put(AnnouncementController(), permanent: true);
@@ -153,6 +161,7 @@ void _initializeGetxController() async {
     Get.put(GreetingController());
   }, errorMessage: 'Failed to register GetX controllers');
 }
+
 
 class RootWrapper extends StatefulWidget {
   const RootWrapper({super.key});

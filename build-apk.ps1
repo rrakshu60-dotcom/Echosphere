@@ -1,7 +1,8 @@
 # EchoSphere Fast Local APK Builder
 # Builds compact release APK (~15-20 MB) for modern Android phones in ~30 seconds
 param(
-    [switch]$InstallToDevice
+    [switch]$InstallToDevice,
+    [switch]$Bundle
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,18 @@ if (Test-Path $apkPath) {
     Copy-Item $apkPath $targetPath -Force
     $sizeMB = [math]::Round((Get-Item $targetPath).Length / 1MB, 1)
     Write-Host "  [2/2] Ready: $targetPath ($sizeMB MB)" -ForegroundColor Green
+}
+
+if ($Bundle) {
+    Write-Host "  Building Google Play Android App Bundle (.aab)..." -ForegroundColor Yellow
+    flutter build appbundle --release --no-pub --android-skip-build-dependency-validation
+    $aabPath = "$root\frontend\build\app\outputs\bundle\release\app-release.aab"
+    $targetAabPath = "$root\echosphere-app.aab"
+    if (Test-Path $aabPath) {
+        Copy-Item $aabPath $targetAabPath -Force
+        $aabSizeMB = [math]::Round((Get-Item $targetAabPath).Length / 1MB, 1)
+        Write-Host "  Google Play Bundle Ready: $targetAabPath ($aabSizeMB MB)" -ForegroundColor Green
+    }
 }
 
 if ($InstallToDevice) {
