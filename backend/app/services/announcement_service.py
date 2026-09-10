@@ -201,25 +201,25 @@ def create_announcement_service(
         current_user=current_user,
     )
 
-    if created_announcement.status == AnnouncementStatus.PUBLISHED:
+    if created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
         p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
         is_emerg = (p_val == "EMERGENCY")
-        if deliver_speaker or is_emerg:
-            try:
-                from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
-                dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
-                enqueue_and_broadcast_announcement(
-                    db=db,
-                    announcement_id=created_announcement.id,
-                    title=created_announcement.title,
-                    content=created_announcement.description,
-                    department_code=dept_code,
-                    zone="College-Wide",
-                    is_emergency=is_emerg,
-                    speaker_node_id=getattr(request, 'speaker_node_id', None),
-                )
-            except Exception as e:
-                logger.warning(f"Auto-broadcast error on announcement creation: {e}")
+        try:
+            from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+            dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=created_announcement.id,
+                title=created_announcement.title,
+                content=created_announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=is_emerg,
+                speaker_node_id=getattr(request, 'speaker_node_id', None),
+                scheduled_time=created_announcement.scheduled_at,
+            )
+        except Exception as e:
+            logger.warning(f"Auto-broadcast error on announcement creation: {e}")
 
     return created_announcement
 

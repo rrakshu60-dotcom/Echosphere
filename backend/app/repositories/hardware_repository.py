@@ -14,8 +14,9 @@ def create_speaker_node(db: Session, node_in: SpeakerNodeCreate) -> SpeakerNode:
         ip_address=node_in.ip_address,
         department_id=node_in.department_id,
         zone=node_in.zone,
-        volume=node_in.volume,
-        status="ONLINE" if node_in.ip_address else "OFFLINE",
+        volume=node_in.volume if node_in.volume is not None else 85,
+        status="ONLINE",
+        is_active=True,
         last_heartbeat=datetime.utcnow(),
     )
     db.add(node)
