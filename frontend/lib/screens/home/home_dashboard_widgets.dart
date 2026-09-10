@@ -1,9 +1,12 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
@@ -493,7 +496,9 @@ class _PriorityCard extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 // Enhanced Announcement Feed Card — With priority bar & attachment indicator
 // ────────────────────────────────────────────────────────────────────────────
-class AnnouncementFeedCard extends StatelessWidget {
+// Enhanced Announcement Feed Card — With priority bar, AI Summarizer & Kokoro TTS
+// ────────────────────────────────────────────────────────────────────────────
+class AnnouncementFeedCard extends StatefulWidget {
   final AnnouncementModel notice;
   final int index;
 
@@ -502,6 +507,68 @@ class AnnouncementFeedCard extends StatelessWidget {
     required this.notice,
     required this.index,
   });
+
+  @override
+  State<AnnouncementFeedCard> createState() => _AnnouncementFeedCardState();
+}
+
+class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
+  String? _aiSummary;
+  bool _isSummarizing = false;
+  bool _showSummary = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _aiSummary = widget.notice.aiSummary;
+    _showSummary = widget.notice.aiSummary != null && widget.notice.aiSummary!.isNotEmpty;
+  }
+
+  @override
+  void didUpdateWidget(covariant AnnouncementFeedCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.notice.aiSummary != oldWidget.notice.aiSummary && widget.notice.aiSummary != null) {
+      setState(() {
+        _aiSummary = widget.notice.aiSummary;
+        if (_aiSummary!.isNotEmpty) _showSummary = true;
+      });
+    }
+  }
+
+  Future<void> _handleSummarizeTap() async {
+    // If summary already exists in state, toggle display
+    if (_aiSummary != null && _aiSummary!.isNotEmpty) {
+      setState(() {
+        _showSummary = !_showSummary;
+      });
+      return;
+    }
+
+    // Generate fresh summary using trained Qwen 2.5 3B local model via backend
+    setState(() => _isSummarizing = true);
+    try {
+      final summary = await EchosphereApiService().summarizeContent(widget.notice.description);
+      if (mounted) {
+        setState(() {
+          _aiSummary = summary;
+          _showSummary = true;
+          _isSummarizing = false;
+        });
+
+        // Sync with AnnouncementController in memory
+        if (Get.isRegistered<AnnouncementController>()) {
+          Get.find<AnnouncementController>().updateAnnouncementSummary(widget.notice.id, summary);
+        }
+
+        snackBar('✨ AI Summary generated with Qwen model!');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSummarizing = false);
+        snackBar('Failed to generate summary: $e');
+      }
+    }
+  }
 
   Color _getPriorityColor(String priority) {
     switch (priority.toUpperCase()) {
@@ -531,12 +598,12 @@ class AnnouncementFeedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pColor = _getPriorityColor(notice.priority);
+    final pColor = _getPriorityColor(widget.notice.priority);
 
     return RepaintBoundary(
         child: TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 300 + (index * 60).clamp(0, 300)),
+      duration: Duration(milliseconds: 300 + (widget.index * 60).clamp(0, 300)),
       curve: Curves.easeOutCubic,
       builder: (context, value, child) => Opacity(
         opacity: value,
@@ -550,7 +617,7 @@ class AnnouncementFeedCard extends StatelessWidget {
         child: InkWell(
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => AnnouncementDetailPage(announcement: notice),
+              builder: (_) => AnnouncementDetailPage(announcement: widget.notice),
             ),
           ),
           borderRadius: BorderRadius.circular(16),
@@ -567,7 +634,7 @@ class AnnouncementFeedCard extends StatelessWidget {
                   alignment: WrapAlignment.spaceBetween,
                   children: [
                     EchoSphereChip(
-                      label: notice.category,
+                      label: widget.notice.category,
                       isSelected: true,
                       onSelected: (_) {},
                       showCheck: false,
@@ -581,7 +648,7 @@ class AnnouncementFeedCard extends StatelessWidget {
                         border: Border.all(color: pColor.withOpacity(0.25)),
                       ),
                       child: Text(
-                        notice.priority,
+                        widget.notice.priority,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -590,7 +657,7 @@ class AnnouncementFeedCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      _timeAgo(notice.createdAt),
+                      _timeAgo(widget.notice.createdAt),
                       style: TextStyle(
                         fontSize: 11,
                         color: theme.colorScheme.onSurface.withOpacity(0.5),
@@ -602,7 +669,7 @@ class AnnouncementFeedCard extends StatelessWidget {
 
                 // Title
                 Text(
-                  notice.title,
+                  widget.notice.title,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -613,7 +680,7 @@ class AnnouncementFeedCard extends StatelessWidget {
 
                 // Description preview
                 Text(
-                  notice.description,
+                  widget.notice.description,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -623,34 +690,77 @@ class AnnouncementFeedCard extends StatelessWidget {
                   ),
                 ),
 
-                // AI Summary badge
-                if (notice.aiSummary != null &&
-                    notice.aiSummary!.isNotEmpty) ...[
+                // Dedicated AI Summary Box (Generated by Fine-Tuned Qwen Model)
+                if (_showSummary && _aiSummary != null && _aiSummary!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.amber.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber.withOpacity(0.32)),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.auto_awesome,
-                            size: 14, color: Colors.amber),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            notice.aiSummary!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.3,
-                              color: Colors.amber.shade700,
-                              fontWeight: FontWeight.w500,
+                        Row(
+                          children: [
+                            const Icon(Icons.auto_awesome,
+                                size: 14, color: Colors.amber),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'EchoSphere Qwen AI Summary',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.2,
+                                  color: Colors.amber.shade700,
+                                ),
+                              ),
                             ),
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: _aiSummary!));
+                                snackBar('Summary copied to clipboard');
+                              },
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.all(3.0),
+                                child: Icon(
+                                  Icons.copy_rounded,
+                                  size: 13,
+                                  color: Colors.amber.shade700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () => setState(() => _showSummary = false),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.all(3.0),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 14,
+                                  color: Colors.amber.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _aiSummary!,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.4,
+                            color: theme.colorScheme.onSurface.withOpacity(0.88),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -659,7 +769,7 @@ class AnnouncementFeedCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 14),
 
-                // Footer: author + read more
+                // Author Row
                 Row(
                   children: [
                     Container(
@@ -677,7 +787,7 @@ class AnnouncementFeedCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${notice.creatorName} · ${notice.department}',
+                        '${widget.notice.creatorName} · ${widget.notice.department}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -687,13 +797,82 @@ class AnnouncementFeedCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Action Bar: Wrap to strictly guarantee ZERO layout overflow on Android down to 320px
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.spaceBetween,
+                  children: [
+                    // 1. Dedicated AI Summarizer Button (Text only, powered by trained model)
+                    InkWell(
+                      onTap: _isSummarizing ? null : _handleSummarizeTap,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _showSummary
+                              ? Colors.amber.withOpacity(0.18)
+                              : Colors.amber.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _showSummary
+                                ? Colors.amber.shade700
+                                : Colors.amber.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isSummarizing)
+                              const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Colors.amber,
+                                ),
+                              )
+                            else
+                              Icon(
+                                _showSummary
+                                    ? Icons.auto_awesome
+                                    : Icons.auto_awesome_outlined,
+                                size: 13,
+                                color: Colors.amber.shade700,
+                              ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _isSummarizing
+                                  ? 'Summarizing...'
+                                  : (_showSummary
+                                      ? 'Hide Summary'
+                                      : (_aiSummary != null && _aiSummary!.isNotEmpty
+                                          ? 'View Summary'
+                                          : 'AI Summarize')),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // 2. Neural Audio Playback (Listen via Kokoro TTS)
                     Obx(() {
                       final audio = TtsAudioService.instance;
-                      final isThisPlaying = audio.isAnnouncementPlaying(notice.id);
-                      final isThisBuffering = audio.isAnnouncementActive(notice.id) && audio.isBuffering.value;
+                      final isThisPlaying = audio.isAnnouncementPlaying(widget.notice.id);
+                      final isThisBuffering = audio.isAnnouncementActive(widget.notice.id) && audio.isBuffering.value;
                       return InkWell(
-                        onTap: () => audio.playAnnouncement(notice.id),
+                        onTap: () => audio.playAnnouncement(widget.notice.id),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -740,20 +919,29 @@ class AnnouncementFeedCard extends StatelessWidget {
                         ),
                       );
                     }),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
+
+                    // 3. Read Details Button
+                    InkWell(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AnnouncementDetailPage(announcement: widget.notice),
+                        ),
                       ),
-                      child: Text(
-                        'Read Details →',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Read Details →',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),

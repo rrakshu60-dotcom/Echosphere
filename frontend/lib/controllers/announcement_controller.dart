@@ -629,6 +629,35 @@ class AnnouncementController extends GetxController {
     return true;
   }
 
+  void updateAnnouncementSummary(int id, String summary) {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx != -1 && summary.isNotEmpty) {
+      final old = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = old.copyWith(aiSummary: summary);
+      _rawAnnouncements.refresh();
+      update();
+    }
+  }
+
+  Future<String?> generateSummaryForAnnouncement(int id) async {
+    final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    if (idx == -1) return null;
+    final notice = _rawAnnouncements[idx];
+    if (notice.aiSummary != null && notice.aiSummary!.isNotEmpty) {
+      return notice.aiSummary;
+    }
+    try {
+      final summary = await EchosphereApiService().summarizeContent(notice.description);
+      if (summary.isNotEmpty) {
+        updateAnnouncementSummary(id, summary);
+        return summary;
+      }
+    } catch (e) {
+      debugPrint('Error generating AI summary for notice $id: $e');
+    }
+    return null;
+  }
+
   Future<bool> archiveAnnouncement(int id, {String? reason}) async {
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {

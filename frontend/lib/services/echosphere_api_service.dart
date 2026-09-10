@@ -528,6 +528,16 @@ class EchosphereApiService {
     }
   }
 
+  Future<String> summarizeAnnouncement(int id) async {
+    try {
+      final response = await _dio.get('/announcements/$id/summary');
+      if (response.data != null && response.data['summary'] != null) {
+        return response.data['summary'] as String;
+      }
+    } catch (_) {}
+    return '';
+  }
+
   Future<Map<String, dynamic>> getAiStatus() async {
     try {
       final response = await _dio.get('/ai/status');
