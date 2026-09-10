@@ -1,4 +1,4 @@
-# pyright: reportMissingImports=false
+# pyright: reportMissingImports=false, reportOptionalMemberAccess=false, reportOptionalCall=false, reportPossiblyUnboundVariable=false, reportAttributeAccessIssue=false
 """
 EchoSphere Qwen 2.5 3B Local Inference & Adapter Verification Suite
 Tests:
@@ -12,6 +12,7 @@ Tests:
 import os
 import sys
 import time
+from typing import Any, Optional
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -39,6 +40,9 @@ def test_qwen_inference():
     # Check if live microservice is online
     import requests
     use_service = False
+    tokenizer: Any = None
+    model: Any = None
+
     try:
         hr = requests.get(f"{API_URL}/health", timeout=1.5)
         if hr.status_code == 200 and hr.json().get("status") == "ready":
@@ -61,9 +65,10 @@ def test_qwen_inference():
         print(f"  Loading Weights: {load_path}")
 
         t0 = time.time()
-        tokenizer = AutoTokenizer.from_pretrained(load_path, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        tok: Any = AutoTokenizer.from_pretrained(load_path, trust_remote_code=True)
+        tokenizer = tok
+        if tokenizer is not None and getattr(tokenizer, "pad_token", None) is None:
+            tokenizer.pad_token = getattr(tokenizer, "eos_token", None)
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -72,7 +77,7 @@ def test_qwen_inference():
             bnb_4bit_use_double_quant=True
         )
 
-        model = AutoModelForCausalLM.from_pretrained(
+        loaded_model: Any = AutoModelForCausalLM.from_pretrained(
             load_path,
             quantization_config=bnb_config,
             device_map="auto",
@@ -80,7 +85,9 @@ def test_qwen_inference():
             attn_implementation="sdpa",
             trust_remote_code=True
         )
-        model.eval()
+        model = loaded_model
+        if model is not None:
+            model.eval()
         load_time = round(time.time() - t0, 1)
         vram_used = round(torch.cuda.memory_allocated(0) / (1024**3), 2)
         print(f"  Standalone Model Ready in: {load_time}s (VRAM: {vram_used} GB)")
@@ -146,6 +153,11 @@ def test_qwen_inference():
             num_tokens = res_data.get("tokens_generated", len(response.split()))
             tps = res_data.get("tokens_per_sec", round(num_tokens / max(gen_time, 0.001), 1))
         else:
+            if tokenizer is None or model is None:
+                print("[ERROR] Local tokenizer and model must be initialized.")
+                all_passed = False
+                continue
+
             inputs = tokenizer(chatml, return_tensors="pt").to("cuda")
             with torch.no_grad():
                 output_ids = model.generate(
@@ -154,11 +166,11 @@ def test_qwen_inference():
                     temperature=0.3,
                     top_p=0.9,
                     do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id
+                    pad_token_id=getattr(tokenizer, "eos_token_id", None)
                 )
             gen_time = max(time.time() - t_gen, 0.001)
             new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
-            response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            response = str(tokenizer.decode(new_tokens, skip_special_tokens=True)).strip()
             num_tokens = len(new_tokens)
             tps = round(num_tokens / gen_time, 1)
 
