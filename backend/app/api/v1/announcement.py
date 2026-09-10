@@ -399,5 +399,29 @@ def get_announcement_summary_endpoint(
     }
 
 
+@router.get("/{announcement_id}/calendar-event")
+def get_announcement_calendar_event_endpoint(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Extracts dates, deadlines, and actionable calendar items from the announcement text using AI.
+    """
+    from app.repositories.announcement_repository import get_announcement_by_id
+    from app.services.ai_service import AIService
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if not notice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
+
+    event_data = AIService.extract_calendar_event(notice.title, notice.description)
+    return {
+        "status": "success",
+        "announcement_id": announcement_id,
+        "event": event_data,
+    }
+
+
+
 
 

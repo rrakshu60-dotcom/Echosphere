@@ -1,3 +1,4 @@
+import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -536,6 +537,24 @@ class EchosphereApiService {
       }
     } catch (_) {}
     return '';
+  }
+
+  Future<CalendarEventData?> getAnnouncementCalendarEvent(
+    int id, {
+    String title = '',
+    String content = '',
+  }) async {
+    try {
+      final response = await _dio.get('/announcements/$id/calendar-event');
+      if (response.data != null && response.data['event'] != null) {
+        return CalendarEventData.fromJson(response.data['event'] as Map<String, dynamic>);
+      }
+    } catch (_) {}
+
+    if (title.isNotEmpty || content.isNotEmpty) {
+      return CalendarSyncService.extractEventClientSide(title, content);
+    }
+    return null;
   }
 
   Future<Map<String, dynamic>> getAiStatus() async {

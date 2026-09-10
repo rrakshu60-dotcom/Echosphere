@@ -1,7 +1,9 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
@@ -516,6 +518,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   String? _aiSummary;
   bool _isSummarizing = false;
   bool _showSummary = false;
+  bool _isLoadingCalendar = false;
 
   @override
   void initState() {
@@ -567,6 +570,33 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
         setState(() => _isSummarizing = false);
         snackBar('Failed to generate summary: $e');
       }
+    }
+  }
+
+  Future<void> _handleCalendarTap() async {
+    setState(() => _isLoadingCalendar = true);
+    try {
+      CalendarEventData? ev;
+      if (Get.isRegistered<AnnouncementController>()) {
+        ev = await Get.find<AnnouncementController>().getOrFetchCalendarEvent(widget.notice);
+      } else {
+        ev = await EchosphereApiService().getAnnouncementCalendarEvent(
+          widget.notice.id,
+          title: widget.notice.title,
+          content: widget.notice.description,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _isLoadingCalendar = false);
+      if (ev != null && ev.hasEvent) {
+        showCalendarSyncSheet(context, ev);
+      } else {
+        snackBar('No upcoming deadline or event was detected in this notice.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingCalendar = false);
+      snackBar('Could not extract event: $e');
     }
   }
 
@@ -920,7 +950,53 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       );
                     }),
 
-                    // 3. Read Details Button
+                    // 3. Calendar Sync Button
+                    InkWell(
+                      onTap: _isLoadingCalendar ? null : _handleCalendarTap,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFF10B981).withOpacity(0.28),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isLoadingCalendar)
+                              const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Color(0xFF10B981),
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.calendar_month_outlined,
+                                size: 13,
+                                color: Color(0xFF10B981),
+                              ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isLoadingCalendar ? 'Syncing...' : 'Add to Calendar',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF059669),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // 4. Read Details Button
                     InkWell(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
