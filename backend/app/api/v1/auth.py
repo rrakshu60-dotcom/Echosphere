@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import (
@@ -75,6 +76,37 @@ def login_for_swagger(
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class RefreshTokenRequest(BaseModel):
+    token: str
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+)
+def refresh_token(
+    request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    from app.services.auth_service import refresh_token_service
+    try:
+        new_token, user = refresh_token_service(db=db, token=request.token)
+        return TokenResponse(
+            access_token=new_token,
+            token_type="bearer",
+            role=user.role.name if user.role else "Student",
+            user_id=user.id,
+            full_name=user.full_name,
+            official_email=user.official_email,
+            usn=user.usn,
+            employee_id=user.employee_id,
+            department_id=user.department_id,
+        )
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail=str(e))
+
 
 
 @router.get("/me")

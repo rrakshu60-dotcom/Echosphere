@@ -1,23 +1,23 @@
-name: EchoSphere Android Build
+name: EchoSphere Release Android APK
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'frontend/**'
-      - '.github/workflows/build-android.yml'
+      - '.github/workflows/release-android.yml'
   workflow_dispatch:
 
 concurrency:
-  group: build-android-${{ github.ref }}
+  group: release-android-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  build-android-apk:
-    name: Build & Release Android APK
+  build-and-release-apk:
+    name: Build & Publish Android APK to GitHub Releases
     runs-on: ubuntu-latest
     steps:
       - name: Shallow Checkout Code
@@ -64,19 +64,19 @@ jobs:
       - name: Install Dependencies
         run: cd frontend && flutter pub get
 
-      - name: Build Android Release APK (Arm64 Optimized - ~15-20 MB)
+      - name: Build Android Release APK (Arm64 - ~15 MB)
         run: cd frontend && flutter build apk --release --no-pub --target-platform android-arm64 --android-skip-build-dependency-validation
 
       - name: Copy & Rename APK
         run: cp frontend/build/app/outputs/flutter-apk/app-release.apk frontend/echosphere-app.apk
 
-      - name: Publish to GitHub Releases (Immediate Direct Download)
+      - name: Publish Direct to GitHub Releases (Unlimited Storage)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "EchoSphere Latest Build"
+          name: "EchoSphere Latest Release"
           body: |
-            ## EchoSphere Automated Build (Compact Release ~15-20 MB)
+            ## 🌐 EchoSphere Automated Build & Release
             
             ### 📱 Android Installation:
             Download **`echosphere-app.apk`** below directly to your Android device, open it, and tap **Install**.
@@ -85,10 +85,3 @@ jobs:
           files: frontend/echosphere-app.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Temporary APK Artifact (1-Day Retention)
-        uses: actions/upload-artifact@v4
-        with:
-          name: echosphere-android-apk
-          path: frontend/echosphere-app.apk
-          retention-days: 1
