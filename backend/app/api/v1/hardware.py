@@ -86,7 +86,7 @@ def list_speaker_nodes(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
+        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher", "Student")
     ),
 ):
     nodes = get_all_speaker_nodes(db=db, department_id=department_id, zone=zone, status=status)
@@ -408,7 +408,7 @@ def fetch_speaker_queue(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
+        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher", "Student")
     ),
 ):
     from app.services.hardware_speaker_service import auto_advance_speaker_queue
