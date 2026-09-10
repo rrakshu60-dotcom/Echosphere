@@ -370,54 +370,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
         child: Column(
           crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // Badges & Model Source Row
-            if (!isUser) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.smart_toy, size: 14, color: Colors.amber),
-                    const SizedBox(width: 4),
-                    Text(
-                      msg.categoryBadge ?? 'EchoSphere AI',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
-                    ),
-                  ],
-                ),
-                if (msg.contextBadge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      msg.contextBadge!,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                if (msg.modelUsed != null)
-                  Text(
-                    msg.modelUsed!,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurface.withOpacity(0.45),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-          ],
-
-          // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
+            // Message Body Container with Proper Markdown Rendering (Zero **** Artifacts)
           EchoSphereContainer(
             padding: const EdgeInsets.all(16.0),
             color: isUser
