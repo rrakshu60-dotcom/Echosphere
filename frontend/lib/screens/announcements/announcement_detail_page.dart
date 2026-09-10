@@ -51,7 +51,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         if (Get.isRegistered<AnnouncementController>()) {
           Get.find<AnnouncementController>().updateAnnouncementSummary(widget.announcement.id, summary);
         }
-        snackBar('✨ AI Summary generated with Qwen model!');
+        snackBar('✨ AI Summary generated!');
       }
     } catch (e) {
       if (mounted) {
@@ -275,7 +275,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                         children: [
                                           const Expanded(
                                             child: Text(
-                                              'EchoSphere Qwen AI Summary',
+                                              'AI Summary',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
@@ -354,7 +354,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        'Summarize this notice with trained Qwen model',
+                                        'Summarize this notice with AI',
                                         style: TextStyle(
                                           fontSize: 11.5,
                                           color: theme.colorScheme.onSurface.withOpacity(0.65),
