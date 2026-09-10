@@ -27,6 +27,10 @@ void snackBar(
   bool showCloseButton = false,
   bool showDurationAnimation = true,
 }) {
+  if (Get.testMode) {
+    debugPrint('[snackBar (testMode)]: ${title != null ? "$title: " : ""}$message');
+    return;
+  }
   final navigatorContext = Get.key.currentContext ?? Get.context;
   final theme = navigatorContext != null
       ? Theme.of(navigatorContext)

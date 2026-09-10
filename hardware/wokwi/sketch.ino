@@ -17,7 +17,7 @@ const char* SERVER_URL = "https://echosphere-backend-9lv8.onrender.com";
 String macAddress;
 String ipAddress;
 const String zoneName = "Block A - CSE Quad";
-const String deviceName = "Wokwi ESP32 Speaker Node #1";
+const String deviceName = "Wokwi ESP32 Speaker Node";
 
 WiFiClientSecure secureClient;
 
@@ -251,7 +251,7 @@ void setup() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        macAddress = WiFi.macAddress();
+        macAddress = "24:0A:C4:00:01:10";
         ipAddress = WiFi.localIP().toString();
         digitalWrite(LED_ONLINE_PIN, HIGH);
         Serial.println("\n✨ Wi-Fi Connected Successfully!");
@@ -264,7 +264,7 @@ void setup() {
         sendHeartbeat();
     } else {
         Serial.println("\n⚠️ Running in Standalone Simulation Mode");
-        macAddress = "24:0A:C4:00:11:22";
+        macAddress = "24:0A:C4:00:01:10";
         ipAddress = "10.0.1.15";
         digitalWrite(LED_ONLINE_PIN, HIGH);
         sendHeartbeat();
@@ -274,10 +274,10 @@ void setup() {
 unsigned long lastCycle = 0;
 
 void loop() {
-    // Ultra-low latency check: Polls every 400ms when connected!
-    if (millis() - lastCycle >= 400) {
+    // 3-second heartbeat cycle keeps node alive and checks for commands
+    if (millis() - lastCycle >= 3000) {
         sendHeartbeat();
         lastCycle = millis();
     }
-    delay(20);
+    delay(25);
 }
