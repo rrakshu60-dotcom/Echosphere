@@ -30,11 +30,16 @@ Write-Host ""
 
 $filesToUpload = @()
 
+Set-Location "$root\frontend"
+Write-Host "  [0/3] Syncing Flutter dependencies..." -ForegroundColor Yellow
+flutter pub get
+
 # 1. Build Android APK
 if (-not $SkipAndroid) {
     Write-Host "  [1/3] Building Android Release APK (Arm64)..." -ForegroundColor Yellow
     Set-Location "$root\frontend"
-    flutter build apk --release --target-platform android-arm64 --no-pub --android-skip-build-dependency-validation
+    flutter build apk --release --target-platform android-arm64 --android-skip-build-dependency-validation
+
     
     $apkPath = "$root\frontend\build\app\outputs\flutter-apk\app-release.apk"
     $targetApk = "$root\echosphere-app.apk"
@@ -50,7 +55,7 @@ if (-not $SkipAndroid) {
 if (-not $SkipWindows) {
     Write-Host "  [2/3] Building Windows Desktop Release..." -ForegroundColor Yellow
     Set-Location "$root\frontend"
-    flutter build windows --release --no-pub
+    flutter build windows --release
     
     $winBuildDir = "$root\frontend\build\windows\x64\runner\Release"
     $targetZip = "$root\echosphere-windows.zip"
