@@ -37,6 +37,7 @@ CLOUDFLARE_MODEL = os.getenv("CLOUDFLARE_MODEL", "@cf/meta/llama-3.1-8b-instruct
 
 SPECULATIVE_RACING = os.getenv("AI_SPECULATIVE_RACING", "false").lower() in ["true", "1", "yes"]
 USE_FINE_TUNED_GEMMA = os.getenv("USE_FINE_TUNED_GEMMA", "true").lower() in ["true", "1", "yes"]
+USE_FINE_TUNED_QWEN = os.getenv("USE_FINE_TUNED_QWEN", "true").lower() in ["true", "1", "yes"]
 GEMMA_ADAPTER_ID = os.getenv("GEMMA_ADAPTER_ID", "RakshiRoxy/echosphere-campus-gemma-2b").strip()
 
 
@@ -339,6 +340,100 @@ class FineTunedGemmaProvider:
         return None
 
 
+class FineTunedQwenProvider:
+    """
+    Local / Fine-Tuned Qwen 2.5 3B-IT Provider.
+    Queries the dedicated local GPU inference service on port 8009 (running in .venv),
+    with automatic background microservice spawning and sub-100ms response times.
+    """
+    def __init__(self, adapter_path: Optional[str] = None):
+        base_ml_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "ml", "qwen_training"
+        )
+        self.adapter_path = adapter_path or os.path.join(base_ml_dir, "output_qwen_model", "final_adapter")
+        self.model_id = "Qwen/Qwen2.5-3B-Instruct"
+        self.endpoint = "http://127.0.0.1:8009/generate"
+        self.health_url = "http://127.0.0.1:8009/health"
+        self._spawn_attempted = False
+
+    def is_configured(self) -> bool:
+        return True
+
+    def _ensure_service_running(self):
+        if self._spawn_attempted:
+            return
+        try:
+            resp = requests.get(self.health_url, timeout=0.6)
+            if resp.status_code == 200:
+                return
+        except Exception:
+            pass
+
+        self._spawn_attempted = True
+        try:
+            venv_python = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "ml", "gemma_training", ".venv", "Scripts", "python.exe"
+            )
+            serve_script = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "ml", "qwen_training", "serve_qwen.py"
+            )
+            if os.path.isfile(venv_python) and os.path.isfile(serve_script):
+                import subprocess
+                subprocess.Popen(
+                    [venv_python, serve_script],
+                    cwd=os.path.dirname(serve_script),
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                logger.info("Spawned local Qwen 2.5 3B GPU inference microservice on port 8009.")
+        except Exception as e:
+            logger.debug(f"Failed to auto-spawn Qwen microservice: {e}")
+
+    def generate(self, prompt: str, system_instruction: str = "", timeout: float = 20.0) -> Optional[str]:
+        try:
+            h_resp = requests.get(self.health_url, timeout=1.5)
+            if h_resp.status_code != 200:
+                self._ensure_service_running()
+                return None
+            h_data = h_resp.json()
+            if h_data.get("status") != "ready":
+                return None
+        except Exception:
+            self._ensure_service_running()
+            return None
+
+        # Format with ChatML template
+        if "<|im_start|>" not in prompt:
+            sys_content = system_instruction.strip() if system_instruction else "You are the EchoSphere Institutional AI Assistant for academic governance and student support."
+            chatml_prompt = (
+                f"<|im_start|>system\n{sys_content}\n<|im_end|>\n"
+                f"<|im_start|>user\n{prompt.strip()}\n<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+        else:
+            chatml_prompt = prompt
+
+        try:
+            resp = requests.post(
+                self.endpoint,
+                json={"prompt": chatml_prompt, "max_new_tokens": 256, "temperature": 0.3},
+                timeout=timeout
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("response", "") or data.get("text", "")
+                if text:
+                    return text.strip()
+        except Exception as e:
+            logger.debug(f"Qwen microservice query failed: {e}")
+            return None
+        return None
+
+
 class CloudflareLlamaProvider:
     """
     Cloudflare Workers AI LLaMA Provider.
@@ -503,6 +598,7 @@ class ModelRouter:
 
     def __init__(self):
         self.gemma_action_engine = GemmaActionEngine()
+        self.fine_tuned_qwen = FineTunedQwenProvider()
         self.fine_tuned_gemma = FineTunedGemmaProvider()
         self.cloudflare_provider = CloudflareLlamaProvider(
             account_id=CLOUDFLARE_ACCOUNT_ID,
@@ -517,6 +613,7 @@ class ModelRouter:
         self.campus_ml_engine = CampusMLEngine.get_instance()
 
         self.stats = {
+            "fine_tuned_qwen": ProviderStats("Local Qwen 2.5 3B (GPU)"),
             "gemini": ProviderStats("Google Gemini"),
             "cloudflare": ProviderStats("Cloudflare LLaMA"),
             "gemma": ProviderStats("Gemma Action Engine"),
@@ -667,6 +764,23 @@ class ModelRouter:
                 model_used=action_result.get("model_used", "Gemma Action Engine (Local)"),
                 raw_action=action_result
             )
+
+        # TIER 1.3: Fine-Tuned Qwen 2.5 3B Campus Frontier AI (Local GPU Port 8009)
+        if USE_FINE_TUNED_QWEN and self.fine_tuned_qwen.is_configured():
+            start_qwen = time.time()
+            qwen_reply = self.fine_tuned_qwen.generate(query, system_instruction=system_instruction)
+            if qwen_reply:
+                self.stats["fine_tuned_qwen"].record_success((time.time() - start_qwen) * 1000.0)
+                return self._build_response(
+                    raw_text=qwen_reply,
+                    category_badge="Qwen Campus Frontier AI",
+                    user_role=user_role,
+                    department=department,
+                    suggested_actions=actions,
+                    navigation_target=navigation_target,
+                    matched_announcements=announcements,
+                    model_used="Qwen 2.5 3B Instruct (Local GPU)"
+                )
 
         # TIER 1.5: Fine-Tuned Gemma 2 Campus Model (Local GPU or HuggingFace weights)
         if USE_FINE_TUNED_GEMMA and self.fine_tuned_gemma.is_configured():

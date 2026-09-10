@@ -19,11 +19,14 @@ __pycache__/
 # ML Models, Weights & Training Outputs
 output_gemma_campus_model/
 **/output_gemma_campus_model/
+output_qwen_model/
+**/output_qwen_model/
 *.safetensors
 *.bin
 *.gguf
 *.pt
 *.pth
+*.jsonl
 checkpoint-*/
 **/checkpoint-*/
 
