@@ -62,7 +62,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify AI Summary banner is initially shown
-    expect(find.text('EchoSphere Qwen AI Summary'), findsOneWidget);
+    expect(find.text('AI Summary'), findsOneWidget);
     expect(find.text('Elective registration and lab fee payments must be completed by Friday evening.'), findsOneWidget);
 
     // Verify "Hide Summary" button exists
@@ -82,14 +82,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Banner should be hidden and button text should be "View Summary"
-    expect(find.text('EchoSphere Qwen AI Summary'), findsNothing);
+    expect(find.text('AI Summary'), findsNothing);
     expect(find.text('View Summary'), findsOneWidget);
 
     // Tap "View Summary" to toggle on
     await tester.tap(find.text('View Summary'));
     await tester.pumpAndSettle();
 
-    expect(find.text('EchoSphere Qwen AI Summary'), findsOneWidget);
+    expect(find.text('AI Summary'), findsOneWidget);
     expect(find.text('Hide Summary'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -171,7 +171,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify AI Summary title
-    expect(find.text('EchoSphere Qwen AI Summary'), findsOneWidget);
+    expect(find.text('AI Summary'), findsOneWidget);
     expect(find.text('GPU cluster lab is closed this Saturday for maintenance.'), findsOneWidget);
 
     // Verify audio player bar is also mounted separately

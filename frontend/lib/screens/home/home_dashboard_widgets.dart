@@ -560,7 +560,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
           Get.find<AnnouncementController>().updateAnnouncementSummary(widget.notice.id, summary);
         }
 
-        snackBar('✨ AI Summary generated with Qwen model!');
+        snackBar('✨ AI Summary generated!');
       }
     } catch (e) {
       if (mounted) {
@@ -711,7 +711,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'EchoSphere Qwen AI Summary',
+                                'AI Summary',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(

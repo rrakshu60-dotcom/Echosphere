@@ -20,7 +20,7 @@ class TtsAudioService extends GetxService {
   final RxBool isBuffering = false.obs;
   final Rx<Duration> position = Duration.zero.obs;
   final Rx<Duration> duration = Duration.zero.obs;
-  final RxString engine = 'Kokoro-82M (Offline Neural)'.obs;
+  final RxString engine = 'AI Voice'.obs;
   final RxString voiceName = 'Indian Female'.obs;
   final RxString statusMessage = ''.obs;
 
@@ -125,7 +125,7 @@ class TtsAudioService extends GetxService {
         );
         if (audioMeta != null) {
           final rawUrl = audioMeta['audio_url']?.toString() ?? '';
-          engine.value = audioMeta['engine']?.toString() ?? 'Kokoro-82M (Offline Neural)';
+          engine.value = 'AI Voice';
           voiceName.value = audioMeta['voice']?.toString() ?? '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
           if (rawUrl.startsWith('http')) {
             streamUrl = rawUrl;
@@ -168,7 +168,7 @@ class TtsAudioService extends GetxService {
       );
       if (meta != null) {
         final rawUrl = meta['audio_url']?.toString() ?? '';
-        engine.value = meta['engine']?.toString() ?? 'Kokoro-82M (Offline Neural)';
+        engine.value = 'AI Voice';
         final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
         await _player.play(UrlSource(url));
       } else {
