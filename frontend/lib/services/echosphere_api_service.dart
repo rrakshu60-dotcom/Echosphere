@@ -936,29 +936,46 @@ class EchosphereApiService {
     String gender = 'female',
     String accent = 'indian',
     bool isSummary = false,
-  }) =>
-      '$_baseUrl/announcements/$id/audio/stream?gender=$gender&accent=$accent&is_summary=$isSummary';
+    bool includeChime = true,
+    String? chime,
+  }) {
+    var url = '$_baseUrl/announcements/$id/audio?gender=$gender&accent=$accent&is_summary=$isSummary&include_chime=$includeChime';
+    if (chime != null && chime.isNotEmpty) {
+      url += '&chime=$chime';
+    }
+    return url;
+  }
+
+  String getChimePreviewUrl(String chimeType) =>
+      '$_baseUrl/announcements/chimes/$chimeType/preview';
 
   Future<Map<String, dynamic>?> getAnnouncementAudio(
     int id, {
     String gender = 'female',
     String accent = 'indian',
     bool isSummary = false,
+    bool includeChime = true,
+    String? chime,
   }) async {
     try {
+      final qp = <String, dynamic>{
+        'gender': gender,
+        'accent': accent,
+        'is_summary': isSummary,
+        'include_chime': includeChime,
+      };
+      if (chime != null && chime.isNotEmpty) {
+        qp['chime'] = chime;
+      }
       final response = await _dio.get(
         '/announcements/$id/audio',
-        queryParameters: {
-          'gender': gender,
-          'accent': accent,
-          'is_summary': isSummary,
-        },
+        queryParameters: qp,
       );
       if (response.statusCode == 200 && response.data != null) {
         return Map<String, dynamic>.from(response.data);
       }
     } catch (e) {
-      debugPrint('Error getting announcement audio: $e');
+      debugPrint('Error getting announcement audio meta: $e');
     }
     return null;
   }

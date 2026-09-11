@@ -330,22 +330,37 @@ def stream_announcement_audio_endpoint(
     gender: str = "female",
     accent: str = "indian",
     is_summary: bool = False,
+    include_chime: bool = True,
+    chime: str = None,
     db: Session = Depends(get_db),
 ):
     """
-    Directly streams the audio file (WAV or MP3) for an announcement.
+    Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
     """
     from app.repositories.announcement_repository import get_announcement_by_id
     from app.services.tts_service import generate_announcement_audio_sync, STATIC_AUDIO_DIR
+    from app.services.chime_service import resolve_contextual_chime
     from app.services.ai_service import AIService
 
     notice = get_announcement_by_id(db, announcement_id)
     if not notice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
 
+    selected_chime = chime or resolve_contextual_chime(
+        priority=notice.priority,
+        category=notice.category,
+        emergency_level=notice.emergency_level,
+        title=notice.title,
+        content=notice.description,
+    )
+
     tag = f"{accent.lower()}_{gender.lower()}"
     if is_summary:
         tag += "_summary"
+    if include_chime:
+        tag += f"_{selected_chime}"
+    else:
+        tag += "_nochime"
 
     wav_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.wav")
     mp3_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.mp3")
@@ -367,10 +382,52 @@ def stream_announcement_audio_endpoint(
         gender=gender,
         accent=accent,
         is_summary=is_summary,
+        include_chime=include_chime,
+        chime_type=selected_chime,
+        priority=notice.priority,
+        category=notice.category,
+        emergency_level=notice.emergency_level,
     )
     file_path = res["file_path"]
     media_type = "audio/wav" if res.get("type") == "wav" else "audio/mpeg"
     return FileResponse(file_path, media_type=media_type, filename=res["file_name"])
+
+
+@router.get("/{announcement_id}/chime")
+def get_announcement_chime(
+    announcement_id: int,
+    chime: str = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns standalone preview audio of the contextual chime for this announcement.
+    """
+    from app.repositories.announcement_repository import get_announcement_by_id
+    from app.services.chime_service import resolve_contextual_chime, get_or_create_chime_wav
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if not notice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
+
+    chime_type = chime or resolve_contextual_chime(
+        priority=notice.priority,
+        category=notice.category,
+        emergency_level=notice.emergency_level,
+        title=notice.title,
+        content=notice.description,
+    )
+    wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
+    return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
+
+
+@router.get("/chimes/{chime_type}/preview")
+def preview_chime(chime_type: str):
+    """
+    Direct preview of any acoustic chime (urgent_academic, events_sports, emergency, standard).
+    """
+    from app.services.chime_service import get_or_create_chime_wav
+    wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
+    return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
 
 
 @router.get("/{announcement_id}/summary")

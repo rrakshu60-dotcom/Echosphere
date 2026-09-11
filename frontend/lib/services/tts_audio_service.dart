@@ -28,6 +28,9 @@ class TtsAudioService extends GetxService {
   final RxString selectedGender = 'female'.obs; // 'female' | 'male'
   final RxString selectedAccent = 'indian'.obs; // 'indian' | 'american' | 'british'
   final RxString readMode = 'full'.obs; // 'full' | 'summary'
+  final RxBool includeChime = true.obs; // Intro audio chime on/off
+  final RxString selectedChime = 'auto'.obs; // 'auto' | 'urgent_academic' | 'events_sports' | 'emergency' | 'standard'
+  final RxString activeChimeTag = 'standard'.obs;
 
   StreamSubscription? _stateSub;
   StreamSubscription? _posSub;
@@ -72,7 +75,13 @@ class TtsAudioService extends GetxService {
     return currentAnnouncementId.value == id;
   }
 
-  Future<void> setVoiceConfig({String? gender, String? accent, String? mode}) async {
+  Future<void> setVoiceConfig({
+    String? gender,
+    String? accent,
+    String? mode,
+    bool? chimeEnabled,
+    String? chimeType,
+  }) async {
     bool changed = false;
     if (gender != null && gender != selectedGender.value) {
       selectedGender.value = gender;
@@ -86,11 +95,32 @@ class TtsAudioService extends GetxService {
       readMode.value = mode;
       changed = true;
     }
+    if (chimeEnabled != null && chimeEnabled != includeChime.value) {
+      includeChime.value = chimeEnabled;
+      changed = true;
+    }
+    if (chimeType != null && chimeType != selectedChime.value) {
+      selectedChime.value = chimeType;
+      changed = true;
+    }
 
     if (changed && currentAnnouncementId.value != null && isPlaying.value) {
       final activeId = currentAnnouncementId.value!;
       await stop();
       await playAnnouncement(activeId);
+    }
+  }
+
+  Future<void> toggleChime(bool val) => setVoiceConfig(chimeEnabled: val);
+  Future<void> setChimeType(String chime) => setVoiceConfig(chimeType: chime);
+
+  Future<void> previewChime(String chimeType) async {
+    try {
+      await stop();
+      final url = _api.getChimePreviewUrl(chimeType);
+      await _player.play(UrlSource(url));
+    } catch (e) {
+      debugPrint('[TTS] Error previewing chime: $e');
     }
   }
 
@@ -116,17 +146,22 @@ class TtsAudioService extends GetxService {
 
       String? streamUrl = directUrl;
 
+      final chimeParam = selectedChime.value == 'auto' ? null : selectedChime.value;
+
       if (streamUrl == null || streamUrl.isEmpty) {
         final audioMeta = await _api.getAnnouncementAudio(
           id,
           gender: selectedGender.value,
           accent: selectedAccent.value,
           isSummary: (readMode.value == 'summary'),
+          includeChime: includeChime.value,
+          chime: chimeParam,
         );
         if (audioMeta != null) {
           final rawUrl = audioMeta['audio_url']?.toString() ?? '';
           engine.value = 'AI Voice';
           voiceName.value = audioMeta['voice']?.toString() ?? '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+          activeChimeTag.value = audioMeta['chime']?.toString() ?? 'standard';
           if (rawUrl.startsWith('http')) {
             streamUrl = rawUrl;
           } else if (rawUrl.isNotEmpty) {
@@ -142,6 +177,8 @@ class TtsAudioService extends GetxService {
           gender: selectedGender.value,
           accent: selectedAccent.value,
           isSummary: (readMode.value == 'summary'),
+          includeChime: includeChime.value,
+          chime: chimeParam,
         );
       }
 
