@@ -242,10 +242,11 @@ def clear_speaker_queue(db: Session, status: Optional[str] = None) -> int:
 
 def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
     """
-    Enforces that exactly 2 canonical speaker nodes exist in EchoSphere:
+    Enforces that canonical speaker nodes exist in EchoSphere:
     1. Wokwi ESP32 Speaker Node (MAC: 24:0A:C4:00:01:10)
     2. Hardware Speaker Client (MAC: D4:F3:2D:22:2A:CB)
-    Prunes legacy/test nodes to maintain a clean, accurate 2-node inventory.
+    3. Hardware Speaker Client 2 (MAC: D4:F3:2D:22:2A:CC)
+    Prunes stale, inactive test nodes to maintain a clean inventory.
     """
     canonical_specs = [
         {
@@ -264,18 +265,26 @@ def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
             "volume": 85,
             "disk_space": 65.0,
         },
+        {
+            "name": "Hardware Speaker Client 2",
+            "mac_address": "D4:F3:2D:22:2A:CC",
+            "ip_address": "127.0.0.1",
+            "zone": "Block B - AI Lab",
+            "volume": 85,
+            "disk_space": 65.0,
+        },
     ]
 
     canonical_macs = [s["mac_address"].upper() for s in canonical_specs]
 
-    # Prune any old non-canonical speaker nodes
+    # Prune any old non-canonical nodes that have never sent a heartbeat or are inactive
     all_nodes = db.query(SpeakerNode).all()
     for n in all_nodes:
-        if str(n.mac_address).upper() not in canonical_macs:
+        if str(n.mac_address).upper() not in canonical_macs and n.last_heartbeat is None:
             db.delete(n)
     db.commit()
 
-    # Ensure both canonical nodes exist
+    # Ensure all canonical nodes exist
     for spec in canonical_specs:
         existing = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(spec["mac_address"])).first()
         if not existing:

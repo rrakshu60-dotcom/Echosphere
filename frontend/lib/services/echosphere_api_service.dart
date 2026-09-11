@@ -1075,6 +1075,18 @@ class EchosphereApiService {
         'cpu_usage': 0.0,
         'memory_usage': 0.0,
       },
+      {
+        'id': 16,
+        'name': 'Hardware Speaker Client 2',
+        'mac_address': 'D4:F3:2D:22:2A:CC',
+        'ip_address': '127.0.0.1',
+        'zone': 'Block B - AI Lab',
+        'department': 'AIML',
+        'status': 'OFFLINE',
+        'volume': 85,
+        'cpu_usage': 0.0,
+        'memory_usage': 0.0,
+      },
     ];
   }
 

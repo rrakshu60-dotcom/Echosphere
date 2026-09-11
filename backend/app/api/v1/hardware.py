@@ -429,6 +429,10 @@ def fetch_speaker_queue(
     result = []
     for item in queue_items:
         ann = item.announcement
+        target_node = item.speaker_node
+        node_name = target_node.name if target_node else "All Nodes (College-Wide)"
+        node_status = target_node.status if target_node else None
+        node_zone = target_node.zone if target_node else "College-Wide"
         result.append({
             "id": item.id,
             "announcement_id": item.announcement_id,
@@ -442,6 +446,9 @@ def fetch_speaker_queue(
             "played_at": item.played_at.isoformat() if item.played_at else None,
             "audio_url": f"/static/audio_streams/announcement_{item.announcement_id}.mp3",
             "speaker_node_id": item.speaker_node_id,
+            "speaker_node_name": node_name,
+            "speaker_node_status": node_status,
+            "speaker_node_zone": node_zone,
         })
     return result
 
