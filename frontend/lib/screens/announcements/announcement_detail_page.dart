@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
+import 'package:anymex/controllers/speaker_queue_controller.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/widgets/common/glow.dart';
 import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
@@ -32,7 +33,17 @@ class AnnouncementDetailPage extends StatefulWidget {
 }
 
 class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
-  AnnouncementModel get announcement => widget.announcement;
+  AnnouncementModel get announcement {
+    if (Get.isRegistered<AnnouncementController>()) {
+      final annCtrl = Get.find<AnnouncementController>();
+      final match = annCtrl.allAnnouncements.firstWhereOrNull(
+        (a) => a.id == widget.announcement.id ||
+               (a.title == widget.announcement.title && a.createdAt == widget.announcement.createdAt),
+      );
+      if (match != null) return match;
+    }
+    return widget.announcement;
+  }
   String? _aiSummary;
   bool _isSummarizing = false;
   bool _isBroadcasting = false;
@@ -118,28 +129,21 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
 
   Future<void> _broadcastToSpeakers() async {
     if (_isBroadcasting) return;
-    debugPrint('[Broadcast] Tapped: sending announcement #${announcement.id} to speaker queue...');
+    final queueCtrl = Get.isRegistered<SpeakerQueueController>()
+        ? Get.find<SpeakerQueueController>()
+        : Get.put(SpeakerQueueController());
+
+    debugPrint('[Broadcast] Tapped: broadcasting announcement #${announcement.id} (${announcement.title})...');
     setState(() => _isBroadcasting = true);
-    snackBar('📡 Sending "${announcement.title}" to speaker queue...');
+
     try {
-      final result = await EchosphereApiService().enqueueAnnouncement(
-        announcementId: announcement.id,
-      );
-      debugPrint('[Broadcast] Success: $result');
-      if (mounted) {
-        setState(() => _isBroadcasting = false);
-        final isPlaying = result['is_playing'] == true;
-        snackBar(
-          isPlaying
-              ? '🔊 Now broadcasting "${announcement.title}" on campus speakers!'
-              : '✅ Enqueued "${announcement.title}" to PA speaker queue!',
-        );
-      }
+      await queueCtrl.broadcastAnnouncement(announcement);
     } catch (e) {
       debugPrint('[Broadcast] Error: $e');
+      snackBar('❌ Failed to broadcast: ${e.toString().replaceAll('Exception: ', '')}');
+    } finally {
       if (mounted) {
         setState(() => _isBroadcasting = false);
-        snackBar('❌ Failed to broadcast: ${e.toString().replaceAll('Exception: ', '')}');
       }
     }
   }

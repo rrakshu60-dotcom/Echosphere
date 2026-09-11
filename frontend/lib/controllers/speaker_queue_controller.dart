@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 
 class SpeakerQueueController extends GetxController {
@@ -90,7 +91,7 @@ class SpeakerQueueController extends GetxController {
 
     // All published announcements marked for speaker broadcast that haven't completed playback
     final speakerNotices = annCtrl.allAnnouncements.where((a) {
-      final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
+      final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED' || a.status == 'ACTIVE' || a.status == 'SCHEDULED';
       final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
       return isApproved && isSpeaker && !a.playedOnSpeaker;
     }).toList();
@@ -323,6 +324,11 @@ class SpeakerQueueController extends GetxController {
       if (!Get.testMode && itemId is int) {
         _apiService.queueAction(itemId, 'pause').catchError((_) => <String, dynamic>{});
       }
+      if (!Get.testMode) {
+        try {
+          TtsAudioService.instance.pause();
+        } catch (_) {}
+      }
       snackBar('Speaker playback paused.');
       return;
     }
@@ -345,6 +351,22 @@ class SpeakerQueueController extends GetxController {
     final itemId = item['id'];
     if (!Get.testMode && itemId is int) {
       _apiService.queueAction(itemId, 'play').catchError((_) => <String, dynamic>{});
+    }
+
+    if (!Get.testMode) {
+      try {
+        final annId = item['announcement_id'] as int? ?? item['id'] as int?;
+        if (annId != null && annId > 0) {
+          TtsAudioService.instance.playAnnouncement(
+            annId,
+            title: item['title']?.toString(),
+            content: item['description']?.toString(),
+            directUrl: item['audio_url']?.toString(),
+          );
+        }
+      } catch (e) {
+        debugPrint('[SpeakerQueue] Audio playback note: $e');
+      }
     }
 
     snackBar('Broadcasting: "${item['title'] ?? 'Announcement'}"');
@@ -402,6 +424,12 @@ class SpeakerQueueController extends GetxController {
     queueItems.removeAt(activeIndex.value);
     currentElapsedSeconds.value = 0;
 
+    if (!Get.testMode) {
+      try {
+        TtsAudioService.instance.stop();
+      } catch (_) {}
+    }
+
     snackBar(
       'Completed broadcast of "$playedTitle". Removed from speaker queue.',
       title: 'Broadcast Finished',
@@ -422,6 +450,22 @@ class SpeakerQueueController extends GetxController {
       final nextId = nextItem['id'];
       if (!Get.testMode && nextId is int) {
         _apiService.queueAction(nextId, 'play').catchError((_) => <String, dynamic>{});
+      }
+
+      if (!Get.testMode) {
+        try {
+          final nextAnnId = nextItem['announcement_id'] as int? ?? nextItem['id'] as int?;
+          if (nextAnnId != null && nextAnnId > 0) {
+            TtsAudioService.instance.playAnnouncement(
+              nextAnnId,
+              title: nextItem['title']?.toString(),
+              content: nextItem['description']?.toString(),
+              directUrl: nextItem['audio_url']?.toString(),
+            );
+          }
+        } catch (e) {
+          debugPrint('[SpeakerQueue] Next audio play note: $e');
+        }
       }
     } else {
       _playbackTimer?.cancel();
@@ -445,6 +489,12 @@ class SpeakerQueueController extends GetxController {
     _playbackTimer?.cancel();
     isPlaying.value = false;
     currentElapsedSeconds.value = 0;
+
+    if (!Get.testMode) {
+      try {
+        TtsAudioService.instance.stop();
+      } catch (_) {}
+    }
 
     if (activeIndex.value >= 0 && activeIndex.value < queueItems.length) {
       queueItems[activeIndex.value]['status'] = 'Queued';
@@ -500,12 +550,155 @@ class SpeakerQueueController extends GetxController {
     snackBar('Notice removed from speaker queue.');
   }
 
+  /// Explicitly broadcasts an announcement immediately:
+  /// 1. Adds it to the speaker queue instantly with 0ms UI lag.
+  /// 2. If no notice is currently playing, starts playback immediately and plays voice audio.
+  /// 3. If another notice is already broadcasting, enqueues it behind the active notice.
+  /// 4. Dispatches backend sync & hardware node notification in background.
+  Future<bool> broadcastAnnouncement(
+    AnnouncementModel announcement, {
+    int? speakerNodeId,
+  }) async {
+    final targetNodeId = speakerNodeId ?? announcement.speakerNodeId;
+    final nodeName = _getNodeName(targetNodeId);
+
+    // 1. Mark in AnnouncementController so local list recognizes it as speaker notice
+    if (Get.isRegistered<AnnouncementController>()) {
+      final annCtrl = Get.find<AnnouncementController>();
+      final idx = annCtrl.rxAnnouncements.indexWhere((a) => a.id == announcement.id);
+      if (idx != -1) {
+        final old = annCtrl.rxAnnouncements[idx];
+        annCtrl.rxAnnouncements[idx] = old.copyWith(
+          deliverSpeaker: true,
+          playedOnSpeaker: false,
+        );
+        annCtrl.rxAnnouncements.refresh();
+      }
+    }
+
+    // 2. Check if already in queue or if queue is currently playing
+    final existingIdx = queueItems.indexWhere(
+      (q) => (q['announcement_id'] == announcement.id || q['id'] == announcement.id) &&
+             q['status'] != 'Completed',
+    );
+
+    // Check if there is currently an active playback
+    final bool hasActivePlayback = isPlaying.value &&
+        queueItems.any((q) => q['status'] == 'Playing');
+
+    // "play it if no other notice is present"
+    final bool shouldPlayNow = !hasActivePlayback;
+
+    int targetIndex;
+
+    if (existingIdx != -1) {
+      targetIndex = existingIdx;
+      if (shouldPlayNow) {
+        queueItems[existingIdx]['status'] = 'Playing';
+      }
+    } else {
+      final newItem = {
+        'id': announcement.id,
+        'announcement_id': announcement.id,
+        'title': announcement.title,
+        'description': announcement.description,
+        'department': announcement.department,
+        'priority': announcement.priority,
+        'category': announcement.category,
+        'type': 'AI Speech',
+        'status': shouldPlayNow ? 'Playing' : 'Queued',
+        'queue_position': shouldPlayNow ? 1 : queueItems.length + 1,
+        'scheduled_time': announcement.scheduledAt?.toIso8601String() ?? announcement.createdAt.toIso8601String(),
+        'speaker_node_id': targetNodeId,
+        'node_name': nodeName,
+        'duration_seconds': announcement.durationSeconds > 0 ? announcement.durationSeconds : 15,
+        'audio_url': '/static/audio_streams/announcement_${announcement.id}.mp3',
+      };
+
+      if (shouldPlayNow) {
+        queueItems.insert(0, newItem);
+        targetIndex = 0;
+      } else {
+        queueItems.add(newItem);
+        targetIndex = queueItems.length - 1;
+      }
+    }
+
+    // 3. If playing now, update active notice, start timer and voice speech audio
+    if (shouldPlayNow) {
+      activeIndex.value = targetIndex;
+      currentElapsedSeconds.value = 0;
+      _updateActiveNoticeMetrics();
+
+      for (int i = 0; i < queueItems.length; i++) {
+        queueItems[i]['status'] = (i == activeIndex.value) ? 'Playing' : 'Queued';
+      }
+      queueItems.refresh();
+
+      isPlaying.value = true;
+      _startPlaybackTimer();
+
+      if (!Get.testMode) {
+        try {
+          TtsAudioService.instance.playAnnouncement(
+            announcement.id,
+            title: announcement.title,
+            content: announcement.description,
+            summary: announcement.aiSummary,
+            directUrl: queueItems[activeIndex.value]['audio_url']?.toString(),
+          );
+        } catch (e) {
+          debugPrint('[SpeakerQueue] Audio speech broadcast note: $e');
+        }
+      }
+
+      snackBar(
+        '🔊 Now broadcasting "${announcement.title}" on campus speakers!',
+        title: 'Speaker Broadcast Started',
+      );
+    } else {
+      queueItems.refresh();
+      snackBar(
+        '📋 Added "${announcement.title}" to speaker queue (Position #${targetIndex + 1})',
+        title: 'Added to Speaker Queue',
+      );
+    }
+
+    // 4. Background backend sync (MQTT dispatch and database update) without blocking UI
+    if (!Get.testMode) {
+      unawaited(
+        _apiService.enqueueAnnouncement(
+          announcementId: announcement.id,
+          speakerNodeId: targetNodeId,
+          audioType: 'AI Speech',
+        ).then((res) {
+          debugPrint('[SpeakerQueue] Remote enqueue success: $res');
+        }, onError: (e) {
+          debugPrint('[SpeakerQueue] Remote enqueue note: $e');
+        })
+      );
+    }
+
+    return true;
+  }
+
   /// Explicitly enqueues an announcement into the queue
   Future<void> enqueueNotice({
     required int announcementId,
     String audioType = 'AI Speech',
     int? speakerNodeId,
   }) async {
+    // Immediately resolve and add from AnnouncementController if present for 0ms lag
+    if (Get.isRegistered<AnnouncementController>()) {
+      final annCtrl = Get.find<AnnouncementController>();
+      final match = annCtrl.allAnnouncements.firstWhereOrNull((a) => a.id == announcementId);
+      if (match != null) {
+        await broadcastAnnouncement(match, speakerNodeId: speakerNodeId);
+        return;
+      }
+    }
+
+    // Fallback if notice not found in AnnouncementController
     try {
       await _apiService.enqueueAnnouncement(
         announcementId: announcementId,
@@ -514,36 +707,6 @@ class SpeakerQueueController extends GetxController {
       );
     } catch (e) {
       debugPrint('Enqueue remote notice note: $e');
-    }
-
-    // Immediately resolve and add from AnnouncementController if present
-    if (Get.isRegistered<AnnouncementController>()) {
-      final annCtrl = Get.find<AnnouncementController>();
-      final match = annCtrl.allAnnouncements.firstWhereOrNull((a) => a.id == announcementId);
-      if (match != null) {
-        final nodeName = _getNodeName(speakerNodeId ?? match.speakerNodeId);
-        final exists = queueItems.any((q) => q['announcement_id'] == match.id);
-        if (!exists) {
-          queueItems.add({
-            'id': match.id,
-            'announcement_id': match.id,
-            'title': match.title,
-            'description': match.description,
-            'department': match.department,
-            'priority': match.priority,
-            'category': match.category,
-            'type': audioType,
-            'status': queueItems.isEmpty ? 'Playing' : 'Queued',
-            'queue_position': queueItems.length + 1,
-            'scheduled_time': match.scheduledAt?.toIso8601String() ?? match.createdAt.toIso8601String(),
-            'speaker_node_id': speakerNodeId ?? match.speakerNodeId,
-            'node_name': nodeName,
-            'duration_seconds': match.durationSeconds,
-            'audio_url': '/static/audio_streams/announcement_${match.id}.mp3',
-          });
-          queueItems.refresh();
-        }
-      }
     }
 
     await refreshQueue(silent: true);
