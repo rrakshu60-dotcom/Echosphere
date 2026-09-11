@@ -33,6 +33,11 @@ class TtsAudioService extends GetxService {
   final RxString activeChimeTag = 'standard'.obs;
   final RxString selectedLanguage = 'en'.obs; // 'en' | 'kn' | 'hi' | 'te' | 'ta'
 
+  // Tracking what configuration is currently loaded into the player
+  String? _lastPlayedGender;
+  String? _lastPlayedAccent;
+  String? _lastPlayedMode;
+
   StreamSubscription? _stateSub;
   StreamSubscription? _posSub;
   StreamSubscription? _durSub;
@@ -65,6 +70,9 @@ class TtsAudioService extends GetxService {
       isPlaying.value = false;
       position.value = Duration.zero;
       isBuffering.value = false;
+      _lastPlayedGender = null;
+      _lastPlayedAccent = null;
+      _lastPlayedMode = null;
     });
   }
 
@@ -87,42 +95,57 @@ class TtsAudioService extends GetxService {
     bool? chimeEnabled,
     String? chimeType,
     String? summary,
+    int? announcementId,
+    String? title,
+    String? content,
     bool startPlaying = false,
   }) async {
-    bool changed = false;
+    bool voiceChanged = false;
     if (gender != null && gender != selectedGender.value) {
       selectedGender.value = gender;
-      changed = true;
+      voiceChanged = true;
     }
     if (accent != null && accent != selectedAccent.value) {
       selectedAccent.value = accent;
-      changed = true;
+      voiceChanged = true;
     }
     if (mode != null && mode != readMode.value) {
       readMode.value = mode;
-      changed = true;
+      voiceChanged = true;
     }
     if (chimeEnabled != null && chimeEnabled != includeChime.value) {
       includeChime.value = chimeEnabled;
-      changed = true;
     }
     if (chimeType != null && chimeType != selectedChime.value) {
       selectedChime.value = chimeType;
-      changed = true;
     }
-    if (summary != null && summary.isNotEmpty) {
-      _activeSummary = summary;
-    }
+    if (title != null && title.isNotEmpty) _activeTitle = title;
+    if (content != null && content.isNotEmpty) _activeContent = content;
+    if (summary != null && summary.isNotEmpty) _activeSummary = summary;
 
-    if (currentAnnouncementId.value != null && ((changed && isPlaying.value) || startPlaying)) {
-      final activeId = currentAnnouncementId.value!;
-      await stop();
-      await playAnnouncement(
-        activeId,
-        title: _activeTitle,
-        content: _activeContent,
-        summary: _activeSummary,
-      );
+    voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+
+    final targetId = announcementId ?? currentAnnouncementId.value;
+
+    if (targetId != null) {
+      // If voice configuration changed while playing, switch voice immediately
+      if ((voiceChanged && (isPlaying.value || _player.state == PlayerState.playing)) || startPlaying) {
+        await stop();
+        await playAnnouncement(
+          targetId,
+          title: _activeTitle,
+          content: _activeContent,
+          summary: _activeSummary,
+        );
+      } else if (voiceChanged) {
+        // Pre-warm the newly chosen voice in background so tapping Play has 0s latency
+        prewarmAnnouncement(
+          targetId,
+          title: _activeTitle,
+          content: _activeContent,
+          summary: _activeSummary,
+        );
+      }
     }
   }
 
@@ -154,6 +177,25 @@ class TtsAudioService extends GetxService {
   // In-Memory Audio URL Cache for instant 0-latency playback
   final Map<String, String> _urlCache = {};
 
+  bool _isContaminatedVoice(String url, String expectedGender) {
+    final lower = url.toLowerCase();
+    if (expectedGender == 'male' &&
+        (lower.contains('female') ||
+            lower.contains('jenny') ||
+            lower.contains('neerja') ||
+            lower.contains('sonia'))) {
+      return true;
+    }
+    if (expectedGender == 'female' &&
+        (lower.contains('_male') ||
+            lower.contains('guyneural') ||
+            lower.contains('prabhat') ||
+            lower.contains('ryan'))) {
+      return true;
+    }
+    return false;
+  }
+
   /// Pre-warms synthesized speech in the background on page load
   /// so tapping "Listen to Notice" starts playback instantly with ZERO latency.
   Future<void> prewarmAnnouncement(
@@ -167,27 +209,50 @@ class TtsAudioService extends GetxService {
       if (content != null) _activeContent = content;
       if (summary != null && summary.isNotEmpty) _activeSummary = summary;
 
+      // 1. Prewarm notice audio for currently selected gender
+      await _prewarmGenderVoice(id, selectedGender.value,
+          title: _activeTitle, content: _activeContent, summary: _activeSummary);
+
+      // 2. Also prewarm opposite gender in background for instantaneous switching
+      final altGender = selectedGender.value == 'female' ? 'male' : 'female';
+      _prewarmGenderVoice(id, altGender,
+          title: _activeTitle, content: _activeContent, summary: _activeSummary);
+    } catch (e) {
+      debugPrint('[TTS Pre-warm note] $e');
+    }
+  }
+
+  Future<void> _prewarmGenderVoice(
+    int id,
+    String gender, {
+    String? title,
+    String? content,
+    String? summary,
+  }) async {
+    try {
       // 1. Prewarm full notice audio under ..._full
-      final fullKey = '${id}_${selectedAccent.value}_${selectedGender.value}_full';
+      final fullKey = '${id}_${selectedAccent.value}_${gender}_full';
       final fullText = (content != null && content.isNotEmpty)
           ? (title != null ? '$title. $content' : content)
           : (title ?? '');
       if (!_urlCache.containsKey(fullKey) && fullText.isNotEmpty) {
         final meta = await _api.synthesizeSpeech(
           fullText,
-          gender: selectedGender.value,
+          gender: gender,
           accent: selectedAccent.value,
         );
         if (meta != null && meta['audio_url'] != null) {
           final rawUrl = meta['audio_url'].toString();
           final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-          _urlCache[fullKey] = url;
-          debugPrint('[TTS Pre-warm Full] Ready for notice #$id (0s latency): $url');
+          if (!_isContaminatedVoice(url, gender)) {
+            _urlCache[fullKey] = url;
+            debugPrint('[TTS Pre-warm Full ($gender)] Ready for notice #$id (0s latency): $url');
+          }
         }
       }
 
       // 2. Prewarm summary audio under ..._summary (Generating with Qwen if needed)
-      final sumKey = '${id}_${selectedAccent.value}_${selectedGender.value}_summary';
+      final sumKey = '${id}_${selectedAccent.value}_${gender}_summary';
       if (!_urlCache.containsKey(sumKey)) {
         String? sumText = summary;
         if ((sumText == null || sumText.isEmpty) && content != null && content.isNotEmpty) {
@@ -199,19 +264,21 @@ class TtsAudioService extends GetxService {
         if (sumText != null && sumText.isNotEmpty) {
           final meta = await _api.synthesizeSpeech(
             sumText,
-            gender: selectedGender.value,
+            gender: gender,
             accent: selectedAccent.value,
           );
           if (meta != null && meta['audio_url'] != null) {
             final rawUrl = meta['audio_url'].toString();
             final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-            _urlCache[sumKey] = url;
-            debugPrint('[TTS Pre-warm Summary] Ready for notice #$id: $url');
+            if (!_isContaminatedVoice(url, gender)) {
+              _urlCache[sumKey] = url;
+              debugPrint('[TTS Pre-warm Summary ($gender)] Ready for notice #$id: $url');
+            }
           }
         }
       }
     } catch (e) {
-      debugPrint('[TTS Pre-warm note] $e');
+      debugPrint('[TTS Pre-warm Voice ($gender) note] $e');
     }
   }
 
@@ -229,12 +296,18 @@ class TtsAudioService extends GetxService {
       if (summary != null && summary.isNotEmpty) {
         _activeSummary = summary;
       }
+      final targetMode = forceMode ?? readMode.value;
       if (forceMode != null) {
         readMode.value = forceMode;
       }
 
-      // Toggle if already selected and same mode
-      if (currentAnnouncementId.value == id && directUrl == null && forceMode == null) {
+      final sameNotice = currentAnnouncementId.value == id;
+      final sameVoice = _lastPlayedGender == selectedGender.value &&
+                        _lastPlayedAccent == selectedAccent.value &&
+                        _lastPlayedMode == targetMode;
+
+      // Toggle Pause/Resume only if playing the exact same announcement with the EXACT same voice configuration
+      if (sameNotice && sameVoice && directUrl == null && forceMode == null) {
         if (isPlaying.value) {
           await pause();
           return;
@@ -244,12 +317,13 @@ class TtsAudioService extends GetxService {
         }
       }
 
-      // Stop previous track
+      // Stop previous track before switching voice / announcement
       await stop();
       currentAnnouncementId.value = id;
       isBuffering.value = true;
       position.value = Duration.zero;
       duration.value = Duration.zero;
+      voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
 
       // When summary mode is active, make sure we have the Qwen summary
       if (readMode.value == 'summary' && (_activeSummary == null || _activeSummary!.trim().isEmpty)) {
@@ -267,15 +341,25 @@ class TtsAudioService extends GetxService {
       }
 
       String? streamUrl = directUrl;
+      // Discard directUrl if it is contaminated with the wrong gender
+      if (streamUrl != null && _isContaminatedVoice(streamUrl, selectedGender.value)) {
+        streamUrl = null;
+      }
+
       final cacheKey = '${id}_${selectedAccent.value}_${selectedGender.value}_${readMode.value}';
 
       // 1. FASTEST: Instant Memory Cache (0 ms latency)
       if (streamUrl == null && _urlCache.containsKey(cacheKey)) {
-        streamUrl = _urlCache[cacheKey];
-        debugPrint('[TTS] Instant memory cache hit for notice #$id ($cacheKey): $streamUrl');
+        final cached = _urlCache[cacheKey];
+        if (cached != null && !_isContaminatedVoice(cached, selectedGender.value)) {
+          streamUrl = cached;
+          debugPrint('[TTS] Instant memory cache hit for notice #$id ($cacheKey): $streamUrl');
+        } else {
+          _urlCache.remove(cacheKey);
+        }
       }
 
-      // 2. High-speed direct synthesis via Kokoro
+      // 2. High-speed direct synthesis via Kokoro / Edge-TTS
       if (streamUrl == null || streamUrl.isEmpty) {
         String textToSpeak = '';
         if (readMode.value == 'summary') {
@@ -292,7 +376,7 @@ class TtsAudioService extends GetxService {
         }
 
         if (textToSpeak.isNotEmpty) {
-          debugPrint('[TTS] Kokoro synthesis path for notice #$id (${readMode.value} mode)...');
+          debugPrint('[TTS] Synthesis path for notice #$id (${readMode.value} mode, ${selectedGender.value})...');
           final meta = await _api.synthesizeSpeech(
             textToSpeak,
             gender: selectedGender.value,
@@ -300,10 +384,13 @@ class TtsAudioService extends GetxService {
           );
           if (meta != null && meta['audio_url'] != null) {
             final rawUrl = meta['audio_url'].toString();
-            streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-            engine.value = meta['engine']?.toString() ?? 'Kokoro-82M';
-            voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
-            _urlCache[cacheKey] = streamUrl;
+            final fullUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+            if (!_isContaminatedVoice(fullUrl, selectedGender.value)) {
+              streamUrl = fullUrl;
+              engine.value = meta['engine']?.toString() ?? 'Kokoro-82M';
+              voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+              _urlCache[cacheKey] = streamUrl;
+            }
           }
         }
       }
@@ -322,11 +409,14 @@ class TtsAudioService extends GetxService {
         if (audioMeta != null) {
           final rawUrl = audioMeta['audio_url']?.toString() ?? '';
           final fileName = audioMeta['file_name']?.toString() ?? '';
+          final fullUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
           final isLegacyBeep = fileName.endsWith('.wav') &&
               (fileName.contains('indian') || !fileName.contains(selectedAccent.value));
 
-          if (!isLegacyBeep && rawUrl.isNotEmpty) {
-            streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+          if (!isLegacyBeep && fullUrl.isNotEmpty && !_isContaminatedVoice(fullUrl, selectedGender.value)) {
+            streamUrl = fullUrl;
+            engine.value = audioMeta['engine']?.toString() ?? 'Kokoro-82M';
+            voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
             _urlCache[cacheKey] = streamUrl;
           }
         }
@@ -345,7 +435,10 @@ class TtsAudioService extends GetxService {
       }
 
       if (streamUrl.isNotEmpty) {
-        debugPrint('[TTS] Streaming audio from: $streamUrl');
+        debugPrint('[TTS] Streaming audio ($voiceName): $streamUrl');
+        _lastPlayedGender = selectedGender.value;
+        _lastPlayedAccent = selectedAccent.value;
+        _lastPlayedMode = readMode.value;
         await _player.play(UrlSource(streamUrl));
       }
     } catch (e) {
@@ -353,6 +446,9 @@ class TtsAudioService extends GetxService {
       isBuffering.value = false;
       isPlaying.value = false;
       currentAnnouncementId.value = null;
+      _lastPlayedGender = null;
+      _lastPlayedAccent = null;
+      _lastPlayedMode = null;
     }
   }
 
@@ -403,6 +499,9 @@ class TtsAudioService extends GetxService {
       isPlaying.value = false;
       isBuffering.value = false;
       position.value = Duration.zero;
+      _lastPlayedGender = null;
+      _lastPlayedAccent = null;
+      _lastPlayedMode = null;
     } catch (_) {}
   }
 

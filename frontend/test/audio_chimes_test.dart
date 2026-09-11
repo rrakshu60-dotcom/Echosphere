@@ -162,5 +162,53 @@ void main() {
       // Verify zero layout overflow occurred in sheet
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('Tapping ♂ Male switches voice to American Male and vice versa', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 700);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final audio = TtsAudioService.instance;
+      // Start in default female voice
+      await audio.setVoiceConfig(gender: 'female', accent: 'american');
+      expect(audio.selectedGender.value, 'female');
+      expect(audio.voiceName.value, 'American Female');
+
+      await tester.pumpWidget(createTestApp(
+        const SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.all(12.0),
+            child: NoticeAudioPlayerBar(
+              announcementId: 503,
+              title: 'Convocation Ceremony Notice',
+              content: 'All graduating students must register before Friday.',
+              hasAiSummary: true,
+              aiSummary: 'Graduating students register before Friday.',
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Tap ♂ Male chip
+      final maleChip = find.text('♂ Male');
+      expect(maleChip, findsOneWidget);
+      await tester.tap(maleChip);
+      await tester.pumpAndSettle();
+
+      // Verify gender and voice name updated to American Male immediately
+      expect(audio.selectedGender.value, 'male');
+      expect(audio.voiceName.value, 'American Male');
+
+      // Tap ♀ Female chip
+      final femaleChip = find.text('♀ Female');
+      expect(femaleChip, findsOneWidget);
+      await tester.tap(femaleChip);
+      await tester.pumpAndSettle();
+
+      // Verify gender and voice name updated back to American Female
+      expect(audio.selectedGender.value, 'female');
+      expect(audio.voiceName.value, 'American Female');
+    });
   });
 }

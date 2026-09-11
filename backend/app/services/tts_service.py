@@ -110,7 +110,7 @@ def clean_text_for_speech(text: str) -> str:
     return cleaned
 
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").lower()
+TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 
@@ -280,7 +280,7 @@ def generate_announcement_audio_sync(
         speech_text = "Attention. Official campus announcement broadcast."
 
     # Tier 1: Try Kokoro-82M (if available)
-    if TTS_ENGINE in ["kokoro", "offline"] and is_kokoro_available():
+    if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:
@@ -455,7 +455,7 @@ def synthesize_text_audio(
         }
 
     # Tier 1: Kokoro-82M (if available)
-    if TTS_ENGINE in ["kokoro", "offline"] and is_kokoro_available():
+    if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:
