@@ -327,7 +327,7 @@ class TtsAudioService extends GetxService {
 
       // When summary mode is active, make sure we have the Qwen summary
       if (readMode.value == 'summary' && (_activeSummary == null || _activeSummary!.trim().isEmpty)) {
-        statusMessage.value = 'Generating Qwen AI Summary...';
+        statusMessage.value = 'Generating AI Summary...';
         try {
           if (_activeContent != null && _activeContent!.trim().isNotEmpty) {
             debugPrint('[TTS] Generating AI summary using Qwen model before synthesis...');
