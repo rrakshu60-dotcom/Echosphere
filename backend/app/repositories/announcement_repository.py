@@ -92,6 +92,10 @@ def update_announcement(
     data = update_data.model_dump(exclude_unset=True)
 
     for key, value in data.items():
+        if key in ("deliver_speaker", "deliver_in_app", "deliver_push", "speaker_node_id"):
+            continue
+        if hasattr(Announcement, key) and isinstance(getattr(Announcement, key), property):
+            continue
         setattr(announcement, key, value)
 
     db.commit()

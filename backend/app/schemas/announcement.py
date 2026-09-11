@@ -23,6 +23,7 @@ class AnnouncementCreate(BaseModel):
     deliver_push: Optional[bool] = True
     target_audience: Optional[str] = None
     speaker_node_id: Optional[int] = None
+    speaker_voice: Optional[str] = "female"
 
     @field_validator("priority", mode="before")
     @classmethod
@@ -57,6 +58,7 @@ class AnnouncementUpdate(BaseModel):
     deliver_push: Optional[bool] = None
     target_audience: Optional[str] = None
     speaker_node_id: Optional[int] = None
+    speaker_voice: Optional[str] = None
 
     @field_validator("priority", mode="before")
     @classmethod
@@ -106,6 +108,7 @@ class AnnouncementResponse(BaseModel):
     deliver_speaker: bool = False
     deliver_in_app: bool = True
     deliver_push: bool = True
+    speaker_voice: Optional[str] = "female"
 
 
 class AnnouncementApprovalRequest(BaseModel):

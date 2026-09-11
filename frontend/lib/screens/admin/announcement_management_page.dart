@@ -264,6 +264,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
     final descCtrl = TextEditingController(text: item.description);
     String catVal = item.category;
     String prioVal = item.priority;
+    bool deliverSpeakerVal = item.deliverSpeaker;
+    String speakerVoiceVal = item.speakerVoice;
 
     showDialog(
       context: context,
@@ -357,6 +359,74 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                   );
                 },
               ),
+              const SizedBox(height: 14),
+              const Text('Delivery Channels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    avatar: const Icon(Icons.volume_up_rounded, size: 14),
+                    label: const Text('Speaker Notice', style: TextStyle(fontSize: 12)),
+                    selected: deliverSpeakerVal,
+                    onSelected: (val) => setDlgState(() => deliverSpeakerVal = val),
+                  ),
+                ],
+              ),
+              if (deliverSpeakerVal) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.25)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.record_voice_over_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'Speaker Voice (Kokoro Clear American Accent)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          ChoiceChip(
+                            avatar: const Icon(Icons.female_rounded, size: 14),
+                            label: const Text('Female Voice (af_heart)', style: TextStyle(fontSize: 11)),
+                            selected: speakerVoiceVal == 'female',
+                            onSelected: (val) {
+                              if (val) setDlgState(() => speakerVoiceVal = 'female');
+                            },
+                          ),
+                          ChoiceChip(
+                            avatar: const Icon(Icons.male_rounded, size: 14),
+                            label: const Text('Male Voice (am_adam)', style: TextStyle(fontSize: 11)),
+                            selected: speakerVoiceVal == 'male',
+                            onSelected: (val) {
+                              if (val) setDlgState(() => speakerVoiceVal = 'male');
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           onConfirm: () async {
@@ -370,6 +440,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
               description: descCtrl.text.trim(),
               category: catVal,
               priority: prioVal,
+              deliverSpeaker: deliverSpeakerVal,
+              speakerVoice: speakerVoiceVal,
             );
             snackBar('Announcement updated successfully!');
             if (ctx.mounted) {

@@ -41,6 +41,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool deliverInApp = true;
   bool deliverPush = true;
   bool deliverSpeaker = false;
+  String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];
 
@@ -906,6 +907,46 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                         }),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(Icons.record_voice_over_rounded, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Speaker Voice (Kokoro Clear American Accent)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        ChoiceChip(
+                          avatar: const Icon(Icons.female_rounded, size: 14),
+                          label: const Text('Female Voice (af_heart)', style: TextStyle(fontSize: 11)),
+                          selected: speakerVoice == 'female',
+                          onSelected: (val) {
+                            if (val) setState(() => speakerVoice = 'female');
+                          },
+                        ),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.male_rounded, size: 14),
+                          label: const Text('Male Voice (am_adam)', style: TextStyle(fontSize: 11)),
+                          selected: speakerVoice == 'male',
+                          onSelected: (val) {
+                            if (val) setState(() => speakerVoice = 'male');
+                          },
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1045,6 +1086,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           deliverSpeaker: deliverSpeaker,
           deliverInApp: deliverInApp,
           deliverPush: deliverPush,
+          speakerVoice: speakerVoice,
           speakerNodeId: selectedSpeakerNodeId,
           attachments: attachedFiles.map((f) => f.name).toList(),
         );

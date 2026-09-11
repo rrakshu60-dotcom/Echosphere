@@ -347,7 +347,7 @@ def _find_cached_audio_file(announcement_id: int, tag: str, chime: str | None = 
 def get_announcement_audio_endpoint(
     announcement_id: int,
     request: Request,
-    gender: str = "female",
+    gender: str | None = None,
     accent: str = "american",
     is_summary: bool = False,
     include_chime: bool = True,
@@ -362,6 +362,13 @@ def get_announcement_audio_endpoint(
     from app.services.tts_service import generate_announcement_audio_sync
     from app.services.ai_service import AIService
     from app.services.chime_service import resolve_contextual_chime
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if not gender:
+        if notice and getattr(notice, "speaker_voice", None):
+            gender = str(notice.speaker_voice).lower()
+        else:
+            gender = "female"
 
     base_url = str(request.base_url).rstrip("/")
     tag = f"{accent.lower()}_{gender.lower()}"
@@ -378,8 +385,6 @@ def get_announcement_audio_endpoint(
             "type": "wav" if fname.endswith(".wav") else "mp3",
             "chime": chime or "standard",
         }
-
-    notice = get_announcement_by_id(db, announcement_id)
     if notice:
         notice_priority = str(getattr(notice, "priority", "NORMAL") or "NORMAL")
         cat_attr = getattr(notice, "category", None)
