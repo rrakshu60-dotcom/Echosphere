@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.announcement import Announcement
+from app.models.announcement_delivery import AnnouncementDelivery
 from app.schemas.announcement import AnnouncementUpdate
 from app.core.enums.announcement import AnnouncementStatus
 
@@ -47,7 +48,7 @@ def get_announcement_by_id(
             joinedload(Announcement.creator),
             joinedload(Announcement.category),
             selectinload(Announcement.approvals),
-            selectinload(Announcement.deliveries),
+            selectinload(Announcement.deliveries).joinedload(AnnouncementDelivery.delivery_type),
         )
         .filter(Announcement.id == announcement_id)
         .first()
@@ -64,7 +65,7 @@ def get_all_announcements(
         joinedload(Announcement.creator),
         joinedload(Announcement.category),
         selectinload(Announcement.approvals),
-        selectinload(Announcement.deliveries),
+        selectinload(Announcement.deliveries).joinedload(AnnouncementDelivery.delivery_type),
     )
 
     if status:

@@ -204,7 +204,7 @@ def create_announcement_service(
         current_user=current_user,
     )
 
-    if created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
+    if deliver_speaker and created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
         p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
         is_emerg = (p_val == "EMERGENCY")
         try:
