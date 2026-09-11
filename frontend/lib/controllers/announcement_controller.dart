@@ -208,10 +208,103 @@ class AnnouncementController extends GetxController {
   final RxString selectedPriority = 'All'.obs;
   final RxString searchQuery = ''.obs;
   final RxBool showTodayOnly = false.obs;
+  final RxBool showForYouOnly = false.obs;
   final RxBool isLoading = false.obs;
   final RxString sortBy = 'Newest First'.obs;
   final RxMap<int, CalendarEventData> calendarEvents = <int, CalendarEventData>{}.obs;
+  final RxMap<int, Map<String, dynamic>> relevanceScores = <int, Map<String, dynamic>>{}.obs;
   static int _idCounter = 0;
+
+  Map<String, dynamic> getRelevanceFor(AnnouncementModel notice) {
+    if (relevanceScores.containsKey(notice.id)) {
+      return relevanceScores[notice.id]!;
+    }
+
+    EchosphereUser? user;
+    if (Get.isRegistered<AuthController>()) {
+      user = Get.find<AuthController>().currentUser.value;
+    }
+
+    final userProfile = {
+      'role': user?.role ?? 'Student',
+      'department': user?.department ?? 'AIML',
+      'semester': user?.semester ?? 5,
+      'usn': user?.usn,
+    };
+
+    final noticeData = {
+      'id': notice.id,
+      'title': notice.title,
+      'description': notice.description,
+      'department': notice.department,
+      'target_audience': notice.targetAudience,
+      'category': notice.category,
+      'priority': notice.priority,
+      'emergency_level': notice.emergencyLevel,
+      'created_at': notice.createdAt.toIso8601String(),
+    };
+
+    final scores = EchosphereApiService().calculateRelevanceFallback(userProfile, [noticeData]);
+    final res = scores.isNotEmpty
+        ? scores.first
+        : {
+            'announcement_id': notice.id,
+            'score': 0.5,
+            'is_highly_relevant': false,
+            'reasons': <String>[],
+          };
+
+    relevanceScores[notice.id] = res;
+    return res;
+  }
+
+  Future<void> updateAllRelevanceScores() async {
+    if (!Get.isRegistered<AuthController>()) return;
+    final user = Get.find<AuthController>().currentUser.value;
+    final userProfile = {
+      'role': user?.role ?? 'Student',
+      'department': user?.department ?? 'AIML',
+      'semester': user?.semester ?? 5,
+      'usn': user?.usn,
+    };
+
+    final noticesData = _rawAnnouncements.map((n) => {
+      'id': n.id,
+      'title': n.title,
+      'description': n.description,
+      'department': n.department,
+      'target_audience': n.targetAudience,
+      'category': n.category,
+      'priority': n.priority,
+      'emergency_level': n.emergencyLevel,
+      'created_at': n.createdAt.toIso8601String(),
+    }).toList();
+
+    try {
+      final scores = Get.testMode
+          ? EchosphereApiService().calculateRelevanceFallback(userProfile, noticesData)
+          : await EchosphereApiService().getNoticeRelevanceScores(
+              userProfile: userProfile,
+              announcements: noticesData,
+            );
+      for (var s in scores) {
+        final id = s['announcement_id'] as int? ?? 0;
+        if (id > 0) {
+          relevanceScores[id] = s;
+        }
+      }
+      relevanceScores.refresh();
+      update();
+    } catch (_) {}
+  }
+
+  void toggleForYouOnly() {
+    showForYouOnly.value = !showForYouOnly.value;
+    if (showForYouOnly.value) {
+      showTodayOnly.value = false;
+      selectedCategory.value = 'All';
+    }
+  }
 
   Future<CalendarEventData?> getOrFetchCalendarEvent(AnnouncementModel notice) async {
     if (calendarEvents.containsKey(notice.id)) {
@@ -230,6 +323,7 @@ class AnnouncementController extends GetxController {
 
   static const List<String> sortOptions = [
     'Newest First',
+    'Most Relevant',
     'Oldest First',
     'Highest Priority',
     'Lowest Priority',
@@ -261,9 +355,15 @@ class AnnouncementController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _initRealtimeSync();
-    fetchAnnouncements();
-    _startPeriodicSync();
+    if (!Get.testMode) {
+      _initRealtimeSync();
+      fetchAnnouncements();
+      _startPeriodicSync();
+    } else {
+      if (_rawAnnouncements.isEmpty) {
+        _rawAnnouncements.value = _getSampleAnnouncements();
+      }
+    }
   }
 
   @override
@@ -400,6 +500,14 @@ class AnnouncementController extends GetxController {
       case 'Title (Z-A)':
         sorted.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
         break;
+      case 'Most Relevant':
+        sorted.sort((a, b) {
+          final scoreA = (getRelevanceFor(a)['score'] as num?)?.toDouble() ?? 0.0;
+          final scoreB = (getRelevanceFor(b)['score'] as num?)?.toDouble() ?? 0.0;
+          if (scoreA != scoreB) return scoreB.compareTo(scoreA);
+          return b.createdAt.compareTo(a.createdAt);
+        });
+        break;
       case 'Newest First':
       default:
         sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -520,6 +628,7 @@ class AnnouncementController extends GetxController {
           _rawAnnouncements.value = fetched;
           isLoading.value = false;
           update();
+          updateAllRelevanceScores();
           return;
         }
       } catch (e) {
@@ -533,10 +642,12 @@ class AnnouncementController extends GetxController {
     }
     isLoading.value = false;
     update();
+    updateAllRelevanceScores();
   }
 
   void filterTodayOnly() {
     showTodayOnly.value = true;
+    showForYouOnly.value = false;
     searchQuery.value = '';
     selectedCategory.value = 'All';
     selectedPriority.value = 'All';
@@ -637,6 +748,13 @@ class AnnouncementController extends GetxController {
     final now = DateTime.now();
 
     final filtered = announcements.where((a) {
+      if (showForYouOnly.value) {
+        final rel = getRelevanceFor(a);
+        final score = (rel['score'] as num?)?.toDouble() ?? 0.0;
+        final isHighlyRel = rel['is_highly_relevant'] == true;
+        if (!isHighlyRel && score < 0.60) return false;
+      }
+
       if (showTodayOnly.value) {
         final isToday = a.createdAt.year == now.year &&
             a.createdAt.month == now.month &&
@@ -673,7 +791,16 @@ class AnnouncementController extends GetxController {
       return matchesCategory && matchesPriority && matchesSearch;
     }).toList();
 
-    return _applySort(filtered);
+    final sorted = _applySort(filtered);
+    if (showForYouOnly.value && sortBy.value == 'Newest First') {
+      sorted.sort((a, b) {
+        final scoreA = (getRelevanceFor(a)['score'] as num?)?.toDouble() ?? 0.0;
+        final scoreB = (getRelevanceFor(b)['score'] as num?)?.toDouble() ?? 0.0;
+        if (scoreA != scoreB) return scoreB.compareTo(scoreA);
+        return b.createdAt.compareTo(a.createdAt);
+      });
+    }
+    return sorted;
   }
 
   Future<bool> createAnnouncement({

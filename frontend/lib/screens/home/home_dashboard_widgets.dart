@@ -625,10 +625,123 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
     return DateFormat('MMM dd, yyyy').format(dateTime);
   }
 
+  void _showRelevanceDialog(BuildContext context, Map<String, dynamic> relevance) {
+    final reasons = (relevance['reasons'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final score = (((relevance['score'] as num?)?.toDouble() ?? 0.0) * 100).toInt();
+    final theme = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Personalized Relevance',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          '$score% Affinity for your profile',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Why this notice was prioritized for you:',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              if (reasons.isEmpty)
+                Text(
+                  'General campus announcement matching your department and academic calendar.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.onSurface.withOpacity(0.75),
+                  ),
+                )
+              else
+                ...reasons.map((r) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          r,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurface.withOpacity(0.85),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pColor = _getPriorityColor(widget.notice.priority);
+
+    Map<String, dynamic>? relevance;
+    if (Get.isRegistered<AnnouncementController>()) {
+      relevance = Get.find<AnnouncementController>().getRelevanceFor(widget.notice);
+    }
+    final rel = relevance;
+    final isHighlyRelevant = rel != null &&
+        (rel['is_highly_relevant'] == true ||
+            ((rel['score'] as num?)?.toDouble() ?? 0.0) >= 0.65);
 
     return RepaintBoundary(
         child: TweenAnimationBuilder<double>(
@@ -669,6 +782,46 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       onSelected: (_) {},
                       showCheck: false,
                     ),
+                    if (rel != null && isHighlyRelevant)
+                      InkWell(
+                        onTap: () => _showRelevanceDialog(context, rel),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                theme.colorScheme.primary.withOpacity(0.18),
+                                theme.colorScheme.secondary.withOpacity(0.10),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withOpacity(0.35),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.auto_awesome,
+                                size: 12,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '🎯 Relevant to You',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),

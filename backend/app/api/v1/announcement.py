@@ -18,6 +18,8 @@ from app.schemas.announcement import (
 from app.schemas.ai_schema import (
     AudienceCheckRequest,
     AudienceCheckResponse,
+    RelevanceScoreRequest,
+    RelevanceScoreResponse,
     ScheduleConflictCheckRequest,
     ScheduleConflictCheckResponse,
 )
@@ -557,6 +559,28 @@ def check_audience_endpoint(
         content=request.content,
         selected_audience=request.selected_audience,
     )
+
+
+@router.post("/relevance-scores", response_model=RelevanceScoreResponse)
+def calculate_relevance_scores_endpoint(
+    request: RelevanceScoreRequest,
+):
+    """
+    Contextual Relevance & Feed Scoring.
+    Computes personalized relevance scores (0.0 to 1.0) and explanatory reasons
+    for a list of announcements based on user department, semester, and role.
+    """
+    from app.services.relevance_scoring_service import RelevanceScoringService
+
+    user_dict = request.user_profile.model_dump()
+    notices_dicts = [a.model_dump() for a in request.announcements]
+
+    results = RelevanceScoringService.calculate_batch(
+        user_profile=user_dict,
+        announcements=notices_dicts,
+    )
+
+    return {"scores": results}
 
 
 
