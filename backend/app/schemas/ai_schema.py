@@ -161,3 +161,36 @@ class CopilotChatResponse(BaseModel):
     suggested_actions: List[str] = []
     navigation_target: Optional[str] = None
 
+
+class ScheduleConflictCheckRequest(BaseModel):
+    title: str
+    content: str
+    scheduled_at: Optional[str] = None
+    category: Optional[str] = None
+    exclude_notice_id: Optional[int] = None
+
+
+class ConflictDetail(BaseModel):
+    conflicting_notice_id: int
+    conflicting_title: str
+    conflicting_department: str
+    conflicting_venue: str
+    conflicting_time: str
+    conflict_type: str  # "venue_collision" | "academic_clash"
+    conflict_message: str
+
+
+class SuggestedAlternativeSlot(BaseModel):
+    label: str
+    start_time: str
+    end_time: str
+    venue: str
+    slot_type: str  # "same_day_later" | "same_day_morning" | "next_day" | "alternative_venue"
+
+
+class ScheduleConflictCheckResponse(BaseModel):
+    has_conflict: bool
+    draft_event: Optional[Dict[str, Any]] = None
+    conflicts: List[ConflictDetail] = []
+    suggested_alternatives: List[SuggestedAlternativeSlot] = []
+

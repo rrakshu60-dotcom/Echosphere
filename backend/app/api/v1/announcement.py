@@ -15,6 +15,10 @@ from app.schemas.announcement import (
     AnnouncementResponse,
     AnnouncementUpdate,
 )
+from app.schemas.ai_schema import (
+    ScheduleConflictCheckRequest,
+    ScheduleConflictCheckResponse,
+)
 from app.services.announcement_service import (
     approve_announcement_service,
     create_announcement_service,
@@ -477,6 +481,36 @@ def get_announcement_calendar_event_endpoint(
         "announcement_id": announcement_id,
         "event": event_data,
     }
+
+
+@router.post("/check-conflict", response_model=ScheduleConflictCheckResponse)
+def check_schedule_conflict_endpoint(
+    request: ScheduleConflictCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    AI Schedule Conflict & Overlap Detector.
+    Scans existing circulars to detect venue collisions or conflicting major events before publishing.
+    """
+    import datetime
+    from app.services.conflict_service import ConflictService
+
+    scheduled_dt = None
+    if request.scheduled_at:
+        try:
+            scheduled_dt = datetime.datetime.fromisoformat(request.scheduled_at)
+        except Exception:
+            pass
+
+    return ConflictService.detect_schedule_conflicts(
+        db=db,
+        title=request.title,
+        content=request.content,
+        scheduled_at=scheduled_dt,
+        category=request.category,
+        exclude_notice_id=request.exclude_notice_id,
+    )
 
 
 
