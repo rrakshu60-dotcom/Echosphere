@@ -6,15 +6,19 @@ import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 class NoticeAudioPlayerBar extends StatelessWidget {
   final int announcementId;
   final String title;
+  final String? content;
   final String? directAudioUrl;
   final bool hasAiSummary;
+  final String? aiSummary;
 
   const NoticeAudioPlayerBar({
     super.key,
     required this.announcementId,
     required this.title,
+    this.content,
     this.directAudioUrl,
     this.hasAiSummary = false,
+    this.aiSummary,
   });
 
   String _formatDuration(Duration d) {
@@ -263,7 +267,6 @@ class NoticeAudioPlayerBar extends StatelessWidget {
       final curSec = pos.inMilliseconds.toDouble().clamp(0.0, maxSec);
 
       final currentGender = audio.selectedGender.value;
-      final currentAccent = audio.selectedAccent.value;
       final currentMode = audio.readMode.value;
 
       return Container(
@@ -301,6 +304,9 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 InkWell(
                   onTap: () => audio.playAnnouncement(
                     announcementId,
+                    title: title,
+                    content: content,
+                    summary: aiSummary,
                     directUrl: directAudioUrl,
                   ),
                   borderRadius: BorderRadius.circular(24),
@@ -361,7 +367,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                                       : 'Reading Full Notice Aloud')
                                   : isBuffering
                                       ? 'Synthesizing Voice...'
-                                      : 'Listen to Notice (Neural TTS)',
+                                      : 'Listen to Notice',
                               size: 13,
                               variant: TextVariant.bold,
                               maxLines: 1,
@@ -477,25 +483,6 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                   onTap: () => audio.setVoiceConfig(gender: 'male'),
                 ),
 
-                // Accent Toggles
-                _buildConfigChip(
-                  context: context,
-                  label: '🇮🇳 Indian',
-                  isSelected: currentAccent == 'indian',
-                  onTap: () => audio.setVoiceConfig(accent: 'indian'),
-                ),
-                _buildConfigChip(
-                  context: context,
-                  label: '🇺🇸 American',
-                  isSelected: currentAccent == 'american',
-                  onTap: () => audio.setVoiceConfig(accent: 'american'),
-                ),
-                _buildConfigChip(
-                  context: context,
-                  label: '🇬🇧 British',
-                  isSelected: currentAccent == 'british',
-                  onTap: () => audio.setVoiceConfig(accent: 'british'),
-                ),
 
                 // Read Mode Toggle (Full notice vs AI Summary)
                 _buildConfigChip(

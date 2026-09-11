@@ -1317,13 +1317,13 @@ class EchosphereApiService {
   String getStreamUrlForAnnouncement(
     int id, {
     String gender = 'female',
-    String accent = 'indian',
+    String accent = 'american',
     bool isSummary = false,
     bool includeChime = true,
     String? chime,
     String lang = 'en',
   }) {
-    var url = '$_baseUrl/announcements/$id/audio?gender=$gender&accent=$accent&is_summary=$isSummary&include_chime=$includeChime';
+    var url = '$_baseUrl/announcements/$id/audio/stream?gender=$gender&accent=$accent&is_summary=$isSummary&include_chime=$includeChime';
     if (chime != null && chime.isNotEmpty) {
       url += '&chime=$chime';
     }
@@ -1340,7 +1340,7 @@ class EchosphereApiService {
   Future<Map<String, dynamic>?> getAnnouncementAudio(
     int id, {
     String gender = 'female',
-    String accent = 'indian',
+    String accent = 'american',
     bool isSummary = false,
     bool includeChime = true,
     String? chime,
@@ -1376,7 +1376,7 @@ class EchosphereApiService {
   Future<Map<String, dynamic>?> synthesizeSpeech(
     String text, {
     String gender = 'female',
-    String accent = 'indian',
+    String accent = 'american',
   }) async {
     try {
       final response = await _dio.post('/ai/synthesize', data: {

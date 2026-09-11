@@ -175,7 +175,7 @@ void main() {
     expect(find.text('GPU cluster lab is closed this Saturday for maintenance.'), findsOneWidget);
 
     // Verify audio player bar is also mounted separately
-    expect(find.text('Listen to Notice (Neural TTS)'), findsOneWidget);
+    expect(find.text('Listen to Notice'), findsOneWidget);
 
     expect(tester.takeException(), isNull);
   });

@@ -292,58 +292,102 @@ def archive_announcement(
     )
 
 
+def _find_cached_audio_file(announcement_id: int, tag: str, chime: str = None) -> tuple[str | None, str | None, str | None]:
+    from app.services.tts_service import STATIC_AUDIO_DIR
+    candidates = []
+    if chime:
+        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
+        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.mp3")
+    candidates.append(f"announcement_{announcement_id}_{tag}.wav")
+    candidates.append(f"announcement_{announcement_id}_{tag}.mp3")
+    for c in ["urgent_academic", "events_sports", "emergency", "standard"]:
+        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
+        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
+        candidates.append(f"announcement_{announcement_id}_indian_female_{c}.wav")
+    candidates.append(f"announcement_{announcement_id}_indian_female.wav")
+    candidates.append(f"announcement_{announcement_id}.wav")
+    candidates.append(f"announcement_{announcement_id}.mp3")
+
+    for filename in candidates:
+        filepath = os.path.join(STATIC_AUDIO_DIR, filename)
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 512:
+            media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
+            return filename, filepath, media_type
+
+    # General prefix scan in directory
+    try:
+        prefix = f"announcement_{announcement_id}_"
+        for f in os.listdir(STATIC_AUDIO_DIR):
+            if (f.startswith(prefix) or f == f"announcement_{announcement_id}.wav" or f == f"announcement_{announcement_id}.mp3") and (f.endswith(".wav") or f.endswith(".mp3")):
+                fp = os.path.join(STATIC_AUDIO_DIR, f)
+                if os.path.getsize(fp) > 512:
+                    media_type = "audio/wav" if f.endswith(".wav") else "audio/mpeg"
+                    return f, fp, media_type
+    except Exception:
+        pass
+
+    return None, None, None
+
+
 @router.get("/{announcement_id}/audio")
 def get_announcement_audio_endpoint(
     announcement_id: int,
     request: Request,
     gender: str = "female",
-    accent: str = "indian",
+    accent: str = "american",
     is_summary: bool = False,
+    include_chime: bool = True,
+    chime: str = None,
     db: Session = Depends(get_db),
 ):
     """
     Returns the synthesized audio stream metadata and URL for an announcement.
-    Supports Kokoro-82M offline neural TTS with female/male voices and Indian/American/British accents.
+    Supports Kokoro-82M offline neural TTS with female/male voices and American, Indian, and British accents.
     """
     from app.repositories.announcement_repository import get_announcement_by_id
-    from app.services.tts_service import generate_announcement_audio_sync, STATIC_AUDIO_DIR
+    from app.services.tts_service import generate_announcement_audio_sync
     from app.services.ai_service import AIService
-
-    notice = get_announcement_by_id(db, announcement_id)
-    if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
+    from app.services.chime_service import resolve_contextual_chime
 
     base_url = str(request.base_url).rstrip("/")
     tag = f"{accent.lower()}_{gender.lower()}"
     if is_summary:
         tag += "_summary"
 
-    wav_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.wav")
-    mp3_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.mp3")
-
-    if os.path.exists(wav_path) and os.path.getsize(wav_path) > 1024:
+    fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
+    if fname and fpath:
         return {
             "status": "ready",
-            "audio_url": f"{base_url}/static/audio_streams/announcement_{announcement_id}_{tag}.wav",
-            "file_name": f"announcement_{announcement_id}_{tag}.wav",
-            "engine": "Kokoro-82M (Offline Neural)",
-            "type": "wav",
-        }
-    if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1024:
-        return {
-            "status": "ready",
-            "audio_url": f"{base_url}/static/audio_streams/announcement_{announcement_id}_{tag}.mp3",
-            "file_name": f"announcement_{announcement_id}_{tag}.mp3",
-            "engine": "Neural TTS",
-            "type": "mp3",
+            "audio_url": f"{base_url}/static/audio_streams/{fname}",
+            "file_name": fname,
+            "engine": "Kokoro-82M / Neural TTS (Cached)",
+            "type": "wav" if fname.endswith(".wav") else "mp3",
+            "chime": chime or "standard",
         }
 
-    # Prepare speech text (Full notice or AI Summary)
-    if is_summary:
-        summary = AIService.summarize(notice.description)
-        speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
+    notice = get_announcement_by_id(db, announcement_id)
+    if notice:
+        selected_chime = chime or resolve_contextual_chime(
+            priority=notice.priority,
+            category=notice.category,
+            emergency_level=notice.emergency_level,
+            title=notice.title,
+            content=notice.description,
+        )
+        if is_summary:
+            summary = notice.ai_summary or AIService.summarize(notice.description)
+            speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
+        else:
+            speech_text = f"{notice.title}. {notice.description}"
+        notice_priority = notice.priority
+        notice_category = notice.category
+        notice_emergency = notice.emergency_level
     else:
-        speech_text = f"{notice.title}. {notice.description}"
+        speech_text = f"Notice Number {announcement_id}. Official campus announcement broadcast."
+        selected_chime = chime or "standard"
+        notice_priority = "NORMAL"
+        notice_category = "General"
+        notice_emergency = "NORMAL"
 
     res = generate_announcement_audio_sync(
         announcement_id=announcement_id,
@@ -351,6 +395,11 @@ def get_announcement_audio_endpoint(
         gender=gender,
         accent=accent,
         is_summary=is_summary,
+        include_chime=include_chime,
+        chime_type=selected_chime,
+        priority=notice_priority,
+        category=notice_category,
+        emergency_level=notice_emergency,
     )
     return {
         "status": "ready",
@@ -367,7 +416,7 @@ def get_announcement_audio_endpoint(
 def stream_announcement_audio_endpoint(
     announcement_id: int,
     gender: str = "female",
-    accent: str = "indian",
+    accent: str = "american",
     is_summary: bool = False,
     include_chime: bool = True,
     chime: str = None,
@@ -379,47 +428,44 @@ def stream_announcement_audio_endpoint(
     Supports regional language playback (Kannada, Hindi, Telugu, Tamil).
     """
     from app.repositories.announcement_repository import get_announcement_by_id
-    from app.services.tts_service import generate_announcement_audio_sync, STATIC_AUDIO_DIR
+    from app.services.tts_service import generate_announcement_audio_sync
     from app.services.chime_service import resolve_contextual_chime
     from app.services.ai_service import AIService
     from app.services.translation_service import TranslationService
-
-    notice = get_announcement_by_id(db, announcement_id)
-    if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
-
-    selected_chime = chime or resolve_contextual_chime(
-        priority=notice.priority,
-        category=notice.category,
-        emergency_level=notice.emergency_level,
-        title=notice.title,
-        content=notice.description,
-    )
-
-    clean_lang = TranslationService.normalize_language_code(lang)
+    clean_lang = TranslationService.normalize_language_code(lang) if lang else "en"
     tag = f"{accent.lower()}_{gender.lower()}"
     if is_summary:
         tag += "_summary"
     if clean_lang != "en":
         tag += f"_{clean_lang}"
-    if include_chime:
-        tag += f"_{selected_chime}"
+
+    fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
+    if fname and fpath:
+        return FileResponse(fpath, media_type=mtype, filename=fname)
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if notice:
+        selected_chime = chime or resolve_contextual_chime(
+            priority=notice.priority,
+            category=notice.category,
+            emergency_level=notice.emergency_level,
+            title=notice.title,
+            content=notice.description,
+        )
+        if is_summary:
+            summary = notice.ai_summary or AIService.summarize(notice.description)
+            speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
+        else:
+            speech_text = f"{notice.title}. {notice.description}"
+        notice_priority = notice.priority
+        notice_category = notice.category
+        notice_emergency = notice.emergency_level
     else:
-        tag += "_nochime"
-
-    wav_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.wav")
-    mp3_path = os.path.join(STATIC_AUDIO_DIR, f"announcement_{announcement_id}_{tag}.mp3")
-
-    if os.path.exists(wav_path) and os.path.getsize(wav_path) > 1024:
-        return FileResponse(wav_path, media_type="audio/wav", filename=f"announcement_{announcement_id}_{tag}.wav")
-    if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1024:
-        return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"announcement_{announcement_id}_{tag}.mp3")
-
-    if is_summary:
-        summary = AIService.summarize(notice.description)
-        speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
-    else:
-        speech_text = f"{notice.title}. {notice.description}"
+        speech_text = f"Notice Number {announcement_id}. Official campus announcement broadcast."
+        selected_chime = chime or "standard"
+        notice_priority = "NORMAL"
+        notice_category = "General"
+        notice_emergency = "NORMAL"
 
     if clean_lang != "en":
         speech_text = TranslationService.translate_text(speech_text, clean_lang)
@@ -432,9 +478,9 @@ def stream_announcement_audio_endpoint(
         is_summary=is_summary,
         include_chime=include_chime,
         chime_type=selected_chime,
-        priority=notice.priority,
-        category=notice.category,
-        emergency_level=notice.emergency_level,
+        priority=notice_priority,
+        category=notice_category,
+        emergency_level=notice_emergency,
     )
     file_path = res["file_path"]
     media_type = "audio/wav" if res.get("type") == "wav" else "audio/mpeg"

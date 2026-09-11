@@ -136,7 +136,7 @@ def generate_announcement_audio_sync(
     announcement_id: int,
     text: str,
     gender: str = "female",
-    accent: str = "indian",
+    accent: str = "american",
     voice_preset: str = None,
     is_summary: bool = False,
     include_chime: bool = True,
@@ -287,7 +287,7 @@ async def generate_announcement_audio(
     announcement_id: int,
     text: str,
     gender: str = "female",
-    accent: str = "indian",
+    accent: str = "american",
     voice_preset: str = None,
     is_summary: bool = False,
 ) -> dict:
@@ -307,7 +307,7 @@ async def generate_announcement_audio(
 def synthesize_text_audio(
     text: str,
     gender: str = "female",
-    accent: str = "indian",
+    accent: str = "american",
     voice_preset: str = None,
     filename_prefix: str = "ai_speech",
 ) -> dict:
