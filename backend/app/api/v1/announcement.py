@@ -16,6 +16,8 @@ from app.schemas.announcement import (
     AnnouncementUpdate,
 )
 from app.schemas.ai_schema import (
+    AudienceCheckRequest,
+    AudienceCheckResponse,
     ScheduleConflictCheckRequest,
     ScheduleConflictCheckResponse,
 )
@@ -535,6 +537,25 @@ def check_schedule_conflict_endpoint(
         scheduled_at=scheduled_dt,
         category=request.category,
         exclude_notice_id=request.exclude_notice_id,
+    )
+
+
+@router.post("/check-audience", response_model=AudienceCheckResponse)
+def check_audience_endpoint(
+    request: AudienceCheckRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    AI Audience Pre-Flight Check (Anti-Spam Guard).
+    Analyzes announcement drafts in real-time to prevent accidental campus-wide spam,
+    verifying if departmental, batch-specific, or faculty-only notices are targeted appropriately.
+    """
+    from app.services.audience_guard_service import AudienceGuardService
+
+    return AudienceGuardService.analyze_target_audience(
+        title=request.title,
+        content=request.content,
+        selected_audience=request.selected_audience,
     )
 
 

@@ -194,3 +194,17 @@ class ScheduleConflictCheckResponse(BaseModel):
     conflicts: List[ConflictDetail] = []
     suggested_alternatives: List[SuggestedAlternativeSlot] = []
 
+
+class AudienceCheckRequest(BaseModel):
+    title: str
+    content: str
+    selected_audience: str
+
+
+class AudienceCheckResponse(BaseModel):
+    has_mismatch: bool
+    detected_audience: Optional[str] = None
+    suggested_audiences: List[str] = []
+    warning_message: Optional[str] = None
+    mismatch_type: Optional[str] = None
+
