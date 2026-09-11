@@ -103,6 +103,9 @@ class AnnouncementResponse(BaseModel):
     remarks: Optional[str] = None
     approver_name: Optional[str] = None
     approved_at: Optional[datetime] = None
+    deliver_speaker: bool = False
+    deliver_in_app: bool = True
+    deliver_push: bool = True
 
 
 class AnnouncementApprovalRequest(BaseModel):

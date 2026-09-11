@@ -188,3 +188,31 @@ class Announcement(TimestampMixin, Base):
             latest = sorted(self.approvals, key=lambda a: a.id)[-1]
             return latest.approved_at
         return None
+
+    @property
+    def deliver_speaker(self) -> bool:
+        if self.deliveries:
+            for d in self.deliveries:
+                name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
+                if "speaker" in name:
+                    return True
+        return False
+
+    @property
+    def deliver_in_app(self) -> bool:
+        if self.deliveries:
+            for d in self.deliveries:
+                name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
+                if "in-app" in name or "feed" in name or "alert" in name or "popup" in name:
+                    return True
+        return True
+
+    @property
+    def deliver_push(self) -> bool:
+        if self.deliveries:
+            for d in self.deliveries:
+                name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
+                if "push" in name:
+                    return True
+        return True
+
