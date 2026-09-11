@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
@@ -6,6 +7,7 @@ import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:anymex/widgets/custom_widgets/voice_dictation_sheet.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +50,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool isAiExpanding = false;
   bool isAiPolishing = false;
   bool isAiDrafting = false;
+  bool isAiScanningDoc = false;
 
   String? aiValidationWarning;
   String? aiSpamWarning;
@@ -177,6 +180,101 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
       errorSnackBar('Failed to generate draft: $e');
     } finally {
       if (mounted) setState(() => isAiDrafting = false);
+    }
+  }
+
+  Future<void> _startVoiceDictation() async {
+    final result = await VoiceDictationSheet.show(context);
+    if (result != null && mounted) {
+      setState(() {
+        if (result['title'] != null && result['title'].toString().isNotEmpty) {
+          titleController.text = result['title'].toString();
+        }
+        if (result['content'] != null && result['content'].toString().isNotEmpty) {
+          descController.text = result['content'].toString();
+        }
+        if (result['suggested_category'] != null) {
+          aiDetectedCategory = result['suggested_category'].toString();
+        }
+        if (result['suggested_priority'] != null) {
+          aiDetectedPriority = result['suggested_priority'].toString();
+        }
+        if (result['suggested_audience'] != null) {
+          final aud = result['suggested_audience'].toString();
+          if (audiences.contains(aud)) {
+            selectedAudience = aud;
+          }
+        }
+      });
+      snackBar('Voice note transformed into official institutional circular!', title: '🎙️ Voice Notice Dictation');
+    }
+  }
+
+  Future<void> _scanAndOcrDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      setState(() => isAiScanningDoc = true);
+
+      List<int>? bytes = file.bytes;
+      if (bytes == null && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+
+      if (bytes == null || bytes.isEmpty) {
+        errorSnackBar('Could not read document bytes.');
+        return;
+      }
+
+      final ext = file.extension?.toLowerCase() ?? 'jpg';
+      final mimeType = ext == 'pdf' ? 'application/pdf' : 'image/$ext';
+
+      final ocrRes = await EchosphereApiService().ocrDocumentToNotice(
+        fileBytes: bytes,
+        mimeType: mimeType,
+        filename: file.name,
+      );
+
+      if (mounted) {
+        setState(() {
+          // Attach original scanned file so students/faculty can access it
+          if (!attachedFiles.any((f) => f.name == file.name)) {
+            attachedFiles.add(file);
+          }
+
+          if (ocrRes['title'] != null && ocrRes['title'].toString().isNotEmpty) {
+            titleController.text = ocrRes['title'].toString();
+          }
+          if (ocrRes['content'] != null && ocrRes['content'].toString().isNotEmpty) {
+            descController.text = ocrRes['content'].toString();
+          }
+          if (ocrRes['suggested_category'] != null) {
+            aiDetectedCategory = ocrRes['suggested_category'].toString();
+          }
+          if (ocrRes['suggested_priority'] != null) {
+            aiDetectedPriority = ocrRes['suggested_priority'].toString();
+          }
+          if (ocrRes['suggested_audience'] != null) {
+            final aud = ocrRes['suggested_audience'].toString();
+            if (audiences.contains(aud)) {
+              selectedAudience = aud;
+            }
+          }
+        });
+
+        snackBar('Scanned circular auto-digitized & original document attached!', title: '📄 Document OCR Digitizer');
+      }
+    } catch (e) {
+      errorSnackBar('Document scanning failed: $e');
+    } finally {
+      if (mounted) setState(() => isAiScanningDoc = false);
     }
   }
 
@@ -405,6 +503,91 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // AI Fast Intake Studio (Voice Dictation & Document OCR)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF6366F1).withOpacity(0.12),
+                    const Color(0xFF8B5CF6).withOpacity(0.06),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF6366F1).withOpacity(0.25),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.auto_awesome, size: 14, color: Color(0xFF818CF8)),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'AI Fast Intake Studio',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF818CF8)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isAiScanningDoc)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF818CF8)),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      ElevatedButton.icon(
+                        key: const Key('voice_dictate_button'),
+                        onPressed: _startVoiceDictation,
+                        icon: const Icon(Icons.mic_rounded, size: 14),
+                        label: const Text('🎙️ Voice Dictate', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4F46E5),
+                          foregroundColor: Colors.white,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        key: const Key('scan_ocr_button'),
+                        onPressed: isAiScanningDoc ? null : _scanAndOcrDocument,
+                        icon: const Icon(Icons.document_scanner_rounded, size: 14),
+                        label: Text(
+                          isAiScanningDoc ? 'Scanning Doc...' : '📄 Scan / OCR Notice',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
