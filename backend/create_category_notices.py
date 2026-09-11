@@ -360,21 +360,21 @@ NOTICES_DATA = [
         "category": "Emergency",
         "notices": [
             {
-                "title": "EMERGENCY: Urgent Weather Advisory - Severe Storm & Campus Safety",
+                "title": "Urgent Weather Advisory - Severe Storm & Campus Safety",
                 "description": "The Meteorological Department has issued an orange alert for severe localized thunderstorms and gusty winds in the district. All outdoor sports and activities are suspended immediately. Students are advised to remain indoors inside reinforced concrete academic buildings.",
                 "priority": AnnouncementPriority.HIGH,
                 "emergency_level": EmergencyLevel.EMERGENCY,
                 "ai_summary": "Emergency weather advisory: Orange alert for thunderstorms; outdoor activities halted and students advised to stay indoors.",
             },
             {
-                "title": "EMERGENCY: Campus Power Substation Scheduled Maintenance Shutdown",
+                "title": "Campus Power Substation Scheduled Maintenance Shutdown",
                 "description": "Due to emergency transformer repairs and grid load balancing by the electricity board, main grid power will be isolated between 2:00 PM and 4:30 PM today. Critical servers and laboratory equipment are running on diesel generator backup.",
                 "priority": AnnouncementPriority.HIGH,
                 "emergency_level": EmergencyLevel.EMERGENCY,
                 "ai_summary": "Emergency power substation maintenance today from 2:00-4:30 PM; critical labs and servers operating on generator backup.",
             },
             {
-                "title": "EMERGENCY: Fire Drill Evacuation Exercise - Wednesday 11:30 AM",
+                "title": "Fire Drill Evacuation Exercise - Wednesday 11:30 AM",
                 "description": "A mandatory unannounced fire safety and emergency evacuation drill will be conducted across all academic and administrative blocks. When emergency alarms sound, please walk calmly towards designated assembly zones. Do not use elevators.",
                 "priority": AnnouncementPriority.HIGH,
                 "emergency_level": EmergencyLevel.EMERGENCY,

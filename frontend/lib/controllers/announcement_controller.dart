@@ -1756,7 +1756,7 @@ class AnnouncementController extends GetxController {
       ),
       AnnouncementModel(
         id: 34,
-        title: 'EMERGENCY: Severe Weather & Thunderstorm Safety Protocol',
+        title: 'Severe Weather & Thunderstorm Safety Protocol',
         description: 'The State Meteorological Department has issued an orange alert for severe localized thunderstorms and heavy winds. All outdoor sports and activities are suspended immediately. Students must remain inside reinforced academic buildings until the storm advisory clears.',
         priority: 'HIGH',
         emergencyLevel: 'EMERGENCY',
@@ -1774,7 +1774,7 @@ class AnnouncementController extends GetxController {
       ),
       AnnouncementModel(
         id: 35,
-        title: 'EMERGENCY: Campus Power Substation Scheduled Grid Repair',
+        title: 'Campus Power Substation Scheduled Grid Repair',
         description: 'Due to emergency transformer repair by the electricity board, main grid power will be isolated today from 2:00 PM to 4:30 PM. Essential laboratories and data center servers will operate uninterrupted on diesel generator backup power.',
         priority: 'HIGH',
         emergencyLevel: 'EMERGENCY',
@@ -1792,7 +1792,7 @@ class AnnouncementController extends GetxController {
       ),
       AnnouncementModel(
         id: 36,
-        title: 'EMERGENCY: Mandatory Campus-Wide Fire Drill & Evacuation Exercise',
+        title: 'Mandatory Campus-Wide Fire Drill & Evacuation Exercise',
         description: 'A mandatory fire safety and emergency evacuation exercise will take place on October 21, 2026 at 11:30 AM across all academic blocks. Upon hearing the siren, walk calmly through fire exits to your block assembly zone. Do not use elevators.',
         priority: 'HIGH',
         emergencyLevel: 'EMERGENCY',
