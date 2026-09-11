@@ -198,6 +198,10 @@ class EchosphereApiService {
       final response = await _dio.get(
         '/announcements/',
         queryParameters: queryParams,
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
       );
       return response.data as List<dynamic>;
     } on DioException catch (e) {

@@ -198,6 +198,10 @@ class AnnouncementController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Instant 0ms display: Pre-seed notices so home dashboard renders immediately without shimmer skeleton
+    if (_rawAnnouncements.isEmpty) {
+      _rawAnnouncements.value = _getSampleAnnouncements();
+    }
     fetchAnnouncements();
   }
 
@@ -375,7 +379,9 @@ class AnnouncementController extends GetxController {
   }
 
   Future<void> fetchAnnouncements() async {
-    isLoading.value = true;
+    if (_rawAnnouncements.isEmpty) {
+      isLoading.value = true;
+    }
     await _loadStatusOverrides();
     if (!Get.testMode) {
       try {
@@ -386,6 +392,7 @@ class AnnouncementController extends GetxController {
               .toList();
           _applyStatusOverrides();
           isLoading.value = false;
+          update();
           return;
         }
       } catch (e) {
@@ -399,6 +406,7 @@ class AnnouncementController extends GetxController {
     }
     _applyStatusOverrides();
     isLoading.value = false;
+    update();
   }
 
   void filterTodayOnly() {
