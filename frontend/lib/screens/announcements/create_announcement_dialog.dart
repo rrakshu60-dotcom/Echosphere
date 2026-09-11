@@ -1094,7 +1094,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         if (ok) {
           if (Get.isRegistered<SpeakerQueueController>()) {
             final SpeakerQueueController queueCtrl = Get.find<SpeakerQueueController>();
-            queueCtrl.refreshQueue(silent: true);
+            queueCtrl.refreshQueue(silent: false);
+            if (deliverSpeaker && !isScheduleLater && !queueCtrl.isPlaying.value) {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (!queueCtrl.isPlaying.value && queueCtrl.queueItems.isNotEmpty) {
+                  queueCtrl.togglePlayPause(index: 0);
+                }
+              });
+            }
           }
           snackBar(statusMessage);
         }

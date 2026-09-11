@@ -64,9 +64,10 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None):
             _PENDING_COMMANDS[key] = _PENDING_COMMANDS[key][-10:]
 
 
-def get_pending_commands_for_mac(mac_address: str) -> List[dict]:
+def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None) -> List[dict]:
     """
     Retrieves pending commands for a given MAC address without dropping broadcasts for other nodes.
+    Includes database-backed resilient queue fallback to ensure commands are never missed across worker processes.
     """
     mac_key = mac_address.upper()
     cmds: List[dict] = []
@@ -86,10 +87,49 @@ def get_pending_commands_for_mac(mac_address: str) -> List[dict]:
             cmds.append(b_cmd)
             delivered_set.add(b_id)
 
+    # 3. Database-backed resilient fallback: check active Playing items in SpeakerQueue
+    if db is not None:
+        try:
+            now = datetime.utcnow()
+            active_playing_items = (
+                db.query(SpeakerQueue)
+                .filter(SpeakerQueue.status == "Playing")
+                .all()
+            )
+            for p_item in active_playing_items:
+                # If played within the last 60 seconds (or currently playing)
+                if p_item.played_at and (now - p_item.played_at).total_seconds() > ((p_item.duration_seconds or 15) + 30):
+                    continue
+                # If targeted to a specific node, verify MAC match
+                if p_item.speaker_node and p_item.speaker_node.mac_address:
+                    target_mac = p_item.speaker_node.mac_address.upper()
+                    if target_mac != mac_key:
+                        continue
+                b_id = f"auto_queue_{p_item.id}_{p_item.announcement_id}"
+                if b_id not in delivered_set:
+                    ann = p_item.announcement
+                    title = ann.title if ann else "Announcement"
+                    message = ann.description if ann else ""
+                    audio_url = f"https://echosphere-backend-9lv8.onrender.com/static/audio_streams/announcement_{p_item.announcement_id}.mp3"
+                    cmds.append({
+                        "command": "PLAY_ANNOUNCEMENT",
+                        "command_id": b_id,
+                        "announcement_id": p_item.announcement_id,
+                        "title": title,
+                        "message": message,
+                        "audio_url": audio_url,
+                        "volume": 85,
+                        "duration_seconds": p_item.duration_seconds or 15,
+                        "timestamp": (p_item.played_at or now).isoformat(),
+                    })
+                    delivered_set.add(b_id)
+        except Exception as e:
+            logger.debug(f"DB fallback command check note: {e}")
+
     # Prune delivered broadcast cache
     if len(delivered_set) > 60:
         valid_ids = {c.get("command_id") for c in _BROADCAST_COMMANDS}
-        _DELIVERED_BROADCASTS[mac_key] = {cid for cid in delivered_set if cid in valid_ids}
+        _DELIVERED_BROADCASTS[mac_key] = {cid for cid in delivered_set if (cid in valid_ids or cid.startswith("auto_queue_"))}
 
     return cmds
 
@@ -334,12 +374,25 @@ def enqueue_and_broadcast_announcement(
 
     words = len((title + " " + content).split())
     dur_secs = max(10, int(words / 2.5))
+    now = datetime.utcnow()
 
-    # 1. Add / update SpeakerQueue table
+    # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap
+    stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
+    for sp in stale_playing:
+        if sp.played_at and (now - sp.played_at).total_seconds() > ((sp.duration_seconds or 15) + 30):
+            sp.status = "Completed"
+            db.commit()
+
+    # Add / update SpeakerQueue table
     existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
-    is_future_scheduled = scheduled_time is not None and scheduled_time > datetime.utcnow()
-    should_play = (not is_future_scheduled) and (is_emergency or (active_playing is None) or (existing_item and existing_item.status == "Playing"))
+    is_future_scheduled = scheduled_time is not None and scheduled_time > now
+    should_play = (not is_future_scheduled) and (
+        is_emergency
+        or (active_playing is None)
+        or (existing_item and existing_item.status == "Playing")
+        or (active_playing and active_playing.announcement_id == announcement_id)
+    )
 
     if is_emergency and active_playing and active_playing.id != (existing_item.id if existing_item else None):
         active_playing.status = "Paused"
@@ -353,8 +406,8 @@ def enqueue_and_broadcast_announcement(
             speaker_node_id=speaker_node_id,
             queue_position=1 if is_emergency else max_pos + 1,
             status=item_status,
-            scheduled_time=scheduled_time or datetime.utcnow(),
-            played_at=datetime.utcnow() if should_play else None,
+            scheduled_time=scheduled_time or now,
+            played_at=now if should_play else None,
             duration_seconds=dur_secs,
         )
         db.add(queue_item)
@@ -367,7 +420,7 @@ def enqueue_and_broadcast_announcement(
             existing_item.speaker_node_id = speaker_node_id
         if should_play:
             existing_item.status = "Playing"
-            existing_item.played_at = datetime.utcnow()
+            existing_item.played_at = now
         existing_item.duration_seconds = dur_secs
         db.commit()
         queue_pos = existing_item.queue_position
@@ -516,6 +569,9 @@ def dispatch_queue_action_to_speakers(
     }
 
 
+BROADCAST_GAP_SECONDS = 15
+
+
 def auto_advance_speaker_queue(
     db: Session,
     force_advance: bool = False,
@@ -524,11 +580,13 @@ def auto_advance_speaker_queue(
     """
     Automated queue progression engine:
     1. Inspects the currently 'Playing' item in the SpeakerQueue.
-    2. If duration has elapsed (or force_advance=True), marks it 'Completed'.
-    3. Finds the next queued item (ordered by queue_position asc where status in ('Next in Queue', 'Queued')).
-    4. Automatically transitions next item to 'Playing', records played_at,
-       and dispatches the PLAY_ANNOUNCEMENT hardware command to the targeted node/speakers.
-    5. Updates subsequent item to 'Next in Queue' if appropriate.
+    2. If duration has elapsed + 15s gap (or force_advance=True), marks it 'Completed'.
+       (Emergency broadcasts bypass the gap and play with 0s delay).
+    3. Finds the next queued item:
+       - Emergency broadcast waiting -> prioritized to play immediately.
+       - Otherwise, next eligible notice where scheduled_time <= now on a First Come First Serve (FCFS) basis.
+    4. Transitions next item to 'Playing', records played_at, and dispatches command to speakers.
+    5. Updates subsequent item to 'Next in Queue'.
     """
     now = datetime.utcnow()
     current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
@@ -538,7 +596,17 @@ def auto_advance_speaker_queue(
         if force_advance:
             should_advance = True
         else:
-            duration = (current_playing.duration_seconds or 15) + 30
+            # Check if current playing is emergency
+            ann = current_playing.announcement
+            is_curr_emerg = ann and (
+                getattr(ann, "emergency_level", None) == "EMERGENCY"
+                or (hasattr(ann.priority, "value") and ann.priority.value == "EMERGENCY")
+                or str(ann.priority).upper() == "EMERGENCY"
+            )
+            # Gap of 15 seconds (10-20 sec range) between normal broadcasts; 0s gap for emergency
+            gap = 0 if is_curr_emerg else BROADCAST_GAP_SECONDS
+            duration = (current_playing.duration_seconds or 15) + gap
+
             if current_playing.played_at:
                 elapsed = (now - current_playing.played_at).total_seconds()
                 if elapsed >= duration:
@@ -551,7 +619,7 @@ def auto_advance_speaker_queue(
             current_playing.status = "Completed"
             db.commit()
             db.refresh(current_playing)
-            logger.info(f"Speaker queue item #{current_playing.id} completed playback after notice duration + 30s gap.")
+            logger.info(f"Speaker queue item #{current_playing.id} completed playback after duration + {gap}s gap.")
     else:
         # Check if there are queued items waiting to start (due for scheduled_time or immediate)
         waiting_item = (
@@ -569,16 +637,35 @@ def auto_advance_speaker_queue(
     if not should_advance:
         return None
 
-    # Find the next item to play (scheduled_time <= now or immediate)
+    # Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
+    from app.core.enums.announcement import AnnouncementPriority, EmergencyLevel
+    from app.models.announcement import Announcement
     next_item = (
         db.query(SpeakerQueue)
+        .join(SpeakerQueue.announcement)
         .filter(
             SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-            or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
+            or_(
+                Announcement.priority == AnnouncementPriority.HIGH,
+                Announcement.emergency_level == EmergencyLevel.EMERGENCY,
+                Announcement.title.ilike("%emergency%"),
+            )
         )
         .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
         .first()
     )
+
+    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
+    if not next_item:
+        next_item = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
+                or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
+            )
+            .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
+            .first()
+        )
 
     if not next_item:
         return None

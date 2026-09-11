@@ -316,10 +316,20 @@ class SpeakerNodeClient:
             tmp_audio = os.path.join(os.path.dirname(__file__), tmp_filename)
             try:
                 logger.info(f"📥 Downloading Kokoro audio stream: {audio_url}")
-                urllib.request.urlretrieve(audio_url, tmp_audio)
-                if os.path.exists(tmp_audio) and os.path.getsize(tmp_audio) > 200:
-                    logger.info(f"🎙️ [KOKORO NEURAL AUDIO] Streaming announcement on Node 1 ({os.path.getsize(tmp_audio)} bytes)...")
+                resp = requests.get(audio_url, timeout=5.0)
+                is_valid_audio = (
+                    resp.status_code == 200
+                    and len(resp.content) > 500
+                    and not resp.content.startswith(b"<!DOCTYPE")
+                    and not resp.content.startswith(b"<html")
+                )
+                if is_valid_audio:
+                    with open(tmp_audio, "wb") as f:
+                        f.write(resp.content)
+                    logger.info(f"🎙️ [KOKORO NEURAL AUDIO] Streaming announcement on Node 1 ({len(resp.content)} bytes)...")
                     played = play_audio_file(tmp_audio, volume=self.volume)
+                else:
+                    logger.info("ℹ️ Audio stream endpoint returned non-audio (404/HTML). Falling back to direct Kokoro synthesis.")
             except Exception as e:
                 logger.warning(f"Could not stream Kokoro audio ({e}), falling back to direct voice synthesis.")
             finally:
