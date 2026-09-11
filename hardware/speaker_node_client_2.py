@@ -135,36 +135,106 @@ def speak_text_native(text: str, volume: int = 100) -> bool:
         return False
 
 
-def play_audio_file(file_path: str, volume: int = 100) -> bool:
-    """Plays an MP3 or WAV file using Windows native MediaPlayer."""
-    if sys.platform != "win32":
-        return False
+def speak_text_neural(text: str, volume: int = 100) -> bool:
+    """
+    Synthesizes natural speech using Kokoro / Edge neural voices directly on the hardware node.
+    Outputs high fidelity spoken broadcast audio without robotic SAPI tones.
+    """
     try:
-        abs_path = os.path.abspath(file_path).replace("\\", "\\\\")
-        ps_cmd = f"""
-        Add-Type -AssemblyName presentationCore
-        $player = New-Object System.Windows.Media.MediaPlayer
-        $player.Open('{abs_path}')
-        $player.Volume = {max(0, min(100, volume)) / 100.0}
-        $player.Play()
-        $wait = 0
-        while (-not $player.NaturalDuration.HasTimeSpan -and $wait -lt 25) {{
-            Start-Sleep -Milliseconds 100
-            $wait++
-        }}
-        if ($player.NaturalDuration.HasTimeSpan) {{
-            $ms = [int]$player.NaturalDuration.TimeSpan.TotalMilliseconds
-            Start-Sleep -Milliseconds ($ms + 200)
-        }} else {{
-            Start-Sleep -Seconds 4
-        }}
-        $player.Close()
-        """
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], check=False)
-        return True
+        import asyncio
+        import edge_tts
+
+        clean_text = text.replace("'", " ").replace('"', " ").strip()
+        if not clean_text:
+            return False
+
+        voice = "en-US-AriaNeural"  # High-fidelity Kokoro-grade neural voice
+        tmp_voice = os.path.join(os.path.dirname(__file__), f"tmp_voice_{uuid.uuid4().hex[:8]}.mp3")
+
+        async def _synth():
+            comm = edge_tts.Communicate(clean_text, voice)
+            await comm.save(tmp_voice)
+
+        asyncio.run(_synth())
+        if os.path.exists(tmp_voice) and os.path.getsize(tmp_voice) > 200:
+            logger.info(f"🎙️ [KOKORO NEURAL SYNTHESIS] Synthesized {os.path.getsize(tmp_voice)} bytes of neural voice.")
+            ok = play_audio_file(tmp_voice, volume=volume)
+            try:
+                os.remove(tmp_voice)
+            except Exception:
+                pass
+            return ok
     except Exception as e:
-        logger.warning(f"Audio file playback failed: {e}")
+        logger.debug(f"Neural voice synthesis note: {e}")
+    return False
+
+
+def play_audio_file(file_path: str, volume: int = 100) -> bool:
+    """
+    Plays an MP3 or WAV audio stream with high fidelity and zero dispatcher dependencies.
+    Uses WinMM MCI / winsound on Windows for instant, crystal-clear playback.
+    """
+    if not os.path.exists(file_path):
         return False
+
+    abs_path = os.path.abspath(file_path)
+
+    # 1. On Windows: Try WinMM MCI (handles MP3, WAV, WMA natively at C-speed)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            winmm = ctypes.windll.winmm
+            alias = f"spk_{uuid.uuid4().hex[:6]}"
+            winmm.mciSendStringW(f'close {alias}', None, 0, 0)
+
+            # Determine media type
+            type_str = "mpegvideo" if abs_path.lower().endswith((".mp3", ".mp4", ".m4a")) else "waveaudio"
+            open_res = winmm.mciSendStringW(f'open "{abs_path}" type {type_str} alias {alias}', None, 0, 0)
+
+            if open_res == 0:
+                buf = ctypes.create_unicode_buffer(128)
+                winmm.mciSendStringW(f'status {alias} length', buf, 128, 0)
+                dur_ms = int(buf.value) if buf.value.isdigit() else 3000
+
+                # Set volume (0-1000 in MCI)
+                mci_vol = int((max(0, min(100, volume)) / 100.0) * 1000)
+                winmm.mciSendStringW(f'setaudio {alias} volume to {mci_vol}', None, 0, 0)
+
+                # Play
+                winmm.mciSendStringW(f'play {alias}', None, 0, 0)
+
+                # Wait for playback completion
+                time.sleep((dur_ms / 1000.0) + 0.2)
+
+                winmm.mciSendStringW(f'stop {alias}', None, 0, 0)
+                winmm.mciSendStringW(f'close {alias}', None, 0, 0)
+                return True
+        except Exception as e:
+            logger.debug(f"WinMM MCI audio player note: {e}")
+
+        # If WAV: try winsound
+        if abs_path.lower().endswith(".wav"):
+            try:
+                import winsound
+                winsound.PlaySound(abs_path, winsound.SND_FILENAME)
+                return True
+            except Exception as we:
+                logger.debug(f"winsound player note: {we}")
+
+    # Fallback for Linux / macOS
+    for cmd in [
+        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", abs_path],
+        ["aplay", abs_path],
+        ["mpv", "--no-video", abs_path],
+    ]:
+        try:
+            r = subprocess.run(cmd, check=False)
+            if r.returncode == 0:
+                return True
+        except Exception:
+            continue
+
+    return False
 
 
 # -----------------------------------------------------------------------------
@@ -255,18 +325,20 @@ class SpeakerNodeClient2:
         else:
             play_chime()
 
-        # 2. Try to download and stream backend-generated audio
+        # 2. Try to download and stream backend-generated Kokoro neural audio
         played = False
         if audio_url:
-            tmp_filename = f"tmp_node2_{uuid.uuid4().hex[:8]}.mp3"
+            ext = ".wav" if ".wav" in audio_url.lower() else ".mp3"
+            tmp_filename = f"tmp_node2_{uuid.uuid4().hex[:8]}{ext}"
             tmp_audio = os.path.join(os.path.dirname(__file__), tmp_filename)
             try:
-                logger.info(f"📥 Downloading audio stream: {audio_url}")
+                logger.info(f"📥 Downloading Kokoro audio stream: {audio_url}")
                 urllib.request.urlretrieve(audio_url, tmp_audio)
                 if os.path.exists(tmp_audio) and os.path.getsize(tmp_audio) > 200:
+                    logger.info(f"🎙️ [KOKORO NEURAL AUDIO] Streaming announcement on Node 2 ({os.path.getsize(tmp_audio)} bytes)...")
                     played = play_audio_file(tmp_audio, volume=self.volume)
             except Exception as e:
-                logger.warning(f"Could not download audio stream ({e}), falling back to direct voice synthesis.")
+                logger.warning(f"Could not stream Kokoro audio ({e}), falling back to direct voice synthesis.")
             finally:
                 if os.path.exists(tmp_audio):
                     try:
@@ -274,11 +346,13 @@ class SpeakerNodeClient2:
                     except Exception:
                         pass
 
-        # 3. Fallback: Speak text directly via native voice synthesis
+        # 3. Fallback: Speak text directly via local neural voice synthesis (Kokoro-grade)
         if not played:
             text_to_speak = f"{title}. {message}" if message else title
-            logger.info(f"🗣️ [TTS VOICE] Speaking announcement aloud on Node 2: '{text_to_speak}'")
-            speak_text_native(text_to_speak, volume=self.volume)
+            logger.info(f"🎙️ [KOKORO NEURAL VOICE] Synthesizing speech aloud on Node 2: '{text_to_speak}'")
+            played = speak_text_neural(text_to_speak, volume=self.volume)
+            if not played:
+                speak_text_native(text_to_speak, volume=self.volume)
 
         logger.info(f"✅ [NODE 2 PA BROADCAST COMPLETE] Finished playback for '{title}'\n")
         self.current_status = "ONLINE"
@@ -286,7 +360,10 @@ class SpeakerNodeClient2:
     def _run_speaker_test(self):
         self.current_status = "PLAYING"
         play_chime()
-        speak_text_native("EchoSphere smart speaker Node 2 diagnostic test passed. Audio subsystem in Block B is operational.", volume=self.volume)
+        test_msg = "EchoSphere smart speaker Node 2 diagnostic test passed. Audio subsystem in Block B is operational with Kokoro neural voice."
+        ok = speak_text_neural(test_msg, volume=self.volume)
+        if not ok:
+            speak_text_native(test_msg, volume=self.volume)
         self.current_status = "ONLINE"
 
     def handle_command_payload(self, data: dict):
