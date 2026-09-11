@@ -7,6 +7,7 @@ class AnnouncementStatus(str, Enum):
     SCHEDULED = "Scheduled"
     PUBLISHED = "Published"
     ARCHIVED = "Archived"
+    REJECTED = "Rejected"
 
 
 class AnnouncementPriority(str, Enum):

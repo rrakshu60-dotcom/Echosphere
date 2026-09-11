@@ -26,6 +26,7 @@ from app.services.announcement_service import (
     reject_announcement_service,
     publish_announcement_service,
     archive_announcement_service,
+    get_approval_queue_service,
 )
 
 router = APIRouter(
@@ -69,6 +70,30 @@ def get_announcements(
         db=db,
         status=status,
         category_id=category_id,
+    )
+
+
+@router.get(
+    "/approval-queue",
+    response_model=list[AnnouncementResponse],
+    summary="Get Role-Based Approval Queue",
+)
+def get_approval_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(
+            "Dev Admin",
+            "Developer",
+            "College Admin",
+            "Principal",
+            "HoD",
+            "Teacher",
+        )
+    ),
+):
+    return get_approval_queue_service(
+        db=db,
+        current_user=current_user,
     )
 
 

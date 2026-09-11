@@ -298,6 +298,16 @@ class EchosphereApiService {
     }
   }
 
+  Future<List<dynamic>> getApprovalQueue() async {
+    try {
+      final response = await _dio.get('/announcements/approval-queue');
+      return response.data as List<dynamic>;
+    } on DioException catch (e) {
+      debugPrint('Error fetching approval queue: $e');
+      return [];
+    }
+  }
+
   Future<bool> updatePassword({
     required String currentPassword,
     required String newPassword,
