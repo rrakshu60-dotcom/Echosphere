@@ -519,10 +519,6 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   bool _isSummarizing = false;
   bool _showSummary = false;
   bool _isLoadingCalendar = false;
-  String? _cardLanguage;
-  String? _translatedTitle;
-  String? _translatedDescription;
-  bool _isTranslating = false;
 
   @override
   void initState() {
@@ -602,148 +598,6 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
       setState(() => _isLoadingCalendar = false);
       snackBar('Could not extract event: $e');
     }
-  }
-
-  Future<void> _showQuickTranslateSheet(BuildContext context) async {
-    final theme = Theme.of(context);
-    const languages = [
-      {'code': 'kn', 'label': 'ಕನ್ನಡ', 'flag': '🇮🇳', 'name': 'Kannada'},
-      {'code': 'hi', 'label': 'हिंदी', 'flag': '🇮🇳', 'name': 'Hindi'},
-      {'code': 'te', 'label': 'తెలుగు', 'flag': '🇮🇳', 'name': 'Telugu'},
-      {'code': 'ta', 'label': 'தமிழ்', 'flag': '🇮🇳', 'name': 'Tamil'},
-      {'code': 'en', 'label': 'English', 'flag': '🇬🇧', 'name': 'Original'},
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.translate_rounded,
-                      color: theme.colorScheme.primary,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Translate Notice',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        Text(
-                          'Regional translation with code & date preservation',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.onSurface.withOpacity(0.65),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Select Regional Language:',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: languages.map((lang) {
-                  final isSelected = (_cardLanguage ?? 'en') == lang['code'];
-                  return ChoiceChip(
-                    label: Text(
-                      '${lang['flag']} ${lang['label']}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? Colors.white : theme.colorScheme.onSurface,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: theme.colorScheme.primary,
-                    backgroundColor: theme.colorScheme.surface,
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    onSelected: (selected) async {
-                      final code = lang['code']!;
-                      if (code == 'en') {
-                        setState(() {
-                          _cardLanguage = null;
-                          _translatedTitle = null;
-                          _translatedDescription = null;
-                        });
-                        Navigator.pop(ctx);
-                        snackBar('Reverted to original English text');
-                        return;
-                      }
-
-                      Navigator.pop(ctx);
-                      setState(() => _isTranslating = true);
-                      try {
-                        final res = await EchosphereApiService().translateAnnouncement(
-                          id: widget.notice.id,
-                          targetLanguage: code,
-                          title: widget.notice.title,
-                          content: widget.notice.description,
-                          summary: _aiSummary,
-                        );
-                        if (mounted) {
-                          setState(() {
-                            _cardLanguage = code;
-                            _translatedTitle = res['translated_title']?.toString();
-                            _translatedDescription = res['translated_content']?.toString();
-                            _isTranslating = false;
-                          });
-                          snackBar('🌐 Card translated to ${res['language_name']}');
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          setState(() => _isTranslating = false);
-                          snackBar('Translation failed: $e');
-                        }
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Color _getPriorityColor(String priority) {
@@ -994,51 +848,11 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     ),
                   ],
                 ),
-                if (_cardLanguage != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.translate_rounded, size: 11, color: theme.colorScheme.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Translated to ${_cardLanguage!.toUpperCase()}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _cardLanguage = null;
-                                  _translatedTitle = null;
-                                  _translatedDescription = null;
-                                });
-                              },
-                              child: Icon(Icons.close, size: 11, color: theme.colorScheme.primary),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
                 const SizedBox(height: 12),
 
                 // Title
                 Text(
-                  _translatedTitle ?? widget.notice.title,
+                  widget.notice.title,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1049,7 +863,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
 
                 // Description preview
                 Text(
-                  _translatedDescription ?? widget.notice.description,
+                  widget.notice.description,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1340,54 +1154,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       ),
                     ),
 
-                    // 4. Regional Translate Chip
-                    InkWell(
-                      onTap: _isTranslating ? null : () => _showQuickTranslateSheet(context),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: _cardLanguage != null
-                              ? theme.colorScheme.primary.withOpacity(0.18)
-                              : theme.colorScheme.primary.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _cardLanguage != null
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.primary.withOpacity(0.2),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_isTranslating)
-                              const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 1.5),
-                              )
-                            else
-                              Icon(
-                                Icons.translate_rounded,
-                                size: 13,
-                                color: theme.colorScheme.primary,
-                              ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _cardLanguage != null ? _cardLanguage!.toUpperCase() : 'Translate',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // 5. Read Details Button
+                    // 4. Read Details Button
                     InkWell(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(

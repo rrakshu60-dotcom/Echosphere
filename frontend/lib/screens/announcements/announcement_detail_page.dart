@@ -20,6 +20,7 @@ import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:anymex/widgets/notice_audio_player_bar.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -41,6 +42,13 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     super.initState();
     _aiSummary = widget.announcement.aiSummary;
     _fetchCalendarEvent();
+    // Pre-warm speech synthesis in background for zero-latency instant playback
+    TtsAudioService.instance.prewarmAnnouncement(
+      widget.announcement.id,
+      title: widget.announcement.title,
+      content: widget.announcement.description,
+      summary: widget.announcement.aiSummary,
+    );
   }
 
   Future<void> _fetchCalendarEvent() async {

@@ -252,20 +252,28 @@ def ai_intent(req: AiIntentRequest):
 @router.post("/synthesize")
 def ai_synthesize_speech(req: Dict[str, Any], request: Request):
     """
-    Synthesizes speech for arbitrary text using Kokoro-82M offline neural TTS (with fallbacks).
+    Synthesizes speech for arbitrary text using Kokoro-82M offline neural TTS (with Edge-TTS / gTTS fallbacks).
     """
     from app.services.tts_service import synthesize_text_audio
     text = req.get("text", "")
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Text is required")
+    gender = req.get("gender", "female")
+    accent = req.get("accent", "american")
+    voice_preset = req.get("voice_preset")
     base_url = str(request.base_url).rstrip("/")
-    res = synthesize_text_audio(text=text)
+    res = synthesize_text_audio(
+        text=text,
+        gender=gender,
+        accent=accent,
+        voice_preset=voice_preset,
+    )
     return {
         "status": "ready",
         "audio_url": f"{base_url}{res['url_path']}",
         "file_name": res["file_name"],
-        "engine": res.get("engine", "Kokoro-82M (Offline Neural)"),
-        "type": res.get("type", "wav"),
+        "engine": res.get("engine", "Neural TTS"),
+        "type": res.get("type", "mp3"),
         "duration_sec": res.get("duration_sec"),
     }
 
