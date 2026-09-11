@@ -116,21 +116,21 @@ KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 
 VOICE_PROFILES = {
     # English Neural Voices
-    "american_female": ("af_bella", "a", "en-US-JennyNeural", "American Female (Jenny)"),
-    "american_male": ("am_michael", "a", "en-US-GuyNeural", "American Male (Guy)"),
-    "indian_female": ("af_heart", "a", "en-IN-NeerjaNeural", "Indian Female (Neerja)"),
-    "indian_male": ("am_adam", "a", "en-IN-PrabhatNeural", "Indian Male (Prabhat)"),
-    "british_female": ("bf_emma", "b", "en-GB-SoniaNeural", "British Female (Sonia)"),
-    "british_male": ("bm_george", "b", "en-GB-RyanNeural", "British Male (Ryan)"),
+    "american_female": ("af_heart", "a", "en-US-AriaNeural", "American Female"),
+    "american_male": ("am_adam", "a", "en-US-ChristopherNeural", "American Male"),
+    "indian_female": ("af_heart", "a", "en-IN-NeerjaNeural", "Indian Female"),
+    "indian_male": ("am_adam", "a", "en-IN-PrabhatNeural", "Indian Male"),
+    "british_female": ("bf_emma", "b", "en-GB-SoniaNeural", "British Female"),
+    "british_male": ("bm_george", "b", "en-GB-RyanNeural", "British Male"),
     # Regional Indian Neural Voices
-    "kannada_female": ("af_heart", "a", "kn-IN-SapnaNeural", "Kannada Female (Sapna)"),
-    "kannada_male": ("am_adam", "a", "kn-IN-GaganNeural", "Kannada Male (Gagan)"),
-    "hindi_female": ("af_heart", "a", "hi-IN-SwaraNeural", "Hindi Female (Swara)"),
-    "hindi_male": ("am_adam", "a", "hi-IN-MadhurNeural", "Hindi Male (Madhur)"),
-    "telugu_female": ("af_heart", "a", "te-IN-ShrutiNeural", "Telugu Female (Shruti)"),
-    "telugu_male": ("am_adam", "a", "te-IN-MohanNeural", "Telugu Male (Mohan)"),
-    "tamil_female": ("af_heart", "a", "ta-IN-PallaviNeural", "Tamil Female (Pallavi)"),
-    "tamil_male": ("am_adam", "a", "ta-IN-ValluvarNeural", "Tamil Male (Valluvar)"),
+    "kannada_female": ("af_heart", "a", "kn-IN-SapnaNeural", "Kannada Female"),
+    "kannada_male": ("am_adam", "a", "kn-IN-GaganNeural", "Kannada Male"),
+    "hindi_female": ("af_heart", "a", "hi-IN-SwaraNeural", "Hindi Female"),
+    "hindi_male": ("am_adam", "a", "hi-IN-MadhurNeural", "Hindi Male"),
+    "telugu_female": ("af_heart", "a", "te-IN-ShrutiNeural", "Telugu Female"),
+    "telugu_male": ("am_adam", "a", "te-IN-MohanNeural", "Telugu Male"),
+    "tamil_female": ("af_heart", "a", "ta-IN-PallaviNeural", "Tamil Female"),
+    "tamil_male": ("am_adam", "a", "ta-IN-ValluvarNeural", "Tamil Male"),
 }
 
 

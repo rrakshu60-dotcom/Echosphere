@@ -351,53 +351,36 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
 
-                // Title & Subtitle Info
+                // Title & Status Info
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: EchoSphereText(
-                              text: isPlaying
-                                  ? (currentMode == 'summary'
-                                      ? 'Reading AI Summary Aloud'
-                                      : 'Reading Full Notice Aloud')
-                                  : isBuffering
-                                      ? 'Synthesizing Voice...'
-                                      : 'Listen to Notice',
-                              size: 13,
-                              variant: TextVariant.bold,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (isPlaying) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Colors.greenAccent,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${audio.engine.value} • ${audio.voiceName.value}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.primary.withOpacity(0.9),
-                          fontWeight: FontWeight.w500,
+                      Flexible(
+                        child: EchoSphereText(
+                          text: isPlaying
+                              ? (currentMode == 'summary'
+                                  ? 'Reading AI Summary Aloud'
+                                  : 'Reading Full Notice Aloud')
+                              : isBuffering
+                                  ? 'Synthesizing Voice...'
+                                  : 'Listen to Notice',
+                          size: 13,
+                          variant: TextVariant.bold,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (isPlaying) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.greenAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
