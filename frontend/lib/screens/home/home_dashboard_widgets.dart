@@ -1241,7 +1241,12 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       final isThisPlaying = audio.isAnnouncementPlaying(widget.notice.id);
                       final isThisBuffering = audio.isAnnouncementActive(widget.notice.id) && audio.isBuffering.value;
                       return InkWell(
-                        onTap: () => audio.playAnnouncement(widget.notice.id),
+                        onTap: () => audio.playAnnouncement(
+                          widget.notice.id,
+                          title: widget.notice.title,
+                          content: widget.notice.description,
+                          summary: widget.notice.aiSummary,
+                        ),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(

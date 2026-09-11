@@ -193,18 +193,52 @@ class TtsAudioService extends GetxService {
         );
         if (audioMeta != null) {
           final rawUrl = audioMeta['audio_url']?.toString() ?? '';
-          engine.value = 'AI Voice';
-          voiceName.value = audioMeta['voice']?.toString() ?? '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
-          activeChimeTag.value = audioMeta['chime']?.toString() ?? 'standard';
-          if (rawUrl.startsWith('http')) {
-            streamUrl = rawUrl;
-          } else if (rawUrl.isNotEmpty) {
-            streamUrl = '${_api.hostUrl}$rawUrl';
+          final fileName = audioMeta['file_name']?.toString() ?? '';
+
+          // Reject stale legacy beep files (e.g. *.wav tone bursts from old cache or mismatching accent)
+          final isLegacyBeep = fileName.endsWith('.wav') &&
+              (fileName.contains('indian') || !fileName.contains(selectedAccent.value));
+
+          if (!isLegacyBeep && rawUrl.isNotEmpty) {
+            engine.value = 'AI Voice';
+            voiceName.value = audioMeta['voice']?.toString() ?? '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+            activeChimeTag.value = audioMeta['chime']?.toString() ?? 'standard';
+            if (rawUrl.startsWith('http')) {
+              streamUrl = rawUrl;
+            } else if (rawUrl.isNotEmpty) {
+              streamUrl = '${_api.hostUrl}$rawUrl';
+            }
+          } else {
+            debugPrint('[TTS] Rejected stale beep audio from server ($fileName). Synthesizing fresh American speech.');
           }
         }
       }
 
-      // Fallback to direct stream route if meta failed
+      // If no valid URL from announcement meta (or stale beep file was rejected), synthesize notice text directly!
+      if (streamUrl == null || streamUrl.isEmpty) {
+        final textToSpeak = (readMode.value == 'summary' && _activeSummary != null && _activeSummary!.isNotEmpty)
+            ? _activeSummary!
+            : (_activeContent != null && _activeContent!.isNotEmpty
+                ? (_activeTitle != null ? '$_activeTitle. $_activeContent' : _activeContent!)
+                : (_activeTitle ?? ''));
+
+        if (textToSpeak.isNotEmpty) {
+          debugPrint('[TTS] Synthesizing speech directly via AI synthesis for notice #$id...');
+          final meta = await _api.synthesizeSpeech(
+            textToSpeak,
+            gender: selectedGender.value,
+            accent: selectedAccent.value,
+          );
+          if (meta != null && meta['audio_url'] != null) {
+            final rawUrl = meta['audio_url'].toString();
+            streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+            engine.value = meta['engine']?.toString() ?? 'AI Voice';
+            voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+          }
+        }
+      }
+
+      // Fallback to direct stream route if meta failed and synthesis was not triggered
       if (streamUrl == null || streamUrl.isEmpty) {
         streamUrl = _api.getStreamUrlForAnnouncement(
           id,
