@@ -20,8 +20,13 @@ class SpeakerQueueController extends GetxController {
   final RxBool isLoading = false.obs;
   final RxString errorMessage = ''.obs;
 
+  static const int broadcastGapSeconds = 15;
+  final RxBool isIntermission = false.obs;
+  final RxInt intermissionSecondsRemaining = 0.obs;
+
   Timer? _playbackTimer;
   Timer? _pollTimer;
+  Timer? _intermissionTimer;
 
   // Fallback initial speaker nodes: Canonical nodes (Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
@@ -88,6 +93,7 @@ class SpeakerQueueController extends GetxController {
   void cancelAllTimers() {
     _playbackTimer?.cancel();
     _pollTimer?.cancel();
+    _intermissionTimer?.cancel();
   }
 
   @override
@@ -139,6 +145,20 @@ class SpeakerQueueController extends GetxController {
     if (changed) {
       _updateActiveNoticeMetrics();
       queueItems.refresh();
+
+      // Auto-broadcast immediately if queue was idle and a "Publish Now" notice arrived
+      if (!Get.testMode && !isPlaying.value && queueItems.isNotEmpty) {
+        final firstItem = queueItems.first;
+        final schedStr = firstItem['scheduled_time']?.toString();
+        DateTime? sched;
+        if (schedStr != null) {
+          sched = DateTime.tryParse(schedStr);
+        }
+        final bool isDueNow = sched == null || sched.isBefore(DateTime.now().add(const Duration(seconds: 5)));
+        if (isDueNow) {
+          togglePlayPause(index: 0);
+        }
+      }
     }
   }
 
@@ -308,6 +328,9 @@ class SpeakerQueueController extends GetxController {
   }
 
   String get activeTitle {
+    if (isIntermission.value) {
+      return 'Intermission (${intermissionSecondsRemaining.value}s)';
+    }
     if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
       return 'No active speaker announcement';
     }
@@ -316,6 +339,9 @@ class SpeakerQueueController extends GetxController {
   }
 
   String get activeSubtitle {
+    if (isIntermission.value) {
+      return '15-second gap before next scheduled broadcast';
+    }
     if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
       return 'PA system standing by';
     }
@@ -360,9 +386,9 @@ class SpeakerQueueController extends GetxController {
       queueItems.refresh();
 
       final item = queueItems[activeIndex.value];
-      final itemId = item['id'];
-      if (!Get.testMode && itemId is int) {
-        _apiService.queueAction(itemId, 'pause').catchError((_) => <String, dynamic>{});
+      final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
+      if (!Get.testMode && targetId != null) {
+        _apiService.queueAction(targetId, 'pause').catchError((_) => <String, dynamic>{});
       }
       if (!Get.testMode) {
         try {
@@ -388,9 +414,12 @@ class SpeakerQueueController extends GetxController {
     _startPlaybackTimer();
 
     final item = queueItems[activeIndex.value];
-    final itemId = item['id'];
-    if (!Get.testMode && itemId is int) {
-      _apiService.queueAction(itemId, 'play').catchError((_) => <String, dynamic>{});
+    final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
+    if (!Get.testMode && targetId != null) {
+      _apiService.queueAction(targetId, 'play').catchError((e) {
+        debugPrint('[SpeakerQueue] queueAction play note: $e');
+        return <String, dynamic>{};
+      });
     }
 
     if (!Get.testMode) {
@@ -477,19 +506,116 @@ class SpeakerQueueController extends GetxController {
 
     // 4. Advance to next queued notice or finish
     if (queueItems.isNotEmpty) {
-      if (activeIndex.value >= queueItems.length) {
+      // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first, 0s gap)
+      final emergencyIdx = queueItems.indexWhere((q) {
+        final prio = (q['priority'] ?? '').toString().toUpperCase();
+        final title = (q['title'] ?? '').toString().toLowerCase();
+        return prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('emergency');
+      });
+
+      if (emergencyIdx != -1) {
+        final emergencyItem = queueItems.removeAt(emergencyIdx);
+        queueItems.insert(0, emergencyItem);
         activeIndex.value = 0;
+        queueItems[0]['status'] = 'Playing';
+        _updateActiveNoticeMetrics();
+        queueItems.refresh();
+        isPlaying.value = true;
+        _startPlaybackTimer();
+
+        final nextTargetId = emergencyItem['announcement_id'] as int? ?? emergencyItem['id'] as int?;
+        if (!Get.testMode && nextTargetId != null) {
+          _apiService.queueAction(nextTargetId, 'play').catchError((_) => <String, dynamic>{});
+        }
+
+        if (!Get.testMode) {
+          try {
+            final nextAnnId = emergencyItem['announcement_id'] as int? ?? emergencyItem['id'] as int?;
+            if (nextAnnId != null && nextAnnId > 0) {
+              TtsAudioService.instance.playAnnouncement(
+                nextAnnId,
+                title: emergencyItem['title']?.toString(),
+                content: emergencyItem['description']?.toString(),
+                directUrl: emergencyItem['audio_url']?.toString(),
+              );
+            }
+          } catch (e) {
+            debugPrint('[SpeakerQueue] Emergency audio play note: $e');
+          }
+        }
+        return;
       }
-      queueItems[activeIndex.value]['status'] = 'Playing';
+
+      // Priority 2: Normal notices enforce a 10-20 sec gap (15s) and verify scheduled time
+      if (Get.testMode) {
+        _advanceToNextEligibleNotice();
+      } else {
+        isPlaying.value = false;
+        isIntermission.value = true;
+        intermissionSecondsRemaining.value = broadcastGapSeconds;
+        queueItems.refresh();
+
+        _intermissionTimer?.cancel();
+        _intermissionTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+          intermissionSecondsRemaining.value--;
+          if (intermissionSecondsRemaining.value <= 0) {
+            t.cancel();
+            isIntermission.value = false;
+            _advanceToNextEligibleNotice();
+          }
+        });
+      }
+    } else {
+      _playbackTimer?.cancel();
+      _intermissionTimer?.cancel();
+      isIntermission.value = false;
+      activeIndex.value = 0;
+      isPlaying.value = false;
+      queueItems.refresh();
+      snackBar('All queued speaker notices have completed broadcast.');
+    }
+  }
+
+  /// Advances to the next eligible queued notice on a First Come First Serve (FCFS) basis,
+  /// respecting scheduled times (only playing notices whose scheduled_time <= now).
+  void _advanceToNextEligibleNotice() {
+    if (queueItems.isEmpty) {
+      isPlaying.value = false;
+      return;
+    }
+
+    final now = DateTime.now();
+    int eligibleIdx = -1;
+
+    // FCFS: iterate in queue order and pick first notice whose scheduled_time has arrived
+    for (int i = 0; i < queueItems.length; i++) {
+      final q = queueItems[i];
+      final schedStr = q['scheduled_time']?.toString();
+      if (schedStr == null || schedStr.isEmpty) {
+        eligibleIdx = i;
+        break;
+      }
+      final sched = DateTime.tryParse(schedStr);
+      if (sched == null || sched.isBefore(now.add(const Duration(seconds: 2)))) {
+        eligibleIdx = i;
+        break;
+      }
+    }
+
+    if (eligibleIdx != -1) {
+      activeIndex.value = eligibleIdx;
+      for (int i = 0; i < queueItems.length; i++) {
+        queueItems[i]['status'] = (i == activeIndex.value) ? 'Playing' : 'Queued';
+      }
       _updateActiveNoticeMetrics();
       queueItems.refresh();
       isPlaying.value = true;
       _startPlaybackTimer();
 
       final nextItem = queueItems[activeIndex.value];
-      final nextId = nextItem['id'];
-      if (!Get.testMode && nextId is int) {
-        _apiService.queueAction(nextId, 'play').catchError((_) => <String, dynamic>{});
+      final nextTargetId = nextItem['announcement_id'] as int? ?? nextItem['id'] as int?;
+      if (!Get.testMode && nextTargetId != null) {
+        _apiService.queueAction(nextTargetId, 'play').catchError((_) => <String, dynamic>{});
       }
 
       if (!Get.testMode) {
@@ -508,11 +634,12 @@ class SpeakerQueueController extends GetxController {
         }
       }
     } else {
-      _playbackTimer?.cancel();
-      activeIndex.value = 0;
+      // Future scheduled notices are waiting for their scheduled time
       isPlaying.value = false;
+      for (int i = 0; i < queueItems.length; i++) {
+        queueItems[i]['status'] = 'Queued';
+      }
       queueItems.refresh();
-      snackBar('All queued speaker notices have completed broadcast.');
     }
   }
 
@@ -539,9 +666,9 @@ class SpeakerQueueController extends GetxController {
     if (activeIndex.value >= 0 && activeIndex.value < queueItems.length) {
       queueItems[activeIndex.value]['status'] = 'Queued';
       final item = queueItems[activeIndex.value];
-      final itemId = item['id'];
-      if (!Get.testMode && itemId is int) {
-        _apiService.queueAction(itemId, 'cancel').catchError((_) => <String, dynamic>{});
+      final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
+      if (!Get.testMode && targetId != null) {
+        _apiService.queueAction(targetId, 'cancel').catchError((_) => <String, dynamic>{});
       }
     }
     queueItems.refresh();
@@ -554,10 +681,10 @@ class SpeakerQueueController extends GetxController {
 
     final item = queueItems[index];
     final isCurrent = (index == activeIndex.value);
-    final itemId = item['id'];
+    final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
 
-    if (!Get.testMode && itemId is int) {
-      _apiService.queueAction(itemId, 'remove').catchError((_) => <String, dynamic>{});
+    if (!Get.testMode && targetId != null) {
+      _apiService.queueAction(targetId, 'remove').catchError((_) => <String, dynamic>{});
     }
 
     if (isCurrent && isPlaying.value) {
@@ -626,8 +753,20 @@ class SpeakerQueueController extends GetxController {
     final bool hasActivePlayback = isPlaying.value &&
         queueItems.any((q) => q['status'] == 'Playing');
 
-    // "play it if no other notice is present"
-    final bool shouldPlayNow = !hasActivePlayback;
+    final bool isEmergency = announcement.priority.toUpperCase() == 'EMERGENCY' ||
+        announcement.emergencyLevel.toUpperCase() == 'EMERGENCY';
+    final now = DateTime.now();
+    final bool isFutureScheduled = announcement.scheduledAt != null && announcement.scheduledAt!.isAfter(now);
+
+    // If emergency, preempt any intermission and play immediately
+    if (isEmergency) {
+      _intermissionTimer?.cancel();
+      isIntermission.value = false;
+    }
+
+    // Emergency always plays immediately; Publish Now plays immediately if queue is idle;
+    // Scheduled notices are queued for their scheduled time in FCFS order.
+    final bool shouldPlayNow = isEmergency || (!isFutureScheduled && !hasActivePlayback && !isIntermission.value);
 
     int targetIndex;
 
@@ -655,10 +794,14 @@ class SpeakerQueueController extends GetxController {
         'audio_url': '/static/audio_streams/announcement_${announcement.id}.mp3',
       };
 
-      if (shouldPlayNow) {
+      if (isEmergency) {
+        queueItems.insert(0, newItem);
+        targetIndex = 0;
+      } else if (shouldPlayNow) {
         queueItems.insert(0, newItem);
         targetIndex = 0;
       } else {
+        // FCFS: append to queue
         queueItems.add(newItem);
         targetIndex = queueItems.length - 1;
       }

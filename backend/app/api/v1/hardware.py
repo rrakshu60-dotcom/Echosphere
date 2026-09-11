@@ -368,7 +368,7 @@ def receive_node_heartbeat(
         auto_advance_speaker_queue(db)
     except Exception:
         pass
-    cmds = get_pending_commands_for_mac(str(node.mac_address))
+    cmds = get_pending_commands_for_mac(str(node.mac_address), db=db)
     return {
         "status": "success",
         "node_id": node.id,
@@ -390,7 +390,7 @@ def poll_pending_node_commands(
         auto_advance_speaker_queue(db)
     except Exception:
         pass
-    cmds = get_pending_commands_for_mac(mac_address)
+    cmds = get_pending_commands_for_mac(mac_address, db=db)
     return {
         "mac_address": mac_address,
         "pending_commands": cmds,
@@ -489,6 +489,7 @@ def enqueue_speaker_announcement(
 
     base_url = str(request.base_url).rstrip("/")
     p_val = ann.priority.value if hasattr(ann.priority, 'value') else str(ann.priority)
+    target_node_id = enqueue_in.speaker_node_id if (enqueue_in.speaker_node_id and enqueue_in.speaker_node_id > 0) else None
     result = enqueue_and_broadcast_announcement(
         db=db,
         announcement_id=int(ann.id),
@@ -497,7 +498,7 @@ def enqueue_speaker_announcement(
         department_code=dept_code,
         zone="College-Wide",
         is_emergency=(p_val == "EMERGENCY"),
-        speaker_node_id=enqueue_in.speaker_node_id,
+        speaker_node_id=target_node_id,
         base_url=base_url,
     )
     return {
@@ -514,9 +515,7 @@ def enqueue_speaker_announcement(
 def reorder_speaker_queue_items(
     reorder_in: ReorderQueueRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     updated_items = reorder_speaker_queue(db=db, ordered_ids=reorder_in.queue_ids)
     return {
@@ -532,9 +531,7 @@ def update_queue_action(
     action: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     status_map = {
         "play": "Playing",
@@ -583,9 +580,7 @@ def update_queue_action(
 def advance_speaker_queue_endpoint(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     from app.services.hardware_speaker_service import auto_advance_speaker_queue
     base_url = str(request.base_url).rstrip("/")
