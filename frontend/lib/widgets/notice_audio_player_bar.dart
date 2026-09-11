@@ -307,7 +307,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                     title: title,
                     content: content,
                     summary: aiSummary,
-                    directUrl: directAudioUrl,
+                    directUrl: (currentGender == 'female' && currentMode == 'full') ? directAudioUrl : null,
                   ),
                   borderRadius: BorderRadius.circular(24),
                   child: Container(
@@ -474,15 +474,26 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                   context: context,
                   label: '♀ Female',
                   isSelected: currentGender == 'female',
-                  onTap: () => audio.setVoiceConfig(gender: 'female'),
+                  onTap: () => audio.setVoiceConfig(
+                    gender: 'female',
+                    announcementId: announcementId,
+                    title: title,
+                    content: content,
+                    summary: aiSummary,
+                  ),
                 ),
                 _buildConfigChip(
                   context: context,
                   label: '♂ Male',
                   isSelected: currentGender == 'male',
-                  onTap: () => audio.setVoiceConfig(gender: 'male'),
+                  onTap: () => audio.setVoiceConfig(
+                    gender: 'male',
+                    announcementId: announcementId,
+                    title: title,
+                    content: content,
+                    summary: aiSummary,
+                  ),
                 ),
-
 
                 // Read Mode Toggle (Full notice vs AI Summary)
                 _buildConfigChip(
@@ -495,7 +506,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                       title: title,
                       content: content,
                       summary: aiSummary,
-                      directUrl: directAudioUrl,
+                      directUrl: (currentGender == 'female') ? directAudioUrl : null,
                       forceMode: 'full',
                     );
                   },
@@ -510,7 +521,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                       title: title,
                       content: content,
                       summary: aiSummary,
-                      directUrl: directAudioUrl,
+                      directUrl: null,
                       forceMode: 'summary',
                     );
                   },

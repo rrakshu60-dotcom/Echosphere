@@ -323,11 +323,11 @@ def _find_cached_audio_file(announcement_id: int, tag: str, chime: str | None = 
                 media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
                 return filename, filepath, media_type
 
-    # General prefix scan in directory
+    # Specific prefix scan in directory strictly matching requested tag (never cross-matching opposite gender or mode)
     try:
-        prefix = f"announcement_{announcement_id}_"
+        prefix = f"announcement_{announcement_id}_{tag}"
         for f in os.listdir(STATIC_AUDIO_DIR):
-            if (f.startswith(prefix) or f == f"announcement_{announcement_id}.wav" or f == f"announcement_{announcement_id}.mp3") and (f.endswith(".wav") or f.endswith(".mp3")):
+            if f.startswith(prefix) and (f.endswith(".wav") or f.endswith(".mp3")):
                 fp = os.path.join(STATIC_AUDIO_DIR, f)
                 if is_legacy_beep_file(fp):
                     try:

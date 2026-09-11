@@ -72,5 +72,37 @@ def test_chime_system():
     print("[PASS] Test 4: Audio chime seamlessly prepended to speech WAV stream")
     print("\nAll audio chime tests passed successfully!")
 
+
+def test_gender_voice_isolation():
+    from app.services.tts_service import resolve_voice_profile, STATIC_AUDIO_DIR
+    from app.api.v1.announcement import _find_cached_audio_file
+
+    # 1. Voice profile resolution
+    kok_vf, _, edge_vf, name_vf = resolve_voice_profile("female", "american")
+    kok_vm, _, edge_vm, name_vm = resolve_voice_profile("male", "american")
+
+    assert "Jenny" in name_vf or "bella" in kok_vf or "Female" in name_vf
+    assert "Guy" in name_vm or "michael" in kok_vm or "Male" in name_vm
+    assert edge_vf != edge_vm, "Female and Male voices must use distinct neural profiles"
+
+    # 2. Strict cache isolation between male and female
+    test_female_file = os.path.join(STATIC_AUDIO_DIR, "announcement_7777_american_female_standard.mp3")
+    try:
+        with open(test_female_file, "wb") as f:
+            f.write(b"RIFF" + b"\x00" * 2000)
+
+        # Look up for male when only female exists must return None
+        fname, fpath, _ = _find_cached_audio_file(7777, "american_male", "standard")
+        assert fname is None and fpath is None, f"Cross-contamination: Male search returned {fname}"
+
+        # Look up for female must find the female file
+        fname_f, fpath_f, _ = _find_cached_audio_file(7777, "american_female", "standard")
+        assert fname_f == "announcement_7777_american_female_standard.mp3"
+    finally:
+        if os.path.exists(test_female_file):
+            os.remove(test_female_file)
+
+
 if __name__ == "__main__":
     test_chime_system()
+    test_gender_voice_isolation()
