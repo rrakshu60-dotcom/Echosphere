@@ -28,6 +28,7 @@ from app.repositories.announcement_approval_repository import create_approval
 from app.schemas.announcement import AnnouncementApprovalRequest
 
 from app.services.audit_log_service import create_audit_log_service
+from app.core.websocket_manager import ws_manager
 
 
 def dispatch_announcement_notifications_and_deliveries(
@@ -167,6 +168,8 @@ def create_announcement_service(
         priority=request.priority,
         emergency_level=request.emergency_level,
         scheduled_at=request.scheduled_at,
+        target_audience=request.target_audience or "Entire College",
+        ai_summary=f"Summary: {request.title}",
         status=initial_status,
         created_by=current_user.id,
     )
@@ -201,7 +204,7 @@ def create_announcement_service(
         current_user=current_user,
     )
 
-    if created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
+    if deliver_speaker and created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
         p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
         is_emerg = (p_val == "EMERGENCY")
         try:
@@ -220,6 +223,21 @@ def create_announcement_service(
             )
         except Exception as e:
             logger.warning(f"Auto-broadcast error on announcement creation: {e}")
+
+    try:
+        ws_manager.broadcast_sync({
+            "event": "ANNOUNCEMENT_CREATED",
+            "announcement_id": created_announcement.id,
+            "title": created_announcement.title,
+            "status": created_announcement.status.value if hasattr(created_announcement.status, "value") else str(created_announcement.status),
+            "department": created_announcement.department_name,
+            "category": created_announcement.category_name,
+            "creator_name": current_user.full_name,
+            "creator_role": user_role,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast error on announcement creation: {e}")
 
     return created_announcement
 
@@ -361,6 +379,16 @@ def delete_announcement_service(
         description=f"Deleted announcement: {announcement_title}",
     )
 
+    try:
+        ws_manager.broadcast_sync({
+            "event": "ANNOUNCEMENT_DELETED",
+            "announcement_id": announcement_id_value,
+            "title": announcement_title,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast error on delete: {e}")
+
     return {"message": "Announcement deleted successfully."}
 
 
@@ -411,17 +439,32 @@ def approve_announcement_service(
             detail="Announcement not found.",
         )
 
-    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT"):
+    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT", "Pending Approval"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending or submitted announcements can be approved.",
         )
 
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    if user_role == "HoD":
+        creator_dept_id = announcement.creator.department_id if announcement.creator else None
+        if creator_dept_id and current_user.department_id and creator_dept_id != current_user.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="HoD can only approve announcements from their own department.",
+            )
+        target = (announcement.target_audience or "").lower()
+        if "entire" in target or "all" in target or "institution" in target:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Institution-wide announcements require Principal or College Admin approval.",
+            )
+
     approval = AnnouncementApproval(
         announcement_id=announcement.id,
         approver_id=current_user.id,
         status="Approved",
-        remarks=request.remarks,
+        remarks=request.remarks or "Approved for publication",
         approved_at=datetime.utcnow(),
     )
 
@@ -491,6 +534,19 @@ def approve_announcement_service(
         current_user=current_user,
     )
 
+    try:
+        ws_manager.broadcast_sync({
+            "event": "ANNOUNCEMENT_APPROVED",
+            "announcement_id": updated_announcement.id,
+            "title": updated_announcement.title,
+            "status": "PUBLISHED",
+            "approver_name": current_user.full_name,
+            "remarks": request.remarks or "Approved for publication",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast error on approval: {e}")
+
     return {"message": "Announcement approved successfully."}
 
 
@@ -511,17 +567,26 @@ def reject_announcement_service(
             detail="Announcement not found.",
         )
 
-    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT"):
+    if announcement.status not in (AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT, "SUBMITTED", "PENDING_APPROVAL", "DRAFT", "Pending Approval"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending or submitted announcements can be rejected.",
         )
 
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    if user_role == "HoD":
+        creator_dept_id = announcement.creator.department_id if announcement.creator else None
+        if creator_dept_id and current_user.department_id and creator_dept_id != current_user.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="HoD can only reject announcements from their own department.",
+            )
+
     approval = AnnouncementApproval(
         announcement_id=announcement.id,
         approver_id=current_user.id,
         status="Rejected",
-        remarks=request.remarks,
+        remarks=request.remarks or "Rejected by reviewer",
         approved_at=datetime.utcnow(),
     )
 
@@ -530,7 +595,7 @@ def reject_announcement_service(
         approval,
     )
 
-    announcement.status = AnnouncementStatus.DRAFT
+    announcement.status = AnnouncementStatus.REJECTED
 
     db.commit()
     db.refresh(announcement)
@@ -543,6 +608,19 @@ def reject_announcement_service(
         entity_id=announcement.id,
         description=f"Rejected announcement: {announcement.title}",
     )
+
+    try:
+        ws_manager.broadcast_sync({
+            "event": "ANNOUNCEMENT_REJECTED",
+            "announcement_id": announcement.id,
+            "title": announcement.title,
+            "status": "REJECTED",
+            "approver_name": current_user.full_name,
+            "remarks": request.remarks or "Rejected by reviewer",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast error on rejection: {e}")
 
     return {"message": "Announcement rejected successfully."}
 
@@ -660,3 +738,72 @@ def archive_announcement_service(
     )
 
     return {"message": "Announcement archived successfully."}
+
+
+def get_approval_queue_service(
+    db: Session,
+    current_user: User,
+) -> list[Announcement]:
+    from sqlalchemy.orm import joinedload, selectinload
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+
+    base_query = db.query(Announcement).options(
+        joinedload(Announcement.creator),
+        joinedload(Announcement.category),
+        selectinload(Announcement.approvals),
+        selectinload(Announcement.deliveries),
+    )
+
+    pending_statuses = (
+        AnnouncementStatus.PENDING_APPROVAL,
+        AnnouncementStatus.DRAFT,
+        "Pending Approval",
+        "PENDING_APPROVAL",
+        "SUBMITTED",
+        "DRAFT",
+    )
+
+    if user_role == "Teacher":
+        # Teachers track all notices they have authored (submitted, draft, approved, rejected)
+        return (
+            base_query.filter(Announcement.created_by == current_user.id)
+            .order_by(Announcement.created_at.desc())
+            .all()
+        )
+
+    if user_role == "HoD":
+        # HoD reviews pending notices from teachers in their department
+        # PLUS any notices the HoD created that require Principal review
+        hod_dept_id = current_user.department_id
+
+        dept_pending = (
+            base_query.join(User, Announcement.created_by == User.id)
+            .filter(
+                Announcement.status.in_(pending_statuses),
+                User.department_id == hod_dept_id,
+            )
+            .all()
+        )
+        own_notices = (
+            base_query.filter(Announcement.created_by == current_user.id).all()
+        )
+
+        seen = set()
+        combined = []
+        for a in (dept_pending + own_notices):
+            if a.id not in seen:
+                seen.add(a.id)
+                combined.append(a)
+        combined.sort(key=lambda x: x.created_at if x.created_at else datetime.min, reverse=True)
+        return combined
+
+    if user_role in ("Dev Admin", "Developer", "College Admin", "Principal"):
+        # Executive roles have college-wide approval authority
+        return (
+            base_query.filter(Announcement.status.in_(pending_statuses))
+            .order_by(Announcement.created_at.desc())
+            .all()
+        )
+
+    return []
+

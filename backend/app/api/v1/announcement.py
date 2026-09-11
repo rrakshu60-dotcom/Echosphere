@@ -16,6 +16,10 @@ from app.schemas.announcement import (
     AnnouncementUpdate,
 )
 from app.schemas.ai_schema import (
+    AudienceCheckRequest,
+    AudienceCheckResponse,
+    RelevanceScoreRequest,
+    RelevanceScoreResponse,
     ScheduleConflictCheckRequest,
     ScheduleConflictCheckResponse,
 )
@@ -30,6 +34,7 @@ from app.services.announcement_service import (
     reject_announcement_service,
     publish_announcement_service,
     archive_announcement_service,
+    get_approval_queue_service,
 )
 
 router = APIRouter(
@@ -73,6 +78,30 @@ def get_announcements(
         db=db,
         status=status,
         category_id=category_id,
+    )
+
+
+@router.get(
+    "/approval-queue",
+    response_model=list[AnnouncementResponse],
+    summary="Get Role-Based Approval Queue",
+)
+def get_approval_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(
+            "Dev Admin",
+            "Developer",
+            "College Admin",
+            "Principal",
+            "HoD",
+            "Teacher",
+        )
+    ),
+):
+    return get_approval_queue_service(
+        db=db,
+        current_user=current_user,
     )
 
 
@@ -511,6 +540,47 @@ def check_schedule_conflict_endpoint(
         category=request.category,
         exclude_notice_id=request.exclude_notice_id,
     )
+
+
+@router.post("/check-audience", response_model=AudienceCheckResponse)
+def check_audience_endpoint(
+    request: AudienceCheckRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    AI Audience Pre-Flight Check (Anti-Spam Guard).
+    Analyzes announcement drafts in real-time to prevent accidental campus-wide spam,
+    verifying if departmental, batch-specific, or faculty-only notices are targeted appropriately.
+    """
+    from app.services.audience_guard_service import AudienceGuardService
+
+    return AudienceGuardService.analyze_target_audience(
+        title=request.title,
+        content=request.content,
+        selected_audience=request.selected_audience,
+    )
+
+
+@router.post("/relevance-scores", response_model=RelevanceScoreResponse)
+def calculate_relevance_scores_endpoint(
+    request: RelevanceScoreRequest,
+):
+    """
+    Contextual Relevance & Feed Scoring.
+    Computes personalized relevance scores (0.0 to 1.0) and explanatory reasons
+    for a list of announcements based on user department, semester, and role.
+    """
+    from app.services.relevance_scoring_service import RelevanceScoringService
+
+    user_dict = request.user_profile.model_dump()
+    notices_dicts = [a.model_dump() for a in request.announcements]
+
+    results = RelevanceScoringService.calculate_batch(
+        user_profile=user_dict,
+        announcements=notices_dicts,
+    )
+
+    return {"scores": results}
 
 
 

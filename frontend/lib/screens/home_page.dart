@@ -378,6 +378,7 @@ class _HomePageState extends State<HomePage> {
               color: theme.colorScheme.primary,
               onTap: () {
                 annController.showTodayOnly.value = false;
+                annController.showForYouOnly.value = false;
                 annController.selectedCategory.value = 'All';
                 annController.searchQuery.value = '';
               },
@@ -440,24 +441,42 @@ class _HomePageState extends State<HomePage> {
           () => SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: AnnouncementController.categories.map((cat) {
-                final isSelected =
-                    annController.selectedCategory.value == cat;
-                return Padding(
+              children: [
+                Padding(
                   padding: const EdgeInsets.only(right: 8.0),
                   child: EchoSphereChip(
-                    label: cat,
-                    isSelected: isSelected,
+                    label: '🎯 For You',
+                    isSelected: annController.showForYouOnly.value,
                     onSelected: (val) {
+                      annController.showForYouOnly.value = val;
                       if (val) {
                         annController.showTodayOnly.value = false;
                         annController.searchQuery.value = '';
-                        annController.selectedCategory.value = cat;
+                        annController.selectedCategory.value = 'All';
                       }
                     },
                   ),
-                );
-              }).toList(),
+                ),
+                ...AnnouncementController.categories.map((cat) {
+                  final isSelected = !annController.showForYouOnly.value &&
+                      annController.selectedCategory.value == cat;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: EchoSphereChip(
+                      label: cat,
+                      isSelected: isSelected,
+                      onSelected: (val) {
+                        if (val) {
+                          annController.showForYouOnly.value = false;
+                          annController.showTodayOnly.value = false;
+                          annController.searchQuery.value = '';
+                          annController.selectedCategory.value = cat;
+                        }
+                      },
+                    ),
+                  );
+                }),
+              ],
             ),
           ),
         ),
