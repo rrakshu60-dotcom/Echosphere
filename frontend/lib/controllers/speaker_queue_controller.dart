@@ -144,7 +144,11 @@ class SpeakerQueueController extends GetxController {
 
   String _getNodeName(int? nodeId) {
     if (nodeId == null) return 'All Nodes (College-Wide)';
-    final match = speakerNodes.firstWhereOrNull((n) => n['id'] == nodeId);
+    final match = speakerNodes.firstWhereOrNull((n) =>
+        n['id'] == nodeId ||
+        (nodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+        (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
     if (match != null) return match['name'] ?? 'Speaker #$nodeId';
     return 'Speaker Node #$nodeId';
   }
@@ -156,7 +160,11 @@ class SpeakerQueueController extends GetxController {
       final anyOnline = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
       return anyOnline ? 'ONLINE' : 'OFFLINE';
     }
-    final match = speakerNodes.firstWhereOrNull((n) => n['id'] == nodeId);
+    final match = speakerNodes.firstWhereOrNull((n) =>
+        n['id'] == nodeId ||
+        (nodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+        (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
     return (match?['status'] ?? 'OFFLINE').toString().toUpperCase();
   }
 
@@ -698,10 +706,20 @@ class SpeakerQueueController extends GetxController {
 
     // 4. Background backend sync (MQTT dispatch and database update) without blocking UI
     if (!Get.testMode) {
+      int? resolvedNodeId = targetNodeId;
+      final matchNode = speakerNodes.firstWhereOrNull((n) =>
+          n['id'] == targetNodeId ||
+          (targetNodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+          (targetNodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+          (targetNodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
+      if (matchNode != null && matchNode['id'] is int) {
+        resolvedNodeId = matchNode['id'] as int;
+      }
+
       unawaited(
         _apiService.enqueueAnnouncement(
           announcementId: announcement.id,
-          speakerNodeId: targetNodeId,
+          speakerNodeId: resolvedNodeId,
           audioType: 'AI Speech',
         ).then((res) {
           debugPrint('[SpeakerQueue] Remote enqueue success: $res');
@@ -730,12 +748,22 @@ class SpeakerQueueController extends GetxController {
       }
     }
 
+    int? resolvedNodeId = speakerNodeId;
+    final matchNode = speakerNodes.firstWhereOrNull((n) =>
+        n['id'] == speakerNodeId ||
+        (speakerNodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        (speakerNodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+        (speakerNodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
+    if (matchNode != null && matchNode['id'] is int) {
+      resolvedNodeId = matchNode['id'] as int;
+    }
+
     // Fallback if notice not found in AnnouncementController
     try {
       await _apiService.enqueueAnnouncement(
         announcementId: announcementId,
         audioType: audioType,
-        speakerNodeId: speakerNodeId,
+        speakerNodeId: resolvedNodeId,
       );
     } catch (e) {
       debugPrint('Enqueue remote notice note: $e');

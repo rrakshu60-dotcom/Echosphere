@@ -21,20 +21,27 @@ from app.db.database import Base, engine
 
 Base.metadata.create_all(bind=engine)
 
-# Safe SQLite Schema Migration Check
+# Safe Schema Migration Check (Supports both PostgreSQL & SQLite)
 try:
     with engine.connect() as conn:
-        res = conn.execute(text("PRAGMA table_info(announcements);")).fetchall()
-        col_names = [r[1] for r in res]
-        if "target_audience" not in col_names:
-            conn.execute(text("ALTER TABLE announcements ADD COLUMN target_audience VARCHAR(255) DEFAULT 'Entire College';"))
-        if "ai_summary" not in col_names:
-            conn.execute(text("ALTER TABLE announcements ADD COLUMN ai_summary TEXT;"))
-        if "speaker_voice" not in col_names:
-            conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
-        conn.commit()
-except Exception:
-    pass
+        if engine.dialect.name == "postgresql":
+            conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS target_audience VARCHAR(255) DEFAULT 'Entire College';"))
+            conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_summary TEXT;"))
+            conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS speaker_voice VARCHAR(20) DEFAULT 'female';"))
+            conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_node_id INTEGER;"))
+            conn.commit()
+        else:
+            res = conn.execute(text("PRAGMA table_info(announcements);")).fetchall()
+            col_names = [r[1] for r in res]
+            if "target_audience" not in col_names:
+                conn.execute(text("ALTER TABLE announcements ADD COLUMN target_audience VARCHAR(255) DEFAULT 'Entire College';"))
+            if "ai_summary" not in col_names:
+                conn.execute(text("ALTER TABLE announcements ADD COLUMN ai_summary TEXT;"))
+            if "speaker_voice" not in col_names:
+                conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
+            conn.commit()
+except Exception as exc:
+    print(f"Startup migration note: {exc}")
 
 # Seed default database entities if table is empty
 try:

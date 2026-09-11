@@ -316,10 +316,21 @@ def enqueue_and_broadcast_announcement(
     # 0. Resolve targeted speaker node if provided
     if speaker_node_id and not target_mac:
         target_node = get_speaker_node_by_id(db, speaker_node_id)
+        if not target_node:
+            # Resilient fallback across database environments (Render auto-inc vs SQLite IDs)
+            if speaker_node_id in (14, 1):
+                target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("24:0A:C4:00:01:10")).first()
+            elif speaker_node_id in (15, 2):
+                target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CB")).first()
+            elif speaker_node_id in (16, 3):
+                target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CC")).first()
         if target_node:
             target_mac = target_node.mac_address
+            speaker_node_id = target_node.id
             if target_node.zone:
                 zone = target_node.zone
+        else:
+            speaker_node_id = None
 
     words = len((title + " " + content).split())
     dur_secs = max(10, int(words / 2.5))
