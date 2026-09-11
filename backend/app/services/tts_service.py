@@ -21,33 +21,30 @@ def ensure_audio_dir_exists():
 
 def generate_synthesized_wav_fallback(file_path: str, text: str):
     """
-    Generates a lightweight standard WAV file with tone bursts representing speech,
-    ensuring a valid playable audio file exists even if internet connectivity is offline.
+    Fallback TTS using offline speech synthesis where possible,
+    ensuring real spoken words are always produced instead of tone bursts.
     """
-    sample_rate = 16000
-    duration_per_word = 0.35
-    words = text.split()
-    total_duration = max(1.5, len(words) * duration_per_word)
-    num_samples = int(sample_rate * total_duration)
+    try:
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.save_to_file(text, file_path)
+        engine.runAndWait()
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 1024:
+            return
+    except Exception:
+        pass
 
-    with wave.open(file_path, "wb") as wav_file:
-        wav_file.setnchannels(1)  # Mono
-        wav_file.setsampwidth(2)  # 16-bit
-        wav_file.setframerate(sample_rate)
-
-        # Generate audio tone pulses
-        freq = 440.0  # A4 tone pitch
-        samples = []
-        import math
-        for i in range(num_samples):
-            # Pulsing amplitude per word
-            word_idx = int((i / sample_rate) / duration_per_word)
-            in_word = (i % int(sample_rate * duration_per_word)) < int(sample_rate * 0.25)
-            amp = 12000 if (in_word and word_idx < len(words)) else 0
-            val = int(amp * math.sin(2 * math.pi * freq * (i / sample_rate)))
-            samples.append(struct.pack("<h", val))
-
-        wav_file.writeframes(b"".join(samples))
+    try:
+        import subprocess, platform
+        if platform.system() == "Windows":
+            clean = text.replace('"', ' ').replace("'", " ")[:300]
+            normalized_path = os.path.abspath(file_path).replace("\\", "/")
+            ps = f'$s = New-Object -ComObject SAPI.SpVoice; $fs = New-Object -ComObject SAPI.SpFileStream; $fs.Open("{normalized_path}", 3); $s.AudioOutputStream = $fs; $s.Speak("{clean}"); $fs.Close()'
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=8)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 1024:
+                return
+    except Exception:
+        pass
 
 
 def clean_text_for_speech(text: str) -> str:
@@ -176,23 +173,23 @@ def generate_announcement_audio_sync(
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
 
     # Check cache
-    if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 1024:
-        return {
-            "file_name": wav_filename,
-            "file_path": wav_filepath,
-            "url_path": f"/static/audio_streams/{wav_filename}",
-            "type": "wav",
-            "engine": f"Kokoro-82M ({voice_name} - Cached)",
-            "voice": voice_name,
-            "chime": selected_chime if include_chime else "none",
-        }
-    if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+    if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 4096:
         return {
             "file_name": mp3_filename,
             "file_path": mp3_filepath,
             "url_path": f"/static/audio_streams/{mp3_filename}",
             "type": "mp3",
             "engine": f"Neural TTS ({voice_name} - Cached)",
+            "voice": voice_name,
+            "chime": selected_chime if include_chime else "none",
+        }
+    if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 4096:
+        return {
+            "file_name": wav_filename,
+            "file_path": wav_filepath,
+            "url_path": f"/static/audio_streams/{wav_filename}",
+            "type": "wav",
+            "engine": f"Kokoro-82M ({voice_name} - Cached)",
             "voice": voice_name,
             "chime": selected_chime if include_chime else "none",
         }

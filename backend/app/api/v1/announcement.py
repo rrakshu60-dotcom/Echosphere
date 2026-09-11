@@ -294,37 +294,24 @@ def archive_announcement(
 
 def _find_cached_audio_file(announcement_id: int, tag: str, chime: str = None) -> tuple[str | None, str | None, str | None]:
     from app.services.tts_service import STATIC_AUDIO_DIR
+    if not os.path.exists(STATIC_AUDIO_DIR):
+        return None, None, None
+
     candidates = []
     if chime:
-        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
         candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.mp3")
-    candidates.append(f"announcement_{announcement_id}_{tag}.wav")
+        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
     candidates.append(f"announcement_{announcement_id}_{tag}.mp3")
+    candidates.append(f"announcement_{announcement_id}_{tag}.wav")
     for c in ["urgent_academic", "events_sports", "emergency", "standard"]:
-        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
         candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
-        candidates.append(f"announcement_{announcement_id}_indian_female_{c}.wav")
-    candidates.append(f"announcement_{announcement_id}_indian_female.wav")
-    candidates.append(f"announcement_{announcement_id}.wav")
-    candidates.append(f"announcement_{announcement_id}.mp3")
+        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
 
     for filename in candidates:
         filepath = os.path.join(STATIC_AUDIO_DIR, filename)
-        if os.path.exists(filepath) and os.path.getsize(filepath) > 512:
-            media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 4096:
+            media_type = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
             return filename, filepath, media_type
-
-    # General prefix scan in directory
-    try:
-        prefix = f"announcement_{announcement_id}_"
-        for f in os.listdir(STATIC_AUDIO_DIR):
-            if (f.startswith(prefix) or f == f"announcement_{announcement_id}.wav" or f == f"announcement_{announcement_id}.mp3") and (f.endswith(".wav") or f.endswith(".mp3")):
-                fp = os.path.join(STATIC_AUDIO_DIR, f)
-                if os.path.getsize(fp) > 512:
-                    media_type = "audio/wav" if f.endswith(".wav") else "audio/mpeg"
-                    return f, fp, media_type
-    except Exception:
-        pass
 
     return None, None, None
 
