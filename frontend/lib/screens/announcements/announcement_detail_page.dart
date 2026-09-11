@@ -105,7 +105,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           content: widget.announcement.description,
           summary: summary,
         );
-        snackBar('✨ AI Summary generated with Qwen!');
+        snackBar('✨ AI Summary generated!');
       }
     } catch (e) {
       if (mounted) {
@@ -1144,7 +1144,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                           const SizedBox(width: 6),
                           const Expanded(
                             child: Text(
-                              'Speaker Voice (Kokoro Clear American Accent)',
+                              'Speaker Voice',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -1159,7 +1159,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         children: [
                           ChoiceChip(
                             avatar: const Icon(Icons.female_rounded, size: 14),
-                            label: const Text('Female Voice (af_heart)', style: TextStyle(fontSize: 11)),
+                            label: const Text('Female Voice', style: TextStyle(fontSize: 11)),
                             selected: speakerVoiceVal == 'female',
                             onSelected: (val) {
                               if (val) setDlgState(() => speakerVoiceVal = 'female');
@@ -1167,7 +1167,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                           ),
                           ChoiceChip(
                             avatar: const Icon(Icons.male_rounded, size: 14),
-                            label: const Text('Male Voice (am_adam)', style: TextStyle(fontSize: 11)),
+                            label: const Text('Male Voice', style: TextStyle(fontSize: 11)),
                             selected: speakerVoiceVal == 'male',
                             onSelected: (val) {
                               if (val) setDlgState(() => speakerVoiceVal = 'male');

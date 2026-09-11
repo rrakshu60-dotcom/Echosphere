@@ -571,7 +571,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
           summary: summary,
         );
 
-        snackBar('✨ AI Summary generated with Qwen!');
+        snackBar('✨ AI Summary generated!');
       }
     } catch (e) {
       if (mounted) {

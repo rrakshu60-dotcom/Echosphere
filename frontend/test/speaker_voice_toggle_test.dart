@@ -61,8 +61,8 @@ void main() {
     expect(speakerChipFinder, findsOneWidget);
 
     // Initially, voice selection should not be visible because deliverSpeaker is false
-    expect(find.text('Female Voice (af_heart)'), findsNothing);
-    expect(find.text('Male Voice (am_adam)'), findsNothing);
+    expect(find.text('Female Voice'), findsNothing);
+    expect(find.text('Male Voice'), findsNothing);
 
     // Scroll to and select 'Speaker Announcement'
     await tester.ensureVisible(speakerChipFinder);
@@ -71,22 +71,22 @@ void main() {
     await tester.pumpAndSettle();
 
     // Voice options should now be visible
-    expect(find.text('Female Voice (af_heart)'), findsOneWidget);
-    expect(find.text('Male Voice (am_adam)'), findsOneWidget);
+    expect(find.text('Female Voice'), findsOneWidget);
+    expect(find.text('Male Voice'), findsOneWidget);
 
-    // Tap 'Male Voice (am_adam)'
-    await tester.tap(find.text('Male Voice (am_adam)'));
+    // Tap 'Male Voice'
+    await tester.tap(find.text('Male Voice'));
     await tester.pumpAndSettle();
 
     // Verify Male chip is selected
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice (am_adam)'));
+    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
     expect(maleChip.selected, isTrue);
 
-    // Tap back to 'Female Voice (af_heart)'
-    await tester.tap(find.text('Female Voice (af_heart)'));
+    // Tap back to 'Female Voice'
+    await tester.tap(find.text('Female Voice'));
     await tester.pumpAndSettle();
 
-    final femaleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Female Voice (af_heart)'));
+    final femaleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Female Voice'));
     expect(femaleChip.selected, isTrue);
 
     // No layout overflow
@@ -105,7 +105,7 @@ void main() {
       role: 'Principal',
       department: 'AIML',
     );
-    final annController = Get.put(AnnouncementController());
+    Get.put(AnnouncementController());
 
     final sampleNotice = AnnouncementModel(
       id: 501,
@@ -142,7 +142,7 @@ void main() {
     expect(speakerNoticeChip, findsOneWidget);
 
     // Initially deliverSpeaker is false so voice chips are hidden
-    expect(find.text('Male Voice (am_adam)'), findsNothing);
+    expect(find.text('Male Voice'), findsNothing);
 
     // Scroll to and tap 'Speaker Notice'
     await tester.ensureVisible(speakerNoticeChip);
@@ -151,8 +151,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Now voice selection chips should appear
-    final femaleChipFinder = find.text('Female Voice (af_heart)');
-    final maleChipFinder = find.text('Male Voice (am_adam)');
+    final femaleChipFinder = find.text('Female Voice');
+    final maleChipFinder = find.text('Male Voice');
     expect(femaleChipFinder, findsOneWidget);
     expect(maleChipFinder, findsOneWidget);
 
@@ -162,7 +162,7 @@ void main() {
     await tester.tap(maleChipFinder);
     await tester.pumpAndSettle();
 
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice (am_adam)'));
+    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
     expect(maleChip.selected, isTrue);
 
     // Confirm update
@@ -215,8 +215,8 @@ void main() {
     expect(find.text('Modify Announcement'), findsOneWidget);
 
     // Since deliverSpeaker is already true, voice chips should be visible immediately
-    final femaleChipFinder = find.text('Female Voice (af_heart)');
-    final maleChipFinder = find.text('Male Voice (am_adam)');
+    final femaleChipFinder = find.text('Female Voice');
+    final maleChipFinder = find.text('Male Voice');
     expect(femaleChipFinder, findsOneWidget);
     expect(maleChipFinder, findsOneWidget);
 
@@ -226,7 +226,7 @@ void main() {
     await tester.tap(maleChipFinder);
     await tester.pumpAndSettle();
 
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice (am_adam)'));
+    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
     expect(maleChip.selected, isTrue);
 
     // Tap confirm
