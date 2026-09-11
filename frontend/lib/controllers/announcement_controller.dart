@@ -900,6 +900,7 @@ class AnnouncementController extends GetxController {
     // Background Async Backend Sync & AI Summarization (non-blocking)
     if (!Get.testMode) {
       Future.microtask(() async {
+        int? backendId;
         try {
           final res = await EchosphereApiService().createAnnouncement(
             title: title,
@@ -917,8 +918,18 @@ class AnnouncementController extends GetxController {
             targetAudience: targetAudience,
             speakerNodeId: speakerNodeId,
           );
-          final backendId = res['id'];
-          if (backendId != null && backendId is int && deliverSpeaker) {
+          final rawBackendId = res['id'];
+          backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');
+          if (backendId != null) {
+            final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
+            if (idx != -1) {
+              final old = _rawAnnouncements[idx];
+              _rawAnnouncements[idx] = old.copyWith(id: backendId);
+              _rawAnnouncements.refresh();
+              update();
+            }
+          }
+          if (backendId != null && deliverSpeaker) {
             try {
               await EchosphereApiService().enqueueAnnouncement(
                 announcementId: backendId,
@@ -934,7 +945,7 @@ class AnnouncementController extends GetxController {
 
         try {
           final summary = await EchosphereApiService().summarizeContent(description);
-          final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
+          final idx = _rawAnnouncements.indexWhere((a) => a.id == newId || (backendId != null && a.id == backendId));
           if (idx != -1 && summary.isNotEmpty) {
             final old = _rawAnnouncements[idx];
             _rawAnnouncements[idx] = old.copyWith(aiSummary: summary);
