@@ -489,13 +489,31 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                   context: context,
                   label: '📄 Full Notice',
                   isSelected: currentMode == 'full',
-                  onTap: () => audio.setVoiceConfig(mode: 'full'),
+                  onTap: () {
+                    audio.playAnnouncement(
+                      announcementId,
+                      title: title,
+                      content: content,
+                      summary: aiSummary,
+                      directUrl: directAudioUrl,
+                      forceMode: 'full',
+                    );
+                  },
                 ),
                 _buildConfigChip(
                   context: context,
                   label: '✨ AI Summary',
                   isSelected: currentMode == 'summary',
-                  onTap: () => audio.setVoiceConfig(mode: 'summary'),
+                  onTap: () {
+                    audio.playAnnouncement(
+                      announcementId,
+                      title: title,
+                      content: content,
+                      summary: aiSummary,
+                      directUrl: directAudioUrl,
+                      forceMode: 'summary',
+                    );
+                  },
                 ),
 
                 // Intro Chime Configuration Chip

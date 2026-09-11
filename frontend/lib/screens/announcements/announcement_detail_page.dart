@@ -49,6 +49,22 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       content: widget.announcement.description,
       summary: widget.announcement.aiSummary,
     );
+    // If notice summary is not yet present, pre-generate with Qwen in background
+    if (_aiSummary == null || _aiSummary!.isEmpty) {
+      EchosphereApiService().summarizeContent(widget.announcement.description).then((sum) {
+        if (mounted && sum.isNotEmpty) {
+          setState(() {
+            _aiSummary = sum;
+          });
+          TtsAudioService.instance.prewarmAnnouncement(
+            widget.announcement.id,
+            title: widget.announcement.title,
+            content: widget.announcement.description,
+            summary: sum,
+          );
+        }
+      }).catchError((_) {});
+    }
   }
 
   Future<void> _fetchCalendarEvent() async {
@@ -83,7 +99,13 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         if (Get.isRegistered<AnnouncementController>()) {
           Get.find<AnnouncementController>().updateAnnouncementSummary(widget.announcement.id, summary);
         }
-        snackBar('✨ AI Summary generated!');
+        TtsAudioService.instance.prewarmAnnouncement(
+          widget.announcement.id,
+          title: widget.announcement.title,
+          content: widget.announcement.description,
+          summary: summary,
+        );
+        snackBar('✨ AI Summary generated with Qwen!');
       }
     } catch (e) {
       if (mounted) {
@@ -301,24 +323,62 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      Wrap(
+                                        alignment: WrapAlignment.spaceBetween,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        spacing: 8,
+                                        runSpacing: 4,
                                         children: [
-                                          const Expanded(
-                                            child: Text(
-                                              'AI Summary',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.amber,
-                                              ),
+                                          const Text(
+                                            'AI Summary',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.amber,
                                             ),
                                           ),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                          Wrap(
+                                            crossAxisAlignment: WrapCrossAlignment.center,
+                                            spacing: 6,
                                             children: [
+                                              Obx(() {
+                                                final audio = TtsAudioService.instance;
+                                                final isPlayingSummary = audio.isAnnouncementPlaying(announcement.id) && audio.readMode.value == 'summary';
+                                                return InkWell(
+                                                  onTap: () {
+                                                    audio.playAnnouncement(
+                                                      announcement.id,
+                                                      title: announcement.title,
+                                                      content: announcement.description,
+                                                      summary: _aiSummary,
+                                                      forceMode: 'summary',
+                                                    );
+                                                  },
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          isPlayingSummary ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
+                                                          size: 14,
+                                                          color: Colors.amber.shade800,
+                                                        ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          isPlayingSummary ? 'Playing' : 'Listen',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: Colors.amber.shade800,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                );
+                                              }),
                                               InkWell(
                                                 onTap: () {
                                                   Clipboard.setData(ClipboardData(text: _aiSummary!));
@@ -334,7 +394,6 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                                   ),
                                                 ),
                                               ),
-                                              const SizedBox(width: 8),
                                               InkWell(
                                                 onTap: _isSummarizing ? null : _generateAiSummary,
                                                 child: Text(

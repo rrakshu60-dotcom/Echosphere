@@ -20,7 +20,7 @@ class TtsAudioService extends GetxService {
   final RxBool isBuffering = false.obs;
   final Rx<Duration> position = Duration.zero.obs;
   final Rx<Duration> duration = Duration.zero.obs;
-  final RxString engine = 'AI Voice'.obs;
+  final RxString engine = 'Kokoro-82M'.obs;
   final RxString voiceName = 'American Female'.obs;
   final RxString statusMessage = ''.obs;
 
@@ -86,6 +86,8 @@ class TtsAudioService extends GetxService {
     String? mode,
     bool? chimeEnabled,
     String? chimeType,
+    String? summary,
+    bool startPlaying = false,
   }) async {
     bool changed = false;
     if (gender != null && gender != selectedGender.value) {
@@ -108,8 +110,11 @@ class TtsAudioService extends GetxService {
       selectedChime.value = chimeType;
       changed = true;
     }
+    if (summary != null && summary.isNotEmpty) {
+      _activeSummary = summary;
+    }
 
-    if (changed && currentAnnouncementId.value != null && isPlaying.value) {
+    if (currentAnnouncementId.value != null && ((changed && isPlaying.value) || startPlaying)) {
       final activeId = currentAnnouncementId.value!;
       await stop();
       await playAnnouncement(
@@ -158,27 +163,52 @@ class TtsAudioService extends GetxService {
     String? summary,
   }) async {
     try {
-      final cacheKey = '${id}_${selectedAccent.value}_${selectedGender.value}_${readMode.value}';
-      if (_urlCache.containsKey(cacheKey)) return;
+      if (title != null) _activeTitle = title;
+      if (content != null) _activeContent = content;
+      if (summary != null && summary.isNotEmpty) _activeSummary = summary;
 
-      final textToSpeak = (readMode.value == 'summary' && summary != null && summary.isNotEmpty)
-          ? summary
-          : (content != null && content.isNotEmpty
-              ? (title != null ? '$title. $content' : content)
-              : (title ?? ''));
+      // 1. Prewarm full notice audio under ..._full
+      final fullKey = '${id}_${selectedAccent.value}_${selectedGender.value}_full';
+      final fullText = (content != null && content.isNotEmpty)
+          ? (title != null ? '$title. $content' : content)
+          : (title ?? '');
+      if (!_urlCache.containsKey(fullKey) && fullText.isNotEmpty) {
+        final meta = await _api.synthesizeSpeech(
+          fullText,
+          gender: selectedGender.value,
+          accent: selectedAccent.value,
+        );
+        if (meta != null && meta['audio_url'] != null) {
+          final rawUrl = meta['audio_url'].toString();
+          final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+          _urlCache[fullKey] = url;
+          debugPrint('[TTS Pre-warm Full] Ready for notice #$id (0s latency): $url');
+        }
+      }
 
-      if (textToSpeak.isEmpty) return;
-
-      final meta = await _api.synthesizeSpeech(
-        textToSpeak,
-        gender: selectedGender.value,
-        accent: selectedAccent.value,
-      );
-      if (meta != null && meta['audio_url'] != null) {
-        final rawUrl = meta['audio_url'].toString();
-        final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-        _urlCache[cacheKey] = url;
-        debugPrint('[TTS Pre-warm] Ready for notice #$id (0s latency): $url');
+      // 2. Prewarm summary audio under ..._summary (Generating with Qwen if needed)
+      final sumKey = '${id}_${selectedAccent.value}_${selectedGender.value}_summary';
+      if (!_urlCache.containsKey(sumKey)) {
+        String? sumText = summary;
+        if ((sumText == null || sumText.isEmpty) && content != null && content.isNotEmpty) {
+          try {
+            sumText = await _api.summarizeContent(content);
+            _activeSummary = sumText;
+          } catch (_) {}
+        }
+        if (sumText != null && sumText.isNotEmpty) {
+          final meta = await _api.synthesizeSpeech(
+            sumText,
+            gender: selectedGender.value,
+            accent: selectedAccent.value,
+          );
+          if (meta != null && meta['audio_url'] != null) {
+            final rawUrl = meta['audio_url'].toString();
+            final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+            _urlCache[sumKey] = url;
+            debugPrint('[TTS Pre-warm Summary] Ready for notice #$id: $url');
+          }
+        }
       }
     } catch (e) {
       debugPrint('[TTS Pre-warm note] $e');
@@ -191,14 +221,20 @@ class TtsAudioService extends GetxService {
     String? content,
     String? summary,
     String? directUrl,
+    String? forceMode,
   }) async {
     try {
       _activeTitle = title ?? _activeTitle;
       _activeContent = content ?? _activeContent;
-      _activeSummary = summary ?? _activeSummary;
+      if (summary != null && summary.isNotEmpty) {
+        _activeSummary = summary;
+      }
+      if (forceMode != null) {
+        readMode.value = forceMode;
+      }
 
-      // Toggle if already selected
-      if (currentAnnouncementId.value == id && directUrl == null) {
+      // Toggle if already selected and same mode
+      if (currentAnnouncementId.value == id && directUrl == null && forceMode == null) {
         if (isPlaying.value) {
           await pause();
           return;
@@ -215,25 +251,48 @@ class TtsAudioService extends GetxService {
       position.value = Duration.zero;
       duration.value = Duration.zero;
 
+      // When summary mode is active, make sure we have the Qwen summary
+      if (readMode.value == 'summary' && (_activeSummary == null || _activeSummary!.trim().isEmpty)) {
+        statusMessage.value = 'Generating Qwen AI Summary...';
+        try {
+          if (_activeContent != null && _activeContent!.trim().isNotEmpty) {
+            debugPrint('[TTS] Generating AI summary using Qwen model before synthesis...');
+            _activeSummary = await _api.summarizeContent(_activeContent!);
+          } else if (id > 0) {
+            _activeSummary = await _api.summarizeAnnouncement(id);
+          }
+        } catch (e) {
+          debugPrint('[TTS] Failed to generate AI summary with Qwen: $e');
+        }
+      }
+
       String? streamUrl = directUrl;
       final cacheKey = '${id}_${selectedAccent.value}_${selectedGender.value}_${readMode.value}';
 
       // 1. FASTEST: Instant Memory Cache (0 ms latency)
       if (streamUrl == null && _urlCache.containsKey(cacheKey)) {
         streamUrl = _urlCache[cacheKey];
-        debugPrint('[TTS] Instant memory cache hit for notice #$id: $streamUrl');
+        debugPrint('[TTS] Instant memory cache hit for notice #$id ($cacheKey): $streamUrl');
       }
 
-      // 2. High-speed direct synthesis (bypasses slow failing /audio endpoint that added 2.5s delay)
+      // 2. High-speed direct synthesis via Kokoro
       if (streamUrl == null || streamUrl.isEmpty) {
-        final textToSpeak = (readMode.value == 'summary' && _activeSummary != null && _activeSummary!.isNotEmpty)
-            ? _activeSummary!
-            : (_activeContent != null && _activeContent!.isNotEmpty
-                ? (_activeTitle != null ? '$_activeTitle. $_activeContent' : _activeContent!)
-                : (_activeTitle ?? ''));
+        String textToSpeak = '';
+        if (readMode.value == 'summary') {
+          // Strictly speak the Qwen AI Summary — NEVER the full body text!
+          if (_activeSummary != null && _activeSummary!.trim().isNotEmpty) {
+            textToSpeak = _activeSummary!.trim();
+          } else if (_activeTitle != null && _activeTitle!.isNotEmpty) {
+            textToSpeak = 'Summary of ${_activeTitle!}.';
+          }
+        } else {
+          textToSpeak = (_activeContent != null && _activeContent!.isNotEmpty)
+              ? (_activeTitle != null ? '$_activeTitle. $_activeContent' : _activeContent!)
+              : (_activeTitle ?? '');
+        }
 
         if (textToSpeak.isNotEmpty) {
-          debugPrint('[TTS] Fast synthesis path for notice #$id...');
+          debugPrint('[TTS] Kokoro synthesis path for notice #$id (${readMode.value} mode)...');
           final meta = await _api.synthesizeSpeech(
             textToSpeak,
             gender: selectedGender.value,
@@ -242,7 +301,7 @@ class TtsAudioService extends GetxService {
           if (meta != null && meta['audio_url'] != null) {
             final rawUrl = meta['audio_url'].toString();
             streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-            engine.value = meta['engine']?.toString() ?? 'AI Voice';
+            engine.value = meta['engine']?.toString() ?? 'Kokoro-82M';
             voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
             _urlCache[cacheKey] = streamUrl;
           }

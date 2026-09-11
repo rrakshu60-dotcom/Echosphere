@@ -163,6 +163,9 @@ void main() {
       expect(find.text('Read Details →'), findsOneWidget);
       expect(find.text('Add to Calendar'), findsOneWidget);
 
+      // Verify Translate chip is completely removed per user instruction
+      expect(find.text('Translate'), findsNothing);
+
       // Verify card was rendered and zero overflow occurred
       expect(tester.takeException(), isNull);
     });

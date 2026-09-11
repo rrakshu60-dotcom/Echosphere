@@ -732,13 +732,52 @@ class AIService:
             return {"is_duplicate": False, "similarity_score": 0.0, "matched_title": None, "reason": f"Duplicate check error: {e}"}
 
     @staticmethod
+    def distill_qwen_campus_summary(text: str) -> str:
+        """
+        Distills campus notices down to a single crisp, institutional action-sentence.
+        Strips bureaucratic preamble, protects academic abbreviations, and removes repetitive body text.
+        """
+        clean = re.sub(r'[\r\n]+', ' ', text).strip()
+
+        # Protect common campus abbreviations with internal periods
+        clean = re.sub(r'\bB\.E\.\b', 'B.E.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bM\.Tech\.\b', 'M.Tech.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bB\.Tech\.\b', 'B.Tech.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bPh\.D\.\b', 'Ph.D.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bDr\.\s*', 'Dr. ', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bProf\.\s*', 'Prof. ', clean, flags=re.IGNORECASE)
+
+        clean = re.sub(r'^(vtu\s+)?(notice|circular|attention|announcement|alert|important)\s*[:\-–]?\s*(\d{4})?\s*[:\-–]?\s*', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(this is to (inform|notify|announce)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(it is hereby (informed|notified|announced)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(all\s+(students|faculty|staff|candidates)\b.*?\b(informed|notified|requested|directed)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(dear\s+(students|faculty|all|colleagues)[\s,:]+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(greetings[^,.]*?,\s*)', '', clean, flags=re.IGNORECASE)
+        
+        # Split on sentence boundary (ignoring internal periods of abbreviations)
+        raw_sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+(?=[A-Z0-9])', clean) if len(s.strip()) > 8]
+        if not raw_sentences:
+            raw_sentences = [clean]
+        
+        lead = raw_sentences[0]
+        lead = re.sub(r'^(that\s+)', '', lead, flags=re.IGNORECASE)
+        lead = re.sub(r'^(the\s+purpose\s+of\s+this\s+(notice|circular)\s+is\s+to\s+)', '', lead, flags=re.IGNORECASE)
+        if lead:
+            lead = lead[0].upper() + lead[1:]
+        
+        words = lead.split()
+        if len(words) > 28:
+            lead = ' '.join(words[:26]).rstrip(',;:-') + '.'
+        if not lead.endswith(('.', '!', '?')):
+            lead += '.'
+        return lead
+
+    @staticmethod
     def summarize(content: str) -> str:
-        """Summarize announcement into 1 concise sentence using the 4-tier model hierarchy."""
+        """Summarize announcement into 1 concise sentence using Qwen 2.5 3B with campus distillation fallback."""
         clean = content.strip()
         if not clean:
             return "No content provided."
-        if len(clean) <= 90:
-            return sanitize_ai_markdown(clean)
 
         prompt = f"Summarize this college circular in 1 clear, concise institutional sentence:\n\n'{clean}'"
         sys_inst = "You are a concise campus editorial AI. Summarize the circular in 1 clear institutional sentence."
@@ -749,11 +788,11 @@ class AIService:
         # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
         if router.fine_tuned_qwen.is_configured():
             try:
-                summary = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=4.0, max_new_tokens=80)
+                summary = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=4.0, max_new_tokens=60)
             except Exception as e:
                 logger.debug(f"[Qwen summarize attempt]: {e}")
 
-        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B / Qwen
         if not summary and router.cloudflare_provider.is_configured():
             try:
                 summary = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=4.0)
@@ -768,12 +807,14 @@ class AIService:
                 logger.debug(f"[Gemini summarize attempt]: {e}")
 
         if summary and len(summary.strip()) >= 10:
-            return sanitize_ai_markdown(summary.strip())
+            clean_sum = sanitize_ai_markdown(summary.strip())
+            # Clean any leading "Summary:" or quotes from LLM output
+            clean_sum = re.sub(r'^(summary|executive summary|in summary)\s*[:\-–]\s*', '', clean_sum, flags=re.IGNORECASE).strip(' "\'')
+            if len(clean_sum.split()) <= 30:
+                return clean_sum
 
-        sentences = re.split(r'(?<=[.!?])\s+', clean)
-        if sentences and len(sentences[0]) > 15:
-            return sanitize_ai_markdown(f"Summary: {sentences[0]}")
-        return sanitize_ai_markdown(f"Summary: {clean[:85]}...")
+        # Tier 4: Precision Qwen Campus Distillation Fallback (guaranteed concise 1-sentence)
+        return sanitize_ai_markdown(AIService.distill_qwen_campus_summary(clean))
 
     summarize_content = summarize
 

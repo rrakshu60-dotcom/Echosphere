@@ -563,7 +563,15 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
           Get.find<AnnouncementController>().updateAnnouncementSummary(widget.notice.id, summary);
         }
 
-        snackBar('✨ AI Summary generated!');
+        // Pre-warm Kokoro audio for instant zero-latency playback of the summary
+        TtsAudioService.instance.prewarmAnnouncement(
+          widget.notice.id,
+          title: widget.notice.title,
+          content: widget.notice.description,
+          summary: summary,
+        );
+
+        snackBar('✨ AI Summary generated with Qwen!');
       }
     } catch (e) {
       if (mounted) {
@@ -906,6 +914,34 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               ),
                             ),
                             const SizedBox(width: 6),
+                            Obx(() {
+                              final audio = TtsAudioService.instance;
+                              final isPlayingSummary = audio.isAnnouncementPlaying(widget.notice.id) && audio.readMode.value == 'summary';
+                              return Tooltip(
+                                message: isPlayingSummary ? 'Pause AI Summary' : 'Listen to AI Summary',
+                                child: InkWell(
+                                  onTap: () {
+                                    audio.playAnnouncement(
+                                      widget.notice.id,
+                                      title: widget.notice.title,
+                                      content: widget.notice.description,
+                                      summary: _aiSummary,
+                                      forceMode: 'summary',
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(3.0),
+                                    child: Icon(
+                                      isPlayingSummary ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
+                                      size: 14,
+                                      color: Colors.amber.shade700,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(width: 4),
                             InkWell(
                               onTap: () {
                                 Clipboard.setData(ClipboardData(text: _aiSummary!));
@@ -1059,7 +1095,8 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           widget.notice.id,
                           title: widget.notice.title,
                           content: widget.notice.description,
-                          summary: widget.notice.aiSummary,
+                          summary: _aiSummary ?? widget.notice.aiSummary,
+                          forceMode: _showSummary ? 'summary' : null,
                         ),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
