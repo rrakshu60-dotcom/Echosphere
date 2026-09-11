@@ -69,10 +69,7 @@ class Header extends StatelessWidget {
               return const SizedBox.shrink();
             }
             final auth = Get.find<AuthController>();
-            final user = auth.currentUser.value;
-            final canAccessPA = true;
-
-            if (!canAccessPA) {
+            if (auth.currentUser.value == null) {
               return const SizedBox.shrink();
             }
 

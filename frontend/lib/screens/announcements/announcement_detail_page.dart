@@ -209,7 +209,6 @@ Downloaded & Saved via EchoSphere Smart Campus System
     final announcementController = Get.find<AnnouncementController>();
 
     final userRole = authController.currentUser.value?.role ?? 'Student';
-    final isStudent = userRole.toLowerCase() == 'student';
     final canApprove = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
         (announcement.status == 'SUBMITTED' || announcement.status == 'DRAFT' || announcement.status == 'PENDING_APPROVAL');
 
