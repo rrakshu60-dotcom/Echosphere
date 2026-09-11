@@ -66,7 +66,7 @@ def generate_offline_speech_pyttsx3(file_path: str, text: str, gender: str = "fe
         import pyttsx3
         engine = pyttsx3.init()
         voices = engine.getProperty("voices")
-        if voices:
+        if isinstance(voices, (list, tuple)):
             target_gender = "female" if "female" in gender.lower() else "male"
             selected_v = None
             for v in voices:

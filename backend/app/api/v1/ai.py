@@ -56,20 +56,28 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
 
         if db and req.user_id and (not user_name or user_name in ["Student", "User", "Faculty Member"]):
             db_user = db.query(User).filter(User.id == req.user_id).first()
-            if db_user:
-                user_name = db_user.full_name or user_name
-                if db_user.role:
-                    user_role = db_user.role.name or user_role
-                if db_user.department:
-                    user_dept = db_user.department.code or db_user.department.name or user_dept
-                usn_id = db_user.usn or db_user.employee_id or usn_id
+            if db_user is not None:
+                full_name_val = getattr(db_user, "full_name", None)
+                if full_name_val:
+                    user_name = str(full_name_val)
+                role_obj = getattr(db_user, "role", None)
+                if role_obj and getattr(role_obj, "name", None):
+                    user_role = str(getattr(role_obj, "name"))
+                dept_obj = getattr(db_user, "department", None)
+                if dept_obj:
+                    dept_code = getattr(dept_obj, "code", None) or getattr(dept_obj, "name", None)
+                    if dept_code:
+                        user_dept = str(dept_code)
+                db_usn = getattr(db_user, "usn", None) or getattr(db_user, "employee_id", None)
+                if db_usn:
+                    usn_id = str(db_usn)
 
         res = AIService.process_chat(
             prompt=req.prompt,
             user_role=user_role,
             department=user_dept,
-            full_name=user_name,
-            usn_or_emp_id=usn_id,
+            full_name=str(user_name) if user_name else None,
+            usn_or_emp_id=str(usn_id) if usn_id else None,
             db=db,
             history=req.history,
             session_id=req.session_id

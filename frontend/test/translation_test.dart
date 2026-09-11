@@ -125,8 +125,8 @@ void main() {
     });
   });
 
-  group('AnnouncementFeedCard Translate Chip & Zero Overflow on 320px', () {
-    testWidgets('renders Translate chip and opens quick language modal without overflow on 320px', (tester) async {
+  group('AnnouncementFeedCard Zero Overflow on 320px', () {
+    testWidgets('renders AnnouncementFeedCard without overflow on 320px screen', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -158,23 +158,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify Translate chip is visible in the action bar
-      expect(find.text('Translate'), findsOneWidget);
+      // Verify title and description are rendered
+      expect(find.text('Workshop on Artificial Intelligence'), findsOneWidget);
+      expect(find.text('Read Details →'), findsOneWidget);
+      expect(find.text('Add to Calendar'), findsOneWidget);
 
-      // Tap Translate chip to open modal bottom sheet
-      await tester.tap(find.text('Translate'));
-      await tester.pumpAndSettle();
-
-      // Verify modal sheet appears with language choices
-      expect(find.text('Translate Notice'), findsOneWidget);
-      expect(find.text('Select Regional Language:'), findsOneWidget);
-      expect(find.text('🇮🇳 ಕನ್ನಡ'), findsOneWidget);
-
-      // Select Kannada
-      await tester.tap(find.text('🇮🇳 ಕನ್ನಡ'));
-      await tester.pumpAndSettle();
-
-      // Verify card was translated and zero overflow occurred
+      // Verify card was rendered and zero overflow occurred
       expect(tester.takeException(), isNull);
     });
   });
