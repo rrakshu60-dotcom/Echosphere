@@ -20,6 +20,7 @@ import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:anymex/widgets/notice_audio_player_bar.dart';
+import 'package:anymex/services/tts_audio_service.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -35,6 +36,84 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   String? _aiSummary;
   bool _isSummarizing = false;
   CalendarEventData? _calendarEvent;
+
+  String _selectedLanguage = 'en';
+  bool _isTranslating = false;
+  final Map<String, Map<String, String>> _translations = {};
+
+  String get _currentTitle {
+    if (_selectedLanguage != 'en' && _translations.containsKey(_selectedLanguage)) {
+      return _translations[_selectedLanguage]!['title'] ?? widget.announcement.title;
+    }
+    return widget.announcement.title;
+  }
+
+  String get _currentDescription {
+    if (_selectedLanguage != 'en' && _translations.containsKey(_selectedLanguage)) {
+      return _translations[_selectedLanguage]!['content'] ?? widget.announcement.description;
+    }
+    return widget.announcement.description;
+  }
+
+  String? get _currentSummary {
+    if (_selectedLanguage != 'en' &&
+        _translations.containsKey(_selectedLanguage) &&
+        _translations[_selectedLanguage]!.containsKey('summary')) {
+      return _translations[_selectedLanguage]!['summary'];
+    }
+    return _aiSummary;
+  }
+
+  Future<void> _changeLanguage(String langCode) async {
+    if (_selectedLanguage == langCode) return;
+    if (langCode == 'en') {
+      setState(() {
+        _selectedLanguage = 'en';
+      });
+      TtsAudioService.instance.setLanguage('en');
+      return;
+    }
+
+    if (_translations.containsKey(langCode)) {
+      setState(() {
+        _selectedLanguage = langCode;
+      });
+      TtsAudioService.instance.setLanguage(langCode);
+      return;
+    }
+
+    setState(() => _isTranslating = true);
+    try {
+      final res = await EchosphereApiService().translateAnnouncement(
+        id: widget.announcement.id,
+        targetLanguage: langCode,
+        title: widget.announcement.title,
+        content: widget.announcement.description,
+        summary: _aiSummary,
+      );
+
+      if (mounted) {
+        setState(() {
+          _translations[langCode] = {
+            'title': res['translated_title']?.toString() ?? widget.announcement.title,
+            'content': res['translated_content']?.toString() ?? widget.announcement.description,
+            if (res['translated_summary'] != null)
+              'summary': res['translated_summary']!.toString(),
+          };
+          _selectedLanguage = langCode;
+          _isTranslating = false;
+        });
+        TtsAudioService.instance.setLanguage(langCode);
+        final langName = res['language_name'] ?? langCode;
+        snackBar('🌐 Translated to $langName');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTranslating = false);
+        snackBar('Translation failed: $e');
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -226,7 +305,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                announcement.title,
+                                _currentTitle,
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
@@ -278,11 +357,15 @@ Downloaded & Saved via EchoSphere Smart Campus System
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
+
+                        // Regional Language Selector Bar
+                        _buildLanguageSelectorBar(theme),
+                        const SizedBox(height: 16),
 
                         // AI Summary Box (With On-Demand AI Summarizer)
                         // AI Summary Box (With On-Demand AI Summarizer powered by trained model)
-                        if (_aiSummary != null && _aiSummary!.isNotEmpty)
+                        if (_currentSummary != null && _currentSummary!.isNotEmpty)
                           EchoSphereContainer(
                             padding: const EdgeInsets.all(16.0),
                             child: Row(
@@ -345,7 +428,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        _aiSummary!,
+                                        _currentSummary!,
                                         style: TextStyle(
                                           fontSize: 13,
                                           height: 1.4,
@@ -416,8 +499,8 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         // Neural Audio Speech Player (Kokoro-82M with Voice & Mode Toggles)
                         NoticeAudioPlayerBar(
                           announcementId: announcement.id,
-                          title: announcement.title,
-                          hasAiSummary: (_aiSummary != null && _aiSummary!.isNotEmpty),
+                          title: _currentTitle,
+                          hasAiSummary: (_currentSummary != null && _currentSummary!.isNotEmpty),
                         ),
                         const SizedBox(height: 16),
 
@@ -582,7 +665,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               ),
                               const Divider(height: 24),
                               Text(
-                                announcement.description,
+                                _currentDescription,
                                 style: const TextStyle(
                                   fontSize: 15,
                                   height: 1.6,
@@ -1174,6 +1257,108 @@ Downloaded & Saved via EchoSphere Smart Campus System
           fontSize: 11,
           fontWeight: FontWeight.bold,
         ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageSelectorBar(ThemeData theme) {
+    const languages = [
+      {'code': 'en', 'label': 'English', 'flag': '🇬🇧'},
+      {'code': 'kn', 'label': 'ಕನ್ನಡ', 'flag': '🇮🇳'},
+      {'code': 'hi', 'label': 'हिंदी', 'flag': '🇮🇳'},
+      {'code': 'te', 'label': 'తెలుగు', 'flag': '🇮🇳'},
+      {'code': 'ta', 'label': 'தமிழ்', 'flag': '🇮🇳'},
+    ];
+
+    return EchoSphereContainer(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.translate_rounded, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Regional Language',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (_isTranslating)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (_selectedLanguage != 'en')
+                GestureDetector(
+                  onTap: () => _changeLanguage('en'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Show Original',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: languages.map((lang) {
+              final isSelected = _selectedLanguage == lang['code'];
+              return ChoiceChip(
+                label: Text(
+                  '${lang['flag']} ${lang['label']}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.white : theme.colorScheme.onSurface,
+                  ),
+                ),
+                selected: isSelected,
+                selectedColor: theme.colorScheme.primary,
+                backgroundColor: theme.colorScheme.surface,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                onSelected: _isTranslating ? null : (_) => _changeLanguage(lang['code']!),
+              );
+            }).toList(),
+          ),
+          if (_selectedLanguage != 'en' && !_isTranslating) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.auto_awesome, size: 12, color: Colors.amber.shade700),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'AI Translated: Title, Details & Summary updated (Course codes preserved)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withOpacity(0.65),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -31,6 +31,7 @@ class TtsAudioService extends GetxService {
   final RxBool includeChime = true.obs; // Intro audio chime on/off
   final RxString selectedChime = 'auto'.obs; // 'auto' | 'urgent_academic' | 'events_sports' | 'emergency' | 'standard'
   final RxString activeChimeTag = 'standard'.obs;
+  final RxString selectedLanguage = 'en'.obs; // 'en' | 'kn' | 'hi' | 'te' | 'ta'
 
   StreamSubscription? _stateSub;
   StreamSubscription? _posSub;
@@ -114,6 +115,18 @@ class TtsAudioService extends GetxService {
   Future<void> toggleChime(bool val) => setVoiceConfig(chimeEnabled: val);
   Future<void> setChimeType(String chime) => setVoiceConfig(chimeType: chime);
 
+  Future<void> setLanguage(String lang) async {
+    final clean = lang.trim().toLowerCase();
+    if (selectedLanguage.value != clean) {
+      selectedLanguage.value = clean;
+      if (currentAnnouncementId.value != null && isPlaying.value) {
+        final activeId = currentAnnouncementId.value!;
+        await stop();
+        await playAnnouncement(activeId);
+      }
+    }
+  }
+
   Future<void> previewChime(String chimeType) async {
     try {
       await stop();
@@ -147,6 +160,7 @@ class TtsAudioService extends GetxService {
       String? streamUrl = directUrl;
 
       final chimeParam = selectedChime.value == 'auto' ? null : selectedChime.value;
+      final langParam = selectedLanguage.value;
 
       if (streamUrl == null || streamUrl.isEmpty) {
         final audioMeta = await _api.getAnnouncementAudio(
@@ -156,6 +170,7 @@ class TtsAudioService extends GetxService {
           isSummary: (readMode.value == 'summary'),
           includeChime: includeChime.value,
           chime: chimeParam,
+          lang: langParam,
         );
         if (audioMeta != null) {
           final rawUrl = audioMeta['audio_url']?.toString() ?? '';
@@ -179,6 +194,7 @@ class TtsAudioService extends GetxService {
           isSummary: (readMode.value == 'summary'),
           includeChime: includeChime.value,
           chime: chimeParam,
+          lang: langParam,
         );
       }
 

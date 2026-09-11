@@ -16,6 +16,8 @@ from app.schemas.announcement import (
     AnnouncementUpdate,
 )
 from app.schemas.ai_schema import (
+    AnnouncementTranslationRequest,
+    AnnouncementTranslationResponse,
     AudienceCheckRequest,
     AudienceCheckResponse,
     RelevanceScoreRequest,
@@ -365,15 +367,18 @@ def stream_announcement_audio_endpoint(
     is_summary: bool = False,
     include_chime: bool = True,
     chime: str = None,
+    lang: str = "en",
     db: Session = Depends(get_db),
 ):
     """
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
+    Supports regional language playback (Kannada, Hindi, Telugu, Tamil).
     """
     from app.repositories.announcement_repository import get_announcement_by_id
     from app.services.tts_service import generate_announcement_audio_sync, STATIC_AUDIO_DIR
     from app.services.chime_service import resolve_contextual_chime
     from app.services.ai_service import AIService
+    from app.services.translation_service import TranslationService
 
     notice = get_announcement_by_id(db, announcement_id)
     if not notice:
@@ -387,9 +392,12 @@ def stream_announcement_audio_endpoint(
         content=notice.description,
     )
 
+    clean_lang = TranslationService.normalize_language_code(lang)
     tag = f"{accent.lower()}_{gender.lower()}"
     if is_summary:
         tag += "_summary"
+    if clean_lang != "en":
+        tag += f"_{clean_lang}"
     if include_chime:
         tag += f"_{selected_chime}"
     else:
@@ -408,6 +416,9 @@ def stream_announcement_audio_endpoint(
         speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
     else:
         speech_text = f"{notice.title}. {notice.description}"
+
+    if clean_lang != "en":
+        speech_text = TranslationService.translate_text(speech_text, clean_lang)
 
     res = generate_announcement_audio_sync(
         announcement_id=announcement_id,
@@ -583,6 +594,48 @@ def calculate_relevance_scores_endpoint(
     return {"scores": results}
 
 
+@router.post("/{announcement_id}/translate", response_model=AnnouncementTranslationResponse)
+def translate_announcement_endpoint(
+    announcement_id: int,
+    request: AnnouncementTranslationRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Translates an announcement (title, description, and AI summary) into
+    Kannada (kn), Hindi (hi), Telugu (te), or Tamil (ta).
+    """
+    from app.repositories.announcement_repository import get_announcement_by_id
+    from app.services.translation_service import TranslationService
+
+    notice = get_announcement_by_id(db, announcement_id)
+    if not notice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
+
+    title = request.title or notice.title
+    content = request.content or notice.description
+    summary = request.summary or getattr(notice, "ai_summary", None)
+
+    return TranslationService.translate_announcement(
+        title=title,
+        content=content,
+        summary=summary,
+        target_language=request.target_language,
+    )
 
 
+@router.post("/translate", response_model=AnnouncementTranslationResponse)
+def translate_generic_endpoint(
+    request: AnnouncementTranslationRequest,
+):
+    """
+    Direct translation of circular draft text or announcements into
+    Kannada, Hindi, Telugu, or Tamil.
+    """
+    from app.services.translation_service import TranslationService
 
+    return TranslationService.translate_announcement(
+        title=request.title or "",
+        content=request.content or "",
+        summary=request.summary,
+        target_language=request.target_language,
+    )
