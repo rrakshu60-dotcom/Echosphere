@@ -1212,6 +1212,7 @@ class EchosphereApiService {
     int? speakerNodeId,
     String? audioType,
   }) async {
+    debugPrint('[API] enqueueAnnouncement: id=$announcementId, baseUrl=$_baseUrl');
     try {
       final response = await _dio.post(
         '/hardware/queue/add',
@@ -1222,9 +1223,14 @@ class EchosphereApiService {
           if (audioType != null) 'audio_type': audioType,
         },
       );
+      debugPrint('[API] enqueueAnnouncement success: ${response.statusCode}');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
+      debugPrint('[API] enqueueAnnouncement DioException: ${e.type} ${e.response?.statusCode} ${e.response?.data}');
       throw Exception(e.response?.data?['detail'] ?? 'Failed to enqueue announcement.');
+    } catch (e) {
+      debugPrint('[API] enqueueAnnouncement unexpected error: $e');
+      rethrow;
     }
   }
 
