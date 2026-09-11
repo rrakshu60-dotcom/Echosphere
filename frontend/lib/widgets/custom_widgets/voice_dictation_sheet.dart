@@ -3,6 +3,8 @@ import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 class VoiceDictationSheet extends StatefulWidget {
   const VoiceDictationSheet({super.key});
@@ -22,8 +24,11 @@ class VoiceDictationSheet extends StatefulWidget {
 
 class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTickerProviderStateMixin {
   final TextEditingController _dictationController = TextEditingController();
+  final SpeechToText _speechToText = SpeechToText();
+
   bool _isProcessing = false;
   bool _isListening = false;
+  bool _speechEnabled = false;
   PlatformFile? _pickedAudioFile;
   late AnimationController _animController;
 
@@ -32,15 +37,105 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1000),
     )..repeat(reverse: true);
+    _initSpeechRecognizer();
   }
 
   @override
   void dispose() {
+    if (_isListening) {
+      _speechToText.stop();
+    }
     _animController.dispose();
     _dictationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initSpeechRecognizer() async {
+    try {
+      _speechEnabled = await _speechToText.initialize(
+        onError: (val) {
+          debugPrint('[SpeechToText Error] ${val.errorMsg}');
+          if (mounted) {
+            setState(() => _isListening = false);
+          }
+        },
+        onStatus: (status) {
+          debugPrint('[SpeechToText Status] $status');
+          if (mounted) {
+            if (status == 'notListening' || status == 'done') {
+              setState(() => _isListening = false);
+            }
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('[SpeechToText Init] $e');
+      _speechEnabled = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _stopListening();
+    } else {
+      await _startListening();
+    }
+  }
+
+  Future<void> _startListening() async {
+    // 1. Request microphone permission
+    try {
+      final perm = await Permission.microphone.request();
+      if (!perm.isGranted) {
+        errorSnackBar('Microphone permission required for voice dictation.');
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Initialize if not ready
+    if (!_speechEnabled) {
+      await _initSpeechRecognizer();
+    }
+
+    if (!_speechEnabled) {
+      errorSnackBar('Live speech recognition is not supported or active on this device. You can type or pick an audio file.');
+      return;
+    }
+
+    setState(() {
+      _isListening = true;
+    });
+
+    try {
+      await _speechToText.listen(
+        onResult: (result) {
+          if (mounted && result.recognizedWords.isNotEmpty) {
+            setState(() {
+              _dictationController.text = result.recognizedWords;
+            });
+          }
+        },
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 4),
+        cancelOnError: false,
+        partialResults: true,
+      );
+    } catch (e) {
+      debugPrint('[SpeechToText Listen Failed] $e');
+      if (mounted) setState(() => _isListening = false);
+    }
+  }
+
+  Future<void> _stopListening() async {
+    try {
+      await _speechToText.stop();
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _isListening = false);
+    }
   }
 
   Future<void> _pickAudioFile() async {
@@ -52,7 +147,9 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           _pickedAudioFile = result.files.first;
-          _dictationController.text = 'Audio Memo: ${_pickedAudioFile!.name}';
+          if (_dictationController.text.isEmpty) {
+            _dictationController.text = 'Audio Memo: ${_pickedAudioFile!.name}';
+          }
         });
         snackBar('Selected audio recording: ${_pickedAudioFile!.name}');
       }
@@ -62,9 +159,13 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
   }
 
   Future<void> _processDictation() async {
+    if (_isListening) {
+      await _stopListening();
+    }
+
     final text = _dictationController.text.trim();
     if (text.isEmpty && _pickedAudioFile == null) {
-      errorSnackBar('Please dictate or enter a voice note, or pick an audio file.');
+      errorSnackBar('Please speak into the mic, enter text, or select an audio file.');
       return;
     }
 
@@ -181,14 +282,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
               // Mic Visualizer Button / Toggle
               Center(
                 child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isListening = !_isListening;
-                      if (_isListening && _dictationController.text.isEmpty) {
-                        _dictationController.text = 'Attention 3rd year students, tomorrow laboratory exam is rescheduled to Friday 2 PM in Turing Lab.';
-                      }
-                    });
-                  },
+                  onTap: _toggleListening,
                   child: AnimatedBuilder(
                     animation: _animController,
                     builder: (context, child) {
@@ -227,8 +321,16 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  _isListening ? 'Listening & Transcribing...' : 'Tap Mic to Dictate or Type Below',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _isListening ? const Color(0xFFEC4899) : theme.textTheme.bodySmall?.color),
+                  _isListening
+                      ? '🎙️ Listening... Speak naturally into microphone'
+                      : (_dictationController.text.isNotEmpty
+                          ? 'Tap Mic to Dictate More or Edit Below'
+                          : 'Tap Mic to Start Speaking'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _isListening ? const Color(0xFFEC4899) : theme.textTheme.bodySmall?.color,
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -238,7 +340,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                 controller: _dictationController,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  hintText: 'Speak or enter your informal notice notes here...\n(e.g., "Tomorrow 3rd year AIML lab in Turing Lab at 2 PM is postponed to Friday, bring hall tickets.")',
+                  hintText: 'Speak or type your notice notes here...\nWords will appear live as you speak.',
                   hintStyle: const TextStyle(fontSize: 12),
                   filled: true,
                   fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.4),

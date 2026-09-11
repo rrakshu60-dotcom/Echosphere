@@ -74,6 +74,7 @@ def create_announcement(
     )
 
 
+@router.get("", response_model=list[AnnouncementResponse], include_in_schema=False)
 @router.get("/", response_model=list[AnnouncementResponse])
 def get_announcements(
     status: str | None = None,
@@ -292,7 +293,7 @@ def archive_announcement(
     )
 
 
-def _find_cached_audio_file(announcement_id: int, tag: str, chime: str = None) -> tuple[str | None, str | None, str | None]:
+def _find_cached_audio_file(announcement_id: int, tag: str, chime: str | None = None) -> tuple[str | None, str | None, str | None]:
     from app.services.tts_service import STATIC_AUDIO_DIR
     if not os.path.exists(STATIC_AUDIO_DIR):
         return None, None, None
@@ -307,12 +308,38 @@ def _find_cached_audio_file(announcement_id: int, tag: str, chime: str = None) -
         candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
         candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
 
+    from app.services.tts_service import is_legacy_beep_file
+
     for filename in candidates:
         filepath = os.path.join(STATIC_AUDIO_DIR, filename)
-        if os.path.exists(filepath) and os.path.getsize(filepath) > 4096:
-            media_type = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
-            return filename, filepath, media_type
+        if os.path.exists(filepath):
+            if is_legacy_beep_file(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+                continue
+            if os.path.getsize(filepath) > 512:
+                media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
+                return filename, filepath, media_type
 
+    # General prefix scan in directory
+    try:
+        prefix = f"announcement_{announcement_id}_"
+        for f in os.listdir(STATIC_AUDIO_DIR):
+            if (f.startswith(prefix) or f == f"announcement_{announcement_id}.wav" or f == f"announcement_{announcement_id}.mp3") and (f.endswith(".wav") or f.endswith(".mp3")):
+                fp = os.path.join(STATIC_AUDIO_DIR, f)
+                if is_legacy_beep_file(fp):
+                    try:
+                        os.remove(fp)
+                    except Exception:
+                        pass
+                    continue
+                if os.path.getsize(fp) > 512:
+                    media_type = "audio/wav" if f.endswith(".wav") else "audio/mpeg"
+                    return f, fp, media_type
+    except Exception:
+        pass
     return None, None, None
 
 
@@ -324,7 +351,7 @@ def get_announcement_audio_endpoint(
     accent: str = "american",
     is_summary: bool = False,
     include_chime: bool = True,
-    chime: str = None,
+    chime: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -347,28 +374,32 @@ def get_announcement_audio_endpoint(
             "status": "ready",
             "audio_url": f"{base_url}/static/audio_streams/{fname}",
             "file_name": fname,
-            "engine": "Kokoro-82M / Neural TTS (Cached)",
+            "engine": "Neural Speech (Cached)",
             "type": "wav" if fname.endswith(".wav") else "mp3",
             "chime": chime or "standard",
         }
 
     notice = get_announcement_by_id(db, announcement_id)
     if notice:
+        notice_priority = str(getattr(notice, "priority", "NORMAL") or "NORMAL")
+        cat_attr = getattr(notice, "category", None)
+        notice_category = str(getattr(cat_attr, "name", cat_attr) or "General")
+        notice_emergency = str(getattr(notice, "emergency_level", "NORMAL") or "NORMAL")
+        notice_title = str(getattr(notice, "title", "") or "")
+        notice_desc = str(getattr(notice, "description", "") or "")
+
         selected_chime = chime or resolve_contextual_chime(
-            priority=notice.priority,
-            category=notice.category,
-            emergency_level=notice.emergency_level,
-            title=notice.title,
-            content=notice.description,
+            priority=notice_priority,
+            category=notice_category,
+            emergency_level=notice_emergency,
+            title=notice_title,
+            content=notice_desc,
         )
         if is_summary:
-            summary = notice.ai_summary or AIService.summarize(notice.description)
-            speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
+            summary = getattr(notice, "ai_summary", None) or AIService.summarize(notice_desc)
+            speech_text = f"Executive Summary of notice: {notice_title}. {summary}"
         else:
-            speech_text = f"{notice.title}. {notice.description}"
-        notice_priority = notice.priority
-        notice_category = notice.category
-        notice_emergency = notice.emergency_level
+            speech_text = f"{notice_title}. {notice_desc}"
     else:
         speech_text = f"Notice Number {announcement_id}. Official campus announcement broadcast."
         selected_chime = chime or "standard"
@@ -406,7 +437,7 @@ def stream_announcement_audio_endpoint(
     accent: str = "american",
     is_summary: bool = False,
     include_chime: bool = True,
-    chime: str = None,
+    chime: str | None = None,
     lang: str = "en",
     db: Session = Depends(get_db),
 ):
@@ -432,21 +463,25 @@ def stream_announcement_audio_endpoint(
 
     notice = get_announcement_by_id(db, announcement_id)
     if notice:
+        notice_priority = str(getattr(notice, "priority", "NORMAL") or "NORMAL")
+        cat_attr = getattr(notice, "category", None)
+        notice_category = str(getattr(cat_attr, "name", cat_attr) or "General")
+        notice_emergency = str(getattr(notice, "emergency_level", "NORMAL") or "NORMAL")
+        notice_title = str(getattr(notice, "title", "") or "")
+        notice_desc = str(getattr(notice, "description", "") or "")
+
         selected_chime = chime or resolve_contextual_chime(
-            priority=notice.priority,
-            category=notice.category,
-            emergency_level=notice.emergency_level,
-            title=notice.title,
-            content=notice.description,
+            priority=notice_priority,
+            category=notice_category,
+            emergency_level=notice_emergency,
+            title=notice_title,
+            content=notice_desc,
         )
         if is_summary:
-            summary = notice.ai_summary or AIService.summarize(notice.description)
-            speech_text = f"Executive Summary of notice: {notice.title}. {summary}"
+            summary = getattr(notice, "ai_summary", None) or AIService.summarize(notice_desc)
+            speech_text = f"Executive Summary of notice: {notice_title}. {summary}"
         else:
-            speech_text = f"{notice.title}. {notice.description}"
-        notice_priority = notice.priority
-        notice_category = notice.category
-        notice_emergency = notice.emergency_level
+            speech_text = f"{notice_title}. {notice_desc}"
     else:
         speech_text = f"Notice Number {announcement_id}. Official campus announcement broadcast."
         selected_chime = chime or "standard"
@@ -477,7 +512,7 @@ def stream_announcement_audio_endpoint(
 @router.get("/{announcement_id}/chime")
 def get_announcement_chime(
     announcement_id: int,
-    chime: str = None,
+    chime: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -490,12 +525,19 @@ def get_announcement_chime(
     if not notice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
 
+    notice_priority = str(getattr(notice, "priority", "NORMAL") or "NORMAL")
+    cat_attr = getattr(notice, "category", None)
+    notice_category = str(getattr(cat_attr, "name", cat_attr) or "General")
+    notice_emergency = str(getattr(notice, "emergency_level", "NORMAL") or "NORMAL")
+    notice_title = str(getattr(notice, "title", "") or "")
+    notice_desc = str(getattr(notice, "description", "") or "")
+
     chime_type = chime or resolve_contextual_chime(
-        priority=notice.priority,
-        category=notice.category,
-        emergency_level=notice.emergency_level,
-        title=notice.title,
-        content=notice.description,
+        priority=notice_priority,
+        category=notice_category,
+        emergency_level=notice_emergency,
+        title=notice_title,
+        content=notice_desc,
     )
     wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
     return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
@@ -527,11 +569,13 @@ def get_announcement_summary_endpoint(
     if not notice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
 
-    summary = AIService.summarize(notice.description)
+    notice_desc = str(getattr(notice, "description", "") or "")
+    notice_title = str(getattr(notice, "title", "") or "")
+    summary = AIService.summarize(notice_desc)
     return {
         "status": "ready",
         "announcement_id": announcement_id,
-        "title": notice.title,
+        "title": notice_title,
         "summary": summary,
         "model_used": "Fine-Tuned Qwen 2.5 3B (Local Campus Model)",
     }
@@ -552,7 +596,9 @@ def get_announcement_calendar_event_endpoint(
     if not notice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
 
-    event_data = AIService.extract_calendar_event(notice.title, notice.description)
+    notice_title = str(getattr(notice, "title", "") or "")
+    notice_desc = str(getattr(notice, "description", "") or "")
+    event_data = AIService.extract_calendar_event(notice_title, notice_desc)
     return {
         "status": "success",
         "announcement_id": announcement_id,
@@ -648,9 +694,10 @@ def translate_announcement_endpoint(
     if not notice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
 
-    title = request.title or notice.title
-    content = request.content or notice.description
-    summary = request.summary or getattr(notice, "ai_summary", None)
+    title = str(request.title or getattr(notice, "title", "") or "")
+    content = str(request.content or getattr(notice, "description", "") or "")
+    raw_summary = request.summary or getattr(notice, "ai_summary", None)
+    summary = str(raw_summary) if raw_summary else None
 
     return TranslationService.translate_announcement(
         title=title,
