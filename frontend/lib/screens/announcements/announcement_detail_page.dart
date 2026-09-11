@@ -35,6 +35,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   AnnouncementModel get announcement => widget.announcement;
   String? _aiSummary;
   bool _isSummarizing = false;
+  bool _isBroadcasting = false;
   CalendarEventData? _calendarEvent;
 
   @override
@@ -111,6 +112,34 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       if (mounted) {
         setState(() => _isSummarizing = false);
         snackBar('Failed to generate summary: $e');
+      }
+    }
+  }
+
+  Future<void> _broadcastToSpeakers() async {
+    if (_isBroadcasting) return;
+    debugPrint('[Broadcast] Tapped: sending announcement #${announcement.id} to speaker queue...');
+    setState(() => _isBroadcasting = true);
+    snackBar('📡 Sending "${announcement.title}" to speaker queue...');
+    try {
+      final result = await EchosphereApiService().enqueueAnnouncement(
+        announcementId: announcement.id,
+      );
+      debugPrint('[Broadcast] Success: $result');
+      if (mounted) {
+        setState(() => _isBroadcasting = false);
+        final isPlaying = result['is_playing'] == true;
+        snackBar(
+          isPlaying
+              ? '🔊 Now broadcasting "${announcement.title}" on campus speakers!'
+              : '✅ Enqueued "${announcement.title}" to PA speaker queue!',
+        );
+      }
+    } catch (e) {
+      debugPrint('[Broadcast] Error: $e');
+      if (mounted) {
+        setState(() => _isBroadcasting = false);
+        snackBar('❌ Failed to broadcast: ${e.toString().replaceAll('Exception: ', '')}');
       }
     }
   }
@@ -798,30 +827,28 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               if (canBroadcast)
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.purple.withOpacity(0.15),
+                                  color: _isBroadcasting ? Colors.purple.withOpacity(0.08) : Colors.purple.withOpacity(0.15),
                                   border: const BorderSide(color: Colors.purple),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                  onTap: () async {
-                                    try {
-                                      await EchosphereApiService().enqueueAnnouncement(
-                                        announcementId: announcement.id,
-                                      );
-                                      snackBar('Enqueued "${announcement.title}" to PA speaker queue!');
-                                    } catch (e) {
-                                      snackBar('Failed to queue: ${e.toString()}');
-                                    }
-                                  },
-                                  child: const Row(
+                                  onTap: _isBroadcasting ? null : () => _broadcastToSpeakers(),
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.podcasts_rounded, size: 16, color: Colors.purple),
-                                      SizedBox(width: 6),
+                                      if (_isBroadcasting)
+                                        const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple),
+                                        )
+                                      else
+                                        const Icon(Icons.podcasts_rounded, size: 16, color: Colors.purple),
+                                      const SizedBox(width: 6),
                                       Flexible(
                                         child: Text(
-                                          'Broadcast to Speakers',
+                                          _isBroadcasting ? 'Sending...' : 'Broadcast to Speakers',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(color: Colors.purple, fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(color: Colors.purple, fontSize: 12, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
