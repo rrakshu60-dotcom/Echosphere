@@ -2,8 +2,14 @@ import os
 import uuid
 import json
 import logging
-from typing import Dict, List, Optional, Set
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, cast
+from datetime import datetime, timezone
+
+
+def utc_now() -> datetime:
+    """Returns timezone-naive UTC datetime for database compatibility without deprecation warnings."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 import paho.mqtt.client as mqtt
 from sqlalchemy import or_
@@ -90,7 +96,7 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
     # 3. Database-backed resilient fallback: check active Playing items in SpeakerQueue
     if db is not None:
         try:
-            now = datetime.utcnow()
+            now = utc_now()
             active_playing_items = (
                 db.query(SpeakerQueue)
                 .filter(SpeakerQueue.status == "Playing")
@@ -98,11 +104,14 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
             )
             for p_item in active_playing_items:
                 # If played within the last 60 seconds (or currently playing)
-                if p_item.played_at and (now - p_item.played_at).total_seconds() > ((p_item.duration_seconds or 15) + 30):
+                p_played_at = getattr(p_item, "played_at", None)
+                p_dur = getattr(p_item, "duration_seconds", 15) or 15
+                if p_played_at and (now - p_played_at).total_seconds() > (p_dur + 30):
                     continue
                 # If targeted to a specific node, verify MAC match
-                if p_item.speaker_node and p_item.speaker_node.mac_address:
-                    target_mac = p_item.speaker_node.mac_address.upper()
+                sp_node = getattr(p_item, "speaker_node", None)
+                if sp_node and getattr(sp_node, "mac_address", None):
+                    target_mac = str(sp_node.mac_address).upper()
                     if target_mac != mac_key:
                         continue
                 b_id = f"auto_queue_{p_item.id}_{p_item.announcement_id}"
@@ -141,7 +150,7 @@ def publish_mqtt_command(topic: str, payload: dict) -> bool:
     Gracefully handles broker offline mode by logging locally.
     """
     try:
-        client = mqtt.Client(client_id=f"EchoSphere_Server_{datetime.utcnow().timestamp()}")
+        client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
         client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=10)
         client.publish(topic, json.dumps(payload), qos=1)
         client.disconnect()
@@ -177,7 +186,7 @@ async def broadcast_announcement_to_speaker(
             "audio_url": f"{base_url}/static/audio_streams/emergency_{announcement_id}.wav",
             "zone": zone or "College-Wide",
             "volume": 100,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now().isoformat(),
         }
         publish_success = publish_mqtt_command(topic, payload)
         queue_command_for_nodes(payload, target_mac=None)
@@ -188,19 +197,19 @@ async def broadcast_announcement_to_speaker(
         if ann_row:
             existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
             if not existing_item:
-                queue_item = SpeakerQueue(
+                queue_item = cast(Any, SpeakerQueue)(
                     announcement_id=announcement_id,
                     queue_position=1,
                     status="Playing",
-                    scheduled_time=datetime.utcnow(),
-                    played_at=datetime.utcnow(),
+                    scheduled_time=utc_now(),
+                    played_at=utc_now(),
                 )
                 db.add(queue_item)
                 db.commit()
                 db.refresh(queue_item)
             else:
-                existing_item.status = "Playing"
-                existing_item.played_at = datetime.utcnow()
+                setattr(existing_item, "status", "Playing")
+                setattr(existing_item, "played_at", utc_now())
                 db.commit()
 
         return {
@@ -234,10 +243,11 @@ async def broadcast_announcement_to_speaker(
     if announcement_exists:
         existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
         active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
-        should_play = is_emergency or (active_playing is None) or (existing_item and existing_item.status == "Playing")
+        existing_status = str(getattr(existing_item, "status", "")) if existing_item else ""
+        should_play: bool = bool(is_emergency or (active_playing is None) or (existing_status == "Playing"))
 
-        if is_emergency and active_playing and active_playing.id != (existing_item.id if existing_item else None):
-            active_playing.status = "Paused"
+        if is_emergency and active_playing and getattr(active_playing, "id", None) != (getattr(existing_item, "id", None) if existing_item else None):
+            setattr(active_playing, "status", "Paused")
             db.commit()
 
         words = len((title + " " + content).split())
@@ -245,25 +255,25 @@ async def broadcast_announcement_to_speaker(
 
         if not existing_item:
             max_pos = db.query(SpeakerQueue).count()
-            queue_item = SpeakerQueue(
+            queue_item = cast(Any, SpeakerQueue)(
                 announcement_id=announcement_id,
                 queue_position=1 if is_emergency else max_pos + 1,
                 status="Playing" if should_play else ("Next in Queue" if max_pos == 0 else "Queued"),
-                scheduled_time=datetime.utcnow(),
-                played_at=datetime.utcnow() if should_play else None,
+                scheduled_time=utc_now(),
+                played_at=utc_now() if should_play else None,
                 duration_seconds=dur_secs,
             )
             db.add(queue_item)
             db.commit()
             db.refresh(queue_item)
-            queue_pos = queue_item.queue_position
+            queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
         else:
             if should_play:
-                existing_item.status = "Playing"
-                existing_item.played_at = datetime.utcnow()
-            existing_item.duration_seconds = dur_secs
+                setattr(existing_item, "status", "Playing")
+                setattr(existing_item, "played_at", utc_now())
+            setattr(existing_item, "duration_seconds", dur_secs)
             db.commit()
-            queue_pos = existing_item.queue_position
+            queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
 
     # 3. Publish MQTT dispatch
     topic = f"echosphere/dept/{department_code}/speakers/command"
@@ -279,7 +289,7 @@ async def broadcast_announcement_to_speaker(
         "audio_url": audio_full_url,
         "zone": zone,
         "volume": 100 if is_emergency else 85,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }
 
     publish_success = publish_mqtt_command(topic, payload)
@@ -310,26 +320,26 @@ def send_node_control_command(
         return {"status": "error", "message": f"Speaker node #{speaker_node_id} not found."}
 
     if volume is not None:
-        node.volume = max(0, min(100, volume))
+        setattr(node, "volume", max(0, min(100, volume)))
         db.commit()
 
     topic = f"echosphere/node/{node.mac_address}/command"
     payload = {
         "command": command,
-        "node_id": node.id,
-        "mac_address": node.mac_address,
+        "node_id": int(getattr(node, "id", 0) or 0),
+        "mac_address": str(getattr(node, "mac_address", "") or ""),
         "announcement_id": announcement_id,
-        "volume": node.volume,
-        "timestamp": datetime.utcnow().isoformat(),
+        "volume": int(getattr(node, "volume", 80) or 80),
+        "timestamp": utc_now().isoformat(),
     }
 
     publish_success = publish_mqtt_command(topic, payload)
-    queue_command_for_nodes(payload, target_mac=node.mac_address)
+    queue_command_for_nodes(payload, target_mac=str(node.mac_address) if getattr(node, "mac_address", None) else None)
 
     return {
         "status": "success",
-        "node_id": node.id,
-        "mac_address": node.mac_address,
+        "node_id": int(getattr(node, "id", 0) or 0),
+        "mac_address": str(getattr(node, "mac_address", "") or ""),
         "command": command,
         "mqtt_dispatched": publish_success,
     }
@@ -365,43 +375,52 @@ def enqueue_and_broadcast_announcement(
             elif speaker_node_id in (16, 3):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CC")).first()
         if target_node:
-            target_mac = target_node.mac_address
-            speaker_node_id = target_node.id
-            if target_node.zone:
-                zone = target_node.zone
+            t_mac = getattr(target_node, "mac_address", None)
+            target_mac = str(t_mac) if t_mac is not None else None
+            t_id = getattr(target_node, "id", None)
+            speaker_node_id = int(t_id) if t_id is not None else None
+            t_zone = getattr(target_node, "zone", None)
+            if t_zone is not None:
+                zone = str(t_zone)
         else:
             speaker_node_id = None
 
     words = len((title + " " + content).split())
     dur_secs = max(10, int(words / 2.5))
-    now = datetime.utcnow()
+    now = utc_now()
 
     # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap
     stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
     for sp in stale_playing:
-        if sp.played_at and (now - sp.played_at).total_seconds() > ((sp.duration_seconds or 15) + 30):
-            sp.status = "Completed"
+        sp_played_at = getattr(sp, "played_at", None)
+        sp_dur = getattr(sp, "duration_seconds", 15) or 15
+        if sp_played_at and (now - sp_played_at).total_seconds() > (sp_dur + 30):
+            setattr(sp, "status", "Completed")
             db.commit()
 
     # Add / update SpeakerQueue table
     existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
     is_future_scheduled = scheduled_time is not None and scheduled_time > now
+    active_status = getattr(active_playing, "status", None) if active_playing else None
+    existing_status = getattr(existing_item, "status", None) if existing_item else None
+    active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
+
     should_play = (not is_future_scheduled) and (
         is_emergency
         or (active_playing is None)
-        or (existing_item and existing_item.status == "Playing")
-        or (active_playing and active_playing.announcement_id == announcement_id)
+        or (existing_status == "Playing")
+        or (active_ann_id == announcement_id)
     )
 
-    if is_emergency and active_playing and active_playing.id != (existing_item.id if existing_item else None):
-        active_playing.status = "Paused"
+    if is_emergency and active_playing and getattr(active_playing, "id", None) != (getattr(existing_item, "id", None) if existing_item else None):
+        setattr(active_playing, "status", "Paused")
         db.commit()
 
     if not existing_item:
         max_pos = db.query(SpeakerQueue).count()
         item_status = "Playing" if should_play else ("Next in Queue" if max_pos == 0 and not is_future_scheduled else "Queued")
-        queue_item = SpeakerQueue(
+        queue_item = cast(Any, SpeakerQueue)(
             announcement_id=announcement_id,
             speaker_node_id=speaker_node_id,
             queue_position=1 if is_emergency else max_pos + 1,
@@ -413,18 +432,18 @@ def enqueue_and_broadcast_announcement(
         db.add(queue_item)
         db.commit()
         db.refresh(queue_item)
-        queue_pos = queue_item.queue_position
-        current_status = queue_item.status
+        queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
+        current_status = str(getattr(queue_item, "status", item_status))
     else:
-        if speaker_node_id and not existing_item.speaker_node_id:
-            existing_item.speaker_node_id = speaker_node_id
+        if speaker_node_id and not getattr(existing_item, "speaker_node_id", None):
+            setattr(existing_item, "speaker_node_id", speaker_node_id)
         if should_play:
-            existing_item.status = "Playing"
-            existing_item.played_at = now
-        existing_item.duration_seconds = dur_secs
+            setattr(existing_item, "status", "Playing")
+            setattr(existing_item, "played_at", now)
+        setattr(existing_item, "duration_seconds", dur_secs)
         db.commit()
-        queue_pos = existing_item.queue_position
-        current_status = existing_item.status
+        queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
+        current_status = str(getattr(existing_item, "status", "Queued"))
 
     # 2. Generate TTS audio stream (MP3 / WAV)
     audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.mp3"
@@ -457,7 +476,7 @@ def enqueue_and_broadcast_announcement(
         "zone": zone,
         "volume": 100 if is_emergency else 85,
         "duration_seconds": dur_secs,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }
 
     publish_success = False
@@ -501,13 +520,14 @@ def dispatch_queue_action_to_speakers(
 
 
     action_lower = action.lower()
+    ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
         # Generate / verify audio stream
-        audio_full_url = f"{base_url}/static/audio_streams/announcement_{queue_item.announcement_id}.mp3"
+        audio_full_url = f"{base_url}/static/audio_streams/announcement_{ann_id}.mp3"
         try:
             voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
             audio_info = generate_announcement_audio_sync(
-                queue_item.announcement_id,
+                ann_id,
                 f"{title}. {message}",
                 gender=voice_gender,
             )
@@ -517,42 +537,42 @@ def dispatch_queue_action_to_speakers(
 
         payload = {
             "command": "PLAY_ANNOUNCEMENT",
-            "announcement_id": queue_item.announcement_id,
+            "announcement_id": ann_id,
             "title": title,
             "message": message,
             "audio_url": audio_full_url,
             "volume": 85,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now().isoformat(),
         }
     elif action_lower == "pause":
         payload = {
             "command": "PAUSE",
-            "announcement_id": queue_item.announcement_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "announcement_id": ann_id,
+            "timestamp": utc_now().isoformat(),
         }
     elif action_lower in ("resume", "unpause"):
         payload = {
             "command": "RESUME",
-            "announcement_id": queue_item.announcement_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "announcement_id": ann_id,
+            "timestamp": utc_now().isoformat(),
         }
     elif action_lower == "skip":
         payload = {
             "command": "SKIP",
-            "announcement_id": queue_item.announcement_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "announcement_id": ann_id,
+            "timestamp": utc_now().isoformat(),
         }
     elif action_lower in ("cancel", "stop"):
         payload = {
             "command": "CANCEL",
-            "announcement_id": queue_item.announcement_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "announcement_id": ann_id,
+            "timestamp": utc_now().isoformat(),
         }
     else:
         payload = {
             "command": action.upper(),
-            "announcement_id": queue_item.announcement_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "announcement_id": ann_id,
+            "timestamp": utc_now().isoformat(),
         }
 
     topic = f"echosphere/dept/{dept_code}/speakers/command"
@@ -588,35 +608,38 @@ def auto_advance_speaker_queue(
     4. Transitions next item to 'Playing', records played_at, and dispatches command to speakers.
     5. Updates subsequent item to 'Next in Queue'.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
 
     should_advance = False
+    gap: int = 0
     if current_playing:
         if force_advance:
             should_advance = True
         else:
             # Check if current playing is emergency
-            ann = current_playing.announcement
+            ann = getattr(current_playing, "announcement", None)
             is_curr_emerg = ann and (
                 getattr(ann, "emergency_level", None) == "EMERGENCY"
-                or (hasattr(ann.priority, "value") and ann.priority.value == "EMERGENCY")
-                or str(ann.priority).upper() == "EMERGENCY"
+                or (hasattr(getattr(ann, "priority", None), "value") and getattr(ann.priority, "value") == "EMERGENCY")
+                or str(getattr(ann, "priority", "")).upper() == "EMERGENCY"
             )
             # Gap of 15 seconds (10-20 sec range) between normal broadcasts; 0s gap for emergency
             gap = 0 if is_curr_emerg else BROADCAST_GAP_SECONDS
-            duration = (current_playing.duration_seconds or 15) + gap
+            curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
+            duration = curr_dur + gap
 
-            if current_playing.played_at:
-                elapsed = (now - current_playing.played_at).total_seconds()
+            curr_played_at = getattr(current_playing, "played_at", None)
+            if curr_played_at:
+                elapsed = (now - curr_played_at).total_seconds()
                 if elapsed >= duration:
                     should_advance = True
             else:
-                current_playing.played_at = now
+                setattr(current_playing, "played_at", now)
                 db.commit()
 
         if should_advance:
-            current_playing.status = "Completed"
+            setattr(current_playing, "status", "Completed")
             db.commit()
             db.refresh(current_playing)
             logger.info(f"Speaker queue item #{current_playing.id} completed playback after duration + {gap}s gap.")
@@ -670,12 +693,12 @@ def auto_advance_speaker_queue(
     if not next_item:
         return None
 
-    next_item.status = "Playing"
-    next_item.played_at = datetime.utcnow()
-    if not next_item.duration_seconds:
-        ann = next_item.announcement
-        words = len(((ann.title if ann else '') + ' ' + (ann.description if ann else '')).split())
-        next_item.duration_seconds = max(10, int(words / 2.5))
+    setattr(next_item, "status", "Playing")
+    setattr(next_item, "played_at", utc_now())
+    if not getattr(next_item, "duration_seconds", None):
+        ann = getattr(next_item, "announcement", None)
+        words = len(((getattr(ann, "title", "") or '') + ' ' + (getattr(ann, "description", "") or '')).split())
+        setattr(next_item, "duration_seconds", max(10, int(words / 2.5)))
     db.commit()
     db.refresh(next_item)
 
@@ -695,7 +718,7 @@ def auto_advance_speaker_queue(
         .first()
     )
     if subsequent_item:
-        subsequent_item.status = "Next in Queue"
+        setattr(subsequent_item, "status", "Next in Queue")
         db.commit()
 
     logger.info(f"Speaker queue automatically advanced to item #{next_item.id} ('{next_item.announcement.title if next_item.announcement else 'Announcement'}').")
