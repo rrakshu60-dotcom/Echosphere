@@ -8,10 +8,8 @@ import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/screens/home/home_dashboard_widgets.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/services/tts_audio_service.dart';
 
 Widget createTestApp(Widget home) {
   return ChangeNotifierProvider(

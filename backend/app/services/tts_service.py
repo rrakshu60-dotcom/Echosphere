@@ -1,7 +1,11 @@
 import os
-import struct
+import re
 import wave
+import asyncio
 import logging
+import hashlib
+import concurrent.futures
+from typing import Tuple, Dict, Any, Optional
 
 logger = logging.getLogger("echosphere.tts")
 
@@ -19,32 +23,70 @@ def ensure_audio_dir_exists():
         pass
 
 
-def generate_synthesized_wav_fallback(file_path: str, text: str):
+def run_coroutine_sync(coro, timeout: float = 30.0):
     """
-    Fallback TTS using offline speech synthesis where possible,
-    ensuring real spoken words are always produced instead of tone bursts.
+    Safely executes an async coroutine from synchronous code,
+    handling nested event loops (e.g. inside FastAPI / Uvicorn worker threads)
+    without raising 'RuntimeError: asyncio.run() cannot be called from a running event loop'.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(asyncio.run, coro).result(timeout=timeout)
+    else:
+        return asyncio.run(coro)
+
+
+def is_legacy_beep_file(file_path: str) -> bool:
+    """
+    Identifies legacy dummy tone-burst beep files (strictly 1-channel, 16000Hz).
+    These files must be purged and replaced with real human spoken words.
+    """
+    if not file_path or not os.path.exists(file_path) or not file_path.endswith(".wav"):
+        return False
+    try:
+        with wave.open(file_path, "rb") as wf:
+            if wf.getnchannels() == 1 and wf.getframerate() == 16000:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def generate_offline_speech_pyttsx3(file_path: str, text: str, gender: str = "female") -> bool:
+    """
+    Synthesizes natural spoken words offline using pyttsx3 (SAPI5 on Windows / eSpeak on Linux).
+    Outputs a valid WAV file containing actual human spoken words (NEVER beeps).
     """
     try:
         import pyttsx3
         engine = pyttsx3.init()
+        voices = engine.getProperty("voices")
+        if voices:
+            target_gender = "female" if "female" in gender.lower() else "male"
+            selected_v = None
+            for v in voices:
+                v_name = (getattr(v, "name", "") or "").lower()
+                v_id = (getattr(v, "id", "") or "").lower()
+                if target_gender == "female" and any(k in v_name or k in v_id for k in ["zira", "female", "eva", "hazel", "heera"]):
+                    selected_v = v.id
+                    break
+                elif target_gender == "male" and any(k in v_name or k in v_id for k in ["david", "male", "mark", "george", "ravi"]):
+                    selected_v = v.id
+                    break
+            if selected_v:
+                engine.setProperty("voice", selected_v)
+        engine.setProperty("rate", 160)
         engine.save_to_file(text, file_path)
         engine.runAndWait()
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 1024:
-            return
-    except Exception:
-        pass
-
-    try:
-        import subprocess, platform
-        if platform.system() == "Windows":
-            clean = text.replace('"', ' ').replace("'", " ")[:300]
-            normalized_path = os.path.abspath(file_path).replace("\\", "/")
-            ps = f'$s = New-Object -ComObject SAPI.SpVoice; $fs = New-Object -ComObject SAPI.SpFileStream; $fs.Open("{normalized_path}", 3); $s.AudioOutputStream = $fs; $s.Speak("{clean}"); $fs.Close()'
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=8)
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 1024:
-                return
-    except Exception:
-        pass
+        return os.path.exists(file_path) and os.path.getsize(file_path) > 1024
+    except Exception as e:
+        logger.warning(f"pyttsx3 offline speech synthesis error: {e}")
+        return False
 
 
 def clean_text_for_speech(text: str) -> str:
@@ -52,7 +94,6 @@ def clean_text_for_speech(text: str) -> str:
     Strips raw markdown syntax, action tags, asterisks, and symbols
     so the speech engine outputs clear, natural human speech.
     """
-    import re
     cleaned = text
     # Strip [[ACTION:...]] tags
     cleaned = re.sub(r'\[\[ACTION:[^\]]+\]\]', '', cleaned)
@@ -69,33 +110,50 @@ def clean_text_for_speech(text: str) -> str:
     return cleaned
 
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
+TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 
 VOICE_PROFILES = {
-    # key: (kokoro_voice, kokoro_lang, edge_voice, display_name)
-    "indian_female": ("af_heart", "a", "en-IN-NeerjaNeural", "Indian Female (Neerja / Heart)"),
-    "indian_male": ("am_adam", "a", "en-IN-PrabhatNeural", "Indian Male (Prabhat / Adam)"),
-    "american_female": ("af_bella", "a", "en-US-JennyNeural", "American Female (Bella / Jenny)"),
-    "american_male": ("am_michael", "a", "en-US-GuyNeural", "American Male (Guy / Michael)"),
-    "british_female": ("bf_emma", "b", "en-GB-SoniaNeural", "British Female (Emma / Sonia)"),
-    "british_male": ("bm_george", "b", "en-GB-RyanNeural", "British Male (George / Ryan)"),
+    # English Neural Voices
+    "american_female": ("af_bella", "a", "en-US-JennyNeural", "American Female (Jenny)"),
+    "american_male": ("am_michael", "a", "en-US-GuyNeural", "American Male (Guy)"),
+    "indian_female": ("af_heart", "a", "en-IN-NeerjaNeural", "Indian Female (Neerja)"),
+    "indian_male": ("am_adam", "a", "en-IN-PrabhatNeural", "Indian Male (Prabhat)"),
+    "british_female": ("bf_emma", "b", "en-GB-SoniaNeural", "British Female (Sonia)"),
+    "british_male": ("bm_george", "b", "en-GB-RyanNeural", "British Male (Ryan)"),
+    # Regional Indian Neural Voices
+    "kannada_female": ("af_heart", "a", "kn-IN-SapnaNeural", "Kannada Female (Sapna)"),
+    "kannada_male": ("am_adam", "a", "kn-IN-GaganNeural", "Kannada Male (Gagan)"),
+    "hindi_female": ("af_heart", "a", "hi-IN-SwaraNeural", "Hindi Female (Swara)"),
+    "hindi_male": ("am_adam", "a", "hi-IN-MadhurNeural", "Hindi Male (Madhur)"),
+    "telugu_female": ("af_heart", "a", "te-IN-ShrutiNeural", "Telugu Female (Shruti)"),
+    "telugu_male": ("am_adam", "a", "te-IN-MohanNeural", "Telugu Male (Mohan)"),
+    "tamil_female": ("af_heart", "a", "ta-IN-PallaviNeural", "Tamil Female (Pallavi)"),
+    "tamil_male": ("am_adam", "a", "ta-IN-ValluvarNeural", "Tamil Male (Valluvar)"),
 }
 
 
-def resolve_voice_profile(gender: str = "female", accent: str = "indian", voice_preset: str = None) -> tuple:
+def resolve_voice_profile(gender: str = "female", accent: str = "american", voice_preset: Optional[str] = None) -> tuple:
     if voice_preset and voice_preset.lower() in VOICE_PROFILES:
         return VOICE_PROFILES[voice_preset.lower()]
     g = "male" if "male" in gender.lower() and "female" not in gender.lower() else "female"
-    acc = "indian"
     a_lower = accent.lower()
-    if "americ" in a_lower or "us" in a_lower:
-        acc = "american"
+    acc = "american"
+    if "kannada" in a_lower or a_lower == "kn":
+        acc = "kannada"
+    elif "hindi" in a_lower or a_lower == "hi":
+        acc = "hindi"
+    elif "telugu" in a_lower or a_lower == "te":
+        acc = "telugu"
+    elif "tamil" in a_lower or a_lower == "ta":
+        acc = "tamil"
+    elif "indian" in a_lower or a_lower == "in":
+        acc = "indian"
     elif "brit" in a_lower or "uk" in a_lower or "gb" in a_lower:
         acc = "british"
     key = f"{acc}_{g}"
-    return VOICE_PROFILES.get(key, VOICE_PROFILES["indian_female"])
+    return VOICE_PROFILES.get(key, VOICE_PROFILES["american_female"])
 
 
 _kokoro_pipelines = {}
@@ -103,7 +161,7 @@ _kokoro_lock = None
 
 
 def get_kokoro_pipeline(lang_code: str = "a"):
-    """Returns a thread-safe cached Kokoro-82M pipeline instance for ultra-fast offline synthesis."""
+    """Returns a thread-safe cached Kokoro-82M pipeline instance if installed."""
     global _kokoro_pipelines, _kokoro_lock
     if _kokoro_lock is None:
         import threading
@@ -134,18 +192,22 @@ def generate_announcement_audio_sync(
     text: str,
     gender: str = "female",
     accent: str = "american",
-    voice_preset: str = None,
+    voice_preset: Optional[str] = None,
     is_summary: bool = False,
     include_chime: bool = True,
-    chime_type: str = None,
+    chime_type: Optional[str] = None,
     priority: str = "NORMAL",
     category: str = "General",
     emergency_level: str = "NORMAL",
 ) -> dict:
     """
-    Synchronously generates text-to-speech audio stream for a given announcement ID.
-    Prepends distinct AI-selected audio chimes (urgent double-beep, sports ding, emergency siren)
-    and supports male/female voices across Indian, American, and British accents.
+    Synchronously generates text-to-speech audio for a given announcement ID.
+    Supports multi-tier speech generation:
+    1. Kokoro-82M (if installed)
+    2. Microsoft Edge-TTS (ultra-high fidelity neural cloud)
+    3. Google gTTS (cloud fallback)
+    4. pyttsx3 (100% offline local spoken speech)
+    NEVER emits beep tones or dummy sinusoidal wav pulses.
     """
     ensure_audio_dir_exists()
     from app.services.chime_service import resolve_contextual_chime, generate_chime_pcm, prepend_chime_to_wav_file
@@ -172,14 +234,33 @@ def generate_announcement_audio_sync(
     mp3_filepath = os.path.join(STATIC_AUDIO_DIR, mp3_filename)
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
 
-    # Check cache
-    if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 4096:
+    # 1. Check WAV cache (and purge legacy beep files if encountered)
+    if os.path.exists(wav_filepath):
+        if is_legacy_beep_file(wav_filepath):
+            logger.info(f"Purging legacy 16kHz beep file: {wav_filepath}")
+            try:
+                os.remove(wav_filepath)
+            except Exception:
+                pass
+        elif os.path.getsize(wav_filepath) > 1024:
+            return {
+                "file_name": wav_filename,
+                "file_path": wav_filepath,
+                "url_path": f"/static/audio_streams/{wav_filename}",
+                "type": "wav",
+                "engine": f"Neural Speech ({voice_name} - Cached)",
+                "voice": voice_name,
+                "chime": selected_chime if include_chime else "none",
+            }
+
+    # 2. Check MP3 cache
+    if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
         return {
             "file_name": mp3_filename,
             "file_path": mp3_filepath,
             "url_path": f"/static/audio_streams/{mp3_filename}",
             "type": "mp3",
-            "engine": f"Neural TTS ({voice_name} - Cached)",
+            "engine": f"Neural Speech ({voice_name} - Cached)",
             "voice": voice_name,
             "chime": selected_chime if include_chime else "none",
         }
@@ -198,8 +279,8 @@ def generate_announcement_audio_sync(
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # 1. Try Kokoro-82M (100% Offline Neural Speech Synthesis)
-    if TTS_ENGINE in ["kokoro", "auto", "offline"]:
+    # Tier 1: Try Kokoro-82M (if available)
+    if TTS_ENGINE in ["kokoro", "offline"] and is_kokoro_available():
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:
@@ -219,7 +300,7 @@ def generate_announcement_audio_sync(
 
                     sf.write(wav_filepath, combined, 24000)
                     duration = round(len(combined) / 24000.0, 2)
-                    logger.info(f"Kokoro-82M offline neural audio + chime ({selected_chime}, {voice_name}, {duration}s): {wav_filepath}")
+                    logger.info(f"Kokoro-82M offline audio generated: {wav_filepath}")
                     return {
                         "file_name": wav_filename,
                         "file_path": wav_filepath,
@@ -231,34 +312,39 @@ def generate_announcement_audio_sync(
                         "chime": selected_chime if include_chime else "none",
                     }
         except Exception as k_err:
-            logger.debug(f"Kokoro-82M attempt skipped/failed: {k_err}. Falling back to Edge-TTS.")
+            logger.debug(f"Kokoro-82M attempt failed: {k_err}. Falling back to Edge-TTS.")
 
-    # 2. Try modern high-fidelity neural TTS (Microsoft Edge-TTS)
+    # Tier 2: Try Microsoft Edge-TTS (Ultra-high quality Neural voices)
     try:
-        import asyncio
         import edge_tts
 
         async def _run_edge():
             comm = edge_tts.Communicate(speech_text, edge_voice)
             await comm.save(mp3_filepath)
 
-        asyncio.run(_run_edge())
-        logger.info(f"Edge-TTS neural audio stream generated successfully ({voice_name}): {mp3_filepath}")
-        return {
-            "file_name": mp3_filename,
-            "file_path": mp3_filepath,
-            "url_path": f"/static/audio_streams/{mp3_filename}",
-            "type": "mp3",
-            "engine": f"Neural Cloud ({voice_name})",
-            "voice": voice_name,
-        }
+        run_coroutine_sync(_run_edge(), timeout=25.0)
+
+        if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+            logger.info(f"Edge-TTS neural audio generated ({voice_name}): {mp3_filepath}")
+            return {
+                "file_name": mp3_filename,
+                "file_path": mp3_filepath,
+                "url_path": f"/static/audio_streams/{mp3_filename}",
+                "type": "mp3",
+                "engine": f"Neural Cloud ({voice_name})",
+                "voice": voice_name,
+                "chime": selected_chime if include_chime else "none",
+            }
     except Exception as edge_err:
-        logger.debug(f"Edge-TTS attempt skipped/failed: {edge_err}. Trying gTTS fallback...")
-        try:
-            from gtts import gTTS
-            tts = gTTS(text=speech_text, lang="en", slow=False)
-            tts.save(mp3_filepath)
-            logger.info(f"gTTS audio stream generated successfully: {mp3_filepath}")
+        logger.debug(f"Edge-TTS attempt failed: {edge_err}. Trying gTTS fallback...")
+
+    # Tier 3: Try Google gTTS (Cloud Fallback)
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=speech_text, lang="en", slow=False)
+        tts.save(mp3_filepath)
+        if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+            logger.info(f"gTTS audio stream generated: {mp3_filepath}")
             return {
                 "file_name": mp3_filename,
                 "file_path": mp3_filepath,
@@ -266,18 +352,34 @@ def generate_announcement_audio_sync(
                 "type": "mp3",
                 "engine": "gTTS (Cloud)",
                 "voice": "Standard English",
+                "chime": selected_chime if include_chime else "none",
             }
-        except Exception as e:
-            logger.warning(f"Network TTS generation failed: {e}. Generating offline WAV fallback.")
-            generate_synthesized_wav_fallback(wav_filepath, speech_text)
+    except Exception as g_err:
+        logger.debug(f"gTTS attempt failed: {g_err}. Trying offline pyttsx3 speech...")
+
+    # Tier 4: Try pyttsx3 (100% Offline Local Speech Synthesizer)
+    try:
+        ok = generate_offline_speech_pyttsx3(wav_filepath, speech_text, gender=gender)
+        if ok:
+            if include_chime:
+                temp_wav = wav_filepath + ".chime_tmp.wav"
+                if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
+                    os.replace(temp_wav, wav_filepath)
+            logger.info(f"pyttsx3 offline speech audio generated: {wav_filepath}")
             return {
                 "file_name": wav_filename,
                 "file_path": wav_filepath,
                 "url_path": f"/static/audio_streams/{wav_filename}",
                 "type": "wav",
-                "engine": "Offline Synthetic WAV",
-                "voice": "Synthetic",
+                "engine": "Offline Speech (pyttsx3)",
+                "voice": f"{gender.capitalize()} Offline",
+                "chime": selected_chime if include_chime else "none",
             }
+    except Exception as p_err:
+        logger.error(f"pyttsx3 offline synthesis error: {p_err}")
+
+    # If all tiers fail, raise descriptive error — NEVER write dummy beep pulses
+    raise RuntimeError("All speech synthesis engines (Edge-TTS, gTTS, pyttsx3) are currently unavailable.")
 
 
 async def generate_announcement_audio(
@@ -285,12 +387,10 @@ async def generate_announcement_audio(
     text: str,
     gender: str = "female",
     accent: str = "american",
-    voice_preset: str = None,
+    voice_preset: Optional[str] = None,
     is_summary: bool = False,
 ) -> dict:
-    """
-    Async wrapper for announcement audio generation.
-    """
+    """Async wrapper for announcement audio generation."""
     return generate_announcement_audio_sync(
         announcement_id=announcement_id,
         text=text,
@@ -305,14 +405,13 @@ def synthesize_text_audio(
     text: str,
     gender: str = "female",
     accent: str = "american",
-    voice_preset: str = None,
+    voice_preset: Optional[str] = None,
     filename_prefix: str = "ai_speech",
 ) -> dict:
     """
-    Synthesizes arbitrary text into speech using Kokoro-82M (with Edge-TTS / gTTS fallbacks).
-    Supports male/female and Indian, American, and British accents.
+    Synthesizes arbitrary text into speech using Edge-TTS neural voices,
+    with gTTS and pyttsx3 offline fallbacks.
     """
-    import hashlib
     ensure_audio_dir_exists()
     
     clean_text = clean_text_for_speech(text)
@@ -327,28 +426,36 @@ def synthesize_text_audio(
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
     mp3_filepath = os.path.join(STATIC_AUDIO_DIR, mp3_filename)
 
-    # Check cache first
-    if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 1024:
-        return {
-            "file_name": wav_filename,
-            "file_path": wav_filepath,
-            "url_path": f"/static/audio_streams/{wav_filename}",
-            "type": "wav",
-            "engine": f"Kokoro-82M ({voice_name} - Cached)",
-            "voice": voice_name,
-        }
+    # 1. Check WAV cache
+    if os.path.exists(wav_filepath):
+        if is_legacy_beep_file(wav_filepath):
+            try:
+                os.remove(wav_filepath)
+            except Exception:
+                pass
+        elif os.path.getsize(wav_filepath) > 1024:
+            return {
+                "file_name": wav_filename,
+                "file_path": wav_filepath,
+                "url_path": f"/static/audio_streams/{wav_filename}",
+                "type": "wav",
+                "engine": f"Neural Speech ({voice_name} - Cached)",
+                "voice": voice_name,
+            }
+
+    # 2. Check MP3 cache
     if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
         return {
             "file_name": mp3_filename,
             "file_path": mp3_filepath,
             "url_path": f"/static/audio_streams/{mp3_filename}",
             "type": "mp3",
-            "engine": f"Neural TTS ({voice_name} - Cached)",
+            "engine": f"Neural Speech ({voice_name} - Cached)",
             "voice": voice_name,
         }
 
-    # 1. Kokoro-82M
-    if TTS_ENGINE in ["kokoro", "auto", "offline"]:
+    # Tier 1: Kokoro-82M (if available)
+    if TTS_ENGINE in ["kokoro", "offline"] and is_kokoro_available():
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:
@@ -361,7 +468,6 @@ def synthesize_text_audio(
                     combined = np.concatenate(audio_segments)
                     sf.write(wav_filepath, combined, 24000)
                     duration = round(len(combined) / 24000.0, 2)
-                    logger.info(f"Kokoro-82M synthesized ({voice_name}, {duration}s): {wav_filepath}")
                     return {
                         "file_name": wav_filename,
                         "file_path": wav_filepath,
@@ -374,50 +480,58 @@ def synthesize_text_audio(
         except Exception as k_err:
             logger.debug(f"Kokoro text synthesis fallback: {k_err}")
 
-    # 2. Edge-TTS fallback
+    # Tier 2: Edge-TTS (Microsoft Neural Cloud)
     try:
-        import asyncio
         import edge_tts
 
         async def _run_edge():
             comm = edge_tts.Communicate(clean_text, edge_voice)
             await comm.save(mp3_filepath)
 
-        asyncio.run(_run_edge())
-        return {
-            "file_name": mp3_filename,
-            "file_path": mp3_filepath,
-            "url_path": f"/static/audio_streams/{mp3_filename}",
-            "type": "mp3",
-            "engine": f"Edge-TTS ({voice_name})",
-            "voice": voice_name,
-        }
-    except Exception:
-        pass
+        run_coroutine_sync(_run_edge(), timeout=25.0)
 
-    # 3. gTTS fallback
+        if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+            return {
+                "file_name": mp3_filename,
+                "file_path": mp3_filepath,
+                "url_path": f"/static/audio_streams/{mp3_filename}",
+                "type": "mp3",
+                "engine": f"Edge-TTS ({voice_name})",
+                "voice": voice_name,
+            }
+    except Exception as e_err:
+        logger.debug(f"Edge-TTS text synthesis failed: {e_err}")
+
+    # Tier 3: gTTS (Google Cloud)
     try:
         from gtts import gTTS
         tts = gTTS(text=clean_text, lang="en", slow=False)
         tts.save(mp3_filepath)
-        return {
-            "file_name": mp3_filename,
-            "file_path": mp3_filepath,
-            "url_path": f"/static/audio_streams/{mp3_filename}",
-            "type": "mp3",
-            "engine": "gTTS (Cloud)",
-            "voice": "Standard English",
-        }
-    except Exception:
-        generate_synthesized_wav_fallback(wav_filepath, clean_text)
-        return {
-            "file_name": wav_filename,
-            "file_path": wav_filepath,
-            "url_path": f"/static/audio_streams/{wav_filename}",
-            "type": "wav",
-            "engine": "Offline Synthetic WAV",
-            "voice": "Synthetic",
-        }
+        if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+            return {
+                "file_name": mp3_filename,
+                "file_path": mp3_filepath,
+                "url_path": f"/static/audio_streams/{mp3_filename}",
+                "type": "mp3",
+                "engine": "gTTS (Cloud)",
+                "voice": "Standard English",
+            }
+    except Exception as g_err:
+        logger.debug(f"gTTS text synthesis failed: {g_err}")
 
+    # Tier 4: pyttsx3 (100% Offline Local Speech)
+    try:
+        ok = generate_offline_speech_pyttsx3(wav_filepath, clean_text, gender=gender)
+        if ok:
+            return {
+                "file_name": wav_filename,
+                "file_path": wav_filepath,
+                "url_path": f"/static/audio_streams/{wav_filename}",
+                "type": "wav",
+                "engine": "Offline Speech (pyttsx3)",
+                "voice": f"{gender.capitalize()} Offline",
+            }
+    except Exception as p_err:
+        logger.error(f"pyttsx3 arbitrary text synthesis failed: {p_err}")
 
-
+    raise RuntimeError("Speech synthesis failed across all engines.")
