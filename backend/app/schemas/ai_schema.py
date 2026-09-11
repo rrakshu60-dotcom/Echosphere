@@ -259,3 +259,37 @@ class AnnouncementTranslationResponse(BaseModel):
     translated_content: str
     translated_summary: Optional[str] = None
 
+
+class VoiceNoticeRequest(BaseModel):
+    audio_base64: Optional[str] = None
+    audio_format: Optional[str] = "m4a"
+    raw_transcript: Optional[str] = None
+
+
+class VoiceNoticeResponse(BaseModel):
+    title: str
+    content: str
+    suggested_category: str = "Academic"
+    suggested_priority: str = "NORMAL"
+    suggested_audience: str = "Entire College"
+    extracted_event: Optional[Dict[str, Any]] = None
+    transcription: str
+
+
+class DocumentOcrRequest(BaseModel):
+    file_base64: str
+    mime_type: Optional[str] = "image/jpeg"
+    filename: Optional[str] = "circular.jpg"
+
+
+class DocumentOcrResponse(BaseModel):
+    title: str
+    content: str
+    suggested_category: str = "Academic"
+    suggested_priority: str = "NORMAL"
+    suggested_audience: str = "Entire College"
+    reference_number: Optional[str] = None
+    extracted_event: Optional[Dict[str, Any]] = None
+    raw_text: Optional[str] = None
+
+

@@ -20,10 +20,14 @@ from app.schemas.ai_schema import (
     AnnouncementTranslationResponse,
     AudienceCheckRequest,
     AudienceCheckResponse,
+    DocumentOcrRequest,
+    DocumentOcrResponse,
     RelevanceScoreRequest,
     RelevanceScoreResponse,
     ScheduleConflictCheckRequest,
     ScheduleConflictCheckResponse,
+    VoiceNoticeRequest,
+    VoiceNoticeResponse,
 )
 from app.services.announcement_service import (
     approve_announcement_service,
@@ -638,4 +642,39 @@ def translate_generic_endpoint(
         content=request.content or "",
         summary=request.summary,
         target_language=request.target_language,
+    )
+
+
+@router.post("/voice-to-notice", response_model=VoiceNoticeResponse)
+def voice_to_notice_endpoint(
+    request: VoiceNoticeRequest,
+):
+    """
+    Smart Voice Notice Dictation (Speech-to-Circular AI).
+    Transcribes spoken voice memos or converts raw conversational dictation into a structured institutional circular.
+    """
+    from app.services.smart_intake_service import SmartIntakeService
+
+    return SmartIntakeService.voice_to_notice(
+        audio_base64=request.audio_base64,
+        audio_format=request.audio_format or "m4a",
+        raw_transcript=request.raw_transcript,
+    )
+
+
+@router.post("/ocr-document", response_model=DocumentOcrResponse)
+def ocr_document_endpoint(
+    request: DocumentOcrRequest,
+):
+    """
+    Circular Document OCR & Auto-Digitizer.
+    Reads official scanned paper circulars, images, or PDF documents, extracts clean text,
+    and returns a structured institutional circular.
+    """
+    from app.services.smart_intake_service import SmartIntakeService
+
+    return SmartIntakeService.ocr_document_to_notice(
+        file_base64=request.file_base64,
+        mime_type=request.mime_type or "image/jpeg",
+        filename=request.filename or "circular.jpg",
     )
