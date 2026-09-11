@@ -54,6 +54,7 @@ Screenshot*
 SC1*
 .tempmediaStorage/
 hardware/.node_mac
+hardware/.node_mac_2
 backend/app/static/audio_streams/*.mp3
 !backend/app/static/audio_streams/.gitkeep
 backend/app/static/chimes/*.wav
