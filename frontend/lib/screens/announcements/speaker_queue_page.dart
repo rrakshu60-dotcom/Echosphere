@@ -194,6 +194,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
 
   void _showEnqueueDialog(BuildContext context) {
     int? selectedAnnouncementId;
+    int? selectedSpeakerNodeId;
     String selectedAudioType = 'AI Speech';
     List<Map<String, dynamic>> eligibleAnnouncements = [];
     bool loadingAnnouncements = true;
@@ -322,6 +323,62 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                       ),
                       const SizedBox(height: 12),
                       const EchoSphereText(
+                        text: 'Target Speaker Node:',
+                        size: 11,
+                        variant: TextVariant.semiBold,
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int?>(
+                        value: selectedSpeakerNodeId,
+                        isExpanded: true,
+                        dropdownColor: context.colors.surface,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('All Nodes (College-Wide)', style: TextStyle(fontSize: 12)),
+                          ),
+                          ..._queueCtrl.speakerNodes.map((n) {
+                            final nId = n['id'] as int?;
+                            final nName = (n['name'] ?? 'Speaker #$nId').toString();
+                            final isOnline = (n['status'] ?? 'OFFLINE').toString().toUpperCase() == 'ONLINE';
+                            return DropdownMenuItem<int?>(
+                              value: nId,
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: isOnline ? Colors.green : Colors.red,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '$nName (${isOnline ? "ONLINE" : "OFFLINE"})',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isOnline ? context.colors.onSurface : context.colors.onSurface.opaque(0.6),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          setDialogState(() => selectedSpeakerNodeId = val);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const EchoSphereText(
                         text: 'Audio Engine:',
                         size: 11,
                         variant: TextVariant.semiBold,
@@ -371,6 +428,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           await _queueCtrl.enqueueNotice(
                             announcementId: selectedAnnouncementId!,
                             audioType: selectedAudioType,
+                            speakerNodeId: selectedSpeakerNodeId,
                           );
                         },
                   child: const EchoSphereText(
@@ -1252,6 +1310,49 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
+                                          Builder(builder: (context) {
+                                            final targetNodeId = item['speaker_node_id'] as int?;
+                                            final nodeName = (item['node_name'] ?? _queueCtrl.getNodeName(targetNodeId)).toString();
+                                            final isOnline = _queueCtrl.isNodeOnline(targetNodeId);
+                                            return ConstrainedBox(
+                                              constraints: const BoxConstraints(maxWidth: 130),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: (isOnline ? const Color(0xFF10B981) : Colors.redAccent).opaque(0.12),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                    color: (isOnline ? const Color(0xFF10B981) : Colors.redAccent).opaque(0.3),
+                                                    width: 0.8,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Container(
+                                                      width: 5,
+                                                      height: 5,
+                                                      decoration: BoxDecoration(
+                                                        shape: BoxShape.circle,
+                                                        color: isOnline ? const Color(0xFF10B981) : Colors.redAccent,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Flexible(
+                                                      child: EchoSphereText(
+                                                        text: '$nodeName • ${isOnline ? "ONLINE" : "OFFLINE"}',
+                                                        size: 9,
+                                                        variant: TextVariant.semiBold,
+                                                        color: isOnline ? const Color(0xFF10B981) : Colors.redAccent,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          }),
                                           if (isCurrentlyPlaying)
                                             Container(
                                               padding: const EdgeInsets.symmetric(

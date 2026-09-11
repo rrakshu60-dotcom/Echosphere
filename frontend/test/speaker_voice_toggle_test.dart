@@ -75,6 +75,8 @@ void main() {
     expect(find.text('Male Voice'), findsOneWidget);
 
     // Tap 'Male Voice'
+    await tester.ensureVisible(find.text('Male Voice'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Male Voice'));
     await tester.pumpAndSettle();
 
@@ -83,6 +85,8 @@ void main() {
     expect(maleChip.selected, isTrue);
 
     // Tap back to 'Female Voice'
+    await tester.ensureVisible(find.text('Female Voice'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Female Voice'));
     await tester.pumpAndSettle();
 

@@ -23,7 +23,7 @@ class SpeakerQueueController extends GetxController {
   Timer? _playbackTimer;
   Timer? _pollTimer;
 
-  // Fallback initial speaker nodes: Exactly 2 canonical nodes (Wokwi + Hardware Client)
+  // Fallback initial speaker nodes: Canonical nodes (Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
     {
       'id': 14,
@@ -44,6 +44,18 @@ class SpeakerQueueController extends GetxController {
       'ip_address': '127.0.0.1',
       'zone': 'Auditorium / Campus',
       'department': 'College-Wide',
+      'status': 'OFFLINE',
+      'volume': 85,
+      'cpu_usage': 0.0,
+      'memory_usage': 0.0,
+    },
+    {
+      'id': 16,
+      'name': 'Hardware Speaker Client 2',
+      'mac_address': 'D4:F3:2D:22:2A:CC',
+      'ip_address': '127.0.0.1',
+      'zone': 'Block B - AI Lab',
+      'department': 'AIML',
       'status': 'OFFLINE',
       'volume': 85,
       'cpu_usage': 0.0,
@@ -137,6 +149,21 @@ class SpeakerQueueController extends GetxController {
     return 'Speaker Node #$nodeId';
   }
 
+  String getNodeName(int? nodeId) => _getNodeName(nodeId);
+
+  String getNodeStatus(int? nodeId) {
+    if (nodeId == null) {
+      final anyOnline = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
+      return anyOnline ? 'ONLINE' : 'OFFLINE';
+    }
+    final match = speakerNodes.firstWhereOrNull((n) => n['id'] == nodeId);
+    return (match?['status'] ?? 'OFFLINE').toString().toUpperCase();
+  }
+
+  bool isNodeOnline(int? nodeId) {
+    return getNodeStatus(nodeId) == 'ONLINE';
+  }
+
   /// Refreshes queue and nodes from both local announcements and remote backend
   Future<void> refreshQueue({bool silent = false}) async {
     if (!silent) isLoading.value = true;
@@ -189,10 +216,14 @@ class SpeakerQueueController extends GetxController {
       // Add remote active items first
       for (var q in remoteActiveItems) {
         final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+        final targetNodeId = q['speaker_node_id'] as int?;
+        final nodeName = q['speaker_node_name'] ?? _getNodeName(targetNodeId);
+        final nodeStatus = q['speaker_node_status'] ?? getNodeStatus(targetNodeId);
         seenAnnouncementIds.add(annId);
         combined.add({
           ...q,
-          'node_name': _getNodeName(q['speaker_node_id'] as int?),
+          'node_name': nodeName,
+          'node_status': nodeStatus,
           'duration_seconds': q['duration_seconds'] ?? 15,
         });
       }
@@ -223,6 +254,7 @@ class SpeakerQueueController extends GetxController {
               'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
               'speaker_node_id': notice.speakerNodeId,
               'node_name': _getNodeName(notice.speakerNodeId),
+              'node_status': getNodeStatus(notice.speakerNodeId),
               'duration_seconds': notice.durationSeconds,
               'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
             });

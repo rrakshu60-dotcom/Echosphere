@@ -64,7 +64,7 @@ if os.path.exists(MAC_FILE):
     with open(MAC_FILE, "r") as f:
         MAC_ADDRESS = f.read().strip()
 else:
-    MAC_ADDRESS = ":".join([f"{(uuid.getnode() >> i) & 0xff:02X}" for i in range(0, 48, 8)][::-1])
+    MAC_ADDRESS = os.getenv("NODE_MAC", "D4:F3:2D:22:2A:CB")
     try:
         os.makedirs(os.path.dirname(MAC_FILE), exist_ok=True)
         with open(MAC_FILE, "w") as f:
