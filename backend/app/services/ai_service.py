@@ -870,7 +870,7 @@ class AIService:
 
         # 1. Location / Venue
         venue_match = re.search(
-            r'\b(?:in|at|to)\s+(the\s+)?([A-Za-z0-9\s\-]+?(?:Auditorium|Seminar Hall|Room\s*\d+|Lab\s*\d+|Placement Cell|Library|Ground|Campus))\b',
+            r'\b(?:in|at|to)\s+(the\s+)?([A-Za-z0-9\s\-]+?(?:Auditorium|Seminar Hall(?:\s+[A-Za-z0-9\-]+)?|Room\s*#?[A-Za-z0-9\-]+|Lab\s*#?[A-Za-z0-9\-]+|Placement Cell|Library|Ground|Campus))\b',
             combined,
             re.IGNORECASE
         )
@@ -878,7 +878,7 @@ class AIService:
             location = venue_match.group(2).strip()
         else:
             direct_venue = re.search(
-                r'\b((?:Room|Hall|Lab|Auditorium|Cabin|Block)\s*#?[A-Za-z0-9\-]+|Central Auditorium|Seminar Hall|Placement Cell)\b',
+                r'\b((?:Room|Hall|Lab|Auditorium|Cabin|Block)\s*#?[A-Za-z0-9\-]+|Seminar Hall(?:\s+[A-Za-z0-9\-]+)?|Central Auditorium|Placement Cell)\b',
                 combined,
                 re.IGNORECASE
             )

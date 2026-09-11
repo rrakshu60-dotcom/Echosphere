@@ -52,6 +52,9 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   String? aiValidationWarning;
   String? aiSpamWarning;
   String? aiDuplicateWarning;
+  Map<String, dynamic>? activeConflictReport;
+  bool isCheckingConflict = false;
+  bool _isResolvingConflict = false;
 
   List<PlatformFile> attachedFiles = [];
 
@@ -186,6 +189,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   }
 
   void _autoDetectAndValidate() {
+    if (_isResolvingConflict) return;
     final title = titleController.text.trim();
     final desc = descController.text.trim();
 
@@ -210,19 +214,40 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   }
 
   Future<void> _runAiValidation(String title, String desc) async {
-    try {
-      final valRes = await EchosphereApiService().validateContent(desc, title: title);
-      final spamRes = await EchosphereApiService().checkSpam(desc);
-      final dupRes = await EchosphereApiService().checkDuplicate(title, desc);
+    Map<String, dynamic> valRes = {};
+    Map<String, dynamic> spamRes = {};
+    Map<String, dynamic> dupRes = {};
+    Map<String, dynamic> conflictRes = {};
 
-      if (mounted) {
-        setState(() {
-          aiValidationWarning = valRes['is_valid'] == true ? null : valRes['suggestion'];
-          aiSpamWarning = spamRes['is_spam'] == true ? spamRes['reason'] : null;
-          aiDuplicateWarning = dupRes['is_duplicate'] == true ? dupRes['reason'] : null;
-        });
-      }
+    try {
+      valRes = await EchosphereApiService().validateContent(desc, title: title);
     } catch (_) {}
+
+    try {
+      spamRes = await EchosphereApiService().checkSpam(desc);
+    } catch (_) {}
+
+    try {
+      dupRes = await EchosphereApiService().checkDuplicate(title, desc);
+    } catch (_) {}
+
+    try {
+      conflictRes = await EchosphereApiService().checkScheduleConflict(
+        title: title,
+        content: desc,
+        scheduledAt: isScheduleLater ? scheduledDateTime : null,
+        category: aiDetectedCategory,
+      );
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        aiValidationWarning = valRes['is_valid'] == true ? null : valRes['suggestion'];
+        aiSpamWarning = spamRes['is_spam'] == true ? spamRes['reason'] : null;
+        aiDuplicateWarning = dupRes['is_duplicate'] == true ? dupRes['reason'] : null;
+        activeConflictReport = conflictRes['has_conflict'] == true ? conflictRes : null;
+      });
+    }
   }
 
   Future<void> _expandWithAi() async {
@@ -439,6 +464,11 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               ),
             ),
             const SizedBox(height: 12),
+
+            // AI Schedule Conflict Alert Card
+            if (activeConflictReport != null && activeConflictReport!['has_conflict'] == true) ...[
+              _buildScheduleConflictCard(theme),
+            ],
 
             // AI Warnings (Validation / Spam / Duplicate)
             if (aiValidationWarning != null || aiSpamWarning != null || aiDuplicateWarning != null) ...[
@@ -821,6 +851,175 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           snackBar(statusMessage);
         }
       },
+    );
+  }
+
+  void _applyAlternativeSlot(Map<String, dynamic> slot) {
+    final label = slot['label'] as String? ?? '';
+    final venue = slot['venue'] as String?;
+    final startTimeStr = slot['start_time'] as String?;
+
+    DateTime? newStart;
+    if (startTimeStr != null) {
+      newStart = DateTime.tryParse(startTimeStr);
+    }
+
+    if (newStart != null) {
+      setState(() {
+        scheduledDateTime = newStart!;
+      });
+    }
+
+    var currentText = descController.text;
+    final conflicts = (activeConflictReport?['conflicts'] as List?)?.whereType<Map>().toList() ?? [];
+    final firstConflict = conflicts.isNotEmpty ? conflicts.first : null;
+
+    final oldVenue = firstConflict?['conflicting_venue'] as String?;
+    final cleanSlotTime = label.split(' (').first;
+
+    if (slot['slot_type'] == 'alternative_venue' && venue != null) {
+      if (oldVenue != null && currentText.contains(oldVenue)) {
+        currentText = currentText.replaceAll(oldVenue, venue);
+      } else {
+        currentText = '$currentText\n(Venue updated to: $venue)';
+      }
+    } else {
+      final timeRegex = RegExp(r'\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(AM|PM|am|pm)\b', caseSensitive: false);
+      if (timeRegex.hasMatch(currentText)) {
+        final replacementTime = cleanSlotTime.split(' - ').first.split(', ').last;
+        currentText = currentText.replaceFirst(timeRegex, replacementTime);
+        currentText = '$currentText [Rescheduled: $label]';
+      } else {
+        currentText = '$currentText\n[Rescheduled: $label]';
+      }
+    }
+
+    _isResolvingConflict = true;
+    setState(() {
+      descController.text = currentText.trim();
+      activeConflictReport = null;
+    });
+    Future.microtask(() => _isResolvingConflict = false);
+
+    snackBar('Applied alternative time slot: $label', title: 'Schedule Conflict Resolved');
+  }
+
+  Widget _buildScheduleConflictCard(ThemeData theme) {
+    if (activeConflictReport == null) return const SizedBox.shrink();
+    final conflicts = (activeConflictReport!['conflicts'] as List?)?.whereType<Map>().toList() ?? [];
+    final alternatives = (activeConflictReport!['suggested_alternatives'] as List?)?.whereType<Map>().toList() ?? [];
+    if (conflicts.isEmpty) return const SizedBox.shrink();
+
+    final isSevere = conflicts.any((c) => c['conflict_type'] == 'venue_collision');
+    final accentColor = isSevere ? const Color(0xFFEF4444) : Colors.amber;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accentColor.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.event_busy_rounded, size: 18, color: accentColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Schedule Conflict Detected',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${conflicts.length} Overlap',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: accentColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...conflicts.map((c) {
+            final msg = c['conflict_message'] as String? ?? 'Conflict detected with existing circular.';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• ', style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: Text(
+                      msg,
+                      style: const TextStyle(fontSize: 11, height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          if (alternatives.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Suggest Alternative Time Slots:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface.withOpacity(0.9),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: alternatives.map((alt) {
+                final label = alt['label'] as String? ?? 'Alternative Slot';
+                final isAltVenue = alt['slot_type'] == 'alternative_venue';
+                return ActionChip(
+                  avatar: Icon(
+                    isAltVenue ? Icons.room_preferences_rounded : Icons.calendar_month_rounded,
+                    size: 13,
+                    color: theme.colorScheme.primary,
+                  ),
+                  label: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.08),
+                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
+                  onPressed: () => _applyAlternativeSlot(Map<String, dynamic>.from(alt)),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

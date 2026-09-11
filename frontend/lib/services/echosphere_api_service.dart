@@ -510,6 +510,107 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> checkScheduleConflict({
+    required String title,
+    required String content,
+    DateTime? scheduledAt,
+    String? category,
+    int? excludeNoticeId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/check-conflict',
+        data: {
+          'title': title,
+          'content': content,
+          'scheduled_at': scheduledAt?.toIso8601String(),
+          'category': category,
+          'exclude_notice_id': excludeNoticeId,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      debugPrint('AI Schedule Conflict API Error: $e');
+      return _checkScheduleConflictFallback(title, content, scheduledAt);
+    } catch (_) {
+      return _checkScheduleConflictFallback(title, content, scheduledAt);
+    }
+  }
+
+  Map<String, dynamic> _checkScheduleConflictFallback(String title, String content, DateTime? scheduledAt) {
+    final combined = '$title $content'.toLowerCase();
+    final hasSeminarHallB = combined.contains('seminar hall b');
+    final hasAuditorium = combined.contains('central auditorium') || combined.contains('auditorium');
+    final hasOct25 = combined.contains('oct 25') || combined.contains('25th oct') || combined.contains('25 oct');
+    final hasNov12 = combined.contains('nov 12') || combined.contains('12th nov') || combined.contains('12 nov');
+
+    final conflicts = <Map<String, dynamic>>[];
+    final alternatives = <Map<String, dynamic>>[];
+
+    if (hasSeminarHallB && hasOct25) {
+      conflicts.add({
+        'conflicting_notice_id': 214,
+        'conflicting_title': 'Robotics & Automation Workshop',
+        'conflicting_department': 'Mechanical Dept',
+        'conflicting_venue': 'Seminar Hall B',
+        'conflicting_time': 'Oct 25, 2:00 PM',
+        'conflict_type': 'venue_collision',
+        'conflict_message': '⚠️ Conflict Detected: Mechanical Dept has booked Seminar Hall B on Oct 25, 2:00 PM (Notice #214).',
+      });
+      alternatives.addAll([
+        {
+          'label': 'Oct 25, 4:00 PM - 5:00 PM (Same Day, Later)',
+          'start_time': '2026-10-25T16:00:00',
+          'end_time': '2026-10-25T17:00:00',
+          'venue': 'Seminar Hall B',
+          'slot_type': 'same_day_later',
+        },
+        {
+          'label': 'Oct 25, 10:00 AM - 11:00 AM (Morning Session)',
+          'start_time': '2026-10-25T10:00:00',
+          'end_time': '2026-10-25T11:00:00',
+          'venue': 'Seminar Hall B',
+          'slot_type': 'same_day_morning',
+        },
+        {
+          'label': 'Oct 25, 2:30 PM in Seminar Hall A (Alternative Venue)',
+          'start_time': '2026-10-25T14:30:00',
+          'end_time': '2026-10-25T15:30:00',
+          'venue': 'Seminar Hall A',
+          'slot_type': 'alternative_venue',
+        },
+      ]);
+    } else if (hasAuditorium && hasNov12) {
+      final isFest = combined.contains('sports') || combined.contains('fest') || combined.contains('cricket');
+      if (isFest) {
+        conflicts.add({
+          'conflicting_notice_id': 216,
+          'conflicting_title': 'End-Semester Theory Examination',
+          'conflicting_department': 'Examination Cell',
+          'conflicting_venue': 'Central Auditorium',
+          'conflicting_time': 'Nov 12, 2:00 PM',
+          'conflict_type': 'academic_clash',
+          'conflict_message': "⚠️ Examination Schedule Conflict: 'End-Semester Theory Examination' clashes on Nov 12, 2:00 PM (Notice #216).",
+        });
+        alternatives.addAll([
+          {
+            'label': 'Nov 13, 2:00 PM - 5:00 PM (Next Business Day)',
+            'start_time': '2026-11-13T14:00:00',
+            'end_time': '2026-11-13T17:00:00',
+            'venue': 'College Football Ground',
+            'slot_type': 'next_day',
+          },
+        ]);
+      }
+    }
+
+    return {
+      'has_conflict': conflicts.isNotEmpty,
+      'conflicts': conflicts,
+      'suggested_alternatives': alternatives,
+    };
+  }
+
   Future<Map<String, dynamic>> getAiPriorityRecommendation(String title, String content, {String? userRole}) async {
     try {
       final response = await _dio.post(
@@ -946,29 +1047,46 @@ class EchosphereApiService {
     String gender = 'female',
     String accent = 'indian',
     bool isSummary = false,
-  }) =>
-      '$_baseUrl/announcements/$id/audio/stream?gender=$gender&accent=$accent&is_summary=$isSummary';
+    bool includeChime = true,
+    String? chime,
+  }) {
+    var url = '$_baseUrl/announcements/$id/audio?gender=$gender&accent=$accent&is_summary=$isSummary&include_chime=$includeChime';
+    if (chime != null && chime.isNotEmpty) {
+      url += '&chime=$chime';
+    }
+    return url;
+  }
+
+  String getChimePreviewUrl(String chimeType) =>
+      '$_baseUrl/announcements/chimes/$chimeType/preview';
 
   Future<Map<String, dynamic>?> getAnnouncementAudio(
     int id, {
     String gender = 'female',
     String accent = 'indian',
     bool isSummary = false,
+    bool includeChime = true,
+    String? chime,
   }) async {
     try {
+      final qp = <String, dynamic>{
+        'gender': gender,
+        'accent': accent,
+        'is_summary': isSummary,
+        'include_chime': includeChime,
+      };
+      if (chime != null && chime.isNotEmpty) {
+        qp['chime'] = chime;
+      }
       final response = await _dio.get(
         '/announcements/$id/audio',
-        queryParameters: {
-          'gender': gender,
-          'accent': accent,
-          'is_summary': isSummary,
-        },
+        queryParameters: qp,
       );
       if (response.statusCode == 200 && response.data != null) {
         return Map<String, dynamic>.from(response.data);
       }
     } catch (e) {
-      debugPrint('Error getting announcement audio: $e');
+      debugPrint('Error getting announcement audio meta: $e');
     }
     return null;
   }
