@@ -208,3 +208,38 @@ class AudienceCheckResponse(BaseModel):
     warning_message: Optional[str] = None
     mismatch_type: Optional[str] = None
 
+
+class UserProfileContext(BaseModel):
+    role: Optional[str] = "Student"
+    department: Optional[str] = None
+    semester: Optional[int] = None
+    usn: Optional[str] = None
+
+
+class NoticeItemContext(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = ""
+    department: Optional[str] = "General"
+    target_audience: Optional[str] = "Entire College"
+    category: Optional[str] = "General"
+    priority: Optional[str] = "NORMAL"
+    emergency_level: Optional[str] = "NORMAL"
+    created_at: Optional[str] = None
+
+
+class RelevanceScoreRequest(BaseModel):
+    user_profile: UserProfileContext
+    announcements: List[NoticeItemContext]
+
+
+class RelevanceScoreItem(BaseModel):
+    announcement_id: int
+    score: float
+    is_highly_relevant: bool
+    reasons: List[str] = []
+
+
+class RelevanceScoreResponse(BaseModel):
+    scores: List[RelevanceScoreItem]
+
