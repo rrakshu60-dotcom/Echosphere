@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/services/echosphere_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AnnouncementModel {
   final int id;
@@ -21,8 +22,12 @@ class AnnouncementModel {
   final DateTime? scheduledAt;
   final String? aiSummary;
   final String? remarks;
+  final String? approverName;
+  final DateTime? approvedAt;
   final List<String> attachments;
   final bool deliverSpeaker;
+  final bool deliverInApp;
+  final bool deliverPush;
   final int? speakerNodeId;
   final String? speakerStatus;
   final bool playedOnSpeaker;
@@ -44,58 +49,17 @@ class AnnouncementModel {
     this.scheduledAt,
     this.aiSummary,
     this.remarks,
+    this.approverName,
+    this.approvedAt,
     this.attachments = const [],
     this.deliverSpeaker = false,
+    this.deliverInApp = true,
+    this.deliverPush = true,
     this.speakerNodeId,
     this.speakerStatus,
     this.playedOnSpeaker = false,
     this.durationSeconds = 15,
   });
-
-  factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
-    final catId = json['category_id'] ?? 1;
-    String catName = 'Academics';
-    if (catId == 2) catName = 'Examinations';
-    if (catId == 3) catName = 'Events';
-    if (catId == 4) catName = 'Sports';
-    if (catId == 5) catName = 'Placements';
-    if (catId == 6) catName = 'Emergency';
-
-    final bool delivSpk = json['deliver_speaker'] == true ||
-        json['deliverSpeaker'] == true ||
-        (json['priority']?.toString().toUpperCase() == 'EMERGENCY');
-
-    return AnnouncementModel(
-      id: json['id'] ?? 0,
-      title: json['title'] ?? '',
-      description: json['description'] ?? '',
-      priority: json['priority'] ?? 'NORMAL',
-      emergencyLevel: json['emergency_level'] ?? 'NORMAL',
-      status: json['status'] ?? 'PUBLISHED',
-      creatorName: json['creator_name'] ?? 'Faculty',
-      creatorRole: json['creator_role'] ?? json['creator_designation'] ?? json['designation'] ?? json['role'] ?? 'Faculty / Official',
-      department: json['department_name'] ?? 'AIML',
-
-      targetAudience: json['target_audience'] ?? 'Entire College',
-      category: json['category_name'] ?? catName,
-      createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
-          : DateTime.now(),
-      scheduledAt: json['scheduled_at'] != null
-          ? DateTime.tryParse(json['scheduled_at'])
-          : null,
-      aiSummary: json['ai_summary'],
-      remarks: json['remarks'],
-      attachments: json['attachments'] != null
-          ? List<String>.from(json['attachments'])
-          : const [],
-      deliverSpeaker: delivSpk,
-      speakerNodeId: json['speaker_node_id'] ?? json['speakerNodeId'],
-      speakerStatus: json['speaker_status'] ?? json['speakerStatus'] ?? (delivSpk ? 'Queued' : null),
-      playedOnSpeaker: json['played_on_speaker'] == true || json['playedOnSpeaker'] == true,
-      durationSeconds: json['duration_seconds'] ?? json['durationSeconds'] ?? 15,
-    );
-  }
 
   AnnouncementModel copyWith({
     int? id,
@@ -105,6 +69,7 @@ class AnnouncementModel {
     String? emergencyLevel,
     String? status,
     String? creatorName,
+    String? creatorRole,
     String? department,
     String? targetAudience,
     String? category,
@@ -112,8 +77,12 @@ class AnnouncementModel {
     DateTime? scheduledAt,
     String? aiSummary,
     String? remarks,
+    String? approverName,
+    DateTime? approvedAt,
     List<String>? attachments,
     bool? deliverSpeaker,
+    bool? deliverInApp,
+    bool? deliverPush,
     int? speakerNodeId,
     String? speakerStatus,
     bool? playedOnSpeaker,
@@ -127,6 +96,7 @@ class AnnouncementModel {
       emergencyLevel: emergencyLevel ?? this.emergencyLevel,
       status: status ?? this.status,
       creatorName: creatorName ?? this.creatorName,
+      creatorRole: creatorRole ?? this.creatorRole,
       department: department ?? this.department,
       targetAudience: targetAudience ?? this.targetAudience,
       category: category ?? this.category,
@@ -134,12 +104,99 @@ class AnnouncementModel {
       scheduledAt: scheduledAt ?? this.scheduledAt,
       aiSummary: aiSummary ?? this.aiSummary,
       remarks: remarks ?? this.remarks,
+      approverName: approverName ?? this.approverName,
+      approvedAt: approvedAt ?? this.approvedAt,
       attachments: attachments ?? this.attachments,
       deliverSpeaker: deliverSpeaker ?? this.deliverSpeaker,
+      deliverInApp: deliverInApp ?? this.deliverInApp,
+      deliverPush: deliverPush ?? this.deliverPush,
       speakerNodeId: speakerNodeId ?? this.speakerNodeId,
       speakerStatus: speakerStatus ?? this.speakerStatus,
       playedOnSpeaker: playedOnSpeaker ?? this.playedOnSpeaker,
       durationSeconds: durationSeconds ?? this.durationSeconds,
+    );
+  }
+
+  static String _normalizeStatus(dynamic raw) {
+    if (raw == null) return 'PUBLISHED';
+    final s = raw.toString().trim().toUpperCase().replaceAll(' ', '_');
+    if (s == 'PENDING_APPROVAL' || s == 'PENDING' || s == 'SUBMITTED' || s == 'DRAFT') {
+      return 'PENDING_APPROVAL';
+    }
+    if (s == 'PUBLISHED' || s == 'APPROVED') {
+      return 'PUBLISHED';
+    }
+    if (s == 'REJECTED') {
+      return 'REJECTED';
+    }
+    if (s == 'ARCHIVED') {
+      return 'ARCHIVED';
+    }
+    if (s == 'SCHEDULED') {
+      return 'SCHEDULED';
+    }
+    return s;
+  }
+
+  factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
+    final catId = json['category_id'] ?? 1;
+    String catName = 'Academic';
+    if (catId == 2) catName = 'Examination';
+    if (catId == 3) catName = 'Placement';
+    if (catId == 4) catName = 'Event';
+    if (catId == 5) catName = 'Workshop';
+    if (catId == 6) catName = 'Seminar';
+    if (catId == 7) catName = 'Holiday';
+    if (catId == 8) catName = 'Sports';
+    if (catId == 9) catName = 'Cultural';
+    if (catId == 10) catName = 'Club Activities';
+    if (catId == 11) catName = 'General';
+    if (catId == 12) catName = 'Emergency';
+    if (catId == 13) catName = 'Circular';
+    if (catId == 14) catName = 'Fee Payment';
+
+    final bool delivSpk = json['deliver_speaker'] == true || json['deliverSpeaker'] == true;
+    final bool delivInApp = json['deliver_in_app'] != null
+        ? json['deliver_in_app'] == true
+        : (json['deliverInApp'] != null ? json['deliverInApp'] == true : true);
+    final bool delivPush = json['deliver_push'] != null
+        ? json['deliver_push'] == true
+        : (json['deliverPush'] != null ? json['deliverPush'] == true : true);
+
+    return AnnouncementModel(
+      id: json['id'] ?? 0,
+      title: json['title'] ?? '',
+      description: json['description'] ?? '',
+      priority: (json['priority'] ?? 'NORMAL').toString().toUpperCase(),
+      emergencyLevel: (json['emergency_level'] ?? 'NORMAL').toString().toUpperCase(),
+      status: _normalizeStatus(json['status']),
+      creatorName: json['creator_name'] ?? 'Faculty',
+      creatorRole: json['creator_role'] ?? json['creator_designation'] ?? json['designation'] ?? json['role'] ?? 'Faculty / Official',
+      department: json['department_name'] ?? json['department'] ?? 'AIML',
+      targetAudience: json['target_audience'] ?? 'Entire College',
+      category: json['category_name'] ?? catName,
+      createdAt: json['created_at'] != null
+          ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
+          : DateTime.now(),
+      scheduledAt: json['scheduled_at'] != null
+          ? DateTime.tryParse(json['scheduled_at'].toString())
+          : null,
+      aiSummary: json['ai_summary'],
+      remarks: json['remarks'],
+      approverName: json['approver_name'],
+      approvedAt: json['approved_at'] != null
+          ? DateTime.tryParse(json['approved_at'].toString())
+          : null,
+      attachments: json['attachments'] != null
+          ? List<String>.from(json['attachments'])
+          : const [],
+      deliverSpeaker: delivSpk,
+      deliverInApp: delivInApp,
+      deliverPush: delivPush,
+      speakerNodeId: json['speaker_node_id'] ?? json['speakerNodeId'],
+      speakerStatus: json['speaker_status'] ?? json['speakerStatus'] ?? (delivSpk ? 'Queued' : null),
+      playedOnSpeaker: json['played_on_speaker'] == true || json['playedOnSpeaker'] == true,
+      durationSeconds: json['duration_seconds'] ?? json['durationSeconds'] ?? 15,
     );
   }
 }
@@ -151,10 +208,103 @@ class AnnouncementController extends GetxController {
   final RxString selectedPriority = 'All'.obs;
   final RxString searchQuery = ''.obs;
   final RxBool showTodayOnly = false.obs;
+  final RxBool showForYouOnly = false.obs;
   final RxBool isLoading = false.obs;
   final RxString sortBy = 'Newest First'.obs;
   final RxMap<int, CalendarEventData> calendarEvents = <int, CalendarEventData>{}.obs;
+  final RxMap<int, Map<String, dynamic>> relevanceScores = <int, Map<String, dynamic>>{}.obs;
   static int _idCounter = 0;
+
+  Map<String, dynamic> getRelevanceFor(AnnouncementModel notice) {
+    if (relevanceScores.containsKey(notice.id)) {
+      return relevanceScores[notice.id]!;
+    }
+
+    EchosphereUser? user;
+    if (Get.isRegistered<AuthController>()) {
+      user = Get.find<AuthController>().currentUser.value;
+    }
+
+    final userProfile = {
+      'role': user?.role ?? 'Student',
+      'department': user?.department ?? 'AIML',
+      'semester': user?.semester ?? 5,
+      'usn': user?.usn,
+    };
+
+    final noticeData = {
+      'id': notice.id,
+      'title': notice.title,
+      'description': notice.description,
+      'department': notice.department,
+      'target_audience': notice.targetAudience,
+      'category': notice.category,
+      'priority': notice.priority,
+      'emergency_level': notice.emergencyLevel,
+      'created_at': notice.createdAt.toIso8601String(),
+    };
+
+    final scores = EchosphereApiService().calculateRelevanceFallback(userProfile, [noticeData]);
+    final res = scores.isNotEmpty
+        ? scores.first
+        : {
+            'announcement_id': notice.id,
+            'score': 0.5,
+            'is_highly_relevant': false,
+            'reasons': <String>[],
+          };
+
+    relevanceScores[notice.id] = res;
+    return res;
+  }
+
+  Future<void> updateAllRelevanceScores() async {
+    if (!Get.isRegistered<AuthController>()) return;
+    final user = Get.find<AuthController>().currentUser.value;
+    final userProfile = {
+      'role': user?.role ?? 'Student',
+      'department': user?.department ?? 'AIML',
+      'semester': user?.semester ?? 5,
+      'usn': user?.usn,
+    };
+
+    final noticesData = _rawAnnouncements.map((n) => {
+      'id': n.id,
+      'title': n.title,
+      'description': n.description,
+      'department': n.department,
+      'target_audience': n.targetAudience,
+      'category': n.category,
+      'priority': n.priority,
+      'emergency_level': n.emergencyLevel,
+      'created_at': n.createdAt.toIso8601String(),
+    }).toList();
+
+    try {
+      final scores = Get.testMode
+          ? EchosphereApiService().calculateRelevanceFallback(userProfile, noticesData)
+          : await EchosphereApiService().getNoticeRelevanceScores(
+              userProfile: userProfile,
+              announcements: noticesData,
+            );
+      for (var s in scores) {
+        final id = s['announcement_id'] as int? ?? 0;
+        if (id > 0) {
+          relevanceScores[id] = s;
+        }
+      }
+      relevanceScores.refresh();
+      update();
+    } catch (_) {}
+  }
+
+  void toggleForYouOnly() {
+    showForYouOnly.value = !showForYouOnly.value;
+    if (showForYouOnly.value) {
+      showTodayOnly.value = false;
+      selectedCategory.value = 'All';
+    }
+  }
 
   Future<CalendarEventData?> getOrFetchCalendarEvent(AnnouncementModel notice) async {
     if (calendarEvents.containsKey(notice.id)) {
@@ -173,6 +323,7 @@ class AnnouncementController extends GetxController {
 
   static const List<String> sortOptions = [
     'Newest First',
+    'Most Relevant',
     'Oldest First',
     'Highest Priority',
     'Lowest Priority',
@@ -186,14 +337,20 @@ class AnnouncementController extends GetxController {
     'Examination',
     'Placement',
     'Event',
-    'Circular',
-    'Emergency',
+    'Workshop',
+    'Seminar',
+    'Holiday',
     'Sports',
     'Cultural',
+    'Club Activities',
+    'Circular',
+    'Emergency',
     'Fee Payment',
-    'Holiday',
-    'Miscellaneous',
+    'General',
   ];
+
+  StreamSubscription<EchosphereRealtimeEvent>? _realtimeSubscription;
+  Timer? _periodicSyncTimer;
 
   @override
   void onInit() {
@@ -202,7 +359,108 @@ class AnnouncementController extends GetxController {
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
     }
-    fetchAnnouncements();
+    if (!Get.testMode) {
+      _initRealtimeSync();
+      fetchAnnouncements();
+      _startPeriodicSync();
+    }
+  }
+
+  @override
+  void onClose() {
+    _realtimeSubscription?.cancel();
+    _periodicSyncTimer?.cancel();
+    super.onClose();
+  }
+
+  void _initRealtimeSync() {
+    final realtimeService = EchosphereRealtimeService();
+    realtimeService.initialize();
+    _realtimeSubscription?.cancel();
+    _realtimeSubscription = realtimeService.events.listen((event) {
+      debugPrint('⚡ [LiveSync] Event in AnnouncementController: ${event.event} (#${event.announcementId})');
+      _handleLiveEvent(event);
+    });
+  }
+
+  void _startPeriodicSync() {
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 7), (_) {
+      _silentApprovalQueueSync();
+    });
+  }
+
+  void _handleLiveEvent(EchosphereRealtimeEvent event) {
+    if (event.announcementId == null) return;
+    final id = event.announcementId!;
+
+    if (event.event == 'ANNOUNCEMENT_APPROVED') {
+      final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        final old = _rawAnnouncements[idx];
+        _rawAnnouncements[idx] = old.copyWith(
+          status: 'PUBLISHED',
+          remarks: event.remarks ?? 'Approved for college-wide publication',
+          approverName: event.approverName ?? 'HoD / Administrator',
+          approvedAt: DateTime.now(),
+        );
+        _rawAnnouncements.refresh();
+        update();
+      } else {
+        _silentApprovalQueueSync();
+      }
+    } else if (event.event == 'ANNOUNCEMENT_REJECTED') {
+      final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        final old = _rawAnnouncements[idx];
+        _rawAnnouncements[idx] = old.copyWith(
+          status: 'REJECTED',
+          remarks: event.remarks ?? 'Rejected by Approver',
+          approverName: event.approverName ?? 'HoD / Administrator',
+          approvedAt: DateTime.now(),
+        );
+        _rawAnnouncements.refresh();
+        update();
+      } else {
+        _silentApprovalQueueSync();
+      }
+    } else if (event.event == 'ANNOUNCEMENT_CREATED') {
+      _silentApprovalQueueSync();
+    } else if (event.event == 'ANNOUNCEMENT_DELETED') {
+      _rawAnnouncements.removeWhere((a) => a.id == id);
+      _rawAnnouncements.refresh();
+      update();
+    }
+  }
+
+  Future<void> _silentApprovalQueueSync() async {
+    try {
+      final api = EchosphereApiService();
+      final queueData = await api.getApprovalQueue();
+      if (queueData.isNotEmpty) {
+        bool changed = false;
+        final currentList = _rawAnnouncements.toList();
+        for (var item in queueData) {
+          final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
+          final idx = currentList.indexWhere((a) => a.id == model.id);
+          if (idx != -1) {
+            if (currentList[idx].status != model.status ||
+                currentList[idx].remarks != model.remarks) {
+              currentList[idx] = model;
+              changed = true;
+            }
+          } else {
+            currentList.insert(0, model);
+            changed = true;
+          }
+        }
+        if (changed) {
+          _rawAnnouncements.value = currentList;
+          _rawAnnouncements.refresh();
+          update();
+        }
+      }
+    } catch (_) {}
   }
 
   int _priorityRank(String priority, String emergencyLevel) {
@@ -241,6 +499,14 @@ class AnnouncementController extends GetxController {
         break;
       case 'Title (Z-A)':
         sorted.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+        break;
+      case 'Most Relevant':
+        sorted.sort((a, b) {
+          final scoreA = (getRelevanceFor(a)['score'] as num?)?.toDouble() ?? 0.0;
+          final scoreB = (getRelevanceFor(b)['score'] as num?)?.toDouble() ?? 0.0;
+          if (scoreA != scoreB) return scoreB.compareTo(scoreA);
+          return b.createdAt.compareTo(a.createdAt);
+        });
         break;
       case 'Newest First':
       default:
@@ -288,10 +554,6 @@ class AnnouncementController extends GetxController {
       }
 
       // 3. Year Specific Calculation from Semester (Each year has 2 semesters: Sems 1-8)
-      // Semester 1, 2 -> 1st Year
-      // Semester 3, 4 -> 2nd Year
-      // Semester 5, 6 -> 3rd Year
-      // Semester 7, 8 -> 4th Year
       int studentYear = 1;
       if (semester >= 1 && semester <= 2) {
         studentYear = 1;
@@ -333,66 +595,42 @@ class AnnouncementController extends GetxController {
     return _applySort(filtered);
   }
 
-  final Map<int, String> _statusOverrides = {};
-
-  Future<void> _loadStatusOverrides() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith('notice_override_'));
-      for (var key in keys) {
-        final idStr = key.replaceFirst('notice_override_', '');
-        final id = int.tryParse(idStr);
-        if (id != null) {
-          _statusOverrides[id] = prefs.getString(key) ?? 'PUBLISHED';
-        }
-      }
-    } catch (_) {}
-  }
-
-  void _applyStatusOverrides() {
-    final list = _rawAnnouncements.toList();
-    for (int i = 0; i < list.length; i++) {
-      final item = list[i];
-      if (_statusOverrides.containsKey(item.id)) {
-        final newStatus = _statusOverrides[item.id]!;
-        list[i] = AnnouncementModel(
-          id: item.id,
-          title: item.title,
-          description: item.description,
-          priority: item.priority,
-          emergencyLevel: item.emergencyLevel,
-          status: newStatus,
-          creatorName: item.creatorName,
-          department: item.department,
-          targetAudience: item.targetAudience,
-          category: item.category,
-          createdAt: item.createdAt,
-          scheduledAt: item.scheduledAt,
-          aiSummary: item.aiSummary,
-          remarks: newStatus == 'PUBLISHED'
-              ? 'Approved & Published'
-              : 'Rejected by Administrator',
-        );
-      }
-    }
-    _rawAnnouncements.value = list;
-  }
-
   Future<void> fetchAnnouncements() async {
     if (_rawAnnouncements.isEmpty) {
       isLoading.value = true;
     }
-    await _loadStatusOverrides();
     if (!Get.testMode) {
       try {
-        final data = await EchosphereApiService().getAnnouncements();
-        if (data.isNotEmpty) {
-          _rawAnnouncements.value = data
-              .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
-              .toList();
-          _applyStatusOverrides();
+        final api = EchosphereApiService();
+        final publicData = await api.getAnnouncements();
+        final List<AnnouncementModel> fetched = [];
+        if (publicData.isNotEmpty) {
+          fetched.addAll(publicData.map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>)));
+        }
+
+        // Also fetch approval queue for staff/teachers/approvers
+        try {
+          final queueData = await api.getApprovalQueue();
+          if (queueData.isNotEmpty) {
+            for (var item in queueData) {
+              final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
+              final existingIdx = fetched.indexWhere((a) => a.id == model.id);
+              if (existingIdx != -1) {
+                fetched[existingIdx] = model;
+              } else {
+                fetched.insert(0, model);
+              }
+            }
+          }
+        } catch (qe) {
+          debugPrint('Approval queue fetch log: $qe');
+        }
+
+        if (fetched.isNotEmpty) {
+          _rawAnnouncements.value = fetched;
           isLoading.value = false;
           update();
+          updateAllRelevanceScores();
           return;
         }
       } catch (e) {
@@ -404,13 +642,14 @@ class AnnouncementController extends GetxController {
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
     }
-    _applyStatusOverrides();
     isLoading.value = false;
     update();
+    updateAllRelevanceScores();
   }
 
   void filterTodayOnly() {
     showTodayOnly.value = true;
+    showForYouOnly.value = false;
     searchQuery.value = '';
     selectedCategory.value = 'All';
     selectedPriority.value = 'All';
@@ -457,13 +696,43 @@ class AnnouncementController extends GetxController {
   }
 
   List<AnnouncementModel> get pendingApprovals {
-    final filtered = _rawAnnouncements
-        .where((a) => a.status == 'SUBMITTED' || a.status == 'DRAFT' || a.status == 'PENDING_APPROVAL')
-        .toList();
+    final authController = Get.find<AuthController>();
+    final user = authController.currentUser.value;
+    final userRole = user?.role ?? 'Student';
+    final userDept = (user?.department ?? '').trim().toLowerCase();
+
+    final filtered = _rawAnnouncements.where((a) {
+      final isPending = a.status == 'PENDING_APPROVAL' ||
+          a.status == 'SUBMITTED' ||
+          a.status == 'DRAFT';
+      if (!isPending) return false;
+
+      // HoD can only review notices from their own department
+      if (userRole == 'HoD' && userDept.isNotEmpty) {
+        final noticeDept = a.department.trim().toLowerCase();
+        if (noticeDept != userDept && !noticeDept.contains(userDept) && !userDept.contains(noticeDept)) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
     return _applySort(filtered);
   }
 
   List<AnnouncementModel> get mySubmissions {
+    final authController = Get.find<AuthController>();
+    final user = authController.currentUser.value;
+    final userName = (user?.fullName ?? '').trim().toLowerCase();
+    final userRole = user?.role ?? 'Teacher';
+
+    if (userRole == 'Teacher' && userName.isNotEmpty) {
+      final mine = _rawAnnouncements.where((a) {
+        final creator = a.creatorName.trim().toLowerCase();
+        return creator.contains(userName) || userName.contains(creator) || a.creatorRole == 'Teacher';
+      }).toList();
+      return _applySort(mine.isNotEmpty ? mine : _rawAnnouncements.toList());
+    }
+
     return _applySort(_rawAnnouncements.toList());
   }
 
@@ -481,6 +750,13 @@ class AnnouncementController extends GetxController {
     final now = DateTime.now();
 
     final filtered = announcements.where((a) {
+      if (showForYouOnly.value) {
+        final rel = getRelevanceFor(a);
+        final score = (rel['score'] as num?)?.toDouble() ?? 0.0;
+        final isHighlyRel = rel['is_highly_relevant'] == true;
+        if (!isHighlyRel && score < 0.60) return false;
+      }
+
       if (showTodayOnly.value) {
         final isToday = a.createdAt.year == now.year &&
             a.createdAt.month == now.month &&
@@ -517,7 +793,16 @@ class AnnouncementController extends GetxController {
       return matchesCategory && matchesPriority && matchesSearch;
     }).toList();
 
-    return _applySort(filtered);
+    final sorted = _applySort(filtered);
+    if (showForYouOnly.value && sortBy.value == 'Newest First') {
+      sorted.sort((a, b) {
+        final scoreA = (getRelevanceFor(a)['score'] as num?)?.toDouble() ?? 0.0;
+        final scoreB = (getRelevanceFor(b)['score'] as num?)?.toDouble() ?? 0.0;
+        if (scoreA != scoreB) return scoreB.compareTo(scoreA);
+        return b.createdAt.compareTo(a.createdAt);
+      });
+    }
+    return sorted;
   }
 
   Future<bool> createAnnouncement({
@@ -718,28 +1003,29 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
-    _statusOverrides[id] = 'PUBLISHED';
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('notice_override_$id', 'PUBLISHED');
-    } catch (_) {}
-
-    try {
-      await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
-    } catch (_) {}
-
+    // 0ms Optimistic UI update
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
       _rawAnnouncements[idx] = old.copyWith(
         status: 'PUBLISHED',
-        remarks: remarks ?? 'Approved by Executive Administrator',
+        remarks: remarks ?? 'Approved for college-wide publication',
         speakerStatus: old.deliverSpeaker ? 'Queued' : old.speakerStatus,
+        approvedAt: DateTime.now(),
       );
       _rawAnnouncements.refresh();
       update();
     }
-    return true;
+
+    try {
+      await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
+      await fetchAnnouncements();
+      return true;
+    } catch (e) {
+      debugPrint('Approve announcement API error: $e');
+      await fetchAnnouncements();
+      rethrow;
+    }
   }
 
   /// Marks an announcement as played on the smart speaker queue
@@ -783,36 +1069,28 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
-    _statusOverrides[id] = 'REJECTED';
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('notice_override_$id', 'REJECTED');
-    } catch (_) {}
-
-    try {
-      await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
-    } catch (_) {}
-
+    // 0ms Optimistic UI update
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
-        title: old.title,
-        description: old.description,
-        priority: old.priority,
-        emergencyLevel: old.emergencyLevel,
+      _rawAnnouncements[idx] = old.copyWith(
         status: 'REJECTED',
-        creatorName: old.creatorName,
-        department: old.department,
-        category: old.category,
-        createdAt: old.createdAt,
-        aiSummary: old.aiSummary,
         remarks: remarks,
+        approvedAt: DateTime.now(),
       );
       _rawAnnouncements.refresh();
+      update();
     }
-    return true;
+
+    try {
+      await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
+      await fetchAnnouncements();
+      return true;
+    } catch (e) {
+      debugPrint('Reject announcement API error: $e');
+      await fetchAnnouncements();
+      rethrow;
+    }
   }
 
   Future<bool> deleteAnnouncement(int id) async {
@@ -884,185 +1162,793 @@ class AnnouncementController extends GetxController {
     return [
       AnnouncementModel(
         id: 1,
-        title: 'EMERGENCY: Heavy Rainfall Alert - Campus Closed Today',
-        description:
-            'Due to severe weather warnings and flooding in the city, all offline classes and lab sessions are suspended for today. Online classes will resume as per schedule.',
-        priority: 'EMERGENCY',
-        emergencyLevel: 'CRITICAL',
-        status: 'PUBLISHED',
-        creatorName: 'Dr. Principal',
-        department: 'Institution',
-        category: 'Emergency',
-        createdAt: now.subtract(const Duration(minutes: 30)),
-        aiSummary: 'Campus closed today due to heavy rain. Online classes continue as scheduled.',
-      ),
-      AnnouncementModel(
-        id: 2,
-        title: 'End-Semester Lab Examination Timetable (5th & 7th Sem AIML)',
-        description:
-            'The detailed schedule for the 5th and 7th Semester AIML Practical Examinations has been published. All students must bring their signed lab records and college ID cards.',
-        priority: 'HIGH',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'AIML HoD',
-        department: 'AIML',
-        category: 'Examination',
-        createdAt: now.subtract(const Duration(hours: 2)),
-        aiSummary: 'Lab exam schedule released for 5th & 7th Sem AIML. Mandatory ID & records required.',
-      ),
-      AnnouncementModel(
-        id: 3,
-        title: 'Campus Placement Drive: Google & Microsoft Registration Open',
-        description:
-            'Registration is now open for the upcoming campus recruitment drive. Eligible streams: AIML, CSE, ISE, ECE with CGPA 7.5 and above without active backlogs.',
-        priority: 'HIGH',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'Placement Cell',
-        department: 'Placements',
-        category: 'Placement',
-        createdAt: now.subtract(const Duration(hours: 3)),
-        aiSummary: 'Registration open for Google & Microsoft placement drive for eligible AIML/CSE/ISE/ECE students.',
-      ),
-      AnnouncementModel(
-        id: 4,
-        title: 'Annual Technical Symposium - HackEcho 2026',
-        description:
-            'Register your teams for HackEcho 2026, a 24-hour national level hackathon featuring prizes worth ₹1,50,000. Tracks include AI/ML, CyberSecurity, and Web3.',
+        title: 'Mid-Term Academic Progress Review & Proctor Mentorship Sessions',
+        description: 'All B.E. and M.Tech students are required to attend the mandatory mid-term academic counseling sessions scheduled from October 20, 2026 to October 24, 2026 between 10:00 AM and 4:30 PM in their respective Department Faculty Cabins. Faculty proctors will review IA-1 answer scripts, syllabus completion, and attendance registers. Students with attendance below 85% must report along with their local guardians.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
         department: 'AIML',
-        category: 'Event',
-        createdAt: now.subtract(const Duration(hours: 4)),
-        aiSummary: 'HackEcho 2026 24hr Hackathon registrations open with prizes worth ₹1.5 Lakhs.',
+        category: 'Academic',
+        createdAt: now.subtract(const Duration(hours: 3)),
+        aiSummary: 'Mandatory academic counseling and proctor review from October 20-24, 2026 between 10:00 AM and 4:30 PM in Faculty Cabins; IA-1 and attendance review required.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
       AnnouncementModel(
-        id: 5,
-        title: 'Guest Lecture on Generative AI & Large Language Models',
-        description:
-            'Department of AIML is hosting an expert guest lecture on GenAI architecture and LLM fine-tuning by Google Senior AI Research Scientist in Seminar Hall 1.',
+        id: 2,
+        title: 'Final Professional & Open Elective Subject Selection Deadline',
+        description: 'The online academic ERP portal is officially active for submitting elective preferences for the upcoming semester. Students from 5th and 7th semesters must submit choices through the student portal before October 25, 2026 at 5:00 PM. Elective seats in AI Architecture and Cloud Computing are allocated strictly on a first-come, first-served basis.',
         priority: 'HIGH',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
         department: 'AIML',
         category: 'Academic',
         createdAt: now.subtract(const Duration(hours: 5)),
-        aiSummary: 'Expert talk on GenAI & LLMs by Google AI Lead today at 2:00 PM in Seminar Hall 1.',
+        aiSummary: 'Online ERP portal open for 5th & 7th semester elective course selection until October 25, 2026 at 5:00 PM.',
+        attachments: const ['Course_Syllabus_2026.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 3,
+        title: 'National Board of Accreditation (NBA) Student Feedback Survey',
+        description: 'In compliance with NBA accreditation parameters, the Academic Quality Cell invites all students to participate in the annual Course Outcome (CO) and Program Outcome (PO) survey. Please access the survey link sent to your registered college email and complete the feedback by October 28, 2026 at 6:00 PM.',
+        priority: 'LOW',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
+        department: 'AIML',
+        category: 'Academic',
+        createdAt: now.subtract(const Duration(hours: 7)),
+        aiSummary: 'NBA curriculum outcome feedback survey active for all students via registered email until October 28, 2026 at 6:00 PM.',
+        attachments: const ['Fee_Structure_2026.pdf', 'Scholarship_Application.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 4,
+        title: 'Final Schedule for Semester End Theory Examinations - Odd Semester 2026',
+        description: 'The Controller of Examinations has published the definitive timetable for the upcoming Semester End Theory Examinations commencing November 15, 2026 at 9:30 AM in Examination Block 3. Morning sessions run from 9:30 AM to 12:30 PM and afternoon sessions from 2:00 PM to 5:00 PM. Download your verified digital hall tickets from the student portal.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Controller of Examinations',
+        creatorRole: 'HoD',
+        department: 'Examinations',
+        category: 'Examination',
+        createdAt: now.subtract(const Duration(hours: 9)),
+        aiSummary: 'Final timetable for Semester End Examinations starting November 15, 2026 at 9:30 AM in Exam Block 3; download digital hall tickets online.',
+        attachments: const ['Exam_Timetable_Final.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 5,
+        title: 'Physical Hall Ticket Distribution & Malpractice Prevention Rules',
+        description: 'Eligible candidates appearing for semester university examinations must collect their physical signed Hall Tickets from their department offices between October 27, 2026 and October 31, 2026 at 4:00 PM after clearing all library and lab dues. Smartwatches, mobile phones, and programmable devices are strictly banned in examination halls.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Controller of Examinations',
+        creatorRole: 'HoD',
+        department: 'Examinations',
+        category: 'Examination',
+        createdAt: now.subtract(const Duration(hours: 11)),
+        aiSummary: 'Collect signed hall tickets from department offices by October 31, 2026 at 4:00 PM; smartwatches and electronic devices strictly banned.',
+        attachments: const ['Exam_Timetable_Final.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
       AnnouncementModel(
         id: 6,
-        title: 'Circular: Biometric Attendance & Identity Card Compliance',
-        description:
-            'All faculty, staff, and students are required to complete biometric verification at the main gate. Wearing college ID cards is strictly mandatory on campus premise.',
+        title: 'Supplementary Examination & Re-evaluation Applications Window',
+        description: 'Applications are formally invited for answer script photocopy evaluation and re-valuation for previous semester courses. The online fee payment gateway remains open until November 5, 2026 at 11:59 PM. Late applications will not be processed under any circumstances.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Controller of Examinations',
+        creatorRole: 'HoD',
+        department: 'Examinations',
+        category: 'Examination',
+        createdAt: now.subtract(const Duration(hours: 13)),
+        aiSummary: 'Re-evaluation and photocopy application window open until November 5, 2026 at 11:59 PM via online exam portal.',
+        attachments: const ['Exam_Timetable_Final.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 7,
+        title: 'Tier-1 Recruitment Drive: Microsoft Cloud & AI Engineering',
+        description: 'The Department of Training and Placement announces on-campus recruitment by Microsoft for Cloud Solutions Architect and AI Development roles. Eligible streams: CSE, AIML, ISE, and ECE with CGPA 8.0 and above. The mandatory online technical assessment will be held on October 24, 2026 at 10:00 AM in the Advanced Computing Lab.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Placement Officer',
+        creatorRole: 'Faculty / Official',
+        department: 'Placements',
+        category: 'Placement',
+        createdAt: now.subtract(const Duration(hours: 15)),
+        aiSummary: 'Microsoft recruitment drive for Cloud & AI roles; mandatory technical assessment on October 24, 2026 at 10:00 AM in Advanced Computing Lab.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 8,
+        title: 'Corporate Mock Interview & ATS Resume Critique Workshop',
+        description: 'Senior technical recruiters from top MNCs will conduct 1-on-1 mock interviews and technical portfolio reviews for 6th and 7th semester students on October 22, 2026 at 9:00 AM in the Placement Cell. Students must bring two printed copies of their updated resume in standard format and report in business formal attire.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Placement Officer',
+        creatorRole: 'Faculty / Official',
+        department: 'Placements',
+        category: 'Placement',
+        createdAt: now.subtract(const Duration(hours: 17)),
+        aiSummary: '1-on-1 technical mock interviews by MNC recruiters on October 22, 2026 at 9:00 AM in Placement Cell; carry 2 resume copies in formal attire.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 9,
+        title: 'Summer Technology Internship Drive at Goldman Sachs & Morgan Stanley',
+        description: 'Registrations are open for the 8-week Summer Technology Analyst Internship program offering a monthly stipend of ₹75,000 with Pre-Placement Interview (PPI) opportunities. Eligible candidates must apply through the Superset portal before October 26, 2026 at 11:59 PM.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Placement Officer',
+        creatorRole: 'Faculty / Official',
+        department: 'Placements',
+        category: 'Placement',
+        createdAt: now.subtract(const Duration(hours: 19)),
+        aiSummary: 'Goldman Sachs and Morgan Stanley summer internship applications open on Superset until October 26, 2026 at 11:59 PM with ₹75,000 monthly stipend.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 10,
+        title: 'HackEcho 2026: 24-Hour National Collegiate Hackathon',
+        description: 'Registrations are live for HackEcho 2026, our flagship national 24-hour hackathon happening on November 7, 2026 at 9:00 AM in the Main Campus Auditorium. Total cash prize pool of ₹2,50,000 across AI/ML, Cyber Defense, and IoT tracks. Free food, mentoring, high-speed WiFi, and overnight accommodation provided for registered teams.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
         creatorName: 'College Admin',
-        department: 'Administration',
-        category: 'Circular',
-        createdAt: now.subtract(const Duration(hours: 6)),
-        aiSummary: 'Mandatory biometric verification and ID card compliance notice for all campus members.',
-      ),
-      AnnouncementModel(
-        id: 7,
-        title: 'VTU Inter-College Cricket Tournament Squad Selection Trials',
-        description:
-            'Selection trials for the college cricket team participating in the upcoming VTU State Level Tournament will take place today at the main sports ground.',
-        priority: 'NORMAL',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'Sports Director',
-        department: 'Sports',
-        category: 'Sports',
-        createdAt: now.subtract(const Duration(hours: 7)),
-        aiSummary: 'Cricket team selection trials for VTU tournament today at 3:30 PM on main ground.',
-      ),
-      AnnouncementModel(
-        id: 8,
-        title: 'Cultural Fest "Aura 2026" Music & Dance Auditions',
-        description:
-            'Auditions for Western/Classical dance and vocal music performances for the annual cultural extravaganza Aura 2026 will start at 4 PM in the Amphitheatre.',
-        priority: 'NORMAL',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'Cultural Committee',
-        department: 'Cultural',
-        category: 'Cultural',
-        createdAt: now.subtract(const Duration(hours: 8)),
-        aiSummary: 'Auditions for Aura 2026 fest dance and music performances today at 4:00 PM.',
-      ),
-      AnnouncementModel(
-        id: 9,
-        title: 'Notification: Even Semester Tuition Fee Payment Portal Active',
-        description:
-            'The online payment portal for 2026 Even Semester tuition and examination fee is now live. Students can pay via UPI, NetBanking, or Credit Cards without late fee.',
-        priority: 'HIGH',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'Accounts Office',
-        department: 'Finance',
-        category: 'Fee Payment',
-        createdAt: now.subtract(const Duration(hours: 9)),
-        aiSummary: 'Online fee payment portal live for Even Semester tuition and VTU exam fees.',
-      ),
-      AnnouncementModel(
-        id: 10,
-        title: 'Institutional Holiday Announcement: General Election Day',
-        description:
-            'In accordance with state government directives, the institution will remain closed on Friday for polling. Examinations scheduled for that day are postponed.',
-        priority: 'NORMAL',
-        emergencyLevel: 'NORMAL',
-        status: 'PUBLISHED',
-        creatorName: 'Principal Office',
-        department: 'Administration',
-        category: 'Holiday',
-        createdAt: now.subtract(const Duration(hours: 10)),
-        aiSummary: 'College holiday declared for upcoming Election Friday. Exams rescheduled.',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'Event',
+        createdAt: now.subtract(const Duration(hours: 21)),
+        aiSummary: 'HackEcho 2026 national 24-hour hackathon begins November 7, 2026 at 9:00 AM in Main Auditorium with ₹2.5 Lakhs prize pool.',
+        attachments: const ['HackEcho_Rulebook_2026.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
       AnnouncementModel(
         id: 11,
-        title: 'Miscellaneous: Recovered Laptop Charger & Earbuds at Central Library',
-        description:
-            'A Dell 65W USB-C charger and a pair of wireless earbuds were found in the 2nd floor library reading room. Owner can collect them from the Chief Librarian office.',
-        priority: 'LOW',
+        title: 'Annual College Day Celebrations & Alumni Homecoming \'Samanvay 2026\'',
+        description: 'The Annual Institution Day and Alumni Meet \'Samanvay 2026\' will take place on November 21, 2026 at 4:30 PM in the College Quadrangle. The grand evening will feature academic excellence awards, alumni keynotes, and musical performances. All students, faculty, and alumni are cordially invited.',
+        priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
-        creatorName: 'Chief Librarian',
-        department: 'Library',
-        category: 'Miscellaneous',
-        createdAt: now.subtract(const Duration(hours: 11)),
-        aiSummary: 'Lost items (USB-C charger & earbuds) available at Chief Librarian office.',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'Event',
+        createdAt: now.subtract(const Duration(hours: 23)),
+        aiSummary: 'Annual College Day and Alumni Homecoming \'Samanvay 2026\' scheduled for November 21, 2026 at 4:30 PM in College Quadrangle.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
       AnnouncementModel(
         id: 12,
-        title: 'Draft Notice: Guest Lecture on Distributed Cloud Systems',
-        description:
-            'Draft proposal for hosting an expert talk by AWS Lead Architect next Friday in Auditorium 2.',
+        title: 'Campus Founder Pitchfest: Angel Investors & Startup Seed Grants',
+        description: 'The Centre for Innovation and Entrepreneurship (CIE) hosts the annual Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1. Student startup founders can pitch to venture capitalists for seed grants up to ₹5,00,000. Submit your pitch deck before October 26, 2026.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
-        status: 'SUBMITTED',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'Event',
+        createdAt: now.subtract(const Duration(hours: 25)),
+        aiSummary: 'CIE Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1; startup seed funding grants up to ₹5,00,000.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 13,
+        title: 'Hands-On Workshop: Fine-Tuning Open-Source LLMs with LoRA & Unsloth',
+        description: 'The Department of AIML conducts an intensive 2-day hands-on workshop on fine-tuning Qwen 2.5 and LLaMA 3.1 models on local workstation GPUs. The workshop will be held on October 30, 2026 at 9:30 AM in the High Performance Computing Lab. Hands-on coding kits and cloud GPU compute credits provided to all attendees.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
+        department: 'AIML',
+        category: 'Workshop',
+        createdAt: now.subtract(const Duration(hours: 27)),
+        aiSummary: '2-day LLM fine-tuning workshop using LoRA and Unsloth starting October 30, 2026 at 9:30 AM in HPC Lab with GPU credits provided.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 14,
+        title: 'Practical Embedded Systems & ESP32 IoT Prototyping Workshop',
+        description: 'Learn circuit design, sensor integration, FreeRTOS multi-threading, and MQTT cloud telemetry using ESP32 microcontrollers. The hands-on bootcamp takes place on October 31, 2026 at 10:00 AM in Electronics Lab 2. Hardware components and sensor kits provided to registered participant pairs.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
+        department: 'AIML',
+        category: 'Workshop',
+        createdAt: now.subtract(const Duration(hours: 29)),
+        aiSummary: 'Hands-on ESP32 IoT and FreeRTOS embedded systems workshop on October 31, 2026 at 10:00 AM in Electronics Lab 2 with kits provided.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 15,
+        title: 'Full-Stack Development with Flutter 3 & FastAPI Masterclass',
+        description: 'An intensive weekend masterclass covering reactive cross-platform mobile UI with Flutter, asynchronous REST APIs with FastAPI, WebSocket real-time streams, and SQLite persistence. Scheduled for November 1, 2026 at 9:00 AM in Seminar Hall 2. Ideal for capstone project teams.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
+        department: 'AIML',
+        category: 'Workshop',
+        createdAt: now.subtract(const Duration(hours: 31)),
+        aiSummary: 'Full-stack Flutter 3 and FastAPI masterclass on November 1, 2026 at 9:00 AM in Seminar Hall 2 covering WebSockets and API architectures.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 16,
+        title: 'Distinguished Lecture on Quantum Computing by IBM Quantum Fellow',
+        description: 'The Department of Computer Science welcomes Dr. Richard Thorne, Principal Scientist at IBM Quantum Labs, for a keynote on \'Fault-Tolerant Quantum Algorithms and Practical Qubit Scaling\' on October 23, 2026 at 11:00 AM in Sir M. Visvesvaraya Auditorium. Attendance is open to all engineering disciplines.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'CSE',
+        category: 'Seminar',
+        createdAt: now.subtract(const Duration(hours: 33)),
+        aiSummary: 'IBM Quantum Fellow Dr. Richard Thorne delivering keynote on Fault-Tolerant Quantum Algorithms on October 23, 2026 at 11:00 AM in Visvesvaraya Auditorium.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 17,
+        title: 'Technical Seminar on Automotive Cybersecurity in Autonomous Vehicles',
+        description: 'Cybersecurity architects from Bosch Automotive Technologies will present real-world attack vectors, CAN-bus security vulnerabilities, and ISO 21434 automotive standards on October 27, 2026 at 2:00 PM in Seminar Hall 1. Pre-registration is mandatory via the departmental portal.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'CSE',
+        category: 'Seminar',
+        createdAt: now.subtract(const Duration(hours: 35)),
+        aiSummary: 'Bosch automotive cybersecurity seminar exploring CAN-bus exploits and countermeasures on October 27, 2026 at 2:00 PM in Seminar Hall 1.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 18,
+        title: 'Higher Studies Abroad Seminar: GRE, TOEFL & Ivy League Admissions',
+        description: 'International educational advisors from EducationUSA will conduct an interactive guidance session on university shortlisting, statement of purpose (SOP) drafting, research assistantships, and visa protocols on October 28, 2026 at 3:00 PM in the Central Library Conference Hall.',
+        priority: 'LOW',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'CSE',
+        category: 'Seminar',
+        createdAt: now.subtract(const Duration(hours: 37)),
+        aiSummary: 'EducationUSA guidance seminar on GRE prep, Ivy League applications, and international scholarships on October 28, 2026 at 3:00 PM in Library Conference Hall.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 19,
+        title: 'Institutional Holiday Notification on Account of Maha Shivaratri',
+        description: 'As declared in the official state gazette, the college will observe a holiday on October 23, 2026 on account of Maha Shivaratri. Regular academic classes, practical laboratories, and administrative offices will resume on October 26, 2026 at 8:30 AM.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Holiday',
+        createdAt: now.subtract(const Duration(hours: 39)),
+        aiSummary: 'Campus closed on October 23, 2026 for Maha Shivaratri holiday; classes and offices resume on October 26, 2026 at 8:30 AM.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 20,
+        title: 'Mid-Term Semester Vacation Schedule & Hostel Mess Timings',
+        description: 'The institution will observe a mid-semester recess from November 2, 2026 to November 6, 2026. Student hostels will remain fully operational with revised mess timings: Breakfast 8:00 AM, Lunch 1:00 PM, and Dinner 8:00 PM. Research computing labs remain accessible with ID validation.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Holiday',
+        createdAt: now.subtract(const Duration(hours: 41)),
+        aiSummary: 'Mid-semester vacation scheduled from November 2-6, 2026; student hostels remain open with revised dining hours.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 21,
+        title: 'Republic Day National Celebration & Ceremonial Flag Hoisting',
+        description: 'The 77th Republic Day celebration will be held on campus on January 26, 2027 at 8:30 AM in the College Quadrangle. The event includes ceremonial flag hoisting by the Principal, NCC cadet march-past, and patriotic musical performances. All staff and students should assemble by 8:15 AM.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Holiday',
+        createdAt: now.subtract(const Duration(hours: 43)),
+        aiSummary: 'Republic Day ceremonial flag hoisting and NCC parade on January 26, 2027 at 8:30 AM in College Quadrangle; assembly at 8:15 AM.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 22,
+        title: 'Inter-Branch Football & Volleyball Tournament Match Fixtures',
+        description: 'The Department of Physical Education has scheduled the annual Inter-Branch Sports Tournament matches starting October 22, 2026 at 6:30 AM on Sports Ground 1. Football league matches will be played in morning slots and Volleyball matches at 4:30 PM on Court 2. Teams must wear official department jerseys.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Director of Physical Education',
+        creatorRole: 'Faculty / Official',
+        department: 'Sports',
+        category: 'Sports',
+        createdAt: now.subtract(const Duration(hours: 45)),
+        aiSummary: 'Inter-Branch Football and Volleyball tournaments begin October 22, 2026 at 6:30 AM on Sports Ground 1; match fixtures published.',
+        attachments: const ['Tournament_Fixtures_Map.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 23,
+        title: 'Varsity Badminton & Table Tennis Selection Trials for State Meet',
+        description: 'Open selection trials for the college varsity Badminton and Table Tennis teams will take place on October 24, 2026 at 4:00 PM in the Indoor Sports Complex. Shortlisted players will represent the institution at the upcoming VTU State Championship. Non-marking shoes are mandatory.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Director of Physical Education',
+        creatorRole: 'Faculty / Official',
+        department: 'Sports',
+        category: 'Sports',
+        createdAt: now.subtract(const Duration(hours: 47)),
+        aiSummary: 'Varsity Badminton and Table Tennis selection trials on October 24, 2026 at 4:00 PM in Indoor Sports Complex; non-marking shoes required.',
+        attachments: const ['Tournament_Fixtures_Map.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 24,
+        title: 'Refurbished Student Gymnasium Inauguration & Revised Operating Hours',
+        description: 'The campus fitness gymnasium has been equipped with new cardiovascular treadmills and Olympic strength stations. Operating hours: Morning slot from 6:00 AM to 8:30 AM and Evening slot from 4:30 PM to 8:00 PM. Certified fitness trainers will be available for orientation starting October 20, 2026.',
+        priority: 'LOW',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Director of Physical Education',
+        creatorRole: 'Faculty / Official',
+        department: 'Sports',
+        category: 'Sports',
+        createdAt: now.subtract(const Duration(hours: 49)),
+        aiSummary: 'Upgraded gymnasium open from October 20, 2026 with slots 6:00-8:30 AM and 4:30-8:00 PM; certified trainers available.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 25,
+        title: 'Aura 2026: Battle of the Bands & Acoustic Vocal Auditions',
+        description: 'The Cultural Committee invites vocalists, guitarists, drummers, and musical bands for live auditions for the Battle of the Bands stage at Aura 2026. Auditions will be judged by studio producers on October 25, 2026 at 3:00 PM in the Open Air Amphitheatre.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Cultural Coordinator',
+        creatorRole: 'Faculty / Official',
+        department: 'Cultural',
+        category: 'Cultural',
+        createdAt: now.subtract(const Duration(hours: 51)),
+        aiSummary: 'Battle of the Bands and vocal auditions for Aura 2026 cultural fest on October 25, 2026 at 3:00 PM in Open Air Amphitheatre.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 26,
+        title: 'Classical & Contemporary Dance Troupe Selection Trials',
+        description: 'Auditions for the university-level classical solo, semi-classical group, and hip-hop dance troupes will be conducted on October 26, 2026 at 4:00 PM in the Cultural Activity Room. Selected dancers will receive formal sponsorship for interstate cultural competitions.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Cultural Coordinator',
+        creatorRole: 'Faculty / Official',
+        department: 'Cultural',
+        category: 'Cultural',
+        createdAt: now.subtract(const Duration(hours: 53)),
+        aiSummary: 'Dance troupe selection trials for Classical and Western formats on October 26, 2026 at 4:00 PM in Cultural Activity Room.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 27,
+        title: 'Intra-College Literary Fest: Parliamentary Debate & Elocution',
+        description: 'The Literary Society announces the Annual Debate Championship on October 27, 2026 at 2:30 PM in Seminar Hall 2. Contests include British Parliamentary Debate, Slam Poetry, and Flash Fiction with cash prizes and medals for winners.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'Cultural Coordinator',
+        creatorRole: 'Faculty / Official',
+        department: 'Cultural',
+        category: 'Cultural',
+        createdAt: now.subtract(const Duration(hours: 55)),
+        aiSummary: 'Annual Parliamentary Debate and Literary Championship on October 27, 2026 at 2:30 PM in Seminar Hall 2 with cash awards.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 28,
+        title: 'Robotics Club (RoboTech): Autonomous Rover Challenge Orientation',
+        description: 'The RoboTech robotics club launches its Autonomous Rover Challenge with an orientation on October 21, 2026 at 4:30 PM in Innovation Lab 1. Participants will receive LiDAR sensor kits, ROS2 codebases, and guidance on computer vision navigation.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Student Affairs',
+        category: 'Club Activities',
+        createdAt: now.subtract(const Duration(hours: 57)),
+        aiSummary: 'RoboTech Autonomous Rover orientation on October 21, 2026 at 4:30 PM in Innovation Lab 1; sensor kits and ROS2 codebases provided.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 29,
+        title: 'Google Developer Student Club (GDSC) Core Team Recruitment Drive',
+        description: 'GDSC is recruiting student leads in AI/ML, Flutter Mobile, Cloud Engineering, and Event Design. Submit your technical GitHub profiles and portfolio assignments via the GDSC campus portal before October 25, 2026 at 11:59 PM.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Student Affairs',
+        category: 'Club Activities',
+        createdAt: now.subtract(const Duration(hours: 59)),
+        aiSummary: 'GDSC technical and leadership core team recruitment open until October 25, 2026 at 11:59 PM; submit GitHub portfolios online.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 30,
+        title: 'Mega Blood Donation & Community Health Checkup Camp',
+        description: 'Youth Red Cross, Rotaract, and NSS organize a voluntary Blood Donation and Free Health Camp in collaboration with the Government Hospital on October 28, 2026 at 9:00 AM in the College Auditorium. Donor certificates and healthy refreshments provided.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Student Affairs',
+        category: 'Club Activities',
+        createdAt: now.subtract(const Duration(hours: 1)),
+        aiSummary: 'Voluntary blood donation and health checkup camp on October 28, 2026 at 9:00 AM in College Auditorium with certificates provided.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 31,
+        title: 'Campus Cafeteria Nutritional Menu Expansion & Quality Standards',
+        description: 'The Central Cafeteria has updated its daily dining menu starting October 20, 2026, introducing fresh juice bars, healthy salad bars, and nutritious millet meals adhering strictly to ISO food safety and hygiene protocols.',
+        priority: 'LOW',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'General',
+        createdAt: now.subtract(const Duration(hours: 3)),
+        aiSummary: 'Central Cafeteria rolls out expanded healthy dining menu with fresh juice and millet lunches adhering to ISO hygiene standards.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 32,
+        title: 'Eco-Friendly Electric Shuttle Buggy Service on Campus',
+        description: 'Two eco-friendly battery electric shuttle buggies are now operational between the Main Gate, Academic Blocks, Research Labs, and Sports Pavilion from 8:00 AM to 6:00 PM daily. Service is complimentary for all campus students and staff.',
+        priority: 'LOW',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'General',
+        createdAt: now.subtract(const Duration(hours: 5)),
+        aiSummary: 'Complimentary campus electric shuttle buggies running between Main Gate, Academic Blocks, and Sports Pavilion daily from 8:00 AM to 6:00 PM.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 33,
+        title: 'Cryptographic Digital Campus ID Card Enabled on Echosphere App',
+        description: 'Students and faculty can now access verifiable QR-coded Digital ID cards directly inside the Echosphere mobile app. The digital ID card is officially accepted for Library transactions, Cafeteria payments, and Campus Gate entry starting today.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Institution',
+        category: 'General',
+        createdAt: now.subtract(const Duration(hours: 7)),
+        aiSummary: 'Cryptographic digital ID card activated in Echosphere app for library checkouts, cafeteria payments, and gate verification.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 34,
+        title: 'EMERGENCY: Severe Weather & Thunderstorm Safety Protocol',
+        description: 'The State Meteorological Department has issued an orange alert for severe localized thunderstorms and heavy winds. All outdoor sports and activities are suspended immediately. Students must remain inside reinforced academic buildings until the storm advisory clears.',
+        priority: 'HIGH',
+        emergencyLevel: 'EMERGENCY',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Emergency',
+        createdAt: now.subtract(const Duration(hours: 9)),
+        aiSummary: 'Emergency weather advisory: Orange alert for thunderstorms; outdoor sports suspended immediately and students advised to stay indoors.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 35,
+        title: 'EMERGENCY: Campus Power Substation Scheduled Grid Repair',
+        description: 'Due to emergency transformer repair by the electricity board, main grid power will be isolated today from 2:00 PM to 4:30 PM. Essential laboratories and data center servers will operate uninterrupted on diesel generator backup power.',
+        priority: 'HIGH',
+        emergencyLevel: 'EMERGENCY',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Emergency',
+        createdAt: now.subtract(const Duration(hours: 11)),
+        aiSummary: 'Emergency power substation maintenance today from 2:00-4:30 PM; servers and critical laboratories running on diesel generator backup.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 36,
+        title: 'EMERGENCY: Mandatory Campus-Wide Fire Drill & Evacuation Exercise',
+        description: 'A mandatory fire safety and emergency evacuation exercise will take place on October 21, 2026 at 11:30 AM across all academic blocks. Upon hearing the siren, walk calmly through fire exits to your block assembly zone. Do not use elevators.',
+        priority: 'HIGH',
+        emergencyLevel: 'EMERGENCY',
+        status: 'PUBLISHED',
+        creatorName: 'Dr. Principal',
+        creatorRole: 'Principal',
+        department: 'Institution',
+        category: 'Emergency',
+        createdAt: now.subtract(const Duration(hours: 13)),
+        aiSummary: 'Mandatory campus fire safety evacuation drill on October 21, 2026 at 11:30 AM; follow fire exits to green assembly zones.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 37,
+        title: 'Circular: Mandatory Biometric & Facial Recognition Attendance Protocol',
+        description: 'In accordance with institutional guidelines, all faculty, administrative staff, and students must record their daily attendance using biometric or facial scanners at campus entrances. Wearing official ID cards is strictly mandatory on campus premise.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Administration',
+        category: 'Circular',
+        createdAt: now.subtract(const Duration(hours: 15)),
+        aiSummary: 'Circular mandating biometric attendance logging and wearing of photo ID badges on campus premises.',
+        attachments: const ['Official_Circular_Gazette.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 38,
+        title: 'Circular: Campus Traffic Regulation & Vehicle Sticker Enforcement',
+        description: 'All student and staff two-wheelers and four-wheelers must display valid campus security parking stickers. Parking along emergency fire lanes or pedestrian pathways is strictly prohibited and subject to wheel-clamping penalties starting October 22, 2026.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Administration',
+        category: 'Circular',
+        createdAt: now.subtract(const Duration(hours: 17)),
+        aiSummary: 'Circular enforcing parking stickers and zero tolerance for parking in fire lanes or pedestrian walkways from October 22, 2026.',
+        attachments: const ['Official_Circular_Gazette.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 39,
+        title: 'Circular: Code of Conduct & Classroom Decorum Regulations',
+        description: 'Students must observe professional decorum during instructional hours. Mobile phones must be silenced inside classrooms, laboratories, and the central library. Unauthorized video recording during lectures is strictly forbidden.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Administration',
+        category: 'Circular',
+        createdAt: now.subtract(const Duration(hours: 19)),
+        aiSummary: 'Circular outlining classroom decorum rules, mandatory silent mobile devices, and prohibition of unauthorized lecture recordings.',
+        attachments: const ['Official_Circular_Gazette.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 40,
+        title: 'Semester Tuition & Examination Fee Online Payment Notification',
+        description: 'The online ERP payment portal is open for remitting tuition and university examination fees for the upcoming semester. Remit payments via UPI, Net Banking, or Debit Cards without transaction fees before October 25, 2026 at 11:59 PM.',
+        priority: 'HIGH',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Finance',
+        category: 'Fee Payment',
+        createdAt: now.subtract(const Duration(hours: 21)),
+        aiSummary: 'Online ERP portal open for semester tuition and university exam fee payments without convenience charges until October 25, 2026 at 11:59 PM.',
+        attachments: const ['Exam_Timetable_Final.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 41,
+        title: 'Government Scholarship (SSP/NSP) Document Verification Window',
+        description: 'Students who applied for Post-Matric, Vidyasiri, SSP, or National Scholarship Portal (NSP) schemes must submit original income certificates and bank passbooks to the Accounts Section before October 30, 2026 at 4:00 PM for institutional verification.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Finance',
+        category: 'Fee Payment',
+        createdAt: now.subtract(const Duration(hours: 23)),
+        aiSummary: 'Accounts section verification for SSP and NSP scholarship applicants open until October 30, 2026 at 4:00 PM; submit income certificates.',
+        attachments: const ['Fee_Structure_2026.pdf', 'Scholarship_Application.pdf'],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 42,
+        title: 'Hostel Accommodation & Campus Bus Transport Pass Renewal Schedule',
+        description: 'The Accounts Office reminds hostellers and day-scholars to clear the second installment of hostel fees and renew bus transport passes before October 31, 2026 at 5:00 PM to ensure uninterrupted boarding and transit facilities.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PUBLISHED',
+        creatorName: 'College Admin',
+        creatorRole: 'College Admin',
+        department: 'Finance',
+        category: 'Fee Payment',
+        createdAt: now.subtract(const Duration(hours: 25)),
+        aiSummary: 'Deadline for second installment of hostel fees and college bus pass renewals on October 31, 2026 at 5:00 PM.',
+        attachments: const [],
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
+      ),
+      AnnouncementModel(
+        id: 99,
+        title: 'Draft Notice: Guest Lecture on Distributed Cloud Systems',
+        description: 'Draft proposal for hosting an expert talk by AWS Lead Architect next Friday in Auditorium 2.',
+        priority: 'NORMAL',
+        emergencyLevel: 'NORMAL',
+        status: 'PENDING_APPROVAL',
+        creatorName: 'Dr. B Kursheed',
+        creatorRole: 'Teacher',
         department: 'AIML',
         category: 'Academic',
         createdAt: now.subtract(const Duration(hours: 2)),
         aiSummary: 'Pending HoD approval for guest lecture on Cloud Systems next Friday.',
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
       AnnouncementModel(
-        id: 13,
+        id: 100,
         title: 'Archived: Mid-Term Examination Retest Guidelines & Instructions',
-        description:
-            'Official guidelines for students eligible for the Mid-Term Retests. Submissions must be approved by respective HoDs before the deadline.',
+        description: 'Official guidelines for students eligible for the Mid-Term Retests. Submissions must be approved by respective HoDs before the deadline.',
         priority: 'HIGH',
         emergencyLevel: 'NORMAL',
         status: 'ARCHIVED',
-        creatorName: 'Academic Controller',
+        creatorName: 'Controller of Examinations',
+        creatorRole: 'HoD',
         department: 'Examinations',
         category: 'Examination',
         createdAt: now.subtract(const Duration(days: 12)),
         aiSummary: 'Archived circular: Mid-term retest instructions and HoD approval requirements.',
+        deliverSpeaker: false,
+        deliverInApp: true,
+        deliverPush: true,
       ),
     ];
   }

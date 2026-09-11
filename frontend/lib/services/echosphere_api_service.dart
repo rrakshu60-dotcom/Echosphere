@@ -302,6 +302,16 @@ class EchosphereApiService {
     }
   }
 
+  Future<List<dynamic>> getApprovalQueue() async {
+    try {
+      final response = await _dio.get('/announcements/approval-queue');
+      return response.data as List<dynamic>;
+    } on DioException catch (e) {
+      debugPrint('Error fetching approval queue: $e');
+      return [];
+    }
+  }
+
   Future<bool> updatePassword({
     required String currentPassword,
     required String newPassword,
@@ -603,6 +613,273 @@ class EchosphereApiService {
       'conflicts': conflicts,
       'suggested_alternatives': alternatives,
     };
+  }
+
+  Future<Map<String, dynamic>> checkAudienceMismatch({
+    required String title,
+    required String content,
+    required String selectedAudience,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/check-audience',
+        data: {
+          'title': title,
+          'content': content,
+          'selected_audience': selectedAudience,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      debugPrint('AI Audience Check API Error: $e');
+      return _checkAudienceFallback(title, content, selectedAudience);
+    } catch (_) {
+      return _checkAudienceFallback(title, content, selectedAudience);
+    }
+  }
+
+  Map<String, dynamic> _checkAudienceFallback(String title, String content, String selectedAudience) {
+    final combined = '$title $content'.toLowerCase();
+    if (combined.length < 15) {
+      return {
+        'has_mismatch': false,
+        'detected_audience': null,
+        'suggested_audiences': <String>[],
+        'warning_message': null,
+        'mismatch_type': null,
+      };
+    }
+
+    // Whitelist check
+    final isHoliday = combined.contains('holiday') || combined.contains('vacation') || combined.contains('rajyotsava');
+    final isCollegeFest = combined.contains('annual day') || combined.contains('college fest') || combined.contains('sports day');
+    if ((isHoliday || isCollegeFest) && selectedAudience == 'Entire College') {
+      return {
+        'has_mismatch': false,
+        'detected_audience': 'Entire College',
+        'suggested_audiences': <String>[],
+        'warning_message': null,
+        'mismatch_type': null,
+      };
+    }
+
+    final hasCse = combined.contains('cse') || combined.contains('computer science') || combined.contains('operating systems');
+    final hasMech = combined.contains('mechanical') || combined.contains('thermodynamics') || combined.contains('cad/cam');
+    final hasCivil = combined.contains('civil') || combined.contains('surveying') || combined.contains('concrete');
+    final hasAiml = combined.contains('aiml') || combined.contains('artificial intelligence') || combined.contains('machine learning');
+    
+    final has1stYear = combined.contains('1st year') || combined.contains('first year') || combined.contains('freshers') || combined.contains('physics cycle');
+    final has3rdYear = combined.contains('3rd year') || combined.contains('third year') || combined.contains('5th sem') || combined.contains('6th sem');
+    final isFaculty = (combined.contains('faculty') || combined.contains('professors') || combined.contains('teaching staff') || combined.contains('staff meeting')) &&
+        (combined.contains('all faculty') || combined.contains('faculty meeting') || combined.contains('syllabus completion') || combined.contains('evaluation duty'));
+
+    final suggested = <String>[];
+    String? warning;
+    String? type;
+
+    if (isFaculty && selectedAudience != 'Faculty Members') {
+      suggested.add('Faculty Members');
+      warning = "⚠️ Audience Warning: This notice appears specifically for Faculty & Staff, but target audience is set to '$selectedAudience'. Avoid notifying students.";
+      type = 'faculty_only';
+    } else if (selectedAudience == 'Entire College') {
+      if (has3rdYear && hasCse) {
+        suggested.addAll(['3rd Year Students', 'CSE Department']);
+        warning = '⚠️ Audience Warning: Notice mentions 3rd Year Students (CSE Department), but target audience is set to Entire College.';
+        type = 'overly_broad_combined';
+      } else if (hasCse) {
+        suggested.add('CSE Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions CSE Department, but target audience is set to Entire College (alerting 2,400+ students).';
+        type = 'overly_broad_department';
+      } else if (hasMech) {
+        suggested.add('Mechanical Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions Mechanical Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (hasCivil) {
+        suggested.add('Civil Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions Civil Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (hasAiml) {
+        suggested.add('AIML Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions AIML Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (has1stYear) {
+        suggested.add('1st Year Students');
+        warning = '⚠️ Audience Warning: Notice targets 1st Year Students, but is addressed to Entire College.';
+        type = 'overly_broad_year';
+      } else if (has3rdYear) {
+        suggested.add('3rd Year Students');
+        warning = '⚠️ Audience Warning: Notice targets 3rd Year Students, but is addressed to Entire College.';
+        type = 'overly_broad_year';
+      }
+    } else if (selectedAudience.endsWith('Department')) {
+      if (hasCivil && selectedAudience != 'Civil Department') {
+        suggested.add('Civil Department');
+        warning = "⚠️ Department Mismatch: Notice mentions Civil Department, but audience is set to '$selectedAudience'.";
+        type = 'wrong_department';
+      } else if (hasMech && selectedAudience != 'Mechanical Department') {
+        suggested.add('Mechanical Department');
+        warning = "⚠️ Department Mismatch: Notice mentions Mechanical Department, but audience is set to '$selectedAudience'.";
+        type = 'wrong_department';
+      }
+    }
+
+    return {
+      'has_mismatch': suggested.isNotEmpty,
+      'detected_audience': suggested.isNotEmpty ? suggested.first : null,
+      'suggested_audiences': suggested,
+      'warning_message': warning,
+      'mismatch_type': type,
+    };
+  }
+
+  /// AI Contextual Relevance & Feed Scoring
+  Future<List<Map<String, dynamic>>> getNoticeRelevanceScores({
+    required Map<String, dynamic> userProfile,
+    required List<Map<String, dynamic>> announcements,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/relevance-scores',
+        data: {
+          'user_profile': userProfile,
+          'announcements': announcements,
+        },
+      );
+      if (response.data != null && response.data['scores'] != null) {
+        final scoresList = (response.data['scores'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        return scoresList;
+      }
+    } catch (e) {
+      debugPrint('AI Relevance Scores API Error: $e');
+    }
+    return calculateRelevanceFallback(userProfile, announcements);
+  }
+
+  List<Map<String, dynamic>> calculateRelevanceFallback(
+    Map<String, dynamic> userProfile,
+    List<Map<String, dynamic>> announcements,
+  ) {
+    final userRole = (userProfile['role'] ?? 'Student').toString().trim().toLowerCase();
+    final userDept = (userProfile['department'] ?? '').toString().trim().toUpperCase();
+    final userSem = int.tryParse(userProfile['semester']?.toString() ?? '');
+
+    int? userYear;
+    if (userSem != null && userSem > 0) {
+      if (userSem <= 2) {
+        userYear = 1;
+      } else if (userSem <= 4) {
+        userYear = 2;
+      } else if (userSem <= 6) {
+        userYear = 3;
+      } else if (userSem <= 8) {
+        userYear = 4;
+      }
+    }
+
+    final results = <Map<String, dynamic>>[];
+
+    for (var a in announcements) {
+      final noticeId = a['id'] ?? a['announcement_id'] ?? 0;
+      final title = (a['title'] ?? '').toString();
+      final desc = (a['description'] ?? a['content'] ?? '').toString();
+      final combined = '$title $desc'.toLowerCase();
+
+      final dept = (a['department'] ?? a['department_name'] ?? '').toString().trim().toUpperCase();
+      final target = (a['target_audience'] ?? 'Entire College').toString().toLowerCase();
+      final category = (a['category'] ?? a['category_name'] ?? 'General').toString().toLowerCase();
+      final priority = (a['priority'] ?? 'NORMAL').toString().toUpperCase();
+      final emergencyLevel = (a['emergency_level'] ?? 'NORMAL').toString().toUpperCase();
+
+      double score = 0.0;
+      final reasons = <String>[];
+
+      // 1. Priority & Emergency
+      if (priority == 'EMERGENCY' || emergencyLevel == 'CRITICAL') {
+        score += 0.55;
+        reasons.add('Emergency Alert');
+      } else if (priority == 'HIGH' || priority == 'URGENT') {
+        score += 0.20;
+        reasons.add('High Priority Notice');
+      } else if (priority == 'NORMAL') {
+        score += 0.05;
+      }
+
+      // 2. Department Affinity
+      if (userDept.isNotEmpty) {
+        if (dept.isNotEmpty && (dept == userDept || dept.contains(userDept) || userDept.contains(dept))) {
+          score += 0.30;
+          reasons.add('Direct match for your department ($userDept)');
+        } else if (combined.contains(userDept.toLowerCase())) {
+          score += 0.20;
+          reasons.add('Mentions your field of study ($userDept)');
+        } else if (dept == 'GENERAL' || dept == 'COLLEGE-WIDE' || dept == 'ENTIRE COLLEGE' || dept == 'ALL' || dept.isEmpty) {
+          score += 0.10;
+          reasons.add('College-Wide Circular');
+        }
+      }
+
+      // 3. Semester & Academic Year
+      if (userRole == 'student' && userSem != null) {
+        final semPattern = RegExp(r'\b(' + RegExp.escape('$userSem') + r'(st|nd|rd|th)?\s*(sem|semester)|sem\s*' + RegExp.escape('$userSem') + r')\b');
+        final matchesSem = semPattern.hasMatch(combined) || semPattern.hasMatch(target);
+
+        final yearLabel = userYear == 1 ? '1st' : (userYear == 2 ? '2nd' : (userYear == 3 ? '3rd' : '4th'));
+        final yearPattern = RegExp(r'\b(' + RegExp.escape('$userYear') + r'(st|nd|rd|th)?\s*year|' + RegExp.escape(yearLabel) + r'\s*year)\b');
+        final matchesYear = userYear != null && (yearPattern.hasMatch(combined) || yearPattern.hasMatch(target));
+
+        if (matchesSem) {
+          score += 0.35;
+          reasons.add('Targeted to Semester $userSem');
+        } else if (matchesYear) {
+          score += 0.25;
+          reasons.add('Targeted to $yearLabel Year Students');
+        }
+      }
+
+      // 4. Category & Actionable Context
+      if (category.contains('exam')) {
+        score += 0.15;
+        reasons.add('Examination Schedule');
+      } else if (category.contains('fee')) {
+        score += 0.15;
+        reasons.add('Fee Payment Deadline');
+      } else if (category.contains('placement')) {
+        if (userYear != null && userYear >= 3) {
+          score += 0.20;
+          reasons.add('Campus Placement Drive');
+        } else {
+          score += 0.05;
+        }
+      } else if (category.contains('workshop') || category.contains('seminar')) {
+        score += 0.10;
+        reasons.add('Technical Workshop / Seminar');
+      } else if (category.contains('holiday')) {
+        score += 0.10;
+        reasons.add('Institutional Holiday Notice');
+      } else if (category.contains('event') || category.contains('cultural') || category.contains('sport')) {
+        score += 0.05;
+      }
+
+      // 5. Staff / Faculty Roles
+      if (userRole != 'student') {
+        if (target.contains('faculty') || target.contains('staff') || combined.contains('meeting')) {
+          score += 0.30;
+          reasons.add('Faculty & Staff Circular');
+        }
+      }
+
+      final finalScore = (score.clamp(0.0, 1.0) * 100).round() / 100.0;
+      results.add({
+        'announcement_id': noticeId,
+        'score': finalScore,
+        'is_highly_relevant': finalScore >= 0.65,
+        'reasons': reasons.toSet().toList(),
+      });
+    }
+
+    return results;
   }
 
   Future<Map<String, dynamic>> getAiPriorityRecommendation(String title, String content, {String? userRole}) async {

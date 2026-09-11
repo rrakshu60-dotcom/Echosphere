@@ -1,6 +1,7 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/services/echosphere_realtime_service.dart';
 
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
@@ -21,6 +22,14 @@ class ApprovalQueuePage extends StatefulWidget {
 
 class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
   String selectedFilter = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Get.find<AnnouncementController>().fetchAnnouncements();
+    });
+  }
 
   void _showApproveModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController(text: 'Approved for college-wide publication');
@@ -247,6 +256,43 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                               isSelected: true,
                               onSelected: (_) {},
                             )),
+                        const SizedBox(width: 8),
+                        Obx(() {
+                          final isLive = EchosphereRealtimeService().isConnected.value;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isLive ? const Color(0xFF10B981).withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isLive ? const Color(0xFF10B981).withOpacity(0.5) : Colors.orange.withOpacity(0.5),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isLive ? const Color(0xFF10B981) : Colors.orange,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  isLive ? 'Live Sync' : 'Reconnecting...',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isLive ? const Color(0xFF10B981) : Colors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -338,160 +384,187 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             }).toList();
 
             if (submissions.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.assignment_outlined, size: 56, color: theme.colorScheme.primary.withOpacity(0.4)),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'No Submissions Found',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              return RefreshIndicator(
+                onRefresh: () => controller.fetchAnnouncements(),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.assignment_outlined, size: 56, color: theme.colorScheme.primary.withOpacity(0.4)),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'No Submissions Found',
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'No notice submissions match your selected filter.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                            ),
+                            const SizedBox(height: 14),
+                            EchoSphereButton(
+                              height: 36,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              onTap: () => controller.fetchAnnouncements(),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.refresh_rounded, size: 16),
+                                  SizedBox(width: 6),
+                                  Text('Refresh Status', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'No notice submissions match your selected filter.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(14.0),
-              itemCount: submissions.length,
-              itemBuilder: (context, index) {
-                final item = submissions[index];
-                final isApproved = item.status == 'PUBLISHED' || item.status == 'APPROVED';
-                final isRejected = item.status == 'REJECTED';
+            return RefreshIndicator(
+              onRefresh: () => controller.fetchAnnouncements(),
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(14.0),
+                itemCount: submissions.length,
+                itemBuilder: (context, index) {
+                  final item = submissions[index];
+                  final isApproved = item.status == 'PUBLISHED' || item.status == 'APPROVED';
+                  final isRejected = item.status == 'REJECTED';
 
-                Color statusColor = Colors.orange;
-                IconData statusIcon = Icons.hourglass_top_rounded;
-                String statusLabel = 'PENDING APPROVAL';
+                  Color statusColor = Colors.orange;
+                  IconData statusIcon = Icons.hourglass_top_rounded;
+                  String statusLabel = 'PENDING APPROVAL';
 
-                if (isApproved) {
-                  statusColor = Colors.green;
-                  statusIcon = Icons.verified_rounded;
-                  statusLabel = 'APPROVED & PUBLISHED';
-                } else if (isRejected) {
-                  statusColor = Colors.red;
-                  statusIcon = Icons.cancel_rounded;
-                  statusLabel = 'REJECTED';
-                }
+                  if (isApproved) {
+                    statusColor = Colors.green;
+                    statusIcon = Icons.verified_rounded;
+                    statusLabel = 'APPROVED & PUBLISHED';
+                  } else if (isRejected) {
+                    statusColor = Colors.red;
+                    statusIcon = Icons.cancel_rounded;
+                    statusLabel = 'REJECTED';
+                  }
 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: EchoSphereContainer(
-                    padding: const EdgeInsets.all(14.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          alignment: WrapAlignment.spaceBetween,
-                          children: [
-                            EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                            EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: EchoSphereContainer(
+                      padding: const EdgeInsets.all(14.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            alignment: WrapAlignment.spaceBetween,
+                            children: [
+                              EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
+                              EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: statusColor, width: 1),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(statusIcon, size: 13, color: statusColor),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      statusLabel,
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
+                          ),
+                          if (item.remarks != null && item.remarks!.isNotEmpty) ...[
+                            const SizedBox(height: 10),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: statusColor, width: 1),
+                                color: statusColor.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: statusColor.withOpacity(0.3)),
                               ),
                               child: Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(statusIcon, size: 13, color: statusColor),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    statusLabel,
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+                                  Icon(Icons.comment_bank_outlined, size: 16, color: statusColor),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Approver Remarks: ${item.remarks}',
+                                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: statusColor),
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          item.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
-                        ),
-                        if (item.remarks != null && item.remarks!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
                           const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: statusColor.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.comment_bank_outlined, size: 16, color: statusColor),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Approver Remarks: ${item.remarks}',
-                                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: statusColor),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Submitted: ${DateFormat("MMM dd, hh:mm a").format(item.createdAt)}',
+                                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                              ),
+                              EchoSphereButton(
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => AnnouncementDetailPage(announcement: item),
                                   ),
                                 ),
-                              ],
-                            ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('Details', style: TextStyle(fontSize: 11)),
+                                    SizedBox(width: 4),
+                                    Icon(Icons.arrow_forward_rounded, size: 12),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                        const SizedBox(height: 12),
-                        const Divider(height: 1),
-                        const SizedBox(height: 10),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Submitted: ${DateFormat("MMM dd, hh:mm a").format(item.createdAt)}',
-                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5)),
-                            ),
-                            EchoSphereButton(
-                              height: 32,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => AnnouncementDetailPage(announcement: item),
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text('Details', style: TextStyle(fontSize: 11)),
-                                  SizedBox(width: 4),
-                                  Icon(Icons.arrow_forward_rounded, size: 12),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             );
           }),
         ),
@@ -506,158 +579,237 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     return Obx(() {
       final pending = controller.pendingApprovals;
       if (pending.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.verified_rounded, size: 56, color: theme.colorScheme.primary.withOpacity(0.4)),
-                const SizedBox(height: 14),
-                Text(
-                  'No Pending Approvals',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+        return RefreshIndicator(
+          onRefresh: () => controller.fetchAnnouncements(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.verified_rounded, size: 56, color: theme.colorScheme.primary.withOpacity(0.4)),
+                      const SizedBox(height: 14),
+                      Text(
+                        'No Pending Approvals',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'All submitted announcements have been reviewed and processed.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                      ),
+                      const SizedBox(height: 16),
+                      EchoSphereButton(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        onTap: () => controller.fetchAnnouncements(),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.refresh_rounded, size: 16),
+                            SizedBox(width: 6),
+                            Text('Refresh Queue', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'All submitted announcements have been reviewed and processed.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                ),
-              ],
+              ),
             ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(14.0),
-        itemCount: pending.length,
-        itemBuilder: (context, index) {
-          final item = pending[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: EchoSphereContainer(
-              padding: const EdgeInsets.all(14.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    alignment: WrapAlignment.spaceBetween,
-                    children: [
-                      EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                      EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+      return RefreshIndicator(
+        onRefresh: () => controller.fetchAnnouncements(),
+        child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(14.0),
+          itemCount: pending.length,
+          itemBuilder: (context, index) {
+            final item = pending[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: EchoSphereContainer(
+                padding: const EdgeInsets.all(14.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      alignment: WrapAlignment.spaceBetween,
+                      children: [
+                        EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
+                        EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.secondary.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.groups_rounded, size: 12, color: theme.colorScheme.secondary),
+                              const SizedBox(width: 4),
+                              Text(
+                                item.targetAudience,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.secondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH')
+                                ? Colors.red.withOpacity(0.15)
+                                : Colors.blue.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            item.priority,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH') ? Colors.red : Colors.blue,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          DateFormat('MMM dd, hh:mm a').format(item.createdAt),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
+                    ),
+                    if (item.aiSummary != null && item.aiSummary!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH')
-                              ? Colors.red.withOpacity(0.15)
-                              : Colors.blue.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
+                          color: theme.colorScheme.primary.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
                         ),
-                        child: Text(
-                          item.priority,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH') ? Colors.red : Colors.blue,
-                          ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.aiSummary!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.85),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      Text(
-                        DateFormat('MMM dd, hh:mm a').format(item.createdAt),
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Submitted by: ${item.creatorName} (${item.department})',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Submitted by: ${item.creatorName} (${item.creatorRole}) • ${item.department}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
 
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.end,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      EchoSphereButton(
-                        height: 36,
-                        color: Colors.green.withOpacity(0.18),
-                        border: const BorderSide(color: Colors.green, width: 1.2),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        onTap: () => _showApproveModal(context, item, controller),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
-                            SizedBox(width: 4),
-                            Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
-                          ],
-                        ),
-                      ),
-                      EchoSphereButton(
-                        height: 36,
-                        color: Colors.red.withOpacity(0.18),
-                        border: const BorderSide(color: Colors.red, width: 1.2),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        onTap: () => _showRejectModal(context, item, controller),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.cancel_rounded, size: 16, color: Colors.red),
-                            SizedBox(width: 4),
-                            Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                      EchoSphereButton(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AnnouncementDetailPage(announcement: item),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        EchoSphereButton(
+                          height: 36,
+                          color: Colors.green.withOpacity(0.18),
+                          border: const BorderSide(color: Colors.green, width: 1.2),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          onTap: () => _showApproveModal(context, item, controller),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
+                              SizedBox(width: 4),
+                              Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                            ],
                           ),
                         ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_forward_rounded, size: 14),
-                          ],
+                        EchoSphereButton(
+                          height: 36,
+                          color: Colors.red.withOpacity(0.18),
+                          border: const BorderSide(color: Colors.red, width: 1.2),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          onTap: () => _showRejectModal(context, item, controller),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.cancel_rounded, size: 16, color: Colors.red),
+                              SizedBox(width: 4),
+                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        EchoSphereButton(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => AnnouncementDetailPage(announcement: item),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_rounded, size: 14),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       );
     });
   }

@@ -84,14 +84,28 @@ class AnnouncementResponse(BaseModel):
     title: str
     description: str
 
-    status: AnnouncementStatus
-    priority: AnnouncementPriority
-    emergency_level: EmergencyLevel
+    status: AnnouncementStatus | str
+    priority: AnnouncementPriority | str
+    emergency_level: EmergencyLevel | str
 
-    scheduled_at: Optional[datetime]
+    scheduled_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     created_by: int
     category_id: int
+
+    creator_name: Optional[str] = None
+    creator_role: Optional[str] = None
+    department_name: Optional[str] = None
+    category_name: Optional[str] = None
+    target_audience: Optional[str] = None
+    ai_summary: Optional[str] = None
+    remarks: Optional[str] = None
+    approver_name: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    deliver_speaker: bool = False
+    deliver_in_app: bool = True
+    deliver_push: bool = True
 
 
 class AnnouncementApprovalRequest(BaseModel):
