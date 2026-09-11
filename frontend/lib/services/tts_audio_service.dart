@@ -21,12 +21,12 @@ class TtsAudioService extends GetxService {
   final Rx<Duration> position = Duration.zero.obs;
   final Rx<Duration> duration = Duration.zero.obs;
   final RxString engine = 'AI Voice'.obs;
-  final RxString voiceName = 'Indian Female'.obs;
+  final RxString voiceName = 'American Female'.obs;
   final RxString statusMessage = ''.obs;
 
   // Voice Customization Controls
   final RxString selectedGender = 'female'.obs; // 'female' | 'male'
-  final RxString selectedAccent = 'indian'.obs; // 'indian' | 'american' | 'british'
+  final RxString selectedAccent = 'american'.obs; // 'american' | 'indian' | 'british'
   final RxString readMode = 'full'.obs; // 'full' | 'summary'
   final RxBool includeChime = true.obs; // Intro audio chime on/off
   final RxString selectedChime = 'auto'.obs; // 'auto' | 'urgent_academic' | 'events_sports' | 'emergency' | 'standard'
@@ -76,6 +76,10 @@ class TtsAudioService extends GetxService {
     return currentAnnouncementId.value == id;
   }
 
+  String? _activeTitle;
+  String? _activeContent;
+  String? _activeSummary;
+
   Future<void> setVoiceConfig({
     String? gender,
     String? accent,
@@ -108,7 +112,12 @@ class TtsAudioService extends GetxService {
     if (changed && currentAnnouncementId.value != null && isPlaying.value) {
       final activeId = currentAnnouncementId.value!;
       await stop();
-      await playAnnouncement(activeId);
+      await playAnnouncement(
+        activeId,
+        title: _activeTitle,
+        content: _activeContent,
+        summary: _activeSummary,
+      );
     }
   }
 
@@ -137,8 +146,18 @@ class TtsAudioService extends GetxService {
     }
   }
 
-  Future<void> playAnnouncement(int id, {String? directUrl}) async {
+  Future<void> playAnnouncement(
+    int id, {
+    String? title,
+    String? content,
+    String? summary,
+    String? directUrl,
+  }) async {
     try {
+      _activeTitle = title ?? _activeTitle;
+      _activeContent = content ?? _activeContent;
+      _activeSummary = summary ?? _activeSummary;
+
       // Toggle if already selected
       if (currentAnnouncementId.value == id && directUrl == null) {
         if (isPlaying.value) {
@@ -198,8 +217,30 @@ class TtsAudioService extends GetxService {
         );
       }
 
-      debugPrint('[TTS] Streaming audio from: $streamUrl');
-      await _player.play(UrlSource(streamUrl));
+      try {
+        debugPrint('[TTS] Streaming audio from: $streamUrl');
+        await _player.play(UrlSource(streamUrl));
+      } catch (streamErr) {
+        debugPrint('[TTS] Stream URL playback failed ($streamErr). Trying on-the-fly synthesis fallback...');
+        final textToSpeak = (readMode.value == 'summary' && _activeSummary != null && _activeSummary!.isNotEmpty)
+            ? _activeSummary!
+            : (_activeContent != null && _activeContent!.isNotEmpty
+                ? (_activeTitle != null ? '$_activeTitle. $_activeContent' : _activeContent!)
+                : (_activeTitle ?? 'Attention. Official campus announcement broadcast.'));
+
+        final meta = await _api.synthesizeSpeech(
+          textToSpeak,
+          gender: selectedGender.value,
+          accent: selectedAccent.value,
+        );
+        if (meta != null && meta['audio_url'] != null) {
+          final rawUrl = meta['audio_url'].toString();
+          final synthUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+          await _player.play(UrlSource(synthUrl));
+        } else {
+          rethrow;
+        }
+      }
     } catch (e) {
       debugPrint('[TTS Error] Failed to play announcement: $e');
       isBuffering.value = false;

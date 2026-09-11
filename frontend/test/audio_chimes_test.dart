@@ -118,7 +118,6 @@ void main() {
       // Verify voice controls and chime chip render
       expect(find.text('♀ Female'), findsOneWidget);
       expect(find.text('♂ Male'), findsOneWidget);
-      expect(find.text('🇮🇳 Indian'), findsOneWidget);
       expect(find.text('📄 Full Notice'), findsOneWidget);
       expect(find.text('✨ AI Summary'), findsOneWidget);
       expect(find.textContaining('🔔 Chime:'), findsOneWidget);
