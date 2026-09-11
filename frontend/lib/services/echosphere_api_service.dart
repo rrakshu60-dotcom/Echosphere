@@ -1320,10 +1320,15 @@ class EchosphereApiService {
     bool isSummary = false,
     bool includeChime = true,
     String? chime,
+    String lang = 'en',
   }) {
     var url = '$_baseUrl/announcements/$id/audio?gender=$gender&accent=$accent&is_summary=$isSummary&include_chime=$includeChime';
     if (chime != null && chime.isNotEmpty) {
       url += '&chime=$chime';
+    }
+    final cleanLang = lang.trim().toLowerCase();
+    if (cleanLang.isNotEmpty && cleanLang != 'en') {
+      url += '&lang=$cleanLang';
     }
     return url;
   }
@@ -1338,6 +1343,7 @@ class EchosphereApiService {
     bool isSummary = false,
     bool includeChime = true,
     String? chime,
+    String lang = 'en',
   }) async {
     try {
       final qp = <String, dynamic>{
@@ -1348,6 +1354,10 @@ class EchosphereApiService {
       };
       if (chime != null && chime.isNotEmpty) {
         qp['chime'] = chime;
+      }
+      final cleanLang = lang.trim().toLowerCase();
+      if (cleanLang.isNotEmpty && cleanLang != 'en') {
+        qp['lang'] = cleanLang;
       }
       final response = await _dio.get(
         '/announcements/$id/audio',
@@ -1380,6 +1390,204 @@ class EchosphereApiService {
       debugPrint('Error synthesizing speech: $e');
     }
     return null;
+  }
+
+  /// Translates an announcement (title, description, and AI summary) into
+  /// Kannada (kn), Hindi (hi), Telugu (te), or Tamil (ta).
+  /// Features instant client-side dictionary fallback for 100% offline resilience.
+  Future<Map<String, dynamic>> translateAnnouncement({
+    required int id,
+    required String targetLanguage,
+    String? title,
+    String? content,
+    String? summary,
+  }) async {
+    final cleanLang = targetLanguage.trim().toLowerCase();
+    if (cleanLang == 'en' || cleanLang == 'english') {
+      return {
+        'target_language': 'en',
+        'language_name': 'English',
+        'native_name': 'English',
+        'translated_title': title ?? '',
+        'translated_content': content ?? '',
+        'translated_summary': summary,
+      };
+    }
+
+    try {
+      final response = await _dio.post(
+        '/announcements/$id/translate',
+        data: {
+          'target_language': cleanLang,
+          if (title != null) 'title': title,
+          if (content != null) 'content': content,
+          if (summary != null) 'summary': summary,
+        },
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        return Map<String, dynamic>.from(response.data);
+      }
+    } catch (e) {
+      debugPrint('Translation API call failed: $e, using local campus dictionary');
+    }
+
+    return _translateLocally(
+      title: title ?? '',
+      content: content ?? '',
+      summary: summary,
+      targetLanguage: cleanLang,
+    );
+  }
+
+  static const Map<String, Map<String, String>> _kCampusDict = {
+    'kn': {
+      'internal assessment': 'ಆಂತರಿಕ ಮೌಲ್ಯಮಾಪನ',
+      'examination': 'ಪರೀಕ್ಷೆ',
+      'exam schedule': 'ಪರೀಕ್ಷಾ ವೇಳಾಪಟ್ಟಿ',
+      'exam': 'ಪರೀಕ್ಷೆ',
+      'schedule': 'ವೇಳಾಪಟ್ಟಿ',
+      'students': 'ವಿದ್ಯಾರ್ಥಿಗಳು',
+      'department': 'ವಿಭಾಗ',
+      'holiday': 'ರಜೆ',
+      'circular': 'ಸುತ್ತೋಲೆ',
+      'notice': 'ಸೂಚನೆ',
+      'workshop': 'ಕಾರ್ಯಾಗಾರ',
+      'seminar': 'ವಿಚಾರ ಸಂಕಿರಣ',
+      'fee payment': 'ಶುಲ್ಕ ಪಾವತಿ',
+      'fees': 'ಶುಲ್ಕಗಳು',
+      'placement': 'ಉದ್ಯೋಗಾವಕಾಶ',
+      'placement drive': 'ಕ್ಯಾಂಪಸ್ ಸಂದರ್ಶನ',
+      'auditorium': 'ಸಭಾಂಗಣ',
+      'room': 'ಕೊಠಡಿ',
+      'lab': 'ಪ್ರಯೋಗಾಲಯ',
+      'attendance': 'ಹಾಜರಾತಿ',
+      'mandatory': 'ಕಡ್ಡಾಯವಾಗಿದೆ',
+      'deadline': 'ಕೊನೆಯ ದಿನಾಂಕ',
+      'submit': 'ಸಲ್ಲಿಸಿ',
+      'closed': 'ಮುಚ್ಚಿರುತ್ತದೆ',
+      'classes suspended': 'ತರಗತಿಗಳನ್ನು ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ',
+    },
+    'hi': {
+      'internal assessment': 'आंतरिक मूल्यांकन',
+      'examination': 'परीक्षा',
+      'exam schedule': 'परीक्षा अनुसूची',
+      'exam': 'परीक्षा',
+      'schedule': 'समय सारिणी',
+      'students': 'छात्रों',
+      'department': 'विभाग',
+      'holiday': 'अवकाश',
+      'circular': 'परिपत्र',
+      'notice': 'सूचना',
+      'workshop': 'कार्यशाला',
+      'seminar': 'संगोष्ठी',
+      'fee payment': 'शुल्क भुगतान',
+      'fees': 'शुल्क',
+      'placement': 'प्लेसमेंट',
+      'placement drive': 'कैंपस प्लेसमेंट ड्राइव',
+      'auditorium': 'सभागार',
+      'room': 'कमरा',
+      'lab': 'प्रयोगशाला',
+      'attendance': 'उपस्थिति',
+      'mandatory': 'अनिवार्य',
+      'deadline': 'अंतिम तिथि',
+      'submit': 'जमा करें',
+      'closed': 'बंद रहेगा',
+      'classes suspended': 'कक्षाएं निलंबित',
+    },
+    'te': {
+      'internal assessment': 'అంతర్గత అంచనా',
+      'examination': 'పరీక్ష',
+      'exam schedule': 'పరీక్షల షెడ్యూల్',
+      'exam': 'పరీక్ష',
+      'schedule': 'షెడ్యూల్',
+      'students': 'విద్యార్థులు',
+      'department': 'విభాగం',
+      'holiday': 'సెలవు',
+      'circular': 'సర్క్యులర్',
+      'notice': 'నోటీసు',
+      'workshop': 'వర్క్‌షాప్',
+      'seminar': 'సెమినార్',
+      'fee payment': 'ఫీజు చెల్లింపు',
+      'fees': 'ఫీజులు',
+      'placement': 'ప్లేస్‌మెంట్',
+      'placement drive': 'క్యాంపస్ ప్లేస్‌మెంట్ డ్రైవ్',
+      'auditorium': 'ఆడిటోరియం',
+      'room': 'గది',
+      'lab': 'ప్రయోగశాల',
+      'attendance': 'హాజరు',
+      'mandatory': 'తప్పనిసరి',
+      'deadline': 'చివరి తేదీ',
+      'submit': 'సమర్పించండి',
+      'closed': 'మూసివేయబడుతుంది',
+      'classes suspended': 'తరగతులు రద్దు చేయబడ్డాయి',
+    },
+    'ta': {
+      'internal assessment': 'உள் மதிப்பீடு',
+      'examination': 'தேர்வு',
+      'exam schedule': 'தேர்வு அட்டவணை',
+      'exam': 'தேர்வு',
+      'schedule': 'அட்டவணை',
+      'students': 'மாணவர்கள்',
+      'department': 'துறை',
+      'holiday': 'விடுமுறை',
+      'circular': 'சுற்றறிக்கை',
+      'notice': 'அறிவிப்பு',
+      'workshop': 'பயிலரங்கம்',
+      'seminar': 'கருத்தரங்கு',
+      'fee payment': 'கட்டணம் செலுத்துதல்',
+      'fees': 'கட்டணம்',
+      'placement': 'வேலைவாய்ப்பு',
+      'placement drive': 'வளாக வேலைவாய்ப்பு முகாம்',
+      'auditorium': 'அரங்கம்',
+      'room': 'அறை',
+      'lab': 'ஆய்வகம்',
+      'attendance': 'வருகை',
+      'mandatory': 'கட்டாயம்',
+      'deadline': 'கடைசி தேதி',
+      'submit': 'சமர்ப்பிக்கவும்',
+      'closed': 'மூடப்படும்',
+      'classes suspended': 'வகுப்புகள் ரத்து செய்யப்பட்டுள்ளன',
+    },
+  };
+
+  static const Map<String, Map<String, String>> _kLangMeta = {
+    'kn': {'name': 'Kannada', 'native': 'ಕನ್ನಡ', 'prefix': 'ಸೂಚನೆ:'},
+    'hi': {'name': 'Hindi', 'native': 'हिंदी', 'prefix': 'सूचना:'},
+    'te': {'name': 'Telugu', 'native': 'తెలుగు', 'prefix': 'నోటీసు:'},
+    'ta': {'name': 'Tamil', 'native': 'தமிழ்', 'prefix': 'அறிவிப்பு:'},
+  };
+
+  Map<String, dynamic> _translateLocally({
+    required String title,
+    required String content,
+    String? summary,
+    required String targetLanguage,
+  }) {
+    final meta = _kLangMeta[targetLanguage] ?? {'name': 'Regional', 'native': 'Regional', 'prefix': ''};
+    final dict = _kCampusDict[targetLanguage] ?? {};
+
+    String translateString(String source) {
+      if (source.trim().isEmpty) return '';
+      String result = source;
+      final sortedKeys = dict.keys.toList()..sort((a, b) => b.length.compareTo(a.length));
+      for (final key in sortedKeys) {
+        final val = dict[key]!;
+        result = result.replaceAll(RegExp('\\b${RegExp.escape(key)}\\b', caseSensitive: false), val);
+      }
+      if (result == source && meta['prefix']!.isNotEmpty) {
+        result = '${meta['prefix']} $source';
+      }
+      return result;
+    }
+
+    return {
+      'target_language': targetLanguage,
+      'language_name': meta['name'],
+      'native_name': meta['native'],
+      'translated_title': translateString(title),
+      'translated_content': translateString(content),
+      'translated_summary': summary != null ? translateString(summary) : null,
+    };
   }
 }
 

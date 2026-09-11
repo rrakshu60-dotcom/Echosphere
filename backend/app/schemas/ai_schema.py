@@ -243,3 +243,19 @@ class RelevanceScoreItem(BaseModel):
 class RelevanceScoreResponse(BaseModel):
     scores: List[RelevanceScoreItem]
 
+
+class AnnouncementTranslationRequest(BaseModel):
+    target_language: str = "kn"
+    title: Optional[str] = None
+    content: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class AnnouncementTranslationResponse(BaseModel):
+    target_language: str
+    language_name: str
+    native_name: str
+    translated_title: str
+    translated_content: str
+    translated_summary: Optional[str] = None
+
