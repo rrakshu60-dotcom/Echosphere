@@ -23,6 +23,176 @@ class NoticeAudioPlayerBar extends StatelessWidget {
     return '$minutes:$seconds';
   }
 
+  String _getChimeDisplayLabel(String type) {
+    switch (type) {
+      case 'urgent_academic':
+        return 'Double-Beep';
+      case 'events_sports':
+        return 'Upbeat Ding';
+      case 'emergency':
+        return 'Siren Pulse';
+      case 'standard':
+        return 'Standard';
+      case 'auto':
+      default:
+        return 'AI Auto';
+    }
+  }
+
+  void _showChimeSelectorSheet(BuildContext context) {
+    final theme = Theme.of(context);
+    final audio = TtsAudioService.instance;
+
+    final chimeOptions = [
+      {
+        'id': 'auto',
+        'title': '⚡ AI Auto-Select',
+        'desc': 'Intelligently selects chime based on notice urgency and topic',
+        'chimeType': 'urgent_academic',
+      },
+      {
+        'id': 'urgent_academic',
+        'title': '🔔 Professional Double-Beep',
+        'desc': 'Crisp attention-grabbing chime for exams, deadlines & circulars',
+        'chimeType': 'urgent_academic',
+      },
+      {
+        'id': 'events_sports',
+        'title': '🎉 Upbeat Acoustic Ding',
+        'desc': 'Cheerful 3-tone arpeggio for fests, sports, clubs & activities',
+        'chimeType': 'events_sports',
+      },
+      {
+        'id': 'emergency',
+        'title': '🚨 Sweeping Siren Pulse',
+        'desc': 'Rapid acoustic siren sweep to command hallway silence',
+        'chimeType': 'emergency',
+      },
+      {
+        'id': 'standard',
+        'title': '🎵 Gentle Campus Chime',
+        'desc': 'Warm dual-tone marimba chime for daily campus announcements',
+        'chimeType': 'standard',
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: theme.dividerColor.withOpacity(0.15)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: theme.dividerColor.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Broadcast Intro Chimes',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Obx(() => Switch.adaptive(
+                          value: audio.includeChime.value,
+                          activeColor: const Color(0xFF10B981),
+                          onChanged: (val) => audio.toggleChime(val),
+                        )),
+                  ],
+                ),
+                Text(
+                  'Prepends speech with an acoustic chime so broadcasts cut through hallway chatter',
+                  style: TextStyle(fontSize: 11.5, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                ),
+                const SizedBox(height: 16),
+                ...chimeOptions.map((opt) {
+                  return Obx(() {
+                    final isSelected = audio.selectedChime.value == opt['id'];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? theme.colorScheme.primary.withOpacity(0.1)
+                            : theme.colorScheme.surface.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? theme.colorScheme.primary : theme.dividerColor.withOpacity(0.15),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                audio.setChimeType(opt['id']!);
+                                Navigator.of(ctx).pop();
+                              },
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    opt['title']!,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    opt['desc']!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () => audio.previewChime(opt['chimeType']!),
+                            icon: const Icon(Icons.volume_up_rounded, size: 18),
+                            tooltip: 'Preview chime sound',
+                            color: const Color(0xFF10B981),
+                          ),
+                        ],
+                      ),
+                    );
+                  });
+                }),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildConfigChip({
     required BuildContext context,
     required String label,
@@ -339,6 +509,19 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                   label: '✨ AI Summary',
                   isSelected: currentMode == 'summary',
                   onTap: () => audio.setVoiceConfig(mode: 'summary'),
+                ),
+
+                // Intro Chime Configuration Chip
+                _buildConfigChip(
+                  context: context,
+                  label: audio.includeChime.value
+                      ? '🔔 Chime: ${_getChimeDisplayLabel(audio.selectedChime.value)}'
+                      : '🔕 Chime: OFF',
+                  icon: audio.includeChime.value
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
+                  isSelected: audio.includeChime.value,
+                  onTap: () => _showChimeSelectorSheet(context),
                 ),
               ],
             ),
