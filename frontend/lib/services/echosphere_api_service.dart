@@ -1076,7 +1076,7 @@ class EchosphereApiService {
         'memory_usage': 0.0,
       },
       {
-        'id': 16,
+        'id': 21,
         'name': 'Hardware Speaker Client 2',
         'mac_address': 'D4:F3:2D:22:2A:CC',
         'ip_address': '127.0.0.1',

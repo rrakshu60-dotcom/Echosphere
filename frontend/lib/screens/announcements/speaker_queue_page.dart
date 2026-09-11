@@ -40,9 +40,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    if (!_isStudent) {
-      _queueCtrl.refreshQueue();
-    }
+    _queueCtrl.refreshQueue();
   }
 
   @override
@@ -740,8 +738,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     final canPop = ModalRoute.of(context)?.canPop ?? false;
     final authRegistered = Get.isRegistered<AuthController>();
     final user = authRegistered ? Get.find<AuthController>().currentUser.value : null;
-    final role = user?.role ?? 'Student';
-    final isStudent = user == null || role.toLowerCase() == 'student';
+    final role = user?.role ?? 'Teacher';
+    final isStudent = user != null && role.toLowerCase() == 'student';
 
     if (isStudent) {
       return Scaffold(
@@ -1494,25 +1492,26 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  EchoSphereButton(
-                    color: context.colors.primary,
-                    radius: 12,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    onTap: () => _showRegisterNodeDialog(context),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_rounded, size: 13, color: Colors.white),
-                        SizedBox(width: 4),
-                        EchoSphereText(
-                          text: 'Add Node',
-                          size: 11,
-                          variant: TextVariant.bold,
-                          color: Colors.white,
-                        ),
-                      ],
+                  if (!_isStudent)
+                    EchoSphereButton(
+                      color: context.colors.primary,
+                      radius: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      onTap: () => _showRegisterNodeDialog(context),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded, size: 13, color: Colors.white),
+                          SizedBox(width: 4),
+                          EchoSphereText(
+                            text: 'Add Node',
+                            size: 11,
+                            variant: TextVariant.bold,
+                            color: Colors.white,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
