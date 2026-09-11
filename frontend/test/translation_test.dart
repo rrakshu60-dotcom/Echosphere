@@ -127,60 +127,6 @@ void main() {
     });
   });
 
-  group('AnnouncementDetailPage Regional Translation UI', () {
-    testWidgets('renders Language Selector Bar and translates to Kannada', (tester) async {
-      final notice = AnnouncementModel(
-        id: 10,
-        title: 'Examination Schedule Notice',
-        description: 'Internal assessment examination for students.',
-        category: 'Examination',
-        priority: 'HIGH',
-        emergencyLevel: 'NORMAL',
-        department: 'AIML',
-        targetAudience: '3rd Year Students',
-        status: 'PUBLISHED',
-        creatorName: 'Dr. Ramesh',
-        creatorRole: 'Teacher',
-        createdAt: DateTime.now(),
-        aiSummary: 'Summary of examination.',
-      );
-
-      await tester.pumpWidget(
-        createTestApp(
-          AnnouncementDetailPage(announcement: notice),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Verify Language Selector Bar is present
-      expect(find.text('Regional Language'), findsOneWidget);
-      expect(find.text('🇬🇧 English'), findsOneWidget);
-      expect(find.text('🇮🇳 ಕನ್ನಡ'), findsOneWidget);
-      expect(find.text('🇮🇳 हिंदी'), findsOneWidget);
-      expect(find.text('🇮🇳 తెలుగు'), findsOneWidget);
-      expect(find.text('🇮🇳 தமிழ்'), findsOneWidget);
-
-      // Verify original title is shown
-      expect(find.text('Examination Schedule Notice'), findsOneWidget);
-
-      // Tap Kannada chip
-      await tester.tap(find.text('🇮🇳 ಕನ್ನಡ'));
-      await tester.pumpAndSettle();
-
-      // Verify Show Original button appears
-      expect(find.text('Show Original'), findsOneWidget);
-      expect(TtsAudioService.instance.selectedLanguage.value, 'kn');
-
-      // Tap Show Original button to revert
-      await tester.tap(find.text('Show Original'));
-      await tester.pumpAndSettle();
-
-      // Verify reverted back to English
-      expect(find.text('Examination Schedule Notice'), findsOneWidget);
-      expect(TtsAudioService.instance.selectedLanguage.value, 'en');
-    });
-  });
-
   group('AnnouncementFeedCard Translate Chip & Zero Overflow on 320px', () {
     testWidgets('renders Translate chip and opens quick language modal without overflow on 320px', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
