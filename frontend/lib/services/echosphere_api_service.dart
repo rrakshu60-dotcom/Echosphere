@@ -611,6 +611,123 @@ class EchosphereApiService {
     };
   }
 
+  Future<Map<String, dynamic>> checkAudienceMismatch({
+    required String title,
+    required String content,
+    required String selectedAudience,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/check-audience',
+        data: {
+          'title': title,
+          'content': content,
+          'selected_audience': selectedAudience,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      debugPrint('AI Audience Check API Error: $e');
+      return _checkAudienceFallback(title, content, selectedAudience);
+    } catch (_) {
+      return _checkAudienceFallback(title, content, selectedAudience);
+    }
+  }
+
+  Map<String, dynamic> _checkAudienceFallback(String title, String content, String selectedAudience) {
+    final combined = '$title $content'.toLowerCase();
+    if (combined.length < 15) {
+      return {
+        'has_mismatch': false,
+        'detected_audience': null,
+        'suggested_audiences': <String>[],
+        'warning_message': null,
+        'mismatch_type': null,
+      };
+    }
+
+    // Whitelist check
+    final isHoliday = combined.contains('holiday') || combined.contains('vacation') || combined.contains('rajyotsava');
+    final isCollegeFest = combined.contains('annual day') || combined.contains('college fest') || combined.contains('sports day');
+    if ((isHoliday || isCollegeFest) && selectedAudience == 'Entire College') {
+      return {
+        'has_mismatch': false,
+        'detected_audience': 'Entire College',
+        'suggested_audiences': <String>[],
+        'warning_message': null,
+        'mismatch_type': null,
+      };
+    }
+
+    final hasCse = combined.contains('cse') || combined.contains('computer science') || combined.contains('operating systems');
+    final hasMech = combined.contains('mechanical') || combined.contains('thermodynamics') || combined.contains('cad/cam');
+    final hasCivil = combined.contains('civil') || combined.contains('surveying') || combined.contains('concrete');
+    final hasAiml = combined.contains('aiml') || combined.contains('artificial intelligence') || combined.contains('machine learning');
+    
+    final has1stYear = combined.contains('1st year') || combined.contains('first year') || combined.contains('freshers') || combined.contains('physics cycle');
+    final has3rdYear = combined.contains('3rd year') || combined.contains('third year') || combined.contains('5th sem') || combined.contains('6th sem');
+    final isFaculty = (combined.contains('faculty') || combined.contains('professors') || combined.contains('teaching staff') || combined.contains('staff meeting')) &&
+        (combined.contains('all faculty') || combined.contains('faculty meeting') || combined.contains('syllabus completion') || combined.contains('evaluation duty'));
+
+    final suggested = <String>[];
+    String? warning;
+    String? type;
+
+    if (isFaculty && selectedAudience != 'Faculty Members') {
+      suggested.add('Faculty Members');
+      warning = "⚠️ Audience Warning: This notice appears specifically for Faculty & Staff, but target audience is set to '$selectedAudience'. Avoid notifying students.";
+      type = 'faculty_only';
+    } else if (selectedAudience == 'Entire College') {
+      if (has3rdYear && hasCse) {
+        suggested.addAll(['3rd Year Students', 'CSE Department']);
+        warning = '⚠️ Audience Warning: Notice mentions 3rd Year Students (CSE Department), but target audience is set to Entire College.';
+        type = 'overly_broad_combined';
+      } else if (hasCse) {
+        suggested.add('CSE Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions CSE Department, but target audience is set to Entire College (alerting 2,400+ students).';
+        type = 'overly_broad_department';
+      } else if (hasMech) {
+        suggested.add('Mechanical Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions Mechanical Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (hasCivil) {
+        suggested.add('Civil Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions Civil Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (hasAiml) {
+        suggested.add('AIML Department');
+        warning = '⚠️ Audience Warning: This notice specifically mentions AIML Department, but target audience is set to Entire College.';
+        type = 'overly_broad_department';
+      } else if (has1stYear) {
+        suggested.add('1st Year Students');
+        warning = '⚠️ Audience Warning: Notice targets 1st Year Students, but is addressed to Entire College.';
+        type = 'overly_broad_year';
+      } else if (has3rdYear) {
+        suggested.add('3rd Year Students');
+        warning = '⚠️ Audience Warning: Notice targets 3rd Year Students, but is addressed to Entire College.';
+        type = 'overly_broad_year';
+      }
+    } else if (selectedAudience.endsWith('Department')) {
+      if (hasCivil && selectedAudience != 'Civil Department') {
+        suggested.add('Civil Department');
+        warning = "⚠️ Department Mismatch: Notice mentions Civil Department, but audience is set to '$selectedAudience'.";
+        type = 'wrong_department';
+      } else if (hasMech && selectedAudience != 'Mechanical Department') {
+        suggested.add('Mechanical Department');
+        warning = "⚠️ Department Mismatch: Notice mentions Mechanical Department, but audience is set to '$selectedAudience'.";
+        type = 'wrong_department';
+      }
+    }
+
+    return {
+      'has_mismatch': suggested.isNotEmpty,
+      'detected_audience': suggested.isNotEmpty ? suggested.first : null,
+      'suggested_audiences': suggested,
+      'warning_message': warning,
+      'mismatch_type': type,
+    };
+  }
+
   Future<Map<String, dynamic>> getAiPriorityRecommendation(String title, String content, {String? userRole}) async {
     try {
       final response = await _dio.post(

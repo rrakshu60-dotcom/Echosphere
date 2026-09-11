@@ -53,6 +53,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   String? aiSpamWarning;
   String? aiDuplicateWarning;
   Map<String, dynamic>? activeConflictReport;
+  Map<String, dynamic>? activeAudienceWarning;
   bool isCheckingConflict = false;
   bool _isResolvingConflict = false;
 
@@ -218,6 +219,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     Map<String, dynamic> spamRes = {};
     Map<String, dynamic> dupRes = {};
     Map<String, dynamic> conflictRes = {};
+    Map<String, dynamic> audienceRes = {};
 
     try {
       valRes = await EchosphereApiService().validateContent(desc, title: title);
@@ -240,12 +242,21 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
       );
     } catch (_) {}
 
+    try {
+      audienceRes = await EchosphereApiService().checkAudienceMismatch(
+        title: title,
+        content: desc,
+        selectedAudience: selectedAudience,
+      );
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         aiValidationWarning = valRes['is_valid'] == true ? null : valRes['suggestion'];
         aiSpamWarning = spamRes['is_spam'] == true ? spamRes['reason'] : null;
         aiDuplicateWarning = dupRes['is_duplicate'] == true ? dupRes['reason'] : null;
         activeConflictReport = conflictRes['has_conflict'] == true ? conflictRes : null;
+        activeAudienceWarning = audienceRes['has_mismatch'] == true ? audienceRes : null;
       });
     }
   }
@@ -470,6 +481,11 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               _buildScheduleConflictCard(theme),
             ],
 
+            // AI Audience Pre-Flight Warning Card
+            if (activeAudienceWarning != null && activeAudienceWarning!['has_mismatch'] == true) ...[
+              _buildAudienceWarningCard(theme),
+            ],
+
             // AI Warnings (Validation / Spam / Duplicate)
             if (aiValidationWarning != null || aiSpamWarning != null || aiDuplicateWarning != null) ...[
               Container(
@@ -620,7 +636,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               icon: Icons.groups_rounded,
               selectedItem: DropdownItem(value: selectedAudience, text: selectedAudience),
               items: audiences.map((a) => DropdownItem(value: a, text: a)).toList(),
-              onChanged: (item) => setState(() => selectedAudience = item.value),
+              onChanged: (item) {
+                setState(() => selectedAudience = item.value);
+                final title = titleController.text.trim();
+                final desc = descController.text.trim();
+                if (desc.length > 15) {
+                  _runAiValidation(title, desc);
+                }
+              },
             ),
             const SizedBox(height: 16),
 
@@ -1014,6 +1037,96 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                   backgroundColor: theme.colorScheme.primary.withOpacity(0.08),
                   side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
                   onPressed: () => _applyAlternativeSlot(Map<String, dynamic>.from(alt)),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAudienceWarningCard(ThemeData theme) {
+    if (activeAudienceWarning == null) return const SizedBox.shrink();
+    final warningMsg = activeAudienceWarning!['warning_message'] as String? ?? 'Audience mismatch detected.';
+    final suggested = (activeAudienceWarning!['suggested_audiences'] as List?)?.whereType<String>().toList() ?? [];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.groups_rounded, size: 18, color: Colors.amber),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Audience Recommendation (Anti-Spam Guard)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            warningMsg,
+            style: const TextStyle(fontSize: 11, height: 1.3),
+          ),
+          if (suggested.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 13, color: Colors.amber),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '1-Tap Audience Narrowing:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface.withOpacity(0.9),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: suggested.map((target) {
+                return ActionChip(
+                  avatar: const Icon(Icons.gps_fixed_rounded, size: 13, color: Color(0xFF10B981)),
+                  label: Text(
+                    'Narrow to: $target',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF10B981),
+                    ),
+                  ),
+                  backgroundColor: const Color(0xFF10B981).withOpacity(0.08),
+                  side: BorderSide(color: const Color(0xFF10B981).withOpacity(0.3)),
+                  onPressed: () {
+                    setState(() {
+                      selectedAudience = target;
+                      activeAudienceWarning = null;
+                    });
+                    snackBar('Target audience narrowed to $target!', title: 'Anti-Spam Guard');
+                  },
                 );
               }).toList(),
             ),
