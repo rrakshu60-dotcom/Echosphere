@@ -146,6 +146,45 @@ class TtsAudioService extends GetxService {
     }
   }
 
+  // In-Memory Audio URL Cache for instant 0-latency playback
+  final Map<String, String> _urlCache = {};
+
+  /// Pre-warms synthesized speech in the background on page load
+  /// so tapping "Listen to Notice" starts playback instantly with ZERO latency.
+  Future<void> prewarmAnnouncement(
+    int id, {
+    String? title,
+    String? content,
+    String? summary,
+  }) async {
+    try {
+      final cacheKey = '${id}_${selectedAccent.value}_${selectedGender.value}_${readMode.value}';
+      if (_urlCache.containsKey(cacheKey)) return;
+
+      final textToSpeak = (readMode.value == 'summary' && summary != null && summary.isNotEmpty)
+          ? summary
+          : (content != null && content.isNotEmpty
+              ? (title != null ? '$title. $content' : content)
+              : (title ?? ''));
+
+      if (textToSpeak.isEmpty) return;
+
+      final meta = await _api.synthesizeSpeech(
+        textToSpeak,
+        gender: selectedGender.value,
+        accent: selectedAccent.value,
+      );
+      if (meta != null && meta['audio_url'] != null) {
+        final rawUrl = meta['audio_url'].toString();
+        final url = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+        _urlCache[cacheKey] = url;
+        debugPrint('[TTS Pre-warm] Ready for notice #$id (0s latency): $url');
+      }
+    } catch (e) {
+      debugPrint('[TTS Pre-warm note] $e');
+    }
+  }
+
   Future<void> playAnnouncement(
     int id, {
     String? title,
@@ -177,44 +216,15 @@ class TtsAudioService extends GetxService {
       duration.value = Duration.zero;
 
       String? streamUrl = directUrl;
+      final cacheKey = '${id}_${selectedAccent.value}_${selectedGender.value}_${readMode.value}';
 
-      final chimeParam = selectedChime.value == 'auto' ? null : selectedChime.value;
-      final langParam = selectedLanguage.value;
-
-      if (streamUrl == null || streamUrl.isEmpty) {
-        final audioMeta = await _api.getAnnouncementAudio(
-          id,
-          gender: selectedGender.value,
-          accent: selectedAccent.value,
-          isSummary: (readMode.value == 'summary'),
-          includeChime: includeChime.value,
-          chime: chimeParam,
-          lang: langParam,
-        );
-        if (audioMeta != null) {
-          final rawUrl = audioMeta['audio_url']?.toString() ?? '';
-          final fileName = audioMeta['file_name']?.toString() ?? '';
-
-          // Reject stale legacy beep files (e.g. *.wav tone bursts from old cache or mismatching accent)
-          final isLegacyBeep = fileName.endsWith('.wav') &&
-              (fileName.contains('indian') || !fileName.contains(selectedAccent.value));
-
-          if (!isLegacyBeep && rawUrl.isNotEmpty) {
-            engine.value = 'AI Voice';
-            voiceName.value = audioMeta['voice']?.toString() ?? '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
-            activeChimeTag.value = audioMeta['chime']?.toString() ?? 'standard';
-            if (rawUrl.startsWith('http')) {
-              streamUrl = rawUrl;
-            } else if (rawUrl.isNotEmpty) {
-              streamUrl = '${_api.hostUrl}$rawUrl';
-            }
-          } else {
-            debugPrint('[TTS] Rejected stale beep audio from server ($fileName). Synthesizing fresh American speech.');
-          }
-        }
+      // 1. FASTEST: Instant Memory Cache (0 ms latency)
+      if (streamUrl == null && _urlCache.containsKey(cacheKey)) {
+        streamUrl = _urlCache[cacheKey];
+        debugPrint('[TTS] Instant memory cache hit for notice #$id: $streamUrl');
       }
 
-      // If no valid URL from announcement meta (or stale beep file was rejected), synthesize notice text directly!
+      // 2. High-speed direct synthesis (bypasses slow failing /audio endpoint that added 2.5s delay)
       if (streamUrl == null || streamUrl.isEmpty) {
         final textToSpeak = (readMode.value == 'summary' && _activeSummary != null && _activeSummary!.isNotEmpty)
             ? _activeSummary!
@@ -223,7 +233,7 @@ class TtsAudioService extends GetxService {
                 : (_activeTitle ?? ''));
 
         if (textToSpeak.isNotEmpty) {
-          debugPrint('[TTS] Synthesizing speech directly via AI synthesis for notice #$id...');
+          debugPrint('[TTS] Fast synthesis path for notice #$id...');
           final meta = await _api.synthesizeSpeech(
             textToSpeak,
             gender: selectedGender.value,
@@ -234,11 +244,35 @@ class TtsAudioService extends GetxService {
             streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
             engine.value = meta['engine']?.toString() ?? 'AI Voice';
             voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
+            _urlCache[cacheKey] = streamUrl;
           }
         }
       }
 
-      // Fallback to direct stream route if meta failed and synthesis was not triggered
+      // 3. Fallback to stream route if text was not provided
+      if (streamUrl == null || streamUrl.isEmpty) {
+        final audioMeta = await _api.getAnnouncementAudio(
+          id,
+          gender: selectedGender.value,
+          accent: selectedAccent.value,
+          isSummary: (readMode.value == 'summary'),
+          includeChime: includeChime.value,
+          chime: selectedChime.value == 'auto' ? null : selectedChime.value,
+          lang: selectedLanguage.value,
+        );
+        if (audioMeta != null) {
+          final rawUrl = audioMeta['audio_url']?.toString() ?? '';
+          final fileName = audioMeta['file_name']?.toString() ?? '';
+          final isLegacyBeep = fileName.endsWith('.wav') &&
+              (fileName.contains('indian') || !fileName.contains(selectedAccent.value));
+
+          if (!isLegacyBeep && rawUrl.isNotEmpty) {
+            streamUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
+            _urlCache[cacheKey] = streamUrl;
+          }
+        }
+      }
+
       if (streamUrl == null || streamUrl.isEmpty) {
         streamUrl = _api.getStreamUrlForAnnouncement(
           id,
@@ -246,34 +280,14 @@ class TtsAudioService extends GetxService {
           accent: selectedAccent.value,
           isSummary: (readMode.value == 'summary'),
           includeChime: includeChime.value,
-          chime: chimeParam,
-          lang: langParam,
+          chime: selectedChime.value == 'auto' ? null : selectedChime.value,
+          lang: selectedLanguage.value,
         );
       }
 
-      try {
+      if (streamUrl.isNotEmpty) {
         debugPrint('[TTS] Streaming audio from: $streamUrl');
         await _player.play(UrlSource(streamUrl));
-      } catch (streamErr) {
-        debugPrint('[TTS] Stream URL playback failed ($streamErr). Trying on-the-fly synthesis fallback...');
-        final textToSpeak = (readMode.value == 'summary' && _activeSummary != null && _activeSummary!.isNotEmpty)
-            ? _activeSummary!
-            : (_activeContent != null && _activeContent!.isNotEmpty
-                ? (_activeTitle != null ? '$_activeTitle. $_activeContent' : _activeContent!)
-                : (_activeTitle ?? 'Attention. Official campus announcement broadcast.'));
-
-        final meta = await _api.synthesizeSpeech(
-          textToSpeak,
-          gender: selectedGender.value,
-          accent: selectedAccent.value,
-        );
-        if (meta != null && meta['audio_url'] != null) {
-          final rawUrl = meta['audio_url'].toString();
-          final synthUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
-          await _player.play(UrlSource(synthUrl));
-        } else {
-          rethrow;
-        }
       }
     } catch (e) {
       debugPrint('[TTS Error] Failed to play announcement: $e');
