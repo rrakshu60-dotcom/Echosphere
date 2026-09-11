@@ -83,6 +83,12 @@ class Announcement(TimestampMixin, Base):
         nullable=True,
     )
 
+    speaker_voice = Column(
+        String(20),
+        nullable=True,
+        default="female",
+    )
+
     # -------------------------
     # Foreign Keys
     # -------------------------

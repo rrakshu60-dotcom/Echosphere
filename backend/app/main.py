@@ -30,6 +30,8 @@ try:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN target_audience VARCHAR(255) DEFAULT 'Entire College';"))
         if "ai_summary" not in col_names:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN ai_summary TEXT;"))
+        if "speaker_voice" not in col_names:
+            conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
         conn.commit()
 except Exception:
     pass

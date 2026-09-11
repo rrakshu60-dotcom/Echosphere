@@ -120,6 +120,7 @@ async def broadcast_announcement_to_speaker(
     department_code: str = "ALL",
     zone: str = "College-Wide",
     is_emergency: bool = False,
+    speaker_voice: Optional[str] = "female",
     base_url: str = "http://localhost:8000",
 ) -> dict:
     """
@@ -175,7 +176,11 @@ async def broadcast_announcement_to_speaker(
     # 1. Generate audio stream (gracefully fallback if TTS service encounters errors)
     audio_full_url = ""
     try:
-        audio_info = await generate_announcement_audio(announcement_id, f"{title}. {content}")
+        audio_info = await generate_announcement_audio(
+            announcement_id,
+            f"{title}. {content}",
+            gender=speaker_voice or "female",
+        )
         audio_full_url = f"{base_url}{audio_info['url_path']}"
     except Exception as e:
         logger.warning(f"Audio generation fallback for #{announcement_id}: {e}")
@@ -301,6 +306,7 @@ def enqueue_and_broadcast_announcement(
     speaker_node_id: Optional[int] = None,
     target_mac: Optional[str] = None,
     scheduled_time: Optional[datetime] = None,
+    speaker_voice: Optional[str] = "female",
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
 ) -> dict:
     """
@@ -359,7 +365,11 @@ def enqueue_and_broadcast_announcement(
     # 2. Generate TTS audio stream (MP3 / WAV)
     audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.mp3"
     try:
-        audio_info = generate_announcement_audio_sync(announcement_id, f"{title}. {content}")
+        audio_info = generate_announcement_audio_sync(
+            announcement_id,
+            f"{title}. {content}",
+            gender=speaker_voice or "female",
+        )
         audio_full_url = f"{base_url}{audio_info['url_path']}"
     except Exception as e:
         logger.warning(f"Audio file generation fallback: {e}")
@@ -431,7 +441,12 @@ def dispatch_queue_action_to_speakers(
         # Generate / verify audio stream
         audio_full_url = f"{base_url}/static/audio_streams/announcement_{queue_item.announcement_id}.mp3"
         try:
-            audio_info = generate_announcement_audio_sync(queue_item.announcement_id, f"{title}. {message}")
+            voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
+            audio_info = generate_announcement_audio_sync(
+                queue_item.announcement_id,
+                f"{title}. {message}",
+                gender=voice_gender,
+            )
             audio_full_url = f"{base_url}{audio_info['url_path']}"
         except Exception as e:
             logger.warning(f"TTS generation on queue play: {e}")

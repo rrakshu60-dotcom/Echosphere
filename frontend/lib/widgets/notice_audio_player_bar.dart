@@ -10,6 +10,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
   final String? directAudioUrl;
   final bool hasAiSummary;
   final String? aiSummary;
+  final String? initialVoiceGender;
 
   const NoticeAudioPlayerBar({
     super.key,
@@ -19,6 +20,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
     this.directAudioUrl,
     this.hasAiSummary = false,
     this.aiSummary,
+    this.initialVoiceGender,
   });
 
   String _formatDuration(Duration d) {
@@ -302,13 +304,24 @@ class NoticeAudioPlayerBar extends StatelessWidget {
             Row(
               children: [
                 InkWell(
-                  onTap: () => audio.playAnnouncement(
-                    announcementId,
-                    title: title,
-                    content: content,
-                    summary: aiSummary,
-                    directUrl: (currentGender == 'female' && currentMode == 'full') ? directAudioUrl : null,
-                  ),
+                  onTap: () {
+                    if (!isActive && initialVoiceGender != null && initialVoiceGender!.isNotEmpty && initialVoiceGender != currentGender) {
+                      audio.setVoiceConfig(
+                        gender: initialVoiceGender!,
+                        announcementId: announcementId,
+                        title: title,
+                        content: content,
+                        summary: aiSummary,
+                      );
+                    }
+                    audio.playAnnouncement(
+                      announcementId,
+                      title: title,
+                      content: content,
+                      summary: aiSummary,
+                      directUrl: (currentGender == 'female' && currentMode == 'full') ? directAudioUrl : null,
+                    );
+                  },
                   borderRadius: BorderRadius.circular(24),
                   child: Container(
                     width: 46,

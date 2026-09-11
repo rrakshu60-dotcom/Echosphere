@@ -32,6 +32,7 @@ class AnnouncementModel {
   final String? speakerStatus;
   final bool playedOnSpeaker;
   final int durationSeconds;
+  final String speakerVoice; // 'female' | 'male'
 
   AnnouncementModel({
     required this.id,
@@ -59,6 +60,7 @@ class AnnouncementModel {
     this.speakerStatus,
     this.playedOnSpeaker = false,
     this.durationSeconds = 15,
+    this.speakerVoice = 'female',
   });
 
   AnnouncementModel copyWith({
@@ -87,6 +89,7 @@ class AnnouncementModel {
     String? speakerStatus,
     bool? playedOnSpeaker,
     int? durationSeconds,
+    String? speakerVoice,
   }) {
     return AnnouncementModel(
       id: id ?? this.id,
@@ -114,6 +117,7 @@ class AnnouncementModel {
       speakerStatus: speakerStatus ?? this.speakerStatus,
       playedOnSpeaker: playedOnSpeaker ?? this.playedOnSpeaker,
       durationSeconds: durationSeconds ?? this.durationSeconds,
+      speakerVoice: speakerVoice ?? this.speakerVoice,
     );
   }
 
@@ -197,6 +201,7 @@ class AnnouncementModel {
       speakerStatus: json['speaker_status'] ?? json['speakerStatus'] ?? (delivSpk ? 'Queued' : null),
       playedOnSpeaker: json['played_on_speaker'] == true || json['playedOnSpeaker'] == true,
       durationSeconds: json['duration_seconds'] ?? json['durationSeconds'] ?? 15,
+      speakerVoice: (json['speaker_voice'] ?? json['speakerVoice'] ?? 'female').toString().toLowerCase() == 'male' ? 'male' : 'female',
     );
   }
 }
@@ -819,6 +824,7 @@ class AnnouncementController extends GetxController {
     bool deliverSpeaker = false,
     bool deliverInApp = true,
     bool deliverPush = true,
+    String speakerVoice = 'female',
     int? speakerNodeId,
     List<String> attachments = const [],
   }) async {
@@ -882,6 +888,7 @@ class AnnouncementController extends GetxController {
       speakerStatus: deliverSpeaker ? 'Queued' : null,
       playedOnSpeaker: false,
       durationSeconds: durSecs,
+      speakerVoice: speakerVoice,
     );
 
     // 0ms Instant Local Insertion for snappy responsiveness
@@ -906,6 +913,7 @@ class AnnouncementController extends GetxController {
             deliverSpeaker: deliverSpeaker,
             deliverInApp: deliverInApp,
             deliverPush: deliverPush,
+            speakerVoice: speakerVoice,
             targetAudience: targetAudience,
             speakerNodeId: speakerNodeId,
           );
@@ -1108,26 +1116,57 @@ class AnnouncementController extends GetxController {
     required String description,
     required String category,
     required String priority,
+    bool? deliverSpeaker,
+    String? speakerVoice,
+    int? speakerNodeId,
   }) async {
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
+      _rawAnnouncements[idx] = old.copyWith(
         title: title,
         description: description,
         priority: priority,
         emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
-        status: old.status,
-        creatorName: old.creatorName,
-        department: old.department,
         category: category,
-        createdAt: old.createdAt,
         aiSummary: 'AI Summary: $title - Modified notice.',
         remarks: 'Modified by Administrator',
+        deliverSpeaker: deliverSpeaker ?? old.deliverSpeaker,
+        speakerVoice: speakerVoice ?? old.speakerVoice,
+        speakerNodeId: speakerNodeId ?? old.speakerNodeId,
       );
       _rawAnnouncements.refresh();
+      update();
     }
+
+    if (!Get.testMode) {
+      Future.microtask(() async {
+        try {
+          int catId = 1;
+          final catLower = category.toLowerCase();
+          if (catLower.contains('exam')) catId = 2;
+          if (catLower.contains('event')) catId = 3;
+          if (catLower.contains('sport')) catId = 4;
+          if (catLower.contains('placement')) catId = 5;
+          if (catLower.contains('emergency')) catId = 6;
+
+          await EchosphereApiService().updateAnnouncement(
+            id,
+            title: title,
+            description: description,
+            categoryId: catId,
+            priority: priority,
+            emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
+            deliverSpeaker: deliverSpeaker,
+            speakerVoice: speakerVoice,
+            speakerNodeId: speakerNodeId,
+          );
+        } catch (e) {
+          debugPrint('Async backend update announcement log: $e');
+        }
+      });
+    }
+
     return true;
   }
 

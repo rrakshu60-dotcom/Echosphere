@@ -226,6 +226,7 @@ class EchosphereApiService {
     bool deliverSpeaker = false,
     bool deliverInApp = true,
     bool deliverPush = true,
+    String speakerVoice = 'female',
     String? targetAudience,
     int? speakerNodeId,
   }) async {
@@ -242,6 +243,7 @@ class EchosphereApiService {
           'deliver_speaker': deliverSpeaker,
           'deliver_in_app': deliverInApp,
           'deliver_push': deliverPush,
+          'speaker_voice': speakerVoice,
           if (targetAudience != null) 'target_audience': targetAudience,
           if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
         },
@@ -260,6 +262,11 @@ class EchosphereApiService {
     String? priority,
     String? emergencyLevel,
     String? status,
+    bool? deliverSpeaker,
+    bool? deliverInApp,
+    bool? deliverPush,
+    String? speakerVoice,
+    int? speakerNodeId,
   }) async {
     try {
       final response = await _dio.put(
@@ -271,6 +278,11 @@ class EchosphereApiService {
           if (priority != null) 'priority': priority,
           if (emergencyLevel != null) 'emergency_level': emergencyLevel,
           if (status != null) 'status': status,
+          if (deliverSpeaker != null) 'deliver_speaker': deliverSpeaker,
+          if (deliverInApp != null) 'deliver_in_app': deliverInApp,
+          if (deliverPush != null) 'deliver_push': deliverPush,
+          if (speakerVoice != null) 'speaker_voice': speakerVoice,
+          if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
         },
       );
       return response.data as Map<String, dynamic>;

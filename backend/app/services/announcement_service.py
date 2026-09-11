@@ -161,6 +161,7 @@ def create_announcement_service(
     else:
         initial_status = AnnouncementStatus.PENDING_APPROVAL
 
+    speaker_voice = getattr(request, 'speaker_voice', 'female') or 'female'
     announcement = Announcement(
         title=request.title,
         description=request.description,
@@ -172,6 +173,7 @@ def create_announcement_service(
         ai_summary=f"Summary: {request.title}",
         status=initial_status,
         created_by=current_user.id,
+        speaker_voice=speaker_voice,
     )
 
     created_announcement = create_announcement(
@@ -220,6 +222,7 @@ def create_announcement_service(
                 is_emergency=is_emerg,
                 speaker_node_id=getattr(request, 'speaker_node_id', None),
                 scheduled_time=created_announcement.scheduled_at,
+                speaker_voice=created_announcement.speaker_voice or "female",
             )
         except Exception as e:
             logger.warning(f"Auto-broadcast error on announcement creation: {e}")
@@ -322,6 +325,56 @@ def update_announcement_service(
         announcement,
         request,
     )
+
+    # Manage speaker delivery channel if specified in update request
+    deliver_speaker = getattr(request, 'deliver_speaker', None)
+    if deliver_speaker is not None:
+        try:
+            from app.models.delivery_type import DeliveryType
+            from app.models.announcement_delivery import AnnouncementDelivery
+            spk_type = db.query(DeliveryType).filter(DeliveryType.name.ilike("%speaker%")).first()
+            if not spk_type:
+                spk_type = DeliveryType(name="Speaker")
+                db.add(spk_type)
+                db.commit()
+                db.refresh(spk_type)
+
+            existing_deliv = db.query(AnnouncementDelivery).filter(
+                AnnouncementDelivery.announcement_id == updated_announcement.id,
+                AnnouncementDelivery.delivery_type_id == spk_type.id,
+            ).first()
+
+            if deliver_speaker and not existing_deliv:
+                db.add(AnnouncementDelivery(
+                    announcement_id=updated_announcement.id,
+                    delivery_type_id=spk_type.id,
+                ))
+                db.commit()
+            elif not deliver_speaker and existing_deliv:
+                db.delete(existing_deliv)
+                db.commit()
+
+            if deliver_speaker and updated_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
+                p_val = updated_announcement.priority.value if hasattr(updated_announcement.priority, 'value') else str(updated_announcement.priority)
+                is_emerg = (p_val == "EMERGENCY")
+                from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+                dept_code = "ALL"
+                if updated_announcement.creator and hasattr(updated_announcement.creator, 'department') and updated_announcement.creator.department:
+                    dept_code = updated_announcement.creator.department.code
+                enqueue_and_broadcast_announcement(
+                    db=db,
+                    announcement_id=updated_announcement.id,
+                    title=updated_announcement.title,
+                    content=updated_announcement.description,
+                    department_code=dept_code,
+                    zone="College-Wide",
+                    is_emergency=is_emerg,
+                    speaker_node_id=getattr(request, 'speaker_node_id', None),
+                    scheduled_time=updated_announcement.scheduled_at,
+                    speaker_voice=updated_announcement.speaker_voice or "female",
+                )
+        except Exception as e:
+            logger.warning(f"Speaker delivery update error on announcement {updated_announcement.id}: {e}")
 
     create_audit_log_service(
         db=db,
@@ -520,6 +573,7 @@ def approve_announcement_service(
                 department_code=dept_code,
                 zone="College-Wide",
                 is_emergency=is_emerg,
+                speaker_voice=updated_announcement.speaker_voice or "female",
             )
     except Exception as e:
         logger.warning(f"Auto-broadcast error on announcement approval: {e}")
