@@ -12,8 +12,8 @@ load_dotenv()
 # JWT Configuration
 # ------------------------------------------------------------------
 
-SECRET_KEY = cast(str, os.getenv("JWT_SECRET_KEY"))
-ALGORITHM = cast(str, os.getenv("JWT_ALGORITHM", "HS256"))
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or "echosphere_super_secure_jwt_signing_key_campus_2026_x89"
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))
 
 # ------------------------------------------------------------------

@@ -72,6 +72,17 @@ class Announcement(TimestampMixin, Base):
         nullable=True,
     )
 
+    target_audience = Column(
+        String(255),
+        default="Entire College",
+        nullable=True,
+    )
+
+    ai_summary = Column(
+        Text,
+        nullable=True,
+    )
+
     # -------------------------
     # Foreign Keys
     # -------------------------
@@ -126,3 +137,54 @@ class Announcement(TimestampMixin, Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+
+    # -------------------------
+    # Computed Model Properties
+    # -------------------------
+
+    @property
+    def creator_name(self) -> str:
+        if self.creator and self.creator.full_name:
+            return self.creator.full_name
+        return "Faculty / Official"
+
+    @property
+    def creator_role(self) -> str:
+        if self.creator and self.creator.role:
+            return self.creator.role.name
+        return "Faculty / Official"
+
+    @property
+    def department_name(self) -> str:
+        if self.creator and self.creator.department:
+            return self.creator.department.code or self.creator.department.name
+        return "College-Wide"
+
+    @property
+    def category_name(self) -> str:
+        if self.category and self.category.name:
+            return self.category.name
+        return "Academics"
+
+    @property
+    def remarks(self) -> str | None:
+        if self.approvals:
+            # Get latest approval remark
+            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+            return latest.remarks
+        return None
+
+    @property
+    def approver_name(self) -> str | None:
+        if self.approvals:
+            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+            if latest.approver:
+                return latest.approver.full_name
+        return None
+
+    @property
+    def approved_at(self):
+        if self.approvals:
+            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+            return latest.approved_at
+        return None

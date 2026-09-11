@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:anymex/services/echosphere_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AnnouncementModel {
   final int id;
@@ -20,6 +21,8 @@ class AnnouncementModel {
   final DateTime? scheduledAt;
   final String? aiSummary;
   final String? remarks;
+  final String? approverName;
+  final DateTime? approvedAt;
   final List<String> attachments;
 
   AnnouncementModel({
@@ -38,8 +41,73 @@ class AnnouncementModel {
     this.scheduledAt,
     this.aiSummary,
     this.remarks,
+    this.approverName,
+    this.approvedAt,
     this.attachments = const [],
   });
+
+  AnnouncementModel copyWith({
+    int? id,
+    String? title,
+    String? description,
+    String? priority,
+    String? emergencyLevel,
+    String? status,
+    String? creatorName,
+    String? creatorRole,
+    String? department,
+    String? targetAudience,
+    String? category,
+    DateTime? createdAt,
+    DateTime? scheduledAt,
+    String? aiSummary,
+    String? remarks,
+    String? approverName,
+    DateTime? approvedAt,
+    List<String>? attachments,
+  }) {
+    return AnnouncementModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      emergencyLevel: emergencyLevel ?? this.emergencyLevel,
+      status: status ?? this.status,
+      creatorName: creatorName ?? this.creatorName,
+      creatorRole: creatorRole ?? this.creatorRole,
+      department: department ?? this.department,
+      targetAudience: targetAudience ?? this.targetAudience,
+      category: category ?? this.category,
+      createdAt: createdAt ?? this.createdAt,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      aiSummary: aiSummary ?? this.aiSummary,
+      remarks: remarks ?? this.remarks,
+      approverName: approverName ?? this.approverName,
+      approvedAt: approvedAt ?? this.approvedAt,
+      attachments: attachments ?? this.attachments,
+    );
+  }
+
+  static String _normalizeStatus(dynamic raw) {
+    if (raw == null) return 'PUBLISHED';
+    final s = raw.toString().trim().toUpperCase().replaceAll(' ', '_');
+    if (s == 'PENDING_APPROVAL' || s == 'PENDING' || s == 'SUBMITTED' || s == 'DRAFT') {
+      return 'PENDING_APPROVAL';
+    }
+    if (s == 'PUBLISHED' || s == 'APPROVED') {
+      return 'PUBLISHED';
+    }
+    if (s == 'REJECTED') {
+      return 'REJECTED';
+    }
+    if (s == 'ARCHIVED') {
+      return 'ARCHIVED';
+    }
+    if (s == 'SCHEDULED') {
+      return 'SCHEDULED';
+    }
+    return s;
+  }
 
   factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
     final catId = json['category_id'] ?? 1;
@@ -54,23 +122,26 @@ class AnnouncementModel {
       id: json['id'] ?? 0,
       title: json['title'] ?? '',
       description: json['description'] ?? '',
-      priority: json['priority'] ?? 'NORMAL',
-      emergencyLevel: json['emergency_level'] ?? 'NORMAL',
-      status: json['status'] ?? 'PUBLISHED',
+      priority: (json['priority'] ?? 'NORMAL').toString().toUpperCase(),
+      emergencyLevel: (json['emergency_level'] ?? 'NORMAL').toString().toUpperCase(),
+      status: _normalizeStatus(json['status']),
       creatorName: json['creator_name'] ?? 'Faculty',
       creatorRole: json['creator_role'] ?? json['creator_designation'] ?? json['designation'] ?? json['role'] ?? 'Faculty / Official',
-      department: json['department_name'] ?? 'AIML',
-
+      department: json['department_name'] ?? json['department'] ?? 'AIML',
       targetAudience: json['target_audience'] ?? 'Entire College',
       category: json['category_name'] ?? catName,
       createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
+          ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
           : DateTime.now(),
       scheduledAt: json['scheduled_at'] != null
-          ? DateTime.tryParse(json['scheduled_at'])
+          ? DateTime.tryParse(json['scheduled_at'].toString())
           : null,
       aiSummary: json['ai_summary'],
       remarks: json['remarks'],
+      approverName: json['approver_name'],
+      approvedAt: json['approved_at'] != null
+          ? DateTime.tryParse(json['approved_at'].toString())
+          : null,
       attachments: json['attachments'] != null
           ? List<String>.from(json['attachments'])
           : const [],
@@ -111,10 +182,112 @@ class AnnouncementController extends GetxController {
     'Miscellaneous',
   ];
 
+  StreamSubscription<EchosphereRealtimeEvent>? _realtimeSubscription;
+  Timer? _periodicSyncTimer;
+
   @override
   void onInit() {
     super.onInit();
+    _initRealtimeSync();
     fetchAnnouncements();
+    _startPeriodicSync();
+  }
+
+  @override
+  void onClose() {
+    _realtimeSubscription?.cancel();
+    _periodicSyncTimer?.cancel();
+    super.onClose();
+  }
+
+  void _initRealtimeSync() {
+    final realtimeService = EchosphereRealtimeService();
+    realtimeService.initialize();
+    _realtimeSubscription?.cancel();
+    _realtimeSubscription = realtimeService.events.listen((event) {
+      debugPrint('⚡ [LiveSync] Event in AnnouncementController: ${event.event} (#${event.announcementId})');
+      _handleLiveEvent(event);
+    });
+  }
+
+  void _startPeriodicSync() {
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 7), (_) {
+      _silentApprovalQueueSync();
+    });
+  }
+
+  void _handleLiveEvent(EchosphereRealtimeEvent event) {
+    if (event.announcementId == null) return;
+    final id = event.announcementId!;
+
+    if (event.event == 'ANNOUNCEMENT_APPROVED') {
+      final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        final old = _rawAnnouncements[idx];
+        _rawAnnouncements[idx] = old.copyWith(
+          status: 'PUBLISHED',
+          remarks: event.remarks ?? 'Approved for college-wide publication',
+          approverName: event.approverName ?? 'HoD / Administrator',
+          approvedAt: DateTime.now(),
+        );
+        _rawAnnouncements.refresh();
+        update();
+      } else {
+        _silentApprovalQueueSync();
+      }
+    } else if (event.event == 'ANNOUNCEMENT_REJECTED') {
+      final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        final old = _rawAnnouncements[idx];
+        _rawAnnouncements[idx] = old.copyWith(
+          status: 'REJECTED',
+          remarks: event.remarks ?? 'Rejected by Approver',
+          approverName: event.approverName ?? 'HoD / Administrator',
+          approvedAt: DateTime.now(),
+        );
+        _rawAnnouncements.refresh();
+        update();
+      } else {
+        _silentApprovalQueueSync();
+      }
+    } else if (event.event == 'ANNOUNCEMENT_CREATED') {
+      _silentApprovalQueueSync();
+    } else if (event.event == 'ANNOUNCEMENT_DELETED') {
+      _rawAnnouncements.removeWhere((a) => a.id == id);
+      _rawAnnouncements.refresh();
+      update();
+    }
+  }
+
+  Future<void> _silentApprovalQueueSync() async {
+    try {
+      final api = EchosphereApiService();
+      final queueData = await api.getApprovalQueue();
+      if (queueData.isNotEmpty) {
+        bool changed = false;
+        final currentList = _rawAnnouncements.toList();
+        for (var item in queueData) {
+          final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
+          final idx = currentList.indexWhere((a) => a.id == model.id);
+          if (idx != -1) {
+            if (currentList[idx].status != model.status ||
+                currentList[idx].remarks != model.remarks) {
+              currentList[idx] = model;
+              changed = true;
+            }
+          } else {
+            currentList.insert(0, model);
+            changed = true;
+          }
+        }
+        if (changed) {
+          _rawAnnouncements.value = currentList;
+          _rawAnnouncements.refresh();
+          update();
+        }
+      }
+    } catch (_) {}
   }
 
   int _priorityRank(String priority, String emergencyLevel) {
@@ -200,10 +373,6 @@ class AnnouncementController extends GetxController {
       }
 
       // 3. Year Specific Calculation from Semester (Each year has 2 semesters: Sems 1-8)
-      // Semester 1, 2 -> 1st Year
-      // Semester 3, 4 -> 2nd Year
-      // Semester 5, 6 -> 3rd Year
-      // Semester 7, 8 -> 4th Year
       int studentYear = 1;
       if (semester >= 1 && semester <= 2) {
         studentYear = 1;
@@ -245,62 +414,38 @@ class AnnouncementController extends GetxController {
     return _applySort(filtered);
   }
 
-  final Map<int, String> _statusOverrides = {};
-
-  Future<void> _loadStatusOverrides() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith('notice_override_'));
-      for (var key in keys) {
-        final idStr = key.replaceFirst('notice_override_', '');
-        final id = int.tryParse(idStr);
-        if (id != null) {
-          _statusOverrides[id] = prefs.getString(key) ?? 'PUBLISHED';
-        }
-      }
-    } catch (_) {}
-  }
-
-  void _applyStatusOverrides() {
-    final list = _rawAnnouncements.toList();
-    for (int i = 0; i < list.length; i++) {
-      final item = list[i];
-      if (_statusOverrides.containsKey(item.id)) {
-        final newStatus = _statusOverrides[item.id]!;
-        list[i] = AnnouncementModel(
-          id: item.id,
-          title: item.title,
-          description: item.description,
-          priority: item.priority,
-          emergencyLevel: item.emergencyLevel,
-          status: newStatus,
-          creatorName: item.creatorName,
-          department: item.department,
-          targetAudience: item.targetAudience,
-          category: item.category,
-          createdAt: item.createdAt,
-          scheduledAt: item.scheduledAt,
-          aiSummary: item.aiSummary,
-          remarks: newStatus == 'PUBLISHED'
-              ? 'Approved & Published'
-              : 'Rejected by Administrator',
-        );
-      }
-    }
-    _rawAnnouncements.value = list;
-  }
-
   Future<void> fetchAnnouncements() async {
     isLoading.value = true;
-    await _loadStatusOverrides();
     try {
-      final data = await EchosphereApiService().getAnnouncements();
-      if (data.isNotEmpty) {
-        _rawAnnouncements.value = data
-            .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
-            .toList();
-        _applyStatusOverrides();
+      final api = EchosphereApiService();
+      final publicData = await api.getAnnouncements();
+      final List<AnnouncementModel> fetched = [];
+      if (publicData.isNotEmpty) {
+        fetched.addAll(publicData.map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>)));
+      }
+
+      // Also fetch approval queue for staff/teachers/approvers
+      try {
+        final queueData = await api.getApprovalQueue();
+        if (queueData.isNotEmpty) {
+          for (var item in queueData) {
+            final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
+            final existingIdx = fetched.indexWhere((a) => a.id == model.id);
+            if (existingIdx != -1) {
+              fetched[existingIdx] = model;
+            } else {
+              fetched.insert(0, model);
+            }
+          }
+        }
+      } catch (qe) {
+        debugPrint('Approval queue fetch log: $qe');
+      }
+
+      if (fetched.isNotEmpty) {
+        _rawAnnouncements.value = fetched;
         isLoading.value = false;
+        update();
         return;
       }
     } catch (e) {
@@ -311,8 +456,8 @@ class AnnouncementController extends GetxController {
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
     }
-    _applyStatusOverrides();
     isLoading.value = false;
+    update();
   }
 
   void filterTodayOnly() {
@@ -363,13 +508,43 @@ class AnnouncementController extends GetxController {
   }
 
   List<AnnouncementModel> get pendingApprovals {
-    final filtered = _rawAnnouncements
-        .where((a) => a.status == 'SUBMITTED' || a.status == 'DRAFT' || a.status == 'PENDING_APPROVAL')
-        .toList();
+    final authController = Get.find<AuthController>();
+    final user = authController.currentUser.value;
+    final userRole = user?.role ?? 'Student';
+    final userDept = (user?.department ?? '').trim().toLowerCase();
+
+    final filtered = _rawAnnouncements.where((a) {
+      final isPending = a.status == 'PENDING_APPROVAL' ||
+          a.status == 'SUBMITTED' ||
+          a.status == 'DRAFT';
+      if (!isPending) return false;
+
+      // HoD can only review notices from their own department
+      if (userRole == 'HoD' && userDept.isNotEmpty) {
+        final noticeDept = a.department.trim().toLowerCase();
+        if (noticeDept != userDept && !noticeDept.contains(userDept) && !userDept.contains(noticeDept)) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
     return _applySort(filtered);
   }
 
   List<AnnouncementModel> get mySubmissions {
+    final authController = Get.find<AuthController>();
+    final user = authController.currentUser.value;
+    final userName = (user?.fullName ?? '').trim().toLowerCase();
+    final userRole = user?.role ?? 'Teacher';
+
+    if (userRole == 'Teacher' && userName.isNotEmpty) {
+      final mine = _rawAnnouncements.where((a) {
+        final creator = a.creatorName.trim().toLowerCase();
+        return creator.contains(userName) || userName.contains(creator) || a.creatorRole == 'Teacher';
+      }).toList();
+      return _applySort(mine.isNotEmpty ? mine : _rawAnnouncements.toList());
+    }
+
     return _applySort(_rawAnnouncements.toList());
   }
 
@@ -603,36 +778,28 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
-    _statusOverrides[id] = 'PUBLISHED';
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('notice_override_$id', 'PUBLISHED');
-    } catch (_) {}
-
-    try {
-      await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
-    } catch (_) {}
-
+    // 0ms Optimistic UI update
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
-        title: old.title,
-        description: old.description,
-        priority: old.priority,
-        emergencyLevel: old.emergencyLevel,
+      _rawAnnouncements[idx] = old.copyWith(
         status: 'PUBLISHED',
-        creatorName: old.creatorName,
-        department: old.department,
-        category: old.category,
-        createdAt: old.createdAt,
-        aiSummary: old.aiSummary,
-        remarks: remarks ?? 'Approved by Executive Administrator',
+        remarks: remarks ?? 'Approved for college-wide publication',
+        approvedAt: DateTime.now(),
       );
       _rawAnnouncements.refresh();
+      update();
     }
-    return true;
+
+    try {
+      await EchosphereApiService().approveAnnouncement(id, remarks: remarks);
+      await fetchAnnouncements();
+      return true;
+    } catch (e) {
+      debugPrint('Approve announcement API error: $e');
+      await fetchAnnouncements();
+      rethrow;
+    }
   }
 
   /// Checks whether a scheduled announcement can be modified.
@@ -662,36 +829,28 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
-    _statusOverrides[id] = 'REJECTED';
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('notice_override_$id', 'REJECTED');
-    } catch (_) {}
-
-    try {
-      await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
-    } catch (_) {}
-
+    // 0ms Optimistic UI update
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
-        title: old.title,
-        description: old.description,
-        priority: old.priority,
-        emergencyLevel: old.emergencyLevel,
+      _rawAnnouncements[idx] = old.copyWith(
         status: 'REJECTED',
-        creatorName: old.creatorName,
-        department: old.department,
-        category: old.category,
-        createdAt: old.createdAt,
-        aiSummary: old.aiSummary,
         remarks: remarks,
+        approvedAt: DateTime.now(),
       );
       _rawAnnouncements.refresh();
+      update();
     }
-    return true;
+
+    try {
+      await EchosphereApiService().rejectAnnouncement(id, remarks: remarks);
+      await fetchAnnouncements();
+      return true;
+    } catch (e) {
+      debugPrint('Reject announcement API error: $e');
+      await fetchAnnouncements();
+      rethrow;
+    }
   }
 
   Future<bool> deleteAnnouncement(int id) async {
@@ -922,7 +1081,7 @@ class AnnouncementController extends GetxController {
             'Draft proposal for hosting an expert talk by AWS Lead Architect next Friday in Auditorium 2.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
-        status: 'SUBMITTED',
+        status: 'PENDING_APPROVAL',
         creatorName: 'Dr. B Kursheed',
         department: 'AIML',
         category: 'Academic',
