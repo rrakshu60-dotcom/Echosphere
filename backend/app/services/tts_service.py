@@ -139,17 +139,36 @@ def generate_announcement_audio_sync(
     accent: str = "indian",
     voice_preset: str = None,
     is_summary: bool = False,
+    include_chime: bool = True,
+    chime_type: str = None,
+    priority: str = "NORMAL",
+    category: str = "General",
+    emergency_level: str = "NORMAL",
 ) -> dict:
     """
     Synchronously generates text-to-speech audio stream for a given announcement ID.
-    Supports male/female voices across Indian, American, and British accents.
+    Prepends distinct AI-selected audio chimes (urgent double-beep, sports ding, emergency siren)
+    and supports male/female voices across Indian, American, and British accents.
     """
     ensure_audio_dir_exists()
+    from app.services.chime_service import resolve_contextual_chime, generate_chime_pcm, prepend_chime_to_wav_file
+
+    selected_chime = chime_type or resolve_contextual_chime(
+        priority=priority,
+        category=category,
+        emergency_level=emergency_level,
+        content=text,
+    )
+
     kok_voice, kok_lang, edge_voice, voice_name = resolve_voice_profile(gender, accent, voice_preset)
     
     tag = f"{accent.lower()}_{gender.lower()}"
     if is_summary:
         tag += "_summary"
+    if include_chime:
+        tag += f"_{selected_chime}"
+    else:
+        tag += "_nochime"
 
     mp3_filename = f"announcement_{announcement_id}_{tag}.mp3"
     wav_filename = f"announcement_{announcement_id}_{tag}.wav"
@@ -165,6 +184,7 @@ def generate_announcement_audio_sync(
             "type": "wav",
             "engine": f"Kokoro-82M ({voice_name} - Cached)",
             "voice": voice_name,
+            "chime": selected_chime if include_chime else "none",
         }
     if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
         return {
@@ -174,6 +194,7 @@ def generate_announcement_audio_sync(
             "type": "mp3",
             "engine": f"Neural TTS ({voice_name} - Cached)",
             "voice": voice_name,
+            "chime": selected_chime if include_chime else "none",
         }
 
     speech_text = clean_text_for_speech(text)
@@ -191,10 +212,17 @@ def generate_announcement_audio_sync(
                 generator = pipeline(speech_text, voice=kok_voice, speed=1.0)
                 audio_segments = [audio for gs, ps, audio in generator]
                 if audio_segments:
-                    combined = np.concatenate(audio_segments)
+                    speech_audio = np.concatenate(audio_segments)
+                    if include_chime:
+                        chime_bytes = generate_chime_pcm(selected_chime, sample_rate=24000)
+                        chime_float = np.frombuffer(chime_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+                        combined = np.concatenate([chime_float, speech_audio])
+                    else:
+                        combined = speech_audio
+
                     sf.write(wav_filepath, combined, 24000)
                     duration = round(len(combined) / 24000.0, 2)
-                    logger.info(f"Kokoro-82M offline neural audio ({voice_name}, {duration}s): {wav_filepath}")
+                    logger.info(f"Kokoro-82M offline neural audio + chime ({selected_chime}, {voice_name}, {duration}s): {wav_filepath}")
                     return {
                         "file_name": wav_filename,
                         "file_path": wav_filepath,
@@ -203,6 +231,7 @@ def generate_announcement_audio_sync(
                         "engine": f"Kokoro-82M ({voice_name})",
                         "voice": voice_name,
                         "duration_sec": duration,
+                        "chime": selected_chime if include_chime else "none",
                     }
         except Exception as k_err:
             logger.debug(f"Kokoro-82M attempt skipped/failed: {k_err}. Falling back to Edge-TTS.")
