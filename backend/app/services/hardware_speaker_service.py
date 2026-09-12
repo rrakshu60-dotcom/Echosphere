@@ -41,16 +41,17 @@ _BROADCAST_COMMANDS: List[dict] = []
 _DELIVERED_BROADCASTS: Dict[str, Set[str]] = {}
 
 
-def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None):
+def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db: Optional[Session] = None):
     """
     Pushes a command into the pending command queue for REST polling nodes.
     Broadcast commands are stored with unique command_id so every polling node receives them.
+    Persists to SpeakerCommand DB table so multi-worker cloud servers (Render) never drop commands.
     """
     cmd_id = payload.get("command_id") or str(uuid.uuid4())
     payload["command_id"] = cmd_id
 
+    # 1. In-memory queue
     if not target_mac or target_mac.upper() == "ALL":
-        # Deduplicate idempotent broadcast commands (e.g. repeated emergency button clicks)
         cmd_type = payload.get("command")
         global _BROADCAST_COMMANDS
         if cmd_type in ("TEST_SPEAKER", "RESTART"):
@@ -69,18 +70,54 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None):
         if len(_PENDING_COMMANDS[key]) > 10:
             _PENDING_COMMANDS[key] = _PENDING_COMMANDS[key][-10:]
 
+    # 2. Database persistent command queue (cross-worker reliability)
+    session = db
+    close_session = False
+    if session is None:
+        try:
+            from app.db.database import SessionLocal
+            session = SessionLocal()
+            close_session = True
+        except Exception as se:
+            logger.debug(f"Could not open SessionLocal for SpeakerCommand: {se}")
+
+    if session is not None:
+        try:
+            from app.models.speaker_command import SpeakerCommand
+            cmd_name = str(payload.get("command", "COMMAND"))
+            target_norm = target_mac.upper() if target_mac else None
+            cmd_record = SpeakerCommand(
+                command=cmd_name,
+                target_mac=target_norm,
+                payload_json=json.dumps(payload),
+                delivered_macs="",
+                status="PENDING",
+            )
+            session.add(cmd_record)
+            session.commit()
+        except Exception as ce:
+            logger.debug(f"SpeakerCommand DB persist note: {ce}")
+        finally:
+            if close_session:
+                session.close()
+
 
 def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None) -> List[dict]:
     """
     Retrieves pending commands for a given MAC address without dropping broadcasts for other nodes.
-    Includes database-backed resilient queue fallback to ensure commands are never missed across worker processes.
+    Queries both in-memory queues and database-backed SpeakerCommand records for multi-worker support.
     """
     mac_key = mac_address.upper()
     cmds: List[dict] = []
+    seen_command_ids: Set[str] = set()
 
-    # 1. Node-specific commands
+    # 1. Node-specific in-memory commands
     if mac_key in _PENDING_COMMANDS and _PENDING_COMMANDS[mac_key]:
-        cmds.extend(_PENDING_COMMANDS.pop(mac_key))
+        for c in _PENDING_COMMANDS.pop(mac_key):
+            cid = c.get("command_id")
+            if cid and cid not in seen_command_ids:
+                cmds.append(c)
+                seen_command_ids.add(cid)
 
     # 2. Undelivered broadcast commands for this specific node
     if mac_key not in _DELIVERED_BROADCASTS:
@@ -90,10 +127,53 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
     for b_cmd in _BROADCAST_COMMANDS:
         b_id = b_cmd.get("command_id")
         if b_id and b_id not in delivered_set:
-            cmds.append(b_cmd)
+            if b_id not in seen_command_ids:
+                cmds.append(b_cmd)
+                seen_command_ids.add(b_id)
             delivered_set.add(b_id)
 
-    # 3. Database-backed resilient fallback: check active Playing items in SpeakerQueue
+    # 3. Database persistent commands: query SpeakerCommand table (survives worker isolation)
+    if db is not None:
+        try:
+            from app.models.speaker_command import SpeakerCommand
+            from datetime import timedelta
+            cutoff = utc_now() - timedelta(minutes=5)
+            db_cmds = (
+                db.query(SpeakerCommand)
+                .filter(
+                    SpeakerCommand.status == "PENDING",
+                    SpeakerCommand.created_at >= cutoff,
+                    or_(
+                        SpeakerCommand.target_mac == None,
+                        SpeakerCommand.target_mac == "ALL",
+                        SpeakerCommand.target_mac == mac_key,
+                    )
+                )
+                .order_by(SpeakerCommand.id.asc())
+                .all()
+            )
+            for d_cmd in db_cmds:
+                delivered_list = [m.strip() for m in (getattr(d_cmd, "delivered_macs", "") or "").split(",") if m.strip()]
+                if mac_key not in delivered_list:
+                    try:
+                        p_data = json.loads(getattr(d_cmd, "payload_json", "{}"))
+                        cid = p_data.get("command_id") or f"cmd_{d_cmd.id}"
+                        p_data["command_id"] = cid
+                        if cid not in seen_command_ids:
+                            cmds.append(p_data)
+                            seen_command_ids.add(cid)
+                        delivered_list.append(mac_key)
+                        setattr(d_cmd, "delivered_macs", ",".join(delivered_list))
+                        t_mac = getattr(d_cmd, "target_mac", None)
+                        if t_mac and t_mac != "ALL":
+                            setattr(d_cmd, "status", "COMPLETED")
+                        db.commit()
+                    except Exception as pe:
+                        logger.debug(f"Parse payload_json note: {pe}")
+        except Exception as dbe:
+            logger.debug(f"SpeakerCommand DB query note: {dbe}")
+
+    # 4. Database-backed resilient fallback: check active Playing items in SpeakerQueue
     if db is not None:
         try:
             now = utc_now()
@@ -115,23 +195,24 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     if target_mac != mac_key:
                         continue
                 b_id = f"auto_queue_{p_item.id}_{p_item.announcement_id}"
-                if b_id not in delivered_set:
-                    ann = p_item.announcement
-                    title = ann.title if ann else "Announcement"
-                    message = ann.description if ann else ""
+                if b_id not in delivered_set and b_id not in seen_command_ids:
+                    ann = getattr(p_item, "announcement", None)
+                    title = getattr(ann, "title", "Announcement") if ann else "Announcement"
+                    message = getattr(ann, "description", "") if ann else ""
                     audio_url = f"https://echosphere-backend-9lv8.onrender.com/static/audio_streams/announcement_{p_item.announcement_id}.mp3"
                     cmds.append({
                         "command": "PLAY_ANNOUNCEMENT",
                         "command_id": b_id,
-                        "announcement_id": p_item.announcement_id,
-                        "title": title,
-                        "message": message,
+                        "announcement_id": int(getattr(p_item, "announcement_id", 0)),
+                        "title": str(title),
+                        "message": str(message),
                         "audio_url": audio_url,
                         "volume": 85,
-                        "duration_seconds": p_item.duration_seconds or 15,
-                        "timestamp": (p_item.played_at or now).isoformat(),
+                        "duration_seconds": int(getattr(p_item, "duration_seconds", 15) or 15),
+                        "timestamp": (p_played_at or now).isoformat(),
                     })
                     delivered_set.add(b_id)
+                    seen_command_ids.add(b_id)
         except Exception as e:
             logger.debug(f"DB fallback command check note: {e}")
 
@@ -141,6 +222,7 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
         _DELIVERED_BROADCASTS[mac_key] = {cid for cid in delivered_set if (cid in valid_ids or cid.startswith("auto_queue_"))}
 
     return cmds
+
 
 
 
@@ -189,7 +271,7 @@ async def broadcast_announcement_to_speaker(
             "timestamp": utc_now().isoformat(),
         }
         publish_success = publish_mqtt_command(topic, payload)
-        queue_command_for_nodes(payload, target_mac=None)
+        queue_command_for_nodes(payload, target_mac=None, db=db)
 
         # Record in SpeakerQueue table if announcement exists
         from app.models.announcement import Announcement
@@ -293,7 +375,7 @@ async def broadcast_announcement_to_speaker(
     }
 
     publish_success = publish_mqtt_command(topic, payload)
-    queue_command_for_nodes(payload, target_mac=None)
+    queue_command_for_nodes(payload, target_mac=None, db=db)
 
     return {
         "status": "success",
@@ -334,7 +416,7 @@ def send_node_control_command(
     }
 
     publish_success = publish_mqtt_command(topic, payload)
-    queue_command_for_nodes(payload, target_mac=str(node.mac_address) if getattr(node, "mac_address", None) else None)
+    queue_command_for_nodes(payload, target_mac=str(node.mac_address) if getattr(node, "mac_address", None) else None, db=db)
 
     return {
         "status": "success",
@@ -482,7 +564,7 @@ def enqueue_and_broadcast_announcement(
     publish_success = False
     if should_play:
         publish_success = publish_mqtt_command(topic, payload)
-        queue_command_for_nodes(payload, target_mac=target_mac)
+        queue_command_for_nodes(payload, target_mac=target_mac, db=db)
         logger.info(f"📢 [AUTO-PLAY] Announcement #{announcement_id} ('{title}') -> Immediately playing on {topic} (Node: {target_mac or 'ALL'})")
     else:
         logger.info(f"📋 [ENQUEUED] Announcement #{announcement_id} ('{title}') -> Standing by at queue position #{queue_pos} ({current_status})")
@@ -577,7 +659,7 @@ def dispatch_queue_action_to_speakers(
 
     topic = f"echosphere/dept/{dept_code}/speakers/command"
     publish_success = publish_mqtt_command(topic, payload)
-    queue_command_for_nodes(payload, target_mac=target_mac)
+    queue_command_for_nodes(payload, target_mac=target_mac, db=db)
 
     logger.info(f"🔊 [QUEUE ACTION DISPATCH] Action: '{action}' for Queue Item #{queue_item.id} -> Dispatched to nodes.")
     return {
