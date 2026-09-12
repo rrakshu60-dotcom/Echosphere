@@ -163,7 +163,6 @@ app.*.symbols
 .gclient_previous_sync_commits
 
 # env vars
-.env
 anymex.jks
 keystore.b64
 
