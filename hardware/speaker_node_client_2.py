@@ -114,7 +114,7 @@ def play_emergency_siren():
         pass
 
 
-def speak_text_neural(text: str, volume: int = 90) -> bool:
+def speak_text_neural(text: str, volume: int = 90, stop_event: Optional[threading.Event] = None) -> bool:
     """
     Synthesizes speech aloud using Kokoro-grade neural voices via edge-tts.
     """
@@ -135,7 +135,7 @@ def speak_text_neural(text: str, volume: int = 90) -> bool:
 
         asyncio.run(_synth())
         if os.path.exists(tmp_voice) and os.path.getsize(tmp_voice) > 300:
-            ok = play_audio_file(tmp_voice, volume=volume)
+            ok = play_audio_file(tmp_voice, volume=volume, stop_event=stop_event)
             try:
                 os.remove(tmp_voice)
             except Exception:
@@ -176,17 +176,18 @@ def play_audio_file(file_path: str, volume: int = 90, stop_event: Optional[threa
     abs_path = os.path.abspath(file_path)
 
     if sys.platform == "win32":
+        is_mp3 = abs_path.lower().endswith((".mp3", ".mp4", ".m4a"))
         try:
             import ctypes
             winmm = ctypes.windll.winmm
             alias = f"node2_mci_{uuid.uuid4().hex[:6]}"
             winmm.mciSendStringW(f'close {alias}', None, 0, 0)
 
-            is_mp3 = abs_path.lower().endswith((".mp3", ".mp4", ".m4a"))
             type_str = "mpegvideo" if is_mp3 else "waveaudio"
             open_res = winmm.mciSendStringW(f'open "{abs_path}" type {type_str} alias {alias}', None, 0, 0)
 
             if open_res == 0:
+                winmm.mciSendStringW(f'set {alias} time format milliseconds', None, 0, 0)
                 buf = ctypes.create_unicode_buffer(128)
                 winmm.mciSendStringW(f'status {alias} length', buf, 128, 0)
                 dur_ms = int(buf.value) if buf.value.isdigit() else 3500
@@ -405,6 +406,9 @@ class SpeakerNode2Client:
 
         elif c in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
             ann_id = cmd.get("announcement_id", 0)
+            if ann_id and (ann_id == self.active_announcement_id or ann_id in self.played_announcement_ids):
+                logger.info(f"ℹ️ Notice #{ann_id} is already playing or completed. Skipping duplicate command.")
+                return
             title = cmd.get("title") or "Campus Notice"
             message = cmd.get("message") or cmd.get("content") or ""
             audio_url = cmd.get("audio_url")
@@ -470,40 +474,14 @@ class SpeakerNode2Client:
             else:
                 play_attention_chime()
 
-            played = False
-
-            # 2. Try streaming backend-generated TTS audio file
-            full_audio_url = audio_url
-            if full_audio_url and full_audio_url.startswith("/"):
-                full_audio_url = f"{self.server_url}{full_audio_url}"
-
-            if full_audio_url and full_audio_url.startswith("http"):
-                ext = ".wav" if ".wav" in full_audio_url.lower() else ".mp3"
-                tmp_file = os.path.join(os.path.dirname(__file__), f"node2_play_{uuid.uuid4().hex[:6]}{ext}")
-                try:
-                    logger.info(f"📥 Downloading audio stream: {full_audio_url}")
-                    r = requests.get(full_audio_url, timeout=6.0)
-                    if r.status_code == 200 and len(r.content) > 500 and not r.content.startswith(b"<!DOCTYPE"):
-                        with open(tmp_file, "wb") as f:
-                            f.write(r.content)
-                        logger.info(f"🎙️ Playing backend audio stream ({len(r.content)} bytes)...")
-                        played = play_audio_file(tmp_file, volume=self.volume, stop_event=self._current_stop_event)
-                except Exception as e:
-                    logger.debug(f"Audio stream download error: {e}")
-                finally:
-                    if os.path.exists(tmp_file):
-                        try:
-                            os.remove(tmp_file)
-                        except Exception:
-                            pass
-
-            # 3. Fallback: Speak text directly aloud using local Kokoro/Edge Neural Voice or SAPI
-            if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
+            # 2. Kokoro Neural Voice: Synthesize and speak announcement aloud
+            if not (self._current_stop_event and self._current_stop_event.is_set()):
                 speech_text = f"{title}. {message}" if message else title
                 vol = 100 if is_emergency else self.volume
                 logger.info(f"🎙️ [KOKORO NEURAL VOICE] Speaking text aloud: '{speech_text}'")
-                ok = speak_text_neural(speech_text, volume=vol)
+                ok = speak_text_neural(speech_text, volume=vol, stop_event=self._current_stop_event)
                 if not ok:
+                    logger.info(f"🎙️ [SAPI FALLBACK] Speaking text via Windows SAPI: '{speech_text}'")
                     speak_text_sapi(speech_text, volume=vol)
 
             logger.info(f"✅ [BROADCAST FINISHED] Completed playback for Notice #{ann_id} ('{title}')")
@@ -511,7 +489,7 @@ class SpeakerNode2Client:
             self.active_announcement_id = None
             self.current_status = "ONLINE"
 
-            # 4. Notify backend that playback completed so the queue advances automatically!
+            # 3. Notify backend that playback completed so the queue advances automatically!
             if queue_id:
                 try:
                     complete_url = f"{self.server_url}/api/v1/hardware/queue/{queue_id}/action?action=complete"

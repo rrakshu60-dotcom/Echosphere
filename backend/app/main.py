@@ -16,10 +16,13 @@ from app.api.v1.notification import router as notification_router
 from app.api.v1.password_reset import router as password_reset_router
 from app.api.v1.user_management import router as user_management_router
 from app.api.v1.websocket import router as websocket_router
+import app.models
+from app.models.speaker_command import SpeakerCommand
 from app.core.rate_limiter import limiter
 from app.db.database import Base, engine
 
 Base.metadata.create_all(bind=engine)
+SpeakerCommand.__table__.create(bind=engine, checkfirst=True)
 
 # Safe Schema Migration Check (Supports both PostgreSQL & SQLite)
 try:

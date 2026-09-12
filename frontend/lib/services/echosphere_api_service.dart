@@ -1223,6 +1223,8 @@ class EchosphereApiService {
     DateTime? scheduledTime,
     int? speakerNodeId,
     String? audioType,
+    String? title,
+    String? content,
   }) async {
     debugPrint('[API] enqueueAnnouncement: id=$announcementId, baseUrl=$_baseUrl');
     try {
@@ -1233,6 +1235,8 @@ class EchosphereApiService {
           if (scheduledTime != null) 'scheduled_time': scheduledTime.toIso8601String(),
           if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
           if (audioType != null) 'audio_type': audioType,
+          if (title != null && title.isNotEmpty) 'title': title,
+          if (content != null && content.isNotEmpty) 'content': content,
         },
       );
       debugPrint('[API] enqueueAnnouncement success: ${response.statusCode}');

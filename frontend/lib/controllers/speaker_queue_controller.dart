@@ -416,9 +416,20 @@ class SpeakerQueueController extends GetxController {
     final item = queueItems[activeIndex.value];
     final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
     if (!Get.testMode && targetId != null) {
-      _apiService.queueAction(targetId, 'play').catchError((e) {
-        debugPrint('[SpeakerQueue] queueAction play note: $e');
-        return <String, dynamic>{};
+      final queueId = item['id'] as int? ?? targetId;
+      _apiService.queueAction(queueId, 'play').catchError((e) {
+        debugPrint('[SpeakerQueue] queueAction play initial attempt note: $e, ensuring enqueued first...');
+        return _apiService.enqueueAnnouncement(
+          announcementId: targetId,
+          title: item['title'] as String?,
+          content: (item['description'] ?? item['content']) as String?,
+        ).then((res) {
+          final realQId = res['id'] ?? (res['details'] != null ? res['details']['queue_id'] : null) ?? queueId;
+          return _apiService.queueAction(realQId as int, 'play');
+        }).catchError((err) {
+          debugPrint('[SpeakerQueue] queueAction play fallback note: $err');
+          return <String, dynamic>{};
+        });
       });
     }
 

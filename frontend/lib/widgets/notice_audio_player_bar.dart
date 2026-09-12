@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 
@@ -321,6 +322,22 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                       summary: aiSummary,
                       directUrl: (currentGender == 'female' && currentMode == 'full') ? directAudioUrl : null,
                     );
+
+                    // Simultaneously trigger broadcast to active hardware speaker nodes!
+                    if (!Get.testMode && announcementId > 0) {
+                      EchosphereApiService().enqueueAnnouncement(
+                        announcementId: announcementId,
+                        title: title,
+                        content: content,
+                      ).then((res) {
+                        final qId = res['id'] ?? (res['details'] != null ? res['details']['queue_id'] : null);
+                        if (qId != null) {
+                          EchosphereApiService().queueAction(qId as int, 'play').catchError((_) => <String, dynamic>{});
+                        }
+                      }).catchError((_) {
+                        EchosphereApiService().queueAction(announcementId, 'play').catchError((_) => <String, dynamic>{});
+                      });
+                    }
                   },
                   borderRadius: BorderRadius.circular(24),
                   child: Container(
