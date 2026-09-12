@@ -1,5 +1,4 @@
 # Environment & IDE
-.env
 .vscode/
 .idea/
 *.swp
