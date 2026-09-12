@@ -96,6 +96,10 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
             session.add(cmd_record)
             session.commit()
         except Exception as ce:
+            try:
+                session.rollback()
+            except Exception:
+                pass
             logger.debug(f"SpeakerCommand DB persist note: {ce}")
         finally:
             if close_session:
@@ -171,6 +175,10 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     except Exception as pe:
                         logger.debug(f"Parse payload_json note: {pe}")
         except Exception as dbe:
+            try:
+                db.rollback()
+            except Exception:
+                pass
             logger.debug(f"SpeakerCommand DB query note: {dbe}")
 
     # 4. Database-backed resilient fallback: check active Playing items in SpeakerQueue

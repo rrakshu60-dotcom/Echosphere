@@ -98,4 +98,7 @@ class EnqueueAnnouncementRequest(BaseModel):
     announcement_id: int
     scheduled_time: Optional[datetime] = None
     speaker_node_id: Optional[int] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+    description: Optional[str] = None
 

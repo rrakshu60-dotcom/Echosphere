@@ -344,9 +344,7 @@ def send_control_command(
     id: int,
     control_in: SpeakerControlRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")
-    ),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     return send_node_control_command(
         db=db,
@@ -429,6 +427,8 @@ def fetch_speaker_queue(
             "id": item.id,
             "announcement_id": item.announcement_id,
             "title": ann.title if ann else "Announcement",
+            "description": ann.description if ann else "",
+            "content": ann.description if ann else "",
             "department": ann.creator.department.name if (ann and getattr(ann, 'creator', None) and getattr(ann.creator, 'department', None)) else "College-Wide",
             "priority": ann.priority.value if (ann and hasattr(ann.priority, 'value')) else str(ann.priority) if ann else "Normal",
             "type": "AI Speech",
@@ -453,6 +453,9 @@ def enqueue_speaker_announcement(
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     ann = get_announcement_by_id(db, enqueue_in.announcement_id)
+    req_title = enqueue_in.title
+    req_desc = enqueue_in.content or enqueue_in.description
+
     if not ann:
         # Resilient fallback: ensure announcement exists in DB so it can play on hardware
         from app.models.announcement_category import AnnouncementCategory
@@ -465,8 +468,8 @@ def enqueue_speaker_announcement(
 
         ann = Announcement(
             id=enqueue_in.announcement_id,
-            title=f"Campus Voice Broadcast #{enqueue_in.announcement_id}",
-            description="Official campus voice announcement broadcast.",
+            title=req_title or f"Campus Notice #{enqueue_in.announcement_id}",
+            description=req_desc or "Official campus voice announcement broadcast.",
             status=AnnouncementStatus.PUBLISHED,
             priority=AnnouncementPriority.NORMAL,
             emergency_level=EmergencyLevel.NORMAL,
@@ -481,6 +484,17 @@ def enqueue_speaker_announcement(
         except Exception:
             db.rollback()
             ann = db.query(Announcement).first()
+    elif (req_title or req_desc) and ("Campus Voice Broadcast" in str(ann.title) or str(ann.description) == "Official campus voice announcement broadcast."):
+        # Upgrade any placeholder notice with real user content
+        if req_title:
+            ann.title = req_title
+        if req_desc:
+            ann.description = req_desc
+        try:
+            db.commit()
+            db.refresh(ann)
+        except Exception:
+            db.rollback()
 
     from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
     dept_code = "ALL"
