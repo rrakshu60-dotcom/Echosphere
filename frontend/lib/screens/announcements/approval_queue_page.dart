@@ -1,7 +1,7 @@
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
@@ -89,7 +89,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: approveColor,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             onPressed: () async {
               Navigator.pop(ctx);
@@ -108,12 +108,13 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
 
   void _showRejectModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController();
-    const rejectColor = EchoSpherePalette.destructive;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rejectColor = isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Row(
           children: [
             Container(
@@ -122,7 +123,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                 color: rejectColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.cancel_rounded, color: rejectColor, size: 24),
+              child: Icon(Icons.cancel_rounded, color: rejectColor, size: 24),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -166,7 +167,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: rejectColor,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             onPressed: () async {
               final remarks = remarksController.text.trim();
@@ -217,12 +218,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                   Row(
                     children: [
                       if (canPop) ...[
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                          padding: EdgeInsets.zero,
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
+                        const EchoSphereBackButton(fallbackRoute: '/home'),
                         const SizedBox(width: 4),
                       ],
                       Icon(
@@ -321,8 +317,9 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                 child: ChoiceChip(
                   label: Text(status, style: TextStyle(fontSize: 12, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
                   selected: isSel,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   onSelected: (val) => setState(() => selectedFilter = status),
-                  selectedColor: theme.colorScheme.primary.withOpacity(0.2),
+                  selectedColor: theme.colorScheme.primary.withOpacity(0.18),
                 ),
               );
             }).toList(),
@@ -504,11 +501,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                               EchoSphereButton(
                                 height: 32,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => AnnouncementDetailPage(announcement: item),
-                                  ),
-                                ),
+                                onTap: () => openAnnouncementDetail(context, item),
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -595,6 +588,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
           itemCount: pending.length,
           itemBuilder: (context, index) {
             final item = pending[index];
+            final isDark = theme.brightness == Brightness.dark;
             return Padding(
               padding: const EdgeInsets.only(bottom: 12.0),
               child: EchoSphereContainer(
@@ -611,10 +605,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                         EchoSphereBadge.secondary(label: item.category),
                         EchoSphereBadge.outline(label: item.department),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.secondary.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -633,10 +627,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.secondary,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: theme.colorScheme.outline),
                           ),
                           child: Text(
@@ -717,42 +711,41 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                       children: [
                         EchoSphereButton(
                           height: 36,
+                          radius: 16,
                           color: theme.colorScheme.primary.withOpacity(0.14),
                           border: BorderSide(color: theme.colorScheme.primary, width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                           onTap: () => _showApproveModal(context, item, controller),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.primary),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 6),
                               Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                             ],
                           ),
                         ),
                         EchoSphereButton(
                           height: 36,
-                          color: theme.colorScheme.secondary,
-                          border: BorderSide(color: theme.colorScheme.outline, width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          radius: 16,
+                          color: isDark ? EchoSpherePalette.darkDestructive.withOpacity(0.12) : EchoSpherePalette.lightDestructive.withOpacity(0.08),
+                          border: BorderSide(color: (isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive).withOpacity(0.35), width: 1.2),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                           onTap: () => _showRejectModal(context, item, controller),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.cancel_rounded, size: 16, color: theme.colorScheme.primary),
-                              const SizedBox(width: 4),
-                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                              Icon(Icons.cancel_rounded, size: 16, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive),
+                              const SizedBox(width: 6),
+                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive)),
                             ],
                           ),
                         ),
                         EchoSphereButton(
                           height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => AnnouncementDetailPage(announcement: item),
-                            ),
-                          ),
+                          radius: 16,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          onTap: () => openAnnouncementDetail(context, item),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

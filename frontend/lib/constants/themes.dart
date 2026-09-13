@@ -40,10 +40,16 @@ class EchoSpherePalette {
   static const Color darkAccent = Color(0xFF28223D);
   static const Color darkAccentForeground = Color(0xFFA78BFA);
 
-  // ─── DESTRUCTIVE TOKENS ───────────────────────────────────────────────────
-  // oklch(0.6356 0.2082 25.3782) -> #EF4343 (Tweakcn Exact Red)
-  static const Color destructive = Color(0xFFEF4343);
-  static const Color destructiveForeground = Color(0xFFF8FAFC);
+  // ─── HARMONIOUS ACCENT / NOTICE TOKENS (No Harsh Red) ──────────────────────
+  // Elegant muted rose/plum tones that seamlessly blend with indigo and purple:
+  // Light mode: Sophisticated muted rose-wine #8E3B56 (gentle, high legibility)
+  // Dark mode: Soft eye-friendly dusty rose #D47A9A (zero eye strain, warm glow)
+  static const Color lightDestructive = Color(0xFF8E3B56);
+  static const Color darkDestructive = Color(0xFFD47A9A);
+  static const Color destructive = lightDestructive;
+  static const Color destructiveForeground = Color(0xFFFFFFFF);
+  static const Color lightErrorContainer = Color(0xFFF8EBF0);
+  static const Color darkErrorContainer = Color(0xFF331B26);
 
   // ─── SURFACES & NEUTRALS ──────────────────────────────────────────────────
   // Light Mode Surfaces - Serene, soft off-white & crisp high-legibility slate
@@ -129,7 +135,9 @@ class EchoSpherePalette {
   static Color getPriorityBgColor(String priority, {required bool isDark}) {
     final p = priority.toUpperCase();
     if (p == 'EMERGENCY') {
-      return destructive.withOpacity(0.12);
+      return isDark
+          ? darkErrorContainer.withOpacity(0.55)
+          : lightErrorContainer;
     }
     return isDark ? darkSecondary : lightSecondary;
   }
@@ -138,7 +146,9 @@ class EchoSpherePalette {
   static Color getPriorityBorderColor(String priority, {required bool isDark}) {
     final p = priority.toUpperCase();
     if (p == 'EMERGENCY') {
-      return destructive.withOpacity(0.28);
+      return isDark
+          ? darkDestructive.withOpacity(0.35)
+          : lightDestructive.withOpacity(0.28);
     }
     return isDark ? darkBorder : lightBorder;
   }
@@ -147,7 +157,7 @@ class EchoSpherePalette {
   static Color getPriorityColor(String priority, {bool isDark = false}) {
     final p = priority.toUpperCase();
     if (p == 'EMERGENCY') {
-      return destructive;
+      return isDark ? darkDestructive : lightDestructive;
     }
     return isDark ? darkSecondaryForeground : lightSecondaryForeground;
   }
@@ -169,10 +179,10 @@ ThemeData lightMode = ThemeData(
     onSecondary: EchoSpherePalette.lightSecondaryForeground,
     secondaryContainer: EchoSpherePalette.lightSecondary,
     onSecondaryContainer: EchoSpherePalette.lightSecondaryForeground,
-    error: EchoSpherePalette.destructive,
+    error: EchoSpherePalette.lightDestructive,
     onError: Colors.white,
-    errorContainer: Color(0xFFFEE2E2),
-    onErrorContainer: EchoSpherePalette.destructive,
+    errorContainer: EchoSpherePalette.lightErrorContainer,
+    onErrorContainer: EchoSpherePalette.lightDestructive,
     surface: EchoSpherePalette.lightScaffold,
     onSurface: EchoSpherePalette.lightTextPrimary,
     surfaceContainer: EchoSpherePalette.lightSurface,
@@ -293,10 +303,10 @@ ThemeData darkMode = ThemeData(
     onSecondary: EchoSpherePalette.darkSecondaryForeground,
     secondaryContainer: EchoSpherePalette.darkSecondary,
     onSecondaryContainer: EchoSpherePalette.darkSecondaryForeground,
-    error: EchoSpherePalette.destructive,
+    error: EchoSpherePalette.darkDestructive,
     onError: Colors.white,
-    errorContainer: Color(0xFF450A0A),
-    onErrorContainer: EchoSpherePalette.destructive,
+    errorContainer: EchoSpherePalette.darkErrorContainer,
+    onErrorContainer: EchoSpherePalette.darkDestructive,
     surface: EchoSpherePalette.darkScaffold,
     onSurface: EchoSpherePalette.darkTextPrimary,
     surfaceContainer: EchoSpherePalette.darkSurface,

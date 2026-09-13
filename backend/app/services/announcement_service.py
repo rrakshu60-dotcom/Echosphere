@@ -810,14 +810,10 @@ def get_approval_queue_service(
         selectinload(Announcement.deliveries),
     )
 
-    pending_statuses = (
+    pending_statuses = [
         AnnouncementStatus.PENDING_APPROVAL,
         AnnouncementStatus.DRAFT,
-        "Pending Approval",
-        "PENDING_APPROVAL",
-        "SUBMITTED",
-        "DRAFT",
-    )
+    ]
 
     if user_role == "Teacher":
         # Teachers track all notices they have authored (submitted, draft, approved, rejected)
@@ -829,24 +825,34 @@ def get_approval_queue_service(
 
     if user_role == "HoD":
         # HoD reviews pending notices from teachers in their department
-        # PLUS any notices the HoD created that require Principal review
+        # PLUS any pending notices the HoD created that require Principal review
         hod_dept_id = current_user.department_id
 
         dept_pending = (
-            base_query.join(User, Announcement.created_by == User.id)
+            db.query(Announcement)
+            .join(User, Announcement.created_by == User.id)
             .filter(
                 Announcement.status.in_(pending_statuses),
                 User.department_id == hod_dept_id,
             )
+            .options(
+                joinedload(Announcement.creator),
+                joinedload(Announcement.category),
+                selectinload(Announcement.approvals),
+                selectinload(Announcement.deliveries),
+            )
             .all()
         )
-        own_notices = (
-            base_query.filter(Announcement.created_by == current_user.id).all()
+        own_pending = (
+            base_query.filter(
+                Announcement.created_by == current_user.id,
+                Announcement.status.in_(pending_statuses),
+            ).all()
         )
 
         seen = set()
         combined = []
-        for a in (dept_pending + own_notices):
+        for a in (dept_pending + own_pending):
             if a.id not in seen:
                 seen.add(a.id)
                 combined.append(a)

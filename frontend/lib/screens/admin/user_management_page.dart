@@ -10,6 +10,7 @@ import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/admin/announcement_management_page.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -575,7 +576,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             itemBuilder: (context, index) {
                               final log = logs[index];
                               final isSuccess = log.status.contains('SUCCESS');
-                              final statusColor = isSuccess ? Theme.of(context).colorScheme.primary : EchoSpherePalette.destructive;
+                              final statusColor = isSuccess
+                                  ? Theme.of(context).colorScheme.primary
+                                  : (Theme.of(context).brightness == Brightness.dark
+                                      ? EchoSpherePalette.darkDestructive
+                                      : EchoSpherePalette.lightDestructive);
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
@@ -688,9 +693,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final user = authController.currentUser.value;
     final canManage = user != null && user.role != 'Student';
     final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal' || user.role == 'HoD');
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
-    return Scaffold(
+    return SubPagePopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
       body: SafeArea(
         child: Column(
           children: [
@@ -702,15 +708,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 children: [
                   Row(
                     children: [
-                      if (canPop) ...[
-                        IconButton(
-                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
+                      const EchoSphereBackButton(fallbackRoute: '/home'),
+                      const SizedBox(width: 4),
                       Icon(Icons.manage_accounts_rounded, size: 22, color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1079,6 +1078,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }

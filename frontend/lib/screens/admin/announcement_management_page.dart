@@ -1,7 +1,6 @@
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
@@ -9,6 +8,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -33,9 +33,10 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
-    return Scaffold(
+    return SubPagePopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
       body: SafeArea(
         child: Column(
           children: [
@@ -44,13 +45,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
               child: Row(
                 children: [
-                  if (canPop) ...[
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
+                  const EchoSphereBackButton(fallbackRoute: '/home'),
+                  const SizedBox(width: 4),
                   const Icon(Icons.auto_fix_high_rounded, size: 22, color: EchoSpherePalette.lightPrimary),
                   const SizedBox(width: 8),
                   const Expanded(
@@ -169,11 +165,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       child: InkWell(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AnnouncementDetailPage(announcement: item),
-                          ),
-                        ),
+                        onTap: () => openAnnouncementDetail(context, item),
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.all(14.0),
@@ -261,6 +253,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
           ],
         ),
       ),
+    ),
     );
   }
 

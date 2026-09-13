@@ -207,34 +207,43 @@ class SpeakerQueueController extends GetxController {
     }
 
     try {
-      // 1. Fetch remote hardware nodes
+      // 1. Fetch remote hardware nodes and queue concurrently in parallel
+      List<dynamic> remoteNodes = [];
+      List<Map<String, dynamic>> remoteActiveItems = [];
       try {
-        final remoteNodes = await _apiService.getSpeakerNodes();
+        final results = await Future.wait([
+          _apiService.getSpeakerNodes().catchError((e) {
+            debugPrint('Remote speaker nodes fetch note: $e');
+            return <dynamic>[];
+          }),
+          _apiService.getSpeakerQueue().catchError((e) {
+            debugPrint('Remote speaker queue fetch note: $e');
+            return <dynamic>[];
+          }),
+        ]);
+        remoteNodes = results[0];
+        final rawQueue = results[1];
+
         final fetchedNodes = remoteNodes
             .whereType<Map>()
             .map((n) => Map<String, dynamic>.from(n))
             .toList();
         if (fetchedNodes.isNotEmpty) {
           speakerNodes.assignAll(fetchedNodes);
-        }
-      } catch (e) {
-        debugPrint('Remote speaker nodes fetch note: $e');
-        if (speakerNodes.isEmpty) {
+        } else if (speakerNodes.isEmpty) {
           speakerNodes.assignAll(defaultSpeakerNodes);
         }
-      }
 
-      // 2. Fetch remote queue items
-      List<Map<String, dynamic>> remoteActiveItems = [];
-      try {
-        final remoteQueue = await _apiService.getSpeakerQueue();
-        remoteActiveItems = remoteQueue
+        remoteActiveItems = rawQueue
             .whereType<Map>()
             .map((q) => Map<String, dynamic>.from(q))
             .where((q) => q['status'] != 'Completed' && q['status'] != 'Cancelled')
             .toList();
       } catch (e) {
-        debugPrint('Remote speaker queue fetch note: $e');
+        debugPrint('Parallel speaker refresh note: $e');
+        if (speakerNodes.isEmpty) {
+          speakerNodes.assignAll(defaultSpeakerNodes);
+        }
       }
 
       // 3. Collect local notices from AnnouncementController

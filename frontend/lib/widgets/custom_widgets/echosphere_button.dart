@@ -55,9 +55,9 @@ class EchoSphereButton extends StatelessWidget {
   }
 
   Widget _buildButton(BuildContext context) {
-    final BorderRadiusGeometry? effectiveRadius = radius != null
+    final BorderRadiusGeometry effectiveRadius = radius != null
         ? BorderRadius.circular(radius!.multiplyRadius())
-        : borderRadius;
+        : (borderRadius ?? BorderRadius.circular(16));
 
     final BoxDecoration effectiveDecoration = decoration ??
         BoxDecoration(
@@ -80,7 +80,7 @@ class EchoSphereButton extends StatelessWidget {
                   : null,
         );
     return ClipRRect(
-      borderRadius: effectiveRadius ?? BorderRadius.circular(0),
+      borderRadius: effectiveRadius,
       clipBehavior: clipBehavior,
       child: ElevatedButtonTheme(
         data: ElevatedButtonThemeData(
@@ -93,7 +93,7 @@ class EchoSphereButton extends StatelessWidget {
                     : null,
                 backgroundColor: color,
                 shape: RoundedRectangleBorder(
-                    borderRadius: effectiveRadius ?? BorderRadius.circular(0),
+                    borderRadius: effectiveRadius,
                     side: border ??
                         const BorderSide(color: Colors.transparent)))),
         child: ElevatedButton(

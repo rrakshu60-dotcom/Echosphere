@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
@@ -540,6 +541,13 @@ class AuthController extends GetxController {
     rememberMe.value = false;
     isLoading.value = false;
     EchosphereApiService().setAuthToken(null);
+    // Clear persisted approval/rejection caches so stale local decisions
+    // don't mask server truth on next login
+    try {
+      if (Get.isRegistered<AnnouncementController>()) {
+        await Get.find<AnnouncementController>().clearPersistedApprovalCache();
+      }
+    } catch (_) {}
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('auth_session');

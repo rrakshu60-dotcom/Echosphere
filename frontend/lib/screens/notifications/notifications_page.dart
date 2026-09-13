@@ -1,4 +1,5 @@
 import 'package:anymex/controllers/notification_controller.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
@@ -27,6 +28,10 @@ class NotificationsPage extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  if (ModalRoute.of(context)?.canPop ?? false) ...[
+                    const EchoSphereBackButton(fallbackRoute: '/home'),
+                    const SizedBox(width: 4),
+                  ],
                   Icon(Icons.notifications_active_rounded, size: 22, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
                   Expanded(
