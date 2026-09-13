@@ -125,9 +125,9 @@ class EchoSphereBadge extends StatelessWidget {
 
     switch (variant) {
       case BadgeVariant.destructive:
-        bg = EchoSpherePalette.destructive.withOpacity(0.12);
-        fg = EchoSpherePalette.destructive;
-        border = EchoSpherePalette.destructive.withOpacity(0.28);
+        bg = EchoSpherePalette.destructive.withOpacity(isDark ? 0.16 : 0.08);
+        fg = isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626);
+        border = EchoSpherePalette.destructive.withOpacity(isDark ? 0.28 : 0.20);
         break;
       case BadgeVariant.outline:
         bg = Colors.transparent;
@@ -216,13 +216,25 @@ class EchoSphereChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final selectedBg = isDark ? EchoSpherePalette.darkSecondary : EchoSpherePalette.lightSecondary;
-    final selectedFg = isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground;
-    final selectedBorder = isDark ? EchoSpherePalette.darkPrimary : EchoSpherePalette.lightPrimary;
+    final selectedBg = isDark
+        ? EchoSpherePalette.darkSecondary
+        : const Color(0xFFEEF2FF);
+    final selectedFg = isDark
+        ? EchoSpherePalette.darkSecondaryForeground
+        : const Color(0xFF4338CA);
+    final selectedBorder = isDark
+        ? EchoSpherePalette.darkPrimary
+        : const Color(0xFF6366F1);
 
-    final unselectedBg = isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface;
-    final unselectedFg = isDark ? EchoSpherePalette.darkTextSecondary : EchoSpherePalette.lightTextSecondary;
-    final unselectedBorder = isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder;
+    final unselectedBg = isDark
+        ? EchoSpherePalette.darkSurface
+        : EchoSpherePalette.lightSurface;
+    final unselectedFg = isDark
+        ? EchoSpherePalette.darkTextSecondary
+        : EchoSpherePalette.lightTextSecondary;
+    final unselectedBorder = isDark
+        ? EchoSpherePalette.darkBorder
+        : EchoSpherePalette.lightBorder;
 
     return InkWell(
       onTap: () => onSelected(!isSelected),
@@ -235,7 +247,7 @@ class EchoSphereChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? selectedBorder : unselectedBorder,
-            width: isSelected ? 1.4 : 1.0,
+            width: isSelected ? 1.2 : 1.0,
           ),
         ),
         child: Row(
@@ -294,8 +306,8 @@ class EchoSphereIconChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final selectedBg = isDark ? EchoSpherePalette.darkSecondary : EchoSpherePalette.lightSecondary;
-    final selectedBorder = isDark ? EchoSpherePalette.darkPrimary : EchoSpherePalette.lightPrimary;
+    final selectedBg = isDark ? EchoSpherePalette.darkSecondary : const Color(0xFFEEF2FF);
+    final selectedBorder = isDark ? EchoSpherePalette.darkPrimary : const Color(0xFF6366F1);
 
     final unselectedBg = isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface;
     final unselectedBorder = isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder;
@@ -311,7 +323,7 @@ class EchoSphereIconChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? selectedBorder : unselectedBorder,
-            width: isSelected ? 1.4 : 1.0,
+            width: isSelected ? 1.2 : 1.0,
           ),
         ),
         child: icon,

@@ -6,35 +6,35 @@ import 'package:google_fonts/google_fonts.dart';
 /// Official Shadcn Violet Design System (OKLCH color space, 1rem/16px radius, slate/obsidian neutrals)
 class EchoSpherePalette {
   // ─── SHADCN VIOLET BRAND CORE ─────────────────────────────────────────────
-  // Light Mode: oklch(0.4865 0.2423 291.8661) -> #6B26D9 (Royal Violet)
-  static const Color lightPrimary = Color(0xFF6B26D9);
-  static const Color lightPrimaryForeground = Color(0xFFF8FAFC);
+  // Light Mode: Refined modern violet-indigo (soft on eyes, premium, high contrast)
+  static const Color lightPrimary = Color(0xFF5B50D6);
+  static const Color lightPrimaryForeground = Color(0xFFFFFFFF);
 
   // Dark Mode: Soft, elegant modern violet (easy on eyes)
   static const Color darkPrimary = Color(0xFF8B5CF6);
   static const Color darkPrimaryForeground = Color(0xFFFFFFFF);
 
   // ─── SECONDARY & NEUTRAL BADGE TOKENS ─────────────────────────────────────
-  // Light: oklch(0.9486 0.0085 303.5068) & oklch(0.3410 0.1625 292.9477)
-  static const Color lightSecondary = Color(0xFFEFEDF3);
-  static const Color lightSecondaryForeground = Color(0xFF401782);
+  // Light: Clean calm slate neutrals with high-contrast text
+  static const Color lightSecondary = Color(0xFFF1F5F9);
+  static const Color lightSecondaryForeground = Color(0xFF334155);
 
   // Dark: Soft harmonious slate-violet
   static const Color darkSecondary = Color(0xFF262235);
   static const Color darkSecondaryForeground = Color(0xFFD6C8F5);
 
   // ─── MUTED & ACCENT TOKENS ────────────────────────────────────────────────
-  // Light Muted: oklch(0.9679 0.0027 264.5424) -> #F3F4F6
-  static const Color lightMuted = Color(0xFFF3F4F6);
-  static const Color lightMutedForeground = Color(0xFF6B7280);
+  // Light Muted: Calm slate surface & legible text
+  static const Color lightMuted = Color(0xFFF8FAFC);
+  static const Color lightMutedForeground = Color(0xFF64748B);
 
   // Dark Muted: Soft slate-charcoal
   static const Color darkMuted = Color(0xFF222631);
   static const Color darkMutedForeground = Color(0xFFA1A8B8);
 
-  // Light Accent: oklch(0.9546 0.0227 303.2883) -> #F3EDFD
-  static const Color lightAccent = Color(0xFFF3EDFD);
-  static const Color lightAccentForeground = Color(0xFF6B26D9);
+  // Light Accent: Gentle violet-tinted wash
+  static const Color lightAccent = Color(0xFFF5F3FF);
+  static const Color lightAccentForeground = Color(0xFF5B50D6);
 
   // Dark Accent
   static const Color darkAccent = Color(0xFF28223D);
@@ -46,14 +46,14 @@ class EchoSpherePalette {
   static const Color destructiveForeground = Color(0xFFF8FAFC);
 
   // ─── SURFACES & NEUTRALS ──────────────────────────────────────────────────
-  // Light Mode Surfaces
-  static const Color lightScaffold = Color(0xFFF8FAFC); // oklch(0.9838 0.0035 247.8583)
-  static const Color lightSurface = Color(0xFFFFFFFF);  // oklch(1.0000 0 0) - Pure white card
-  static const Color lightSurfaceContainer = Color(0xFFF3F4F6); // Muted container
-  static const Color lightBorder = Color(0xFFE5E7EB);   // oklch(0.9278 0.0058 264.5314)
-  static const Color lightTextPrimary = Color(0xFF030711); // oklch(0.1284 0.0267 261.5937)
-  static const Color lightTextSecondary = Color(0xFF4B5563);
-  static const Color lightTextMuted = Color(0xFF6B7280);
+  // Light Mode Surfaces - Serene, soft off-white & crisp high-legibility slate
+  static const Color lightScaffold = Color(0xFFF8F9FA); // Gentle eye-resting canvas
+  static const Color lightSurface = Color(0xFFFFFFFF);  // Pure crisp white card
+  static const Color lightSurfaceContainer = Color(0xFFF1F5F9); // Clean slate container
+  static const Color lightBorder = Color(0xFFE2E8F0);   // Subtle, delicate slate border
+  static const Color lightTextPrimary = Color(0xFF0F172A); // Slate 900 - supreme readability
+  static const Color lightTextSecondary = Color(0xFF475569); // Slate 600 - minimum 7:1 contrast
+  static const Color lightTextMuted = Color(0xFF64748B); // Slate 500 - minimum 4.6:1 contrast
 
   // Dark Mode Surfaces - Softer charcoal & slate (comfortable and modern, no eye-strain)
   static const Color darkScaffold = Color(0xFF111318); // Soft deep slate-charcoal
@@ -65,11 +65,11 @@ class EchoSpherePalette {
   static const Color darkTextMuted = Color(0xFF737A8C);
 
   // ─── CHART TOKENS ─────────────────────────────────────────────────────────
-  static const Color chart1 = Color(0xFF6B26D9); // oklch(0.4865 0.2423 291.8661)
-  static const Color chart2 = Color(0xFF0CB8DA); // oklch(0.7216 0.1282 217.8676)
-  static const Color chart3 = Color(0xFF29A366); // oklch(0.6356 0.1398 156.1492)
-  static const Color chart4 = Color(0xFFAF57DB); // oklch(0.6192 0.2037 312.7283)
-  static const Color chart5 = Color(0xFFEB4799); // oklch(0.6532 0.2114 353.9392)
+  static const Color chart1 = Color(0xFF5B50D6);
+  static const Color chart2 = Color(0xFF0CB8DA);
+  static const Color chart3 = Color(0xFF29A366);
+  static const Color chart4 = Color(0xFFAF57DB);
+  static const Color chart5 = Color(0xFFEB4799);
 
   // ─── RADIUS TOKENS (Tweakcn Exact Scale) ──────────────────────────────────
   static const double radius = 16.0;      // 1rem (Default --radius)
@@ -78,13 +78,13 @@ class EchoSpherePalette {
   static const double radiusLg = 16.0;    // 1rem
   static const double radiusXl = 20.0;    // calc(1rem + 4px)
 
-  // ─── SHADOW TOKENS (Tweakcn Exact Multi-Layer Colored Shadows) ────────────
-  // Light: hsl(263 70% 50% / 0.08)
-  static const Color lightShadowColor = Color(0xFF6E26E5);
-  // Dark: hsl(0 0% 0% / 0.60)
+  // ─── SHADOW TOKENS ────────────────────────────────────────────────────────
+  // Light: Soft natural slate drop shadow (no harsh purple halos)
+  static const Color lightShadowColor = Color(0x0A0F172A);
+  // Dark: Deep charcoal shadow
   static const Color darkShadowColor = Color(0xFF000000);
 
-  /// Generates the signature tweakcn multi-layer elevation shadow
+  /// Generates the signature multi-layer elevation shadow
   static List<BoxShadow> getElevationShadow({required bool isDark, double level = 1}) {
     if (isDark) {
       return [
@@ -104,16 +104,16 @@ class EchoSpherePalette {
     } else {
       return [
         BoxShadow(
-          color: const Color(0xFF6B26D9).withOpacity(0.07),
+          color: const Color(0xFF0F172A).withOpacity(0.04),
           offset: const Offset(0, 8),
-          blurRadius: 28,
-          spreadRadius: 0,
+          blurRadius: 24,
+          spreadRadius: -4,
         ),
         BoxShadow(
-          color: const Color(0xFF6B26D9).withOpacity(0.05),
+          color: const Color(0xFF0F172A).withOpacity(0.02),
           offset: const Offset(0, 1),
-          blurRadius: 2,
-          spreadRadius: -1,
+          blurRadius: 3,
+          spreadRadius: 0,
         ),
       ];
     }

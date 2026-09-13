@@ -339,8 +339,12 @@ class _EchosphereAiState extends State<EchosphereAi> {
           EchoSphereContainer(
             padding: const EdgeInsets.all(16.0),
             color: isUser
-                ? theme.colorScheme.primary.withOpacity(0.85)
-                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                ? (theme.brightness == Brightness.dark
+                    ? theme.colorScheme.primary.withOpacity(0.85)
+                    : theme.colorScheme.primary)
+                : (theme.brightness == Brightness.dark
+                    ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.4)
+                    : const Color(0xFFF8FAFC)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -366,24 +370,24 @@ class _EchosphereAiState extends State<EchosphereAi> {
                       pPadding: const EdgeInsets.only(bottom: 8.0),
                       strong: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
                       ),
                       h1: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
                       ),
                       h1Padding: const EdgeInsets.only(top: 8.0, bottom: 6.0),
                       h2: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
                       ),
                       h2Padding: const EdgeInsets.only(top: 8.0, bottom: 6.0),
                       h3: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurface,
                       ),
                       h3Padding: const EdgeInsets.only(top: 6.0, bottom: 4.0),
                       listBullet: TextStyle(
@@ -396,7 +400,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                       horizontalRuleDecoration: BoxDecoration(
                         border: Border(
                           top: BorderSide(
-                            color: theme.colorScheme.primary.withOpacity(0.25),
+                            color: theme.brightness == Brightness.dark
+                                ? theme.colorScheme.outline
+                                : const Color(0xFFE2E8F0),
                             width: 1.0,
                           ),
                         ),
@@ -421,7 +427,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
+                        color: theme.brightness == Brightness.dark
+                            ? theme.colorScheme.onSurface
+                            : const Color(0xFF334155),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -432,9 +440,15 @@ class _EchosphereAiState extends State<EchosphereAi> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                              color: theme.brightness == Brightness.dark
+                                  ? theme.colorScheme.surfaceContainer
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                              border: Border.all(
+                                color: theme.brightness == Brightness.dark
+                                    ? theme.colorScheme.outline
+                                    : const Color(0xFFE2E8F0),
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,

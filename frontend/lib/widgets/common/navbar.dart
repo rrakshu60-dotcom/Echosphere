@@ -323,8 +323,10 @@ class _ResponsiveNavBarState extends State<ResponsiveNavBar>
                                   key: ValueKey(isSelected),
                                   color: isSelected
                                       ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface
-                                          .opaque(0.5, iReallyMeanIt: true),
+                                      : (theme.brightness == Brightness.dark
+                                          ? theme.colorScheme.onSurface
+                                              .opaque(0.55, iReallyMeanIt: true)
+                                          : const Color(0xFF64748B)),
                                   size: item.iconSize ?? 22,
                                 ),
                               ),
@@ -356,6 +358,11 @@ class _MobileNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = theme.brightness == Brightness.dark;
+    final unselectedColor = isDark
+        ? theme.colorScheme.onSurface.opaque(0.55, iReallyMeanIt: true)
+        : const Color(0xFF64748B);
+
     return SizedBox(
       height: 58,
       child: Column(
@@ -373,10 +380,7 @@ class _MobileNavItem extends StatelessWidget {
                   child: Icon(
                     isSelected ? item.selectedIcon : item.unselectedIcon,
                     key: ValueKey(isSelected),
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface
-                            .opaque(0.45, iReallyMeanIt: true),
+                    color: isSelected ? theme.colorScheme.primary : unselectedColor,
                     size: item.iconSize ?? 22,
                   ),
                 ),
@@ -386,11 +390,8 @@ class _MobileNavItem extends StatelessWidget {
             duration: const Duration(milliseconds: 250),
             style: TextStyle(
               fontSize: isSelected ? 10.5 : 10,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface
-                      .opaque(0.45, iReallyMeanIt: true),
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: isSelected ? theme.colorScheme.primary : unselectedColor,
               height: 1.2,
             ),
             child: FittedBox(
@@ -401,10 +402,7 @@ class _MobileNavItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 size: isSelected ? 10.5 : 10,
                 variant: isSelected ? TextVariant.semiBold : TextVariant.regular,
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface
-                        .opaque(0.45, iReallyMeanIt: true),
+                color: isSelected ? theme.colorScheme.primary : unselectedColor,
               ),
             ),
           ),

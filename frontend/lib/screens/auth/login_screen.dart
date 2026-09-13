@@ -206,6 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isDesktop = MediaQuery.of(context).size.width > 700;
 
     return Scaffold(
@@ -217,11 +218,17 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              theme.colorScheme.surface,
-              theme.colorScheme.primary.withOpacity(0.15),
-              theme.colorScheme.surface,
-            ],
+            colors: isDark
+                ? [
+                    theme.colorScheme.surface,
+                    theme.colorScheme.primary.withOpacity(0.08),
+                    theme.colorScheme.surface,
+                  ]
+                : const [
+                    Color(0xFFF8F9FA),
+                    Color(0xFFF1F5F9),
+                    Color(0xFFF8F9FA),
+                  ],
           ),
         ),
         child: Center(
@@ -232,18 +239,20 @@ class _LoginScreenState extends State<LoginScreen> {
               width: isDesktop ? 440 : double.infinity,
               padding: const EdgeInsets.all(28.0),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface.withOpacity(0.95),
+                color: isDark ? theme.colorScheme.surface.withOpacity(0.95) : Colors.white,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: theme.colorScheme.primary.withOpacity(0.25),
-                  width: 1.5,
+                  color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
+                  width: 1.0,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withOpacity(0.08),
-                    blurRadius: 40,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 4),
+                    color: isDark
+                        ? Colors.black.withOpacity(0.5)
+                        : const Color(0xFF0F172A).withOpacity(0.04),
+                    blurRadius: 32,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
@@ -268,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      color: isDark ? theme.colorScheme.onSurface.withOpacity(0.7) : const Color(0xFF475569),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -281,7 +290,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.onSurface.withOpacity(0.9),
+                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.9) : const Color(0xFF1E293B),
                       ),
                     ),
                   ),
@@ -291,13 +300,35 @@ class _LoginScreenState extends State<LoginScreen> {
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       hintText: 'e.g. 1DB23CI079, CAdmin, or ESDev01',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.5) : const Color(0xFF64748B),
+                      ),
                       prefixIcon: const Icon(Icons.person_outline, size: 20),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest
-                          .withOpacity(0.3),
+                      fillColor: isDark
+                          ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.3)
+                          : const Color(0xFFF8FAFC),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: isDark ? theme.colorScheme.outline : const Color(0xFFCBD5E1),
+                          width: 1.0,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isDark ? theme.colorScheme.outline : const Color(0xFFCBD5E1),
+                          width: 1.0,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: theme.colorScheme.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                   ),
@@ -311,7 +342,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.onSurface.withOpacity(0.9),
+                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.9) : const Color(0xFF1E293B),
                       ),
                     ),
                   ),
@@ -323,6 +354,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     onSubmitted: (_) => _handleLogin(),
                     decoration: InputDecoration(
                       hintText: 'Enter password',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.5) : const Color(0xFF64748B),
+                      ),
                       prefixIcon: const Icon(Icons.lock_outline, size: 20),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -332,11 +367,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () => setState(() => isObscure = !isObscure),
                       ),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest
-                          .withOpacity(0.3),
+                      fillColor: isDark
+                          ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.3)
+                          : const Color(0xFFF8FAFC),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(
+                          color: isDark ? theme.colorScheme.outline : const Color(0xFFCBD5E1),
+                          width: 1.0,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isDark ? theme.colorScheme.outline : const Color(0xFFCBD5E1),
+                          width: 1.0,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: theme.colorScheme.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                   ),
