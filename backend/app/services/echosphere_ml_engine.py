@@ -24,13 +24,13 @@ try:
     HAS_SKLEARN = True
 except (ImportError, Exception):
     HAS_SKLEARN = False
-    np = None
-    joblib = None
-    TfidfVectorizer = None
-    LogisticRegression = None
-    MLPClassifier = None
-    Pipeline = None
-    cosine_similarity = None
+    np: Any = None
+    joblib: Any = None
+    TfidfVectorizer: Any = None
+    LogisticRegression: Any = None
+    MLPClassifier: Any = None
+    Pipeline: Any = None
+    cosine_similarity: Any = None
 
 logger = logging.getLogger("EchoSphere.CampusML")
 
@@ -462,7 +462,7 @@ class EchoSphereMLEngine:
 
     def train_models(self) -> Dict[str, Any]:
         """Train all models on institutional datasets and persist them."""
-        if not HAS_SKLEARN:
+        if not HAS_SKLEARN or Pipeline is None or TfidfVectorizer is None or LogisticRegression is None:
             return {
                 "status": "success",
                 "mode": "pure_python_fallback",
