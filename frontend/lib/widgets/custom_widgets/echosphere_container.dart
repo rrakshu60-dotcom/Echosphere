@@ -52,15 +52,15 @@ class EchoSphereContainer extends StatelessWidget {
   Widget _buildContainer(BuildContext context) {
     final BorderRadiusGeometry effectiveRadius = radius != null
         ? BorderRadius.circular(radius!.multiplyRadius())
-        : (borderRadius ?? BorderRadius.circular(20.multiplyRadius()));
+        : (borderRadius ?? BorderRadius.circular(16.multiplyRadius()));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final defaultBgColor = isDark
-        ? const Color(0xFF131D33).withValues(alpha: 0.85)
-        : Colors.white.withValues(alpha: 0.92);
+        ? const Color(0xFF09080D)
+        : const Color(0xFFFFFFFF);
     final defaultBorderColor = isDark
-        ? const Color(0xFF1E293B)
-        : const Color(0xFFE2E8F0);
+        ? const Color(0xFF241F2E)
+        : const Color(0xFFE5E7EB);
 
     final BoxDecoration effectiveDecoration = decoration ??
         BoxDecoration(
@@ -87,11 +87,11 @@ class EchoSphereContainer extends StatelessWidget {
                   : [
                       BoxShadow(
                         color: isDark
-                            ? Colors.black.withValues(alpha: 0.25)
-                            : const Color(0xFF4F46E5).withValues(alpha: 0.04),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                        spreadRadius: -2,
+                            ? Colors.black.withValues(alpha: 0.60)
+                            : const Color(0xFF6E26E5).withValues(alpha: 0.08),
+                        blurRadius: isDark ? 40 : 30,
+                        offset: Offset(0, isDark ? 20 : 8),
+                        spreadRadius: isDark ? -10 : 0,
                       ),
                     ],
         );

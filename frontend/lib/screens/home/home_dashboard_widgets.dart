@@ -199,7 +199,7 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
   }
 
   Color _getPriorityColor(String priority) {
-    return EchoSpherePalette.getPriorityColor(priority);
+    return EchoSpherePalette.getPriorityColor(priority, isDark: Theme.of(context).brightness == Brightness.dark);
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -226,11 +226,12 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.12),
+                  color: theme.colorScheme.secondary,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: theme.colorScheme.outline, width: 1),
                 ),
-                child: const Icon(Icons.priority_high_rounded,
-                    color: Colors.red, size: 18),
+                child: Icon(Icons.campaign_rounded,
+                    color: theme.colorScheme.primary, size: 18),
               ),
               const SizedBox(width: 10),
               Text(
@@ -338,31 +339,31 @@ class _PriorityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = theme.colorScheme.surfaceContainer;
+    final cardBorder = theme.colorScheme.outline;
+    final badgeBg = EchoSpherePalette.getPriorityBgColor(item.priority, isDark: isDark);
+    final badgeBorder = EchoSpherePalette.getPriorityBorderColor(item.priority, isDark: isDark);
+    final badgeFg = EchoSpherePalette.getPriorityColor(item.priority, isDark: isDark);
+
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          colors: [
-            pColor.withOpacity(0.15),
-            pColor.withOpacity(0.06),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: pColor.withOpacity(isEmergency ? 0.6 : 0.3),
-          width: isEmergency ? 2 : 1.5,
+          color: cardBorder,
+          width: 1.0,
         ),
-        boxShadow: isEmergency
-            ? [
-                BoxShadow(
-                  color: pColor.withOpacity(0.15),
-                  blurRadius: 16,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : [],
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.60)
+                : const Color(0xFF6E26E5).withValues(alpha: 0.08),
+            blurRadius: isDark ? 40 : 30,
+            offset: Offset(0, isDark ? 20 : 8),
+            spreadRadius: isDark ? -10 : 0,
+          ),
+        ],
       ),
       padding: const EdgeInsets.all(14.0),
       child: Column(
@@ -371,11 +372,11 @@ class _PriorityCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                 decoration: BoxDecoration(
-                  color: pColor.withOpacity(0.2),
+                  color: badgeBg,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: pColor.withOpacity(0.4)),
+                  border: Border.all(color: badgeBorder, width: 1.0),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -383,15 +384,15 @@ class _PriorityCard extends StatelessWidget {
                     if (isEmergency)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
-                        child: Icon(Icons.warning_amber_rounded,
-                            size: 13, color: pColor),
+                        child: Icon(Icons.priority_high_rounded,
+                            size: 13, color: badgeFg),
                       ),
                     Text(
                       item.priority,
                       style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.bold,
-                        color: pColor,
+                        color: badgeFg,
                       ),
                     ),
                   ],
@@ -401,15 +402,16 @@ class _PriorityCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  color: theme.colorScheme.secondary,
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: theme.colorScheme.outline, width: 0.8),
                 ),
                 child: Text(
                   item.department,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
               ),
@@ -473,7 +475,7 @@ class _PriorityCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: pColor,
+                  color: theme.colorScheme.primary,
                 ),
               ),
             ],
@@ -598,7 +600,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   }
 
   Color _getPriorityColor(String priority) {
-    return EchoSpherePalette.getPriorityColor(priority);
+    return EchoSpherePalette.getPriorityColor(priority, isDark: Theme.of(context).brightness == Brightness.dark);
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -815,16 +817,30 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: EchoSpherePalette.getPriorityBorderColor(widget.notice.priority, isDark: theme.brightness == Brightness.dark),
-                          width: 0.8,
+                          width: 1.0,
                         ),
                       ),
-                      child: Text(
-                        widget.notice.priority,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: pColor,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.notice.priority.toUpperCase() == 'EMERGENCY' || widget.notice.priority.toUpperCase() == 'URGENT')
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Icon(
+                                Icons.priority_high_rounded,
+                                size: 12,
+                                color: pColor,
+                              ),
+                            ),
+                          Text(
+                            widget.notice.priority,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: pColor,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Text(
