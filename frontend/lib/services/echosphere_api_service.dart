@@ -6,9 +6,29 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ServerConnectionStatus { connected, connecting, offline }
+
 class EchosphereApiService {
   static final EchosphereApiService _instance = EchosphereApiService._internal();
   factory EchosphereApiService() => _instance;
+
+  final Rx<ServerConnectionStatus> serverStatus = ServerConnectionStatus.connected.obs;
+  void setServerStatus(ServerConnectionStatus status) {
+    serverStatus.value = status;
+  }
+
+  final Map<String, Future<dynamic>> _inFlightRequests = {};
+
+  Future<T> _coalesce<T>(String key, Future<T> Function() fetcher) {
+    if (_inFlightRequests.containsKey(key)) {
+      return _inFlightRequests[key] as Future<T>;
+    }
+    final future = fetcher().whenComplete(() {
+      _inFlightRequests.remove(key);
+    });
+    _inFlightRequests[key] = future;
+    return future;
+  }
 
   late Dio _dio;
   late String _baseUrl;
@@ -123,6 +143,10 @@ class EchosphereApiService {
   }
 
   Future<Map<String, dynamic>> checkServerHealth() async {
+    if (Get.testMode) {
+      return {'online': true, 'data': {'status': 'healthy'}};
+    }
+    serverStatus.value = ServerConnectionStatus.connecting;
     try {
       final response = await _dio.get(
         '/ai/status',
@@ -131,11 +155,13 @@ class EchosphereApiService {
           receiveTimeout: const Duration(seconds: 4),
         ),
       );
+      serverStatus.value = ServerConnectionStatus.connected;
       return {
         'online': true,
         'data': response.data is Map ? response.data as Map<String, dynamic> : {},
       };
     } catch (e) {
+      serverStatus.value = ServerConnectionStatus.offline;
       return {
         'online': false,
         'error': e.toString(),
@@ -146,6 +172,8 @@ class EchosphereApiService {
   void setAuthToken(String? token) {
     _authToken = token;
   }
+
+  String? get authToken => _authToken;
 
 
   // --- Auth Endpoints ---
@@ -215,24 +243,33 @@ class EchosphereApiService {
 
   // --- Announcements Endpoints ---
   Future<List<dynamic>> getAnnouncements({String? status, int? categoryId}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (status != null) queryParams['status'] = status;
-      if (categoryId != null) queryParams['category_id'] = categoryId;
+    final key = 'announcements_${status ?? ""}_${categoryId ?? ""}';
+    return _coalesce<List<dynamic>>(key, () async {
+      try {
+        final queryParams = <String, dynamic>{};
+        if (status != null) queryParams['status'] = status;
+        if (categoryId != null) queryParams['category_id'] = categoryId;
 
-      final response = await _dio.get(
-        '/announcements/',
-        queryParameters: queryParams,
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
-      );
-      return response.data as List<dynamic>;
-    } on DioException catch (e) {
-      debugPrint('Error fetching announcements: $e');
-      return [];
-    }
+        final response = await _dio.get(
+          '/announcements/',
+          queryParameters: queryParams,
+          options: Options(
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
+        );
+        serverStatus.value = ServerConnectionStatus.connected;
+        return response.data as List<dynamic>;
+      } on DioException catch (e) {
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError) {
+          serverStatus.value = ServerConnectionStatus.connecting;
+        }
+        debugPrint('Error fetching announcements: $e');
+        return [];
+      }
+    });
   }
 
   Future<Map<String, dynamic>> getAnnouncementById(int id) async {
@@ -340,19 +377,28 @@ class EchosphereApiService {
   }
 
   Future<List<dynamic>> getApprovalQueue() async {
-    try {
-      final response = await _dio.get(
-        '/announcements/approval-queue',
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
-      );
-      return response.data as List<dynamic>;
-    } on DioException catch (e) {
-      debugPrint('Error fetching approval queue: $e');
-      return [];
-    }
+    const key = 'approval_queue';
+    return _coalesce<List<dynamic>>(key, () async {
+      try {
+        final response = await _dio.get(
+          '/announcements/approval-queue',
+          options: Options(
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
+        );
+        serverStatus.value = ServerConnectionStatus.connected;
+        return response.data as List<dynamic>;
+      } on DioException catch (e) {
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError) {
+          serverStatus.value = ServerConnectionStatus.connecting;
+        }
+        debugPrint('Error fetching approval queue: $e');
+        return [];
+      }
+    });
   }
 
   Future<bool> updatePassword({

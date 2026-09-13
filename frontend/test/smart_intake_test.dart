@@ -23,9 +23,9 @@ Widget createTestApp(Widget home) {
 
 void main() {
   setUp(() {
+    Get.reset();
     Get.testMode = true;
     SharedPreferences.setMockInitialValues({});
-    Get.reset();
     Get.put(Settings());
     final authController = Get.put(AuthController());
     authController.currentUser.value = EchosphereUser(

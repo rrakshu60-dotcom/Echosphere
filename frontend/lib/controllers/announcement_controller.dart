@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
@@ -205,6 +206,37 @@ class AnnouncementModel {
       speakerVoice: (json['speaker_voice'] ?? json['speakerVoice'] ?? 'female').toString().toLowerCase() == 'male' ? 'male' : 'female',
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'priority': priority,
+      'emergency_level': emergencyLevel,
+      'status': status,
+      'creator_name': creatorName,
+      'creator_role': creatorRole,
+      'department_name': department,
+      'target_audience': targetAudience,
+      'category_name': category,
+      'created_at': createdAt.toIso8601String(),
+      'scheduled_at': scheduledAt?.toIso8601String(),
+      'ai_summary': aiSummary,
+      'remarks': remarks,
+      'approver_name': approverName,
+      'approved_at': approvedAt?.toIso8601String(),
+      'attachments': attachments,
+      'deliver_speaker': deliverSpeaker,
+      'deliver_in_app': deliverInApp,
+      'deliver_push': deliverPush,
+      'speaker_node_id': speakerNodeId,
+      'speaker_status': speakerStatus,
+      'played_on_speaker': playedOnSpeaker,
+      'duration_seconds': durationSeconds,
+      'speaker_voice': speakerVoice,
+    };
+  }
 }
 
 class AnnouncementController extends GetxController {
@@ -215,11 +247,32 @@ class AnnouncementController extends GetxController {
   final RxString searchQuery = ''.obs;
   final RxBool showTodayOnly = false.obs;
   final RxBool showForYouOnly = false.obs;
+  final RxBool showBookmarkedOnly = false.obs;
+  final RxSet<int> bookmarkedNoticeIds = <int>{}.obs;
   final RxBool isLoading = false.obs;
   final RxString sortBy = 'Newest First'.obs;
   final RxMap<int, CalendarEventData> calendarEvents = <int, CalendarEventData>{}.obs;
   final RxMap<int, Map<String, dynamic>> relevanceScores = <int, Map<String, dynamic>>{}.obs;
   static int _idCounter = 0;
+
+  bool isBookmarked(int id) => bookmarkedNoticeIds.contains(id);
+
+  Future<void> toggleBookmark(int id) async {
+    if (bookmarkedNoticeIds.contains(id)) {
+      bookmarkedNoticeIds.remove(id);
+    } else {
+      bookmarkedNoticeIds.add(id);
+    }
+    bookmarkedNoticeIds.refresh();
+    update();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'echosphere_bookmarked_ids',
+        bookmarkedNoticeIds.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
 
   Map<String, dynamic> getRelevanceFor(AnnouncementModel notice) {
     if (relevanceScores.containsKey(notice.id)) {
@@ -397,6 +450,39 @@ class AnnouncementController extends GetxController {
     } catch (_) {}
   }
 
+  Future<void> _loadPersistentCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('echosphere_cached_announcements');
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final decoded = jsonDecode(cachedJson);
+        if (decoded is List && decoded.isNotEmpty) {
+          final cachedList = decoded
+              .map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+          if (cachedList.isNotEmpty) {
+            _rawAnnouncements.value = cachedList;
+            _rawAnnouncements.refresh();
+            update();
+          }
+        }
+      }
+      final savedBookmarks = prefs.getStringList('echosphere_bookmarked_ids');
+      if (savedBookmarks != null && savedBookmarks.isNotEmpty) {
+        bookmarkedNoticeIds.clear();
+        bookmarkedNoticeIds.addAll(savedBookmarks.map((e) => int.tryParse(e)).whereType<int>());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _savePersistentCache(List<AnnouncementModel> list) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(list.take(40).map((e) => e.toJson()).toList());
+      await prefs.setString('echosphere_cached_announcements', encoded);
+    } catch (_) {}
+  }
+
   /// Clears persisted approval/rejection IDs so fresh server state is used on next login.
   Future<void> clearPersistedApprovalCache() async {
     _persistedApprovedIds.clear();
@@ -405,6 +491,7 @@ class AnnouncementController extends GetxController {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('echosphere_approved_notice_ids');
       await prefs.remove('echosphere_rejected_notice_ids');
+      await prefs.remove('echosphere_cached_announcements');
     } catch (_) {}
   }
 
@@ -412,6 +499,7 @@ class AnnouncementController extends GetxController {
   void onInit() {
     super.onInit();
     _loadPersistedApprovalStatus();
+    _loadPersistentCache();
     // Instant 0ms display: Pre-seed notices so home dashboard renders immediately without shimmer skeleton
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
@@ -716,6 +804,7 @@ class AnnouncementController extends GetxController {
             }
           }
           _rawAnnouncements.value = mergedMap.values.toList();
+          _savePersistentCache(_rawAnnouncements.toList());
           isLoading.value = false;
           update();
           // Update relevance scores asynchronously in background without blocking UI
@@ -854,6 +943,10 @@ class AnnouncementController extends GetxController {
             a.createdAt.month == now.month &&
             a.createdAt.day == now.day;
         if (!isToday) return false;
+      }
+
+      if (showBookmarkedOnly.value) {
+        if (!bookmarkedNoticeIds.contains(a.id)) return false;
       }
 
       final selectedCat = selectedCategory.value.trim().toLowerCase();

@@ -3,6 +3,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -24,6 +25,9 @@ class Announcement(TimestampMixin, Base):
     """
 
     __tablename__ = "announcements"
+    __table_args__ = (
+        Index("ix_announcements_status_created_at", "status", "created_at"),
+    )
 
     # -------------------------
     # Primary Key
@@ -53,6 +57,7 @@ class Announcement(TimestampMixin, Base):
         Enum(AnnouncementStatus),
         default=AnnouncementStatus.DRAFT,
         nullable=False,
+        index=True,
     )
 
     priority = Column(
@@ -103,6 +108,7 @@ class Announcement(TimestampMixin, Base):
         Integer,
         ForeignKey("announcement_categories.id"),
         nullable=False,
+        index=True,
     )
 
     # -------------------------

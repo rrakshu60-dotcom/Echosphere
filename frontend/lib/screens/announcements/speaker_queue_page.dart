@@ -13,6 +13,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/widgets/custom_widgets/audio_waveform_visualizer.dart';
 import 'package:anymex/utils/navigation_helper.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
@@ -975,13 +976,30 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              EchoSphereText(
-                                text: isPlaying ? 'Broadcasting Now' : 'Speaker Queue Ready',
-                                size: 12,
-                                variant: TextVariant.bold,
-                                color: context.colors.primary,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: EchoSphereText(
+                                      text: isPlaying ? 'Broadcasting Now' : 'Speaker Queue Ready',
+                                      size: 12,
+                                      variant: TextVariant.bold,
+                                      color: context.colors.primary,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (isPlaying) ...[
+                                    const SizedBox(width: 6),
+                                    AudioWaveformVisualizer(
+                                      isPlaying: isPlaying,
+                                      barCount: 6,
+                                      height: 12,
+                                      barWidth: 2.0,
+                                      barSpacing: 1.5,
+                                      color: context.colors.primary,
+                                    ),
+                                  ],
+                                ],
                               ),
                               const SizedBox(height: 2),
                               EchoSphereText(
@@ -1354,9 +1372,15 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Icon(Icons.volume_up_rounded,
-                                                        size: 10, color: context.colors.primary),
-                                                    const SizedBox(width: 3),
+                                                    AudioWaveformVisualizer(
+                                                      isPlaying: isCurrentlyPlaying,
+                                                      barCount: 5,
+                                                      height: 10,
+                                                      barWidth: 2,
+                                                      barSpacing: 1.5,
+                                                      color: context.colors.primary,
+                                                    ),
+                                                    const SizedBox(width: 4),
                                                     EchoSphereText(
                                                       text: 'PLAYING',
                                                       size: 9,

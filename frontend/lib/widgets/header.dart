@@ -3,6 +3,7 @@ import 'package:anymex/controllers/theme.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:anymex/widgets/custom_widgets/server_status_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -82,6 +83,10 @@ class Header extends StatelessWidget {
           ),
 
           const Spacer(),
+
+          // Server Connection Status Indicator (Connecting to server... / Offline Mode)
+          const ServerStatusIndicator(),
+          const SizedBox(width: 4),
 
           // Right: Theme Toggle
           IconButton(

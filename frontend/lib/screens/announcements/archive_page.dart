@@ -1,17 +1,13 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/common/glow.dart';
+import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ArchivePage extends StatefulWidget {
   const ArchivePage({super.key});
@@ -25,58 +21,7 @@ class _ArchivePageState extends State<ArchivePage> {
   final TextEditingController searchController = TextEditingController();
   String searchQuery = '';
 
-  Future<void> _downloadAttachment(String filename, AnnouncementModel announcement) async {
-    if (kIsWeb) {
-      Get.snackbar("Download", "Downloading $filename");
-      return;
-    }
-    try {
-      Directory? dir;
-      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-        dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      } else {
-        dir = await getApplicationDocumentsDirectory();
-      }
 
-      final file = File('${dir.path}/$filename');
-      final content = '''
-================================================================================
-                    ECHOSPHERE ARCHIVED ANNOUNCEMENT RECORD
-================================================================================
-
-TITLE: ${announcement.title}
-DEPARTMENT: ${announcement.department}
-CATEGORY: ${announcement.category}
-PRIORITY: ${announcement.priority}
-AUTHOR: ${announcement.creatorName}
-ARCHIVED DATE: ${DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt)}
-DELIVERY METHOD: In-App Broadcast Feed, Push Notification & Campus Audio Speakers
-
---------------------------------------------------------------------------------
-ARCHIVED CONTENT:
---------------------------------------------------------------------------------
-${announcement.description}
-
-AI SUMMARY:
-${announcement.aiSummary ?? 'N/A'}
-
-================================================================================
-Retrieved from EchoSphere Historical Campus Notice Archive
-================================================================================
-''';
-
-      await file.writeAsString(content);
-
-      snackBar('Downloaded "$filename" to Downloads directory!');
-
-      final uri = Uri.file(file.path);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      }
-    } catch (e) {
-      snackBar('Saved "$filename" to Downloads directory!');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +289,11 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                               return ActionChip(
                                                 avatar: Icon(icon, color: iconCol, size: 16),
                                                 label: Text(file, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                                onPressed: () => _downloadAttachment(file, item),
+                                                onPressed: () => AttachmentViewerDialog.show(
+                                                  context,
+                                                  filename: file,
+                                                  notice: item,
+                                                ),
                                               );
                                             }).toList(),
                                           )

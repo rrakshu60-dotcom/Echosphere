@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:anymex/ai/echosphere_ai.dart';
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
@@ -31,6 +33,31 @@ class _HomePageState extends State<HomePage> {
   final AuthController authController = Get.put(AuthController());
   final AnnouncementController annController = Get.put(AnnouncementController());
 
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchDebounce;
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      annController.searchQuery.value = val;
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    annController.searchQuery.value = '';
+  }
+
   void _onSelectTab(int index) {
     if (_selectedNavIndex == index) return;
     setState(() {
@@ -57,7 +84,24 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 750;
 
-    return PopScope(
+    return Focus(
+      autofocus: false,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.slash && !_searchFocusNode.hasFocus) {
+            _searchFocusNode.requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.escape) {
+            if (_searchFocusNode.hasFocus) {
+              _searchFocusNode.unfocus();
+              return KeyEventResult.handled;
+            }
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: PopScope(
       canPop: _selectedNavIndex == 0 && _navHistory.length <= 1,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
@@ -143,7 +187,7 @@ class _HomePageState extends State<HomePage> {
         }
         return const SizedBox.shrink();
       }),
-    ));
+    )));
   }
 
   List<Widget> _buildPages(BuildContext context, ThemeData theme) {
@@ -231,7 +275,12 @@ class _HomePageState extends State<HomePage> {
       final isStaffOrAdmin = role != 'Student';
 
       return RefreshIndicator(
-        onRefresh: annController.fetchAnnouncements,
+        onRefresh: () async {
+          try {
+            HapticFeedback.lightImpact();
+          } catch (_) {}
+          await annController.fetchAnnouncements();
+        },
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           padding: const EdgeInsets.all(16.0),
@@ -276,11 +325,13 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
                 child: TextField(
-                  onChanged: (val) => annController.searchQuery.value = val,
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     isDense: true,
                     filled: false,
-                    hintText: 'Search notices by title, department, or keyword...',
+                    hintText: 'Search notices by title, department, or keyword... (Press / to focus)',
                     hintStyle: TextStyle(
                       fontSize: 12.5,
                       color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.5) : const Color(0xFF64748B),
@@ -297,7 +348,7 @@ class _HomePageState extends State<HomePage> {
                       }
                       return IconButton(
                         icon: const Icon(Icons.clear_rounded, size: 16),
-                        onPressed: () => annController.searchQuery.value = '',
+                        onPressed: _clearSearch,
                       );
                     }),
                     suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -657,6 +708,26 @@ class _HomePageState extends State<HomePage> {
                     onSelected: (val) {
                       annController.showForYouOnly.value = val;
                       if (val) {
+                        annController.showBookmarkedOnly.value = false;
+                        annController.showTodayOnly.value = false;
+                        annController.searchQuery.value = '';
+                        annController.selectedCategory.value = 'All';
+                      }
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: EchoSphereChip(
+                    label: annController.bookmarkedNoticeIds.isNotEmpty
+                        ? 'Saved (${annController.bookmarkedNoticeIds.length})'
+                        : 'Saved',
+                    icon: Icons.bookmark_rounded,
+                    isSelected: annController.showBookmarkedOnly.value,
+                    onSelected: (val) {
+                      annController.showBookmarkedOnly.value = val;
+                      if (val) {
+                        annController.showForYouOnly.value = false;
                         annController.showTodayOnly.value = false;
                         annController.searchQuery.value = '';
                         annController.selectedCategory.value = 'All';
@@ -666,6 +737,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 ...AnnouncementController.categories.map((cat) {
                   final isSelected = !annController.showForYouOnly.value &&
+                      !annController.showBookmarkedOnly.value &&
                       annController.selectedCategory.value == cat;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
@@ -675,6 +747,7 @@ class _HomePageState extends State<HomePage> {
                       onSelected: (val) {
                         if (val) {
                           annController.showForYouOnly.value = false;
+                          annController.showBookmarkedOnly.value = false;
                           annController.showTodayOnly.value = false;
                           annController.searchQuery.value = '';
                           annController.selectedCategory.value = cat;

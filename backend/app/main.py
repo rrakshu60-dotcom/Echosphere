@@ -2,6 +2,7 @@ from typing import Any, cast
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -35,6 +36,8 @@ try:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_summary TEXT;"))
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS speaker_voice VARCHAR(20) DEFAULT 'female';"))
             conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_node_id INTEGER;"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
             conn.commit()
         else:
             res = conn.execute(text("PRAGMA table_info(announcements);")).fetchall()
@@ -45,6 +48,8 @@ try:
                 conn.execute(text("ALTER TABLE announcements ADD COLUMN ai_summary TEXT;"))
             if "speaker_voice" not in col_names:
                 conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
             conn.commit()
 except Exception as exc:
     print(f"Startup migration note: {exc}")
@@ -95,6 +100,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=500,
 )
 
 # -------------------------

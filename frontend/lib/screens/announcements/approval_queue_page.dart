@@ -22,6 +22,9 @@ class ApprovalQueuePage extends StatefulWidget {
 
 class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
   String selectedFilter = 'All';
+  bool isBatchSelectMode = false;
+  final Set<int> selectedItemIds = <int>{};
+  bool isBatchProcessing = false;
 
   @override
   void initState() {
@@ -29,6 +32,112 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Get.find<AnnouncementController>().fetchAnnouncements();
     });
+  }
+
+  Future<void> _handleBatchApprove(AnnouncementController controller) async {
+    final ids = selectedItemIds.toList();
+    if (ids.isEmpty) return;
+    setState(() => isBatchProcessing = true);
+    int successCount = 0;
+    for (final id in ids) {
+      final ok = await controller.approveAnnouncement(id, remarks: 'Batch approved by Administrator');
+      if (ok) successCount++;
+    }
+    setState(() {
+      isBatchProcessing = false;
+      isBatchSelectMode = false;
+      selectedItemIds.clear();
+    });
+    snackBar('$successCount notice(s) approved and published to campus feed.');
+  }
+
+  void _showBatchRejectDialog(BuildContext context, AnnouncementController controller) {
+    final remarksController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rejectColor = isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: rejectColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.cancel_rounded, color: rejectColor, size: 24),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Reject ${selectedItemIds.length} Notices',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Please provide a reason for rejecting the ${selectedItemIds.length} selected announcements:',
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: remarksController,
+              autofocus: true,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Rejection Reason (Required)',
+                hintText: 'e.g. Incomplete information or duplicate notice',
+                prefixIcon: const Icon(Icons.feedback_outlined, size: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: rejectColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: () async {
+              final remarks = remarksController.text.trim();
+              if (remarks.isEmpty) {
+                errorSnackBar('Please enter a rejection reason.');
+                return;
+              }
+              Navigator.pop(ctx);
+              setState(() => isBatchProcessing = true);
+              final ids = selectedItemIds.toList();
+              int successCount = 0;
+              for (final id in ids) {
+                final ok = await controller.rejectAnnouncement(id, remarks: remarks);
+                if (ok) successCount++;
+              }
+              setState(() {
+                isBatchProcessing = false;
+                isBatchSelectMode = false;
+                selectedItemIds.clear();
+              });
+              snackBar('$successCount notice(s) rejected.');
+            },
+            child: const Text('Reject Selected'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showApproveModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
@@ -530,6 +639,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
   // APPROVER QUEUE VIEW (HoD, Admin, Principal, DevAdmin)
   // ──────────────────────────────────────────────────────────────────────────
   Widget _buildApproverQueueView(ThemeData theme, AnnouncementController controller) {
+    final isDark = theme.brightness == Brightness.dark;
     return Obx(() {
       final pending = controller.pendingApprovals;
       if (pending.isEmpty) {
@@ -580,189 +690,405 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
         );
       }
 
-      return RefreshIndicator(
-        onRefresh: () => controller.fetchAnnouncements(),
-        child: ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(14.0),
-          itemCount: pending.length,
-          itemBuilder: (context, index) {
-            final item = pending[index];
-            final isDark = theme.brightness == Brightness.dark;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: EchoSphereContainer(
+      return Column(
+        children: [
+          // Batch Mode Header Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
+                ),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (isBatchSelectMode) ...[
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: selectedItemIds.length == pending.length && pending.isNotEmpty,
+                        tristate: selectedItemIds.isNotEmpty && selectedItemIds.length < pending.length,
+                        activeColor: theme.colorScheme.primary,
+                        onChanged: (val) {
+                          setState(() {
+                            if (selectedItemIds.length == pending.length) {
+                              selectedItemIds.clear();
+                            } else {
+                              selectedItemIds.addAll(pending.map((e) => e.id));
+                            }
+                          });
+                        },
+                      ),
+                      Text(
+                        '${selectedItemIds.length} of ${pending.length} Selected',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    label: const Text('Exit Batch', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      setState(() {
+                        isBatchSelectMode = false;
+                        selectedItemIds.clear();
+                      });
+                    },
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.pending_actions_rounded, size: 16, color: theme.colorScheme.primary),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pending Submissions (${pending.length})',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.checklist_rounded, size: 16),
+                    label: const Text('Batch Actions', style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        isBatchSelectMode = true;
+                        selectedItemIds.clear();
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Queue List
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => controller.fetchAnnouncements(),
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(14.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      alignment: WrapAlignment.spaceBetween,
-                      children: [
-                        EchoSphereBadge.secondary(label: item.category),
-                        EchoSphereBadge.outline(label: item.department),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.secondary.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.groups_rounded, size: 12, color: theme.colorScheme.secondary),
-                              const SizedBox(width: 4),
-                              Text(
-                                item.targetAudience,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: theme.colorScheme.secondary,
+                itemCount: pending.length,
+                itemBuilder: (context, index) {
+                  final item = pending[index];
+                  final isSelected = selectedItemIds.contains(item.id);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: InkWell(
+                      onTap: isBatchSelectMode
+                          ? () {
+                              setState(() {
+                                if (isSelected) {
+                                  selectedItemIds.remove(item.id);
+                                } else {
+                                  selectedItemIds.add(item.id);
+                                }
+                              });
+                            }
+                          : null,
+                      borderRadius: BorderRadius.circular(16),
+                      child: EchoSphereContainer(
+                        padding: const EdgeInsets.all(14.0),
+                        border: isBatchSelectMode && isSelected
+                            ? Border.all(color: theme.colorScheme.primary, width: 1.8)
+                            : null,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (isBatchSelectMode) ...[
+                                  Checkbox(
+                                    value: isSelected,
+                                    activeColor: theme.colorScheme.primary,
+                                    onChanged: (val) {
+                                      setState(() {
+                                        if (val == true) {
+                                          selectedItemIds.add(item.id);
+                                        } else {
+                                          selectedItemIds.remove(item.id);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                Expanded(
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    alignment: WrapAlignment.spaceBetween,
+                                    children: [
+                                      EchoSphereBadge.secondary(label: item.category),
+                                      EchoSphereBadge.outline(label: item.department),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.secondary.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.groups_rounded, size: 12, color: theme.colorScheme.secondary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              item.targetAudience,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: theme.colorScheme.secondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.secondary,
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: theme.colorScheme.outline),
+                                        ),
+                                        child: Text(
+                                          item.priority,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme.onSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        DateFormat('MMM dd, hh:mm a').format(item.createdAt),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
+                            ),
+                            if (item.aiSummary != null && item.aiSummary!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        item.aiSummary!,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.85),
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.secondary,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: theme.colorScheme.outline),
-                          ),
-                          child: Text(
-                            item.priority,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSecondary,
+                            const SizedBox(height: 10),
+                            Text(
+                              'Submitted by: ${item.creatorName} (${item.creatorRole}) • ${item.department}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                             ),
-                          ),
-                        ),
-                        Text(
-                          DateFormat('MMM dd, hh:mm a').format(item.createdAt),
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withOpacity(0.5)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.75)),
-                    ),
-                    if (item.aiSummary != null && item.aiSummary!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                item.aiSummary!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.colorScheme.onSurface.withOpacity(0.85),
-                                  fontStyle: FontStyle.italic,
+                            const SizedBox(height: 12),
+                            const Divider(height: 1),
+                            const SizedBox(height: 10),
+
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              alignment: WrapAlignment.end,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                EchoSphereButton(
+                                  height: 36,
+                                  radius: 16,
+                                  color: theme.colorScheme.primary.withOpacity(0.14),
+                                  border: BorderSide(color: theme.colorScheme.primary, width: 1.2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showApproveModal(context, item, controller),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 6),
+                                      Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                                EchoSphereButton(
+                                  height: 36,
+                                  radius: 16,
+                                  color: isDark ? EchoSpherePalette.darkDestructive.withOpacity(0.12) : EchoSpherePalette.lightDestructive.withOpacity(0.08),
+                                  border: BorderSide(color: (isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive).withOpacity(0.35), width: 1.2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => _showRejectModal(context, item, controller),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.cancel_rounded, size: 16, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive),
+                                      const SizedBox(width: 6),
+                                      Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive)),
+                                    ],
+                                  ),
+                                ),
+                                EchoSphereButton(
+                                  height: 36,
+                                  radius: 16,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  onTap: () => openAnnouncementDetail(context, item),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                      SizedBox(width: 4),
+                                      Icon(Icons.arrow_forward_rounded, size: 14),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 10),
-                    Text(
-                      'Submitted by: ${item.creatorName} (${item.creatorRole}) • ${item.department}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                     ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 10),
+                  );
+                },
+              ),
+            ),
+          ),
 
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.end,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+          // Floating Batch Actions Bottom Bar
+          if (isBatchSelectMode && selectedItemIds.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.35)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        EchoSphereButton(
-                          height: 36,
-                          radius: 16,
-                          color: theme.colorScheme.primary.withOpacity(0.14),
-                          border: BorderSide(color: theme.colorScheme.primary, width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          onTap: () => _showApproveModal(context, item, controller),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.primary),
-                              const SizedBox(width: 6),
-                              Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
-                            ],
-                          ),
+                        Text(
+                          '${selectedItemIds.length} Selected',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
-                        EchoSphereButton(
-                          height: 36,
-                          radius: 16,
-                          color: isDark ? EchoSpherePalette.darkDestructive.withOpacity(0.12) : EchoSpherePalette.lightDestructive.withOpacity(0.08),
-                          border: BorderSide(color: (isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive).withOpacity(0.35), width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          onTap: () => _showRejectModal(context, item, controller),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.cancel_rounded, size: 16, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive),
-                              const SizedBox(width: 6),
-                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive)),
-                            ],
-                          ),
-                        ),
-                        EchoSphereButton(
-                          height: 36,
-                          radius: 16,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          onTap: () => openAnnouncementDetail(context, item),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_rounded, size: 14),
-                            ],
+                        Text(
+                          'Parallel bulk moderation',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  if (isBatchProcessing)
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else ...[
+                    OutlinedButton(
+                      onPressed: () => _showBatchRejectDialog(context, controller),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive,
+                        side: BorderSide(
+                          color: (isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive).withValues(alpha: 0.5),
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      child: const Text('Reject All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 8),
+                    EchoSphereButton(
+                      height: 38,
+                      radius: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      onTap: () => _handleBatchApprove(controller),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_rounded, size: 16, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text(
+                            'Approve All',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+        ],
       );
     });
   }
