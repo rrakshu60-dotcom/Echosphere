@@ -702,7 +702,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontFamily: 'Poppins-Bold',
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.onSurface,

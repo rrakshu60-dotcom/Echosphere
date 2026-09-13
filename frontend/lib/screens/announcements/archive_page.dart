@@ -116,7 +116,6 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontFamily: 'Poppins-Bold',
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: theme.colorScheme.onSurface,
@@ -236,23 +235,9 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                 runSpacing: 6,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                                  EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'ARCHIVED',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.colorScheme.onSurface.withOpacity(0.7),
-                                      ),
-                                    ),
-                                  ),
+                                  EchoSphereBadge.secondary(label: item.category),
+                                  EchoSphereBadge.outline(label: item.department),
+                                  const EchoSphereBadge.muted(label: 'ARCHIVED'),
                                   Text(
                                     DateFormat('MMM dd, yyyy').format(item.createdAt),
                                     style: TextStyle(

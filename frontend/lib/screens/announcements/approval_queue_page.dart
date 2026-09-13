@@ -468,8 +468,8 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                             crossAxisAlignment: WrapCrossAlignment.center,
                             alignment: WrapAlignment.spaceBetween,
                             children: [
-                              EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                              EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+                              EchoSphereBadge.secondary(label: item.category),
+                              EchoSphereBadge.outline(label: item.department),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
@@ -646,8 +646,8 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       alignment: WrapAlignment.spaceBetween,
                       children: [
-                        EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                        EchoSphereChip(label: item.department, isSelected: false, onSelected: (_) {}),
+                        EchoSphereBadge.secondary(label: item.category),
+                        EchoSphereBadge.outline(label: item.department),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(

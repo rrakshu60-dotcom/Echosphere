@@ -1103,8 +1103,11 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                     ],
 
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    Wrap(
+                      alignment: WrapAlignment.spaceEvenly,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.skip_previous_rounded, size: 20),
@@ -1128,6 +1131,13 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           padding: EdgeInsets.zero,
                           onPressed: hasItems ? () => _queueCtrl.skipCurrent() : null,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.fast_forward_rounded, size: 20, color: context.colors.primary),
+                          tooltip: 'Advance Hardware Queue',
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          padding: EdgeInsets.zero,
+                          onPressed: () => _queueCtrl.advanceHardwareQueue(),
                         ),
                         IconButton(
                           icon: Icon(Icons.volume_up_rounded, size: 20, color: context.colors.primary),
@@ -1286,10 +1296,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                         runSpacing: 4,
                                         crossAxisAlignment: WrapCrossAlignment.center,
                                         children: [
-                                          EchoSphereChip(
+                                          EchoSphereBadge.secondary(
                                             label: typeStr,
-                                            isSelected: true,
-                                            onSelected: (_) {},
                                           ),
                                           EchoSphereText(
                                             text: deptStr,
@@ -1582,11 +1590,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    EchoSphereChip(
-                                      label: isOnline ? 'ONLINE' : 'OFFLINE',
-                                      isSelected: isOnline,
-                                      onSelected: (_) {},
-                                    ),
+                                    isOnline
+                                        ? const EchoSphereBadge.secondary(label: 'ONLINE')
+                                        : const EchoSphereBadge.muted(label: 'OFFLINE'),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
@@ -1678,6 +1684,21 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       },
                                     ),
                                     IconButton(
+                                      icon: Icon(Icons.volume_up_rounded,
+                                          size: 16, color: context.colors.primary),
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                      padding: EdgeInsets.zero,
+                                      tooltip: 'Node Volume Slider',
+                                      onPressed: () {
+                                        final nodeId = node['id'];
+                                        if (nodeId == null || nodeId is! int) {
+                                          snackBar('Invalid node id.');
+                                          return;
+                                        }
+                                        _showNodeVolumeDialog(context, nodeId, nameStr, (node['volume'] as num?)?.toDouble() ?? 80.0);
+                                      },
+                                    ),
+                                    IconButton(
                                       icon: Icon(Icons.restart_alt_rounded,
                                           size: 16, color: context.colors.primary),
                                       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -1725,6 +1746,72 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
           ],
         );
       }),
+    );
+  }
+
+  void _showNodeVolumeDialog(BuildContext context, int nodeId, String nodeName, double currentVol) {
+    double vol = currentVol.clamp(0.0, 100.0);
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.volume_up_rounded, size: 20, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: EchoSphereText(
+                  text: '$nodeName Volume',
+                  size: 15,
+                  variant: TextVariant.bold,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const EchoSphereText(text: 'Hardware Output Level', size: 12),
+                  EchoSphereText(
+                    text: '${vol.round()}%',
+                    size: 14,
+                    variant: TextVariant.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Slider(
+                value: vol,
+                min: 0,
+                max: 100,
+                divisions: 20,
+                label: '${vol.round()}%',
+                activeColor: Theme.of(context).colorScheme.primary,
+                onChanged: (val) => setDlgState(() => vol = val),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _queueCtrl.setNodeVolume(nodeId, vol.round(), nodeName);
+              },
+              child: const Text('Apply Volume'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

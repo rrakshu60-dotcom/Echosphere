@@ -84,10 +84,10 @@ class EchosphereRealtimeService extends GetxService {
 
     final url = _wsUrl;
     try {
-      debugPrint('🔌 Connecting to EchoSphere Live Sync WebSocket: $url');
+      debugPrint('[WebSocket] Connecting to EchoSphere Live Sync WebSocket: $url');
       _webSocket = await WebSocket.connect(url).timeout(const Duration(seconds: 8));
       isConnected.value = true;
-      debugPrint('✅ EchoSphere Live Sync WebSocket connected successfully.');
+      debugPrint('[WebSocket] EchoSphere Live Sync WebSocket connected successfully.');
 
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
@@ -103,17 +103,17 @@ class EchosphereRealtimeService extends GetxService {
           _handleIncomingMessage(data);
         },
         onError: (err) {
-          debugPrint('⚠️ EchoSphere WebSocket error: $err');
+          debugPrint('[WebSocket Error] EchoSphere WebSocket error: $err');
           _scheduleReconnect();
         },
         onDone: () {
-          debugPrint('ℹ️ EchoSphere WebSocket connection closed.');
+          debugPrint('[WebSocket] EchoSphere WebSocket connection closed.');
           _scheduleReconnect();
         },
         cancelOnError: true,
       );
     } catch (e) {
-      debugPrint('❌ EchoSphere WebSocket connect failed: $e. Will retry in 4s.');
+      debugPrint('[WebSocket Error] EchoSphere WebSocket connect failed: $e. Will retry in 4s.');
       _scheduleReconnect();
     }
   }
@@ -127,7 +127,7 @@ class EchosphereRealtimeService extends GetxService {
       final decoded = jsonDecode(str);
       if (decoded is Map<String, dynamic>) {
         final event = EchosphereRealtimeEvent.fromJson(decoded);
-        debugPrint('🔔 [Live Sync Event] ${event.event} - Notice #${event.announcementId}');
+        debugPrint('[LiveSync] ${event.event} - Notice #${event.announcementId}');
         _eventController.add(event);
       }
     } catch (e) {

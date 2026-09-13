@@ -158,7 +158,7 @@ class _TitleBarWidget extends StatelessWidget {
                 style: TextStyle(
                   color: defaultColor,
                   fontSize: 12,
-                  fontFamily: 'Poppins-Bold',
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               const Expanded(

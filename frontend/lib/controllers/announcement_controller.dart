@@ -383,7 +383,7 @@ class AnnouncementController extends GetxController {
     realtimeService.initialize();
     _realtimeSubscription?.cancel();
     _realtimeSubscription = realtimeService.events.listen((event) {
-      debugPrint('⚡ [LiveSync] Event in AnnouncementController: ${event.event} (#${event.announcementId})');
+      debugPrint('[LiveSync] Event in AnnouncementController: ${event.event} (#${event.announcementId})');
       _handleLiveEvent(event);
     });
   }

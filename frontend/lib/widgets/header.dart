@@ -47,7 +47,6 @@ class Header extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontFamily: 'Poppins-Bold',
                           fontSize: isMobile ? 18 : 20,
                           fontWeight: FontWeight.bold,
                           color: theme.colorScheme.primary,

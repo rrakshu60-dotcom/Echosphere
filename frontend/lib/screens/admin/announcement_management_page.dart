@@ -7,6 +7,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -69,6 +70,12 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                           onSelected: (_) {},
                         ),
                       )),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.history_rounded, size: 22),
+                    tooltip: 'Audit Trail',
+                    onPressed: () => _showAuditTrailDialog(context),
+                  ),
                 ],
               ),
             ),
@@ -178,8 +185,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                                 runSpacing: 6,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
-                                  EchoSphereChip(label: item.priority, isSelected: false, onSelected: (_) {}),
+                                  EchoSphereBadge.secondary(label: item.category),
+                                  EchoSphereBadge.priority(priority: item.priority),
                                   _buildStatusBadge(context, item.status),
                                 ],
                               ),
@@ -274,6 +281,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
         builder: (context, setDlgState) => EchoSphereDialog(
           title: 'Modify Announcement',
           autoCloseOnConfirm: false,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           contentWidget: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,33 +515,182 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
   }
 
   Widget _buildStatusBadge(BuildContext context, String status) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    Color bg = theme.colorScheme.primary;
-    if (status == 'SUBMITTED' || status == 'DRAFT') {
-      bg = isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground;
-    }
-    if (status == 'SCHEDULED') {
-      bg = theme.colorScheme.primary;
-    }
     if (status == 'REJECTED') {
-      bg = EchoSpherePalette.destructive;
+      return EchoSphereBadge.destructive(label: status);
     }
+    if (status == 'ARCHIVED') {
+      return EchoSphereBadge.muted(label: status);
+    }
+    if (status == 'SUBMITTED' || status == 'DRAFT') {
+      return EchoSphereBadge.secondary(label: status);
+    }
+    return EchoSphereBadge.defaultBadge(label: status);
+  }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.3), width: 1),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          color: bg,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-        ),
+  void _showAuditTrailDialog(BuildContext context) {
+    List<dynamic>? logs;
+    bool isLoading = true;
+    bool noticeOnly = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          final theme = Theme.of(context);
+
+          if (logs == null && isLoading) {
+            EchosphereApiService().getAuditLogs().then((res) {
+              if (ctx.mounted) {
+                setDlgState(() {
+                  logs = res;
+                  isLoading = false;
+                });
+              }
+            }).catchError((_) {
+              if (ctx.mounted) {
+                setDlgState(() {
+                  logs = [];
+                  isLoading = false;
+                });
+              }
+            });
+          }
+
+          final allLogs = logs ?? [];
+          final filteredLogs = noticeOnly
+              ? allLogs.where((l) {
+                  final entity = l['entity']?.toString().toUpperCase() ?? '';
+                  final action = l['action']?.toString().toUpperCase() ?? '';
+                  final desc = l['description']?.toString().toUpperCase() ?? '';
+                  return entity.contains('ANNOUNCEMENT') ||
+                      entity.contains('NOTICE') ||
+                      action.contains('ANNOUNCEMENT') ||
+                      desc.contains('ANNOUNCEMENT') ||
+                      desc.contains('NOTICE');
+                }).toList()
+              : allLogs;
+
+          final isSmall = MediaQuery.of(ctx).size.width < 580;
+          final dialogWidth = isSmall ? MediaQuery.of(ctx).size.width * 0.92 : 560.0;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.history_rounded, color: theme.colorScheme.primary, size: 22),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Notice Moderation Audit Trail',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: () {
+                    setDlgState(() {
+                      logs = null;
+                      isLoading = true;
+                    });
+                  },
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: dialogWidth,
+              height: 440,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      FilterChip(
+                        label: const Text('Notice Events', style: TextStyle(fontSize: 11)),
+                        selected: noticeOnly,
+                        onSelected: (val) => setDlgState(() => noticeOnly = true),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('All System Events', style: TextStyle(fontSize: 11)),
+                        selected: !noticeOnly,
+                        onSelected: (val) => setDlgState(() => noticeOnly = false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : filteredLogs.isEmpty
+                            ? Center(
+                                child: Text(
+                                  noticeOnly ? 'No notice moderation logs recorded yet.' : 'No audit logs found.',
+                                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filteredLogs.length,
+                                separatorBuilder: (_, __) => const Divider(height: 12),
+                                itemBuilder: (context, idx) {
+                                  final log = filteredLogs[idx];
+                                  final action = log['action']?.toString() ?? 'ACTION';
+                                  final desc = log['description']?.toString() ?? '';
+                                  final createdAt = log['created_at']?.toString().split('.').first.replaceAll('T', ' ') ?? '';
+                                  final userId = log['user_id']?.toString() ?? '';
+
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: theme.colorScheme.primary.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+                                          ),
+                                          child: Text(
+                                            action,
+                                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                desc.isNotEmpty ? desc : action,
+                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'Actor: ${userId.isNotEmpty ? "User #$userId" : "System"} • $createdAt',
+                                                style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

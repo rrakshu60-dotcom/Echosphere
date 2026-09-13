@@ -35,7 +35,6 @@ class NotificationsPage extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontFamily: 'Poppins-Bold',
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: theme.colorScheme.onSurface,
@@ -132,7 +131,6 @@ class NotificationsPage extends StatelessWidget {
               Text(
                 'All Caught Up!',
                 style: TextStyle(
-                  fontFamily: 'Poppins-Bold',
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onSurface,

@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 
 
+from typing import Any, Optional
+
 def create_audit_log(
     db: Session,
-    user_id: int,
+    user_id: Any,
     action: str,
     entity: str,
-    entity_id: int,
+    entity_id: Any,
     description: str | None = None,
 ) -> AuditLog:
     """

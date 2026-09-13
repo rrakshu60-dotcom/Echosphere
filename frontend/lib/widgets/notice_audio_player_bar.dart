@@ -46,6 +46,153 @@ class NoticeAudioPlayerBar extends StatelessWidget {
     }
   }
 
+  String _getLanguageDisplayLabel(String lang) {
+    switch (lang) {
+      case 'kn':
+        return 'ಕನ್ನಡ (KN)';
+      case 'hi':
+        return 'हिंदी (HI)';
+      case 'te':
+        return 'తెలుగు (TE)';
+      case 'ta':
+        return 'தமிழ் (TA)';
+      case 'en':
+      default:
+        return 'English';
+    }
+  }
+
+  void _showLanguageSelectorSheet(BuildContext context) {
+    final theme = Theme.of(context);
+    final audio = TtsAudioService.instance;
+
+    final languages = [
+      {'code': 'en', 'name': 'English', 'native': 'Default Campus English', 'desc': 'Original announcement speech'},
+      {'code': 'kn', 'name': 'Kannada', 'native': 'ಕನ್ನಡ', 'desc': 'State regional broadcast language'},
+      {'code': 'hi', 'name': 'Hindi', 'native': 'हिंदी', 'desc': 'National official language broadcast'},
+      {'code': 'te', 'name': 'Telugu', 'native': 'తెలుగు', 'desc': 'Regional South language translation'},
+      {'code': 'ta', 'name': 'Tamil', 'native': 'தமிழ்', 'desc': 'Regional South language translation'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: theme.dividerColor.withOpacity(0.15)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                'Broadcast Regional Language',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Select speech synthesis and real-time translation language',
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+              ),
+              const SizedBox(height: 16),
+              ...languages.map((l) {
+                final code = l['code']!;
+                return Obx(() {
+                  final isSel = audio.selectedLanguage.value == code;
+                  return InkWell(
+                    onTap: () {
+                      audio.setLanguage(code);
+                      Navigator.pop(ctx);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isSel
+                            ? theme.colorScheme.primary.withOpacity(0.12)
+                            : theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSel ? theme.colorScheme.primary : theme.dividerColor.withOpacity(0.15),
+                          width: isSel ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.translate_rounded,
+                            size: 18,
+                            color: isSel ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      l['name']!,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSel ? theme.colorScheme.primary : null,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      l['native']!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  l['desc']!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.55),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isSel)
+                            Icon(Icons.check_circle_rounded, size: 18, color: theme.colorScheme.primary),
+                        ],
+                      ),
+                    ),
+                  );
+                });
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showChimeSelectorSheet(BuildContext context) {
     final theme = Theme.of(context);
     final audio = TtsAudioService.instance;
@@ -577,6 +724,15 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                       : Icons.notifications_off_rounded,
                   isSelected: audio.includeChime.value,
                   onTap: () => _showChimeSelectorSheet(context),
+                ),
+
+                // Regional Language Configuration Chip
+                _buildConfigChip(
+                  context: context,
+                  label: _getLanguageDisplayLabel(audio.selectedLanguage.value),
+                  icon: Icons.translate_rounded,
+                  isSelected: audio.selectedLanguage.value != 'en',
+                  onTap: () => _showLanguageSelectorSheet(context),
                 ),
               ],
             ),

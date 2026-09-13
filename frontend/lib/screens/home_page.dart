@@ -379,7 +379,6 @@ class _HomePageState extends State<HomePage> {
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              fontFamily: 'Poppins-Bold',
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -447,7 +446,6 @@ class _HomePageState extends State<HomePage> {
             Text(
               'Admin Workspace',
               style: TextStyle(
-                fontFamily: 'Poppins-Bold',
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
@@ -666,7 +664,6 @@ class _HomePageState extends State<HomePage> {
         const Text(
           'Categories',
           style: TextStyle(
-            fontFamily: 'Poppins-Bold',
             fontSize: 15,
             fontWeight: FontWeight.bold,
           ),
@@ -736,7 +733,6 @@ class _HomePageState extends State<HomePage> {
             const Text(
               'Recent Announcements',
               style: TextStyle(
-                fontFamily: 'Poppins-Bold',
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),

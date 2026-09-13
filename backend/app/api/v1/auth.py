@@ -15,6 +15,20 @@ from app.services.auth_service import authenticate_user
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _to_token_response(access_token: str, user: User) -> TokenResponse:
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        role=user.role.name if user.role else "Student",
+        user_id=int(getattr(user, "id")),
+        full_name=str(getattr(user, "full_name", "") or ""),
+        official_email=str(user.official_email) if getattr(user, "official_email", None) else None,
+        usn=str(user.usn) if getattr(user, "usn", None) else None,
+        employee_id=str(user.employee_id) if getattr(user, "employee_id", None) else None,
+        department_id=int(user.department_id) if getattr(user, "department_id", None) else None,
+    )
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
@@ -31,17 +45,7 @@ def login(
             employee_id=request.employee_id,
         )
 
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            role=user.role.name if user.role else "Student",
-            user_id=user.id,
-            full_name=user.full_name,
-            official_email=user.official_email,
-            usn=user.usn,
-            employee_id=user.employee_id,
-            department_id=user.department_id,
-        )
+        return _to_token_response(access_token, user)
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
@@ -62,17 +66,7 @@ def login_for_swagger(
             password=form_data.password,
         )
 
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            role=user.role.name if user.role else "Student",
-            user_id=user.id,
-            full_name=user.full_name,
-            official_email=user.official_email,
-            usn=user.usn,
-            employee_id=user.employee_id,
-            department_id=user.department_id,
-        )
+        return _to_token_response(access_token, user)
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=str(e))
@@ -92,17 +86,7 @@ def refresh_token(
     from app.services.auth_service import refresh_token_service
     try:
         new_token, user = refresh_token_service(db=db, token=request.token)
-        return TokenResponse(
-            access_token=new_token,
-            token_type="bearer",
-            role=user.role.name if user.role else "Student",
-            user_id=user.id,
-            full_name=user.full_name,
-            official_email=user.official_email,
-            usn=user.usn,
-            employee_id=user.employee_id,
-            department_id=user.department_id,
-        )
+        return _to_token_response(new_token, user)
     except ValueError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail=str(e))
@@ -146,10 +130,10 @@ def update_password(
     from fastapi import HTTPException
     from app.core.password import verify_password, hash_password
 
-    if not verify_password(request.current_password, current_user.password_hash):
+    if not verify_password(request.current_password, str(current_user.password_hash)):
         raise HTTPException(status_code=400, detail="Incorrect current password.")
 
-    current_user.password_hash = hash_password(request.new_password)
+    setattr(current_user, "password_hash", hash_password(request.new_password))
     db.commit()
     return {"message": "Password updated successfully."}
 
@@ -179,10 +163,10 @@ def reset_password_direct(
     if not user:
         raise HTTPException(status_code=404, detail="User account not found.")
 
-    if not verify_password(request.current_password, user.password_hash):
+    if not verify_password(request.current_password, str(user.password_hash)):
         raise HTTPException(status_code=400, detail="Incorrect current password.")
 
-    user.password_hash = hash_password(request.new_password)
+    setattr(user, "password_hash", hash_password(request.new_password))
     db.commit()
     return {"message": "Password updated successfully."}
 

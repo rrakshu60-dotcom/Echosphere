@@ -8,12 +8,14 @@ from app.repositories.audit_log_repository import (
 )
 
 
+from typing import Any, Optional
+
 def create_audit_log_service(
     db: Session,
-    user_id: int,
+    user_id: Any,
     action: str,
     entity: str,
-    entity_id: int,
+    entity_id: Any,
     description: str | None = None,
 ) -> AuditLog:
     """

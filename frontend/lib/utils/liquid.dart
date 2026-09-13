@@ -278,7 +278,7 @@ class Liquid {
         Logger.i('Liquid background saved successfully: $result');
 
         progressController.updateProgress(
-            'Background applied successfully! ✓', 1.0);
+            'Background applied successfully!', 1.0);
         await Future.delayed(const Duration(milliseconds: 800));
       } else {
         progressController.updateProgress('Failed to process image', 0.0);

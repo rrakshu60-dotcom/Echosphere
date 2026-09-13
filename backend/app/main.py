@@ -1,3 +1,4 @@
+from typing import Any, cast
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +53,9 @@ except Exception as exc:
 try:
     from app.db.database import SessionLocal
     from app.models.role import Role
+    from app.models.department import Department
+    from app.models.announcement_category import AnnouncementCategory
+    from app.models.delivery_type import DeliveryType
     from app.repositories.hardware_repository import seed_default_speaker_nodes_if_empty
     from app.seeders.role import seed_roles
     from app.seeders.department import seed_departments
@@ -65,7 +69,7 @@ try:
             seed_roles(db_session)
         if db_session.query(Department).count() == 0:
             seed_departments(db_session)
-        if db_session.query(Category).count() == 0:
+        if db_session.query(AnnouncementCategory).count() == 0:
             seed_categories(db_session)
         if db_session.query(DeliveryType).count() == 0:
             seed_delivery_types(db_session)
@@ -112,7 +116,7 @@ except Exception as e:
 app.state.limiter = limiter
 app.add_exception_handler(
     RateLimitExceeded,
-    _rate_limit_exceeded_handler,
+    cast(Any, _rate_limit_exceeded_handler),
 )
 
 # -------------------------

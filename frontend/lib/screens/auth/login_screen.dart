@@ -257,7 +257,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'EchoSphere',
                     style: TextStyle(
-                      fontFamily: 'Poppins-Bold',
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: theme.colorScheme.onSurface,
@@ -475,87 +474,319 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showForgotPasswordDialog(BuildContext context) {
+    int currentStep = 0; // 0 = Request Token, 1 = Verify Token, 2 = Set New Password
     final idCtrl = TextEditingController();
+    final tokenCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final confirmPassCtrl = TextEditingController();
     bool isSubmitting = false;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    String verifiedIdentifier = '';
+    String verifiedToken = '';
+    String? statusMessage;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          title: const Text('Password Recovery'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+        builder: (context, setDlgState) {
+          final theme = Theme.of(context);
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
               children: [
-                const Text(
-                  'Enter your Employee ID, USN, or Official Email:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: idCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. 1DB23CI079 or admin@echosphere.edu',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.25)),
-                  ),
-                  child: Text(
-                    '• Student Accounts: For academic integrity, contact your Department Faculty or HoD.\n'
-                    '• Faculty & Staff: A secure reset link will be sent to your registered official email.\n'
-                    '• Administrators: Backend audit trail verification applies.',
-                    style: TextStyle(fontSize: 11, height: 1.5, color: Theme.of(context).colorScheme.primary),
-                  ),
+                Icon(Icons.lock_reset_rounded, color: theme.colorScheme.primary, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  currentStep == 0
+                      ? 'Password Recovery'
+                      : currentStep == 1
+                          ? 'Verify Reset Token'
+                          : 'Set New Password',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-              child: const Text('Close'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Step Indicator
+                  Row(
+                    children: [
+                      _buildStepDot(0, 'ID', currentStep, theme),
+                      Expanded(
+                        child: Container(
+                          height: 2,
+                          color: currentStep >= 1 ? theme.colorScheme.primary : theme.colorScheme.outline.withOpacity(0.3),
+                        ),
+                      ),
+                      _buildStepDot(1, 'Token', currentStep, theme),
+                      Expanded(
+                        child: Container(
+                          height: 2,
+                          color: currentStep >= 2 ? theme.colorScheme.primary : theme.colorScheme.outline.withOpacity(0.3),
+                        ),
+                      ),
+                      _buildStepDot(2, 'Password', currentStep, theme),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (statusMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+                      ),
+                      child: Text(
+                        statusMessage!,
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+
+                  if (currentStep == 0) ...[
+                    const Text(
+                      'Enter your Employee ID, USN, or Official Email:',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: idCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 1DB23CI079 or admin@echosphere.edu',
+                        prefixIcon: Icon(Icons.badge_outlined, size: 20, color: theme.colorScheme.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'A secure password recovery token will be dispatched to your registered institutional account.',
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => setDlgState(() => currentStep = 1),
+                        child: Text(
+                          'Already have a reset token?',
+                          style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ] else if (currentStep == 1) ...[
+                    const Text(
+                      'Enter Verification Token:',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Enter the secure token received for your account.',
+                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.65)),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: tokenCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 4a8f9c1b',
+                        prefixIcon: Icon(Icons.vpn_key_rounded, size: 20, color: theme.colorScheme.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => setDlgState(() => currentStep = 0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.arrow_back_rounded, size: 13, color: theme.colorScheme.primary),
+                            const SizedBox(width: 4),
+                            Text('Back to Identifier', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else if (currentStep == 2) ...[
+                    Text(
+                      'Resetting password for: $verifiedIdentifier',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: newPassCtrl,
+                      obscureText: obscureNew,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        prefixIcon: Icon(Icons.lock_outline_rounded, size: 20, color: theme.colorScheme.primary),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                          onPressed: () => setDlgState(() => obscureNew = !obscureNew),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmPassCtrl,
+                      obscureText: obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm New Password',
+                        prefixIcon: Icon(Icons.lock_outline_rounded, size: 20, color: theme.colorScheme.primary),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                          onPressed: () => setDlgState(() => obscureConfirm = !obscureConfirm),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final id = idCtrl.text.trim();
-                      if (id.isEmpty) {
-                        errorSnackBar('Please enter your identifier.');
-                        return;
-                      }
-                      setDlgState(() => isSubmitting = true);
-                      try {
-                        final res = await EchosphereApiService().forgotPassword(id);
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (currentStep == 0) {
+                          final id = idCtrl.text.trim();
+                          if (id.isEmpty) {
+                            errorSnackBar('Please enter your USN, Employee ID, or Email.');
+                            return;
+                          }
+                          setDlgState(() => isSubmitting = true);
+                          try {
+                            final res = await EchosphereApiService().forgotPassword(id);
+                            setDlgState(() {
+                              isSubmitting = false;
+                              currentStep = 1;
+                              statusMessage = res['message']?.toString() ?? 'Recovery token generated. Check your email or enter token below.';
+                            });
+                          } catch (e) {
+                            setDlgState(() => isSubmitting = false);
+                            errorSnackBar('Request failed: ${e.toString().replaceAll("Exception: ", "")}');
+                          }
+                        } else if (currentStep == 1) {
+                          final tok = tokenCtrl.text.trim();
+                          if (tok.isEmpty) {
+                            errorSnackBar('Please enter the reset token.');
+                            return;
+                          }
+                          setDlgState(() => isSubmitting = true);
+                          try {
+                            final res = await EchosphereApiService().verifyResetToken(tok);
+                            setDlgState(() {
+                              isSubmitting = false;
+                              verifiedToken = tok;
+                              verifiedIdentifier = res['identifier']?.toString() ?? idCtrl.text.trim();
+                              currentStep = 2;
+                              statusMessage = 'Token verified! Please set your new password.';
+                            });
+                          } catch (e) {
+                            setDlgState(() => isSubmitting = false);
+                            errorSnackBar('Token invalid: ${e.toString().replaceAll("Exception: ", "")}');
+                          }
+                        } else if (currentStep == 2) {
+                          final p1 = newPassCtrl.text;
+                          final p2 = confirmPassCtrl.text;
+                          if (p1.isEmpty || p1.length < 6) {
+                            errorSnackBar('Password must be at least 6 characters long.');
+                            return;
+                          }
+                          if (p1 != p2) {
+                            errorSnackBar('Passwords do not match.');
+                            return;
+                          }
+                          setDlgState(() => isSubmitting = true);
+                          try {
+                            final res = await EchosphereApiService().resetPassword(verifiedToken, p1);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (verifiedIdentifier.isNotEmpty) {
+                              identifierController.text = verifiedIdentifier;
+                            }
+                            snackBar(res['message']?.toString() ?? 'Password successfully reset! Please sign in.');
+                          } catch (e) {
+                            setDlgState(() => isSubmitting = false);
+                            errorSnackBar('Reset failed: ${e.toString().replaceAll("Exception: ", "")}');
+                          }
                         }
-                        final msg = res['message']?.toString() ?? 'Password recovery request processed.';
-                        snackBar(msg);
-                      } catch (e) {
-                        setDlgState(() => isSubmitting = false);
-                        errorSnackBar('Failed: ${e.toString().replaceAll("Exception: ", "")}');
-                      }
-                    },
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Submit Request'),
-            ),
-          ],
-        ),
+                      },
+                child: isSubmitting
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(
+                        currentStep == 0
+                            ? 'Request Token'
+                            : currentStep == 1
+                                ? 'Verify Token'
+                                : 'Set Password',
+                      ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildStepDot(int step, String label, int currentStep, ThemeData theme) {
+    final isDone = currentStep > step;
+    final isCurrent = currentStep == step;
+    final color = isDone || isCurrent ? theme.colorScheme.primary : theme.colorScheme.outline.withOpacity(0.4);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: isDone ? color : (isCurrent ? color.withOpacity(0.15) : Colors.transparent),
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2),
+          ),
+          child: Center(
+            child: isDone
+                ? const Icon(Icons.check, size: 14, color: Colors.white)
+                : Text(
+                    '${step + 1}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isCurrent ? color : theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            color: isCurrent ? color : theme.colorScheme.onSurface.withOpacity(0.5),
+          ),
+        ),
+      ],
     );
   }
 }

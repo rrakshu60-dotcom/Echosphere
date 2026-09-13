@@ -222,7 +222,7 @@ async def trigger_speaker_broadcast(
     base_url = str(request.base_url).rstrip("/")
     result = await broadcast_announcement_to_speaker(
         db=db,
-        announcement_id=int(announcement.id),
+        announcement_id=int(getattr(announcement, "id")),
         title=str(announcement.title),
         content=str(announcement.description),
         department_code=str(node.department.code) if node.department else "ALL",
@@ -316,7 +316,7 @@ async def trigger_emergency_override(
 
         result = await broadcast_announcement_to_speaker(
             db=db,
-            announcement_id=int(emergency_ann.id),
+            announcement_id=int(getattr(emergency_ann, "id")),
             title=override_in.title,
             content=override_in.message,
             department_code="ALL",
@@ -486,12 +486,16 @@ def enqueue_speaker_announcement(
         except Exception:
             db.rollback()
             ann = db.query(Announcement).first()
-    elif (req_title or req_desc) and ("Campus Voice Broadcast" in str(ann.title) or str(ann.description) == "Official campus voice announcement broadcast."):
+
+    if not ann:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found.")
+
+    if (req_title or req_desc) and ("Campus Voice Broadcast" in str(ann.title) or str(ann.description) == "Official campus voice announcement broadcast."):
         # Upgrade any placeholder notice with real user content
         if req_title:
-            ann.title = req_title
+            setattr(ann, "title", req_title)
         if req_desc:
-            ann.description = req_desc
+            setattr(ann, "description", req_desc)
         try:
             db.commit()
             db.refresh(ann)
@@ -500,15 +504,16 @@ def enqueue_speaker_announcement(
 
     from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
     dept_code = "ALL"
-    if ann.creator and hasattr(ann.creator, 'department') and ann.creator.department:
-        dept_code = ann.creator.department.code
+    creator = getattr(ann, "creator", None)
+    if creator and hasattr(creator, "department") and creator.department:
+        dept_code = creator.department.code
 
     base_url = str(request.base_url).rstrip("/")
-    p_val = ann.priority.value if hasattr(ann.priority, 'value') else str(ann.priority)
+    p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
     target_node_id = enqueue_in.speaker_node_id if (enqueue_in.speaker_node_id and enqueue_in.speaker_node_id > 0) else None
     result = enqueue_and_broadcast_announcement(
         db=db,
-        announcement_id=int(ann.id),
+        announcement_id=int(getattr(ann, "id")),
         title=str(ann.title),
         content=str(ann.description),
         department_code=dept_code,
@@ -519,7 +524,7 @@ def enqueue_speaker_announcement(
     )
     return {
         "status": "success",
-        "announcement_id": ann.id,
+        "announcement_id": getattr(ann, "id"),
         "queue_position": result.get("queue_position", 1),
         "item_status": result.get("queue_status", "Playing" if result.get("is_playing") else "Queued"),
         "is_playing": result.get("is_playing", False),
