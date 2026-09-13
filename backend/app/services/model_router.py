@@ -957,25 +957,31 @@ class ModelRouter:
 
     def _speculative_race(self, prompt: str, system_instruction: str, history: Optional[List[Dict[str, Any]]]) -> Optional[Tuple[str, str]]:
         """Race Gemini and Cloudflare LLaMA concurrently; return first valid response."""
+        def _call_gemini() -> Optional[Tuple[str, str]]:
+            text, model_name = self.gemini_provider.generate(prompt, system_instruction, history)
+            if text:
+                return text, model_name or f"Google {GEMINI_PRIMARY_MODEL}"
+            return None
+
+        def _call_cloudflare() -> Optional[Tuple[str, str]]:
+            text = self.cloudflare_provider.generate(prompt, system_instruction, history)
+            if text:
+                return text, "Cloudflare LLaMA 3.1 (Edge)"
+            return None
+
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_gemini = executor.submit(self.gemini_provider.generate, prompt, system_instruction, history)
-            future_cf = executor.submit(self.cloudflare_provider.generate, prompt, system_instruction, history)
+            future_gemini = executor.submit(_call_gemini)
+            future_cf = executor.submit(_call_cloudflare)
 
-            futures = {
-                future_gemini: ("gemini", f"Google {GEMINI_PRIMARY_MODEL}"),
-                future_cf: ("cloudflare", "Cloudflare LLaMA 3.1 (Edge)")
-            }
-
-            for future in as_completed(futures):
-                provider_key, label = futures[future]
+            for future in as_completed([future_gemini, future_cf]):
                 try:
-                    res = future.result()
-                    if provider_key == "gemini" and res and res[0]:
-                        return res[0], res[1] or label
-                    elif provider_key == "cloudflare" and res:
-                        return res, label
+                    result = future.result()
+                    if result is not None and isinstance(result, tuple) and len(result) == 2:
+                        res_text, res_label = result
+                        if res_text:
+                            return str(res_text), str(res_label)
                 except Exception as e:
-                    logger.debug(f"Speculative racing worker {provider_key} failed: {e}")
+                    logger.debug(f"Speculative racing worker failed: {e}")
 
         return None
 
