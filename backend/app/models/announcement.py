@@ -144,6 +144,20 @@ class Announcement(TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
 
+    repeat_schedule = relationship(
+        "AnnouncementRepeatSchedule",
+        back_populates="announcement",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    vip_protocol = relationship(
+        "AnnouncementVipProtocol",
+        back_populates="announcement",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
     # -------------------------
     # Computed Model Properties
     # -------------------------

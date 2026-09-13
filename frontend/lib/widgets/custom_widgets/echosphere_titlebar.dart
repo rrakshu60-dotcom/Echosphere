@@ -84,7 +84,7 @@ class _WindowListener extends WindowListener {
 
   @override
   void onWindowResized() async {
-    if (Platform.isWindows) {
+    if (!kIsWeb && Platform.isWindows) {
       EchoSphereTitleBar.listenToWin32();
     }
   }

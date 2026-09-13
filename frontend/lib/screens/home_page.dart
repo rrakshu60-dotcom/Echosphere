@@ -1,4 +1,5 @@
 import 'package:anymex/ai/echosphere_ai.dart';
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/admin/user_management_page.dart';
@@ -6,6 +7,7 @@ import 'package:anymex/screens/admin/announcement_management_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
 import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
+import 'package:anymex/screens/announcements/speaker_queue_page.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/screens/home/home_dashboard_widgets.dart';
 import 'package:anymex/screens/notifications/notifications_page.dart';
@@ -47,40 +49,40 @@ class _HomePageState extends State<HomePage> {
               const Header(type: PageType.home),
               const Divider(height: 1),
 
-            Expanded(
-              child: Obx(() {
-                final _ = authController.currentUser.value;
-                final navItems = _buildNavItems(context);
-                final pages = _buildPages(context, theme);
+              Expanded(
+                child: Obx(() {
+                  final _ = authController.currentUser.value;
+                  final navItems = _buildNavItems(context);
+                  final pages = _buildPages(context, theme);
 
-                // Reset index if out of range when role changes
-                final safeIndex = _selectedNavIndex >= navItems.length ? 0 : _selectedNavIndex;
+                  // Reset index if out of range when role changes
+                  final safeIndex = _selectedNavIndex >= navItems.length ? 0 : _selectedNavIndex;
 
-                return Row(
-                  children: [
-                    // Desktop Side Navigation Bar
-                    if (isDesktop)
-                      ResponsiveNavBar(
-                        isDesktop: true,
-                        currentIndex: safeIndex,
-                        items: navItems,
+                  return Row(
+                    children: [
+                      // Desktop Side Navigation Bar
+                      if (isDesktop)
+                        ResponsiveNavBar(
+                          isDesktop: true,
+                          currentIndex: safeIndex,
+                          items: navItems,
+                        ),
+
+                      // Main View Content
+                      Expanded(
+                        child: IndexedStack(
+                          index: safeIndex,
+                          children: pages,
+                        ),
                       ),
-
-                    // Main View Content
-                    Expanded(
-                      child: IndexedStack(
-                        index: safeIndex,
-                        children: pages,
-                      ),
-                    ),
-                  ],
-                );
-              }),
-            ),
-          ],
+                    ],
+                  );
+                }),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
 
       // Mobile Bottom Navigation Bar (Uniform DevAdmin Glassmorphic Design)
       bottomNavigationBar: Obx(() {
@@ -128,7 +130,7 @@ class _HomePageState extends State<HomePage> {
     if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondPage = const ApprovalQueuePage();
     } else {
-      secondPage = _buildSearchPage(context, theme);
+      secondPage = const SpeakerQueuePage();
     }
 
     return [
@@ -144,9 +146,9 @@ class _HomePageState extends State<HomePage> {
     final user = authController.currentUser.value;
     final role = user?.role ?? 'Student';
 
-    IconData secondSelectedIcon = Icons.search_rounded;
-    IconData secondUnselectedIcon = Icons.search_outlined;
-    String secondLabel = 'Search';
+    IconData secondSelectedIcon = Icons.podcasts_rounded;
+    IconData secondUnselectedIcon = Icons.podcasts_outlined;
+    String secondLabel = 'Broadcasts';
 
     if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondSelectedIcon = Icons.fact_check_rounded;
@@ -192,11 +194,17 @@ class _HomePageState extends State<HomePage> {
   // Central Dashboard — The Home Screen
   // ──────────────────────────────────────────────────────────────────────────
   Widget _buildAnnouncementsDashboard(BuildContext context, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+
     return Obx(() {
       // Show shimmer skeleton only on initial load when data is empty
       if (annController.isLoading.value && annController.announcements.isEmpty) {
         return const DashboardSkeleton();
       }
+
+      final user = authController.currentUser.value;
+      final role = user?.role ?? 'Student';
+      final isStaffOrAdmin = role != 'Student';
 
       return RefreshIndicator(
         onRefresh: annController.fetchAnnouncements,
@@ -210,11 +218,17 @@ class _HomePageState extends State<HomePage> {
               _buildWelcomeBanner(theme),
               const SizedBox(height: 16),
 
-              // ─── Section 2: Stats Dashboard Panel ──────────────────
+              // ─── Section 2: Admin Quick Workspace Console (for Staff/Admin) ─
+              if (isStaffOrAdmin) ...[
+                _buildAdminWorkspaceBar(theme, role),
+                const SizedBox(height: 18),
+              ],
+
+              // ─── Section 3: Stats Dashboard Panel ──────────────────
               _buildStatsPanel(theme),
               const SizedBox(height: 20),
 
-              // ─── Section 3: Priority Announcements Carousel ────────
+              // ─── Section 4: Priority Announcements Carousel ────────
               Obx(() {
                 final priorityList = annController.priorityAnnouncements;
                 if (priorityList.isEmpty) return const SizedBox.shrink();
@@ -224,11 +238,63 @@ class _HomePageState extends State<HomePage> {
                 );
               }),
 
-              // ─── Section 4: Category Filter Chips ──────────────────
+              // ─── Section 5: Integrated Dashboard Search Bar ─────────
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF131D33) : Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark ? Colors.black.withValues(alpha: 0.2) : const Color(0xFF4F46E5).withValues(alpha: 0.03),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  onChanged: (val) => annController.searchQuery.value = val,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    hintText: 'Search notices by title, department, or keyword...',
+                    hintStyle: TextStyle(
+                      fontSize: 12.5,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    suffixIcon: Obx(() {
+                      if (annController.searchQuery.value.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 16),
+                        onPressed: () => annController.searchQuery.value = '',
+                      );
+                    }),
+                    suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ─── Section 6: Category Filter Chips ──────────────────
               _buildCategoryFilters(theme),
               const SizedBox(height: 16),
 
-              // ─── Section 5: Announcement Feed ──────────────────────
+              // ─── Section 7: Announcement Feed ──────────────────────
               _buildAnnouncementFeed(theme),
             ],
           ),
@@ -244,6 +310,8 @@ class _HomePageState extends State<HomePage> {
     return Obx(() {
       final user = authController.currentUser.value;
       final role = user?.role ?? 'Student';
+      final isDark = theme.brightness == Brightness.dark;
+
       return TweenAnimationBuilder<double>(
         tween: Tween(begin: 0.0, end: 1.0),
         duration: const Duration(milliseconds: 600),
@@ -256,49 +324,87 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                theme.colorScheme.primary.withOpacity(0.15),
-                theme.colorScheme.secondary.withOpacity(0.08),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: isDark ? const Color(0xFF131D33) : Colors.white,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: theme.colorScheme.primary.withOpacity(0.15),
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+              width: 1.0,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.25)
+                    : const Color(0xFF4F46E5).withValues(alpha: 0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.15),
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.primary.withValues(alpha: 0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  Icons.notifications_active,
-                  size: 28,
-                  color: theme.colorScheme.primary,
+                child: const Icon(
+                  Icons.campaign_rounded,
+                  size: 24,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user != null
-                          ? 'Welcome back, ${user.fullName}'
-                          : 'Welcome to EchoSphere',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Poppins-Bold',
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user != null
+                                ? 'Welcome back, ${user.fullName}'
+                                : 'Welcome to EchoSphere',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Poppins-Bold',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (user != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              role.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -306,8 +412,8 @@ class _HomePageState extends State<HomePage> {
                           ? '${user.department ?? "College-Wide"} Department'
                           : 'Log in to access college announcements.',
                       style: TextStyle(
-                        fontSize: 13,
-                        color: theme.colorScheme.onSurface.withOpacity(0.65),
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -315,34 +421,163 @@ class _HomePageState extends State<HomePage> {
               ),
               if (user == null)
                 EchoSphereButton(
-                  height: 38,
+                  height: 36,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   ),
                   child: const Text('Login'),
-                )
-              else if (role == 'College Admin' || role == 'Principal' || role == 'Dev Admin' || role == 'Developer' || role == 'HoD') ...[
-                IconButton(
-                  tooltip: 'Notice Moderation Hub',
-                  icon: const Icon(Icons.auto_fix_high_rounded),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AnnouncementManagementPage()),
-                  ),
                 ),
-                if (role != 'HoD')
-                  IconButton(
-                    tooltip: 'User Management Hub',
-                    icon: const Icon(Icons.manage_accounts_rounded),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const UserManagementPage()),
-                    ),
-                  ),
-              ],
             ],
           ),
         ),
       );
     });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Admin Quick Workspace Bar (For Staff / Admins)
+  // ──────────────────────────────────────────────────────────────────────────
+  Widget _buildAdminWorkspaceBar(ThemeData theme, String role) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Admin Workspace',
+              style: TextStyle(
+                fontFamily: 'Poppins-Bold',
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'MANAGEMENT CONSOLE',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.6,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildWorkspaceActionTile(
+                theme: theme,
+                title: 'Notice Hub',
+                subtitle: 'Moderate notices',
+                icon: Icons.auto_fix_high_rounded,
+                color: theme.colorScheme.primary,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AnnouncementManagementPage()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (role != 'HoD') ...[
+              Expanded(
+                child: _buildWorkspaceActionTile(
+                  theme: theme,
+                  title: 'User Hub',
+                  subtitle: 'Manage roles',
+                  icon: Icons.manage_accounts_rounded,
+                  color: const Color(0xFF0EA5E9),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const UserManagementPage()),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: _buildWorkspaceActionTile(
+                theme: theme,
+                title: 'Speaker PA',
+                subtitle: 'Hardware queue',
+                icon: Icons.podcasts_rounded,
+                color: const Color(0xFF10B981),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWorkspaceActionTile({
+    required ThemeData theme,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D33) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -388,7 +623,7 @@ class _HomePageState extends State<HomePage> {
               label: 'Today',
               value: annController.todayAnnouncements.length,
               icon: Icons.today_rounded,
-              color: const Color(0xFF10B981),
+              color: EchoSpherePalette.success,
               onTap: () {
                 annController.filterTodayOnly();
               },
@@ -399,7 +634,7 @@ class _HomePageState extends State<HomePage> {
                 label: 'Pending',
                 value: annController.pendingApprovals.length,
                 icon: Icons.pending_actions_rounded,
-                color: const Color(0xFFF59E0B),
+                color: EchoSpherePalette.urgent,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
                 ),
@@ -409,7 +644,7 @@ class _HomePageState extends State<HomePage> {
                 label: 'Urgent',
                 value: annController.emergencyCount,
                 icon: Icons.warning_amber_rounded,
-                color: const Color(0xFFEF4444),
+                color: EchoSpherePalette.emergency,
                 onTap: () {
                   annController.selectedCategory.value = 'All';
                   annController.searchQuery.value = 'EMERGENCY';
@@ -432,7 +667,7 @@ class _HomePageState extends State<HomePage> {
           'Categories',
           style: TextStyle(
             fontFamily: 'Poppins-Bold',
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -445,7 +680,8 @@ class _HomePageState extends State<HomePage> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
                   child: EchoSphereChip(
-                    label: '🎯 For You',
+                    label: 'For You',
+                    icon: Icons.auto_awesome_rounded,
                     isSelected: annController.showForYouOnly.value,
                     onSelected: (val) {
                       annController.showForYouOnly.value = val;
@@ -501,7 +737,7 @@ class _HomePageState extends State<HomePage> {
               'Recent Announcements',
               style: TextStyle(
                 fontFamily: 'Poppins-Bold',
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -516,7 +752,7 @@ class _HomePageState extends State<HomePage> {
                         padding:
                             const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -535,23 +771,30 @@ class _HomePageState extends State<HomePage> {
                     ),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                        border: Border.all(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.inventory_2_rounded, size: 13, color: Colors.amber),
-                          SizedBox(width: 4),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 13,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 4),
                           Text(
                             'Archive',
                             style: TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -576,13 +819,13 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Icon(Icons.inbox_outlined,
                         size: 56,
-                        color: theme.colorScheme.onSurface.withOpacity(0.2)),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.2)),
                     const SizedBox(height: 16),
                     Text(
                       'No announcements match your search or filter.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                         fontSize: 14,
                       ),
                     ),
@@ -591,7 +834,7 @@ class _HomePageState extends State<HomePage> {
                       'Try a different category or clear your search.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.3),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
                         fontSize: 12,
                       ),
                     ),
@@ -614,109 +857,6 @@ class _HomePageState extends State<HomePage> {
           );
         }),
       ],
-    );
-  }
-
-  Widget _buildSearchPage(BuildContext context, ThemeData theme) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Search Announcements',
-            style: TextStyle(
-              fontFamily: 'Poppins-Bold',
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Purple Rounded Pill Search Input
-          Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: theme.colorScheme.primary.withOpacity(0.25),
-                width: 1,
-              ),
-            ),
-            child: TextField(
-              onChanged: (val) => annController.searchQuery.value = val,
-              decoration: InputDecoration(
-                isDense: true,
-                filled: false,
-                fillColor: Colors.transparent,
-                hintText: 'Search by title, department, or keyword...',
-                hintStyle: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                ),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 8),
-                  child: Icon(Icons.search_rounded,
-                      size: 20,
-                      color: theme.colorScheme.primary),
-                ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Category Filters
-          _buildCategoryFilters(theme),
-          const SizedBox(height: 16),
-
-          // Search Results
-          Obx(() {
-            final feed = annController.filteredAnnouncements;
-            if (feed.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(40.0),
-                  child: Column(
-                    children: [
-                      Icon(Icons.search_off_rounded,
-                          size: 56,
-                          color: theme.colorScheme.onSurface.withOpacity(0.2)),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No announcements found matching your search.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: feed.length,
-              itemBuilder: (context, index) {
-                return AnnouncementFeedCard(
-                  notice: feed[index],
-                  index: index,
-                );
-              },
-            );
-          }),
-        ],
-      ),
     );
   }
 }

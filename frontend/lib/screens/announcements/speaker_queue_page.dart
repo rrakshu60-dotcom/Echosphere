@@ -84,9 +84,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
 
     if (noticeId != null) {
       TtsAudioService.instance.playAnnouncement(noticeId, directUrl: audioUrl);
-      snackBar('🔊 Playing voice broadcast: "$title"');
+      snackBar('Playing voice broadcast: "$title"');
     } else {
-      snackBar('🔊 Synthesizing and previewing voice announcement: "$title"');
+      snackBar('Synthesizing and previewing voice announcement: "$title"');
     }
   }
 
@@ -162,7 +162,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   return;
                 }
                 Navigator.pop(ctx);
-                snackBar('🚨 EMERGENCY OVERRIDE ACTIVATED!');
+                snackBar('Emergency override activated!', title: 'Emergency Alert');
 
                 final title = titleController.text.trim().isEmpty
                     ? 'Emergency Campus Broadcast'

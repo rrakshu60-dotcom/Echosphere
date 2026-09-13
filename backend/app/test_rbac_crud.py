@@ -12,17 +12,18 @@ from app.seeders.department import seed_departments
 from app.seeders.category import seed_categories
 from app.seeders.delivery_type import seed_delivery_types
 
-# Re-create fresh schema for test environment
-Base.metadata.drop_all(bind=engine)
+# Initialize DB schema & seeders for testing
 Base.metadata.create_all(bind=engine)
 
-# Initialize DB seeders for testing
 db = next(get_db())
-seed_roles(db)
-seed_departments(db)
-seed_categories(db)
-seed_delivery_types(db)
-seed_users(db)
+try:
+    seed_roles(db)
+    seed_departments(db)
+    seed_categories(db)
+    seed_delivery_types(db)
+    seed_users(db)
+finally:
+    db.close()
 
 client = TestClient(app)
 

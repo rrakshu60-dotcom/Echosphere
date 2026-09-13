@@ -261,7 +261,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '🎙️ Voice Notice Dictation',
+                          'Voice Notice Dictation',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         Text(
@@ -322,7 +322,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
               Center(
                 child: Text(
                   _isListening
-                      ? '🎙️ Listening... Speak naturally into microphone'
+                      ? 'Listening... Speak naturally into microphone'
                       : (_dictationController.text.isNotEmpty
                           ? 'Tap Mic to Dictate More or Edit Below'
                           : 'Tap Mic to Start Speaking'),
@@ -402,13 +402,15 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                     runSpacing: 4,
                     children: [
                       ActionChip(
-                        label: const Text('📝 Lab Change', style: TextStyle(fontSize: 10)),
+                        avatar: const Icon(Icons.science_outlined, size: 14),
+                        label: const Text('Lab Schedule', style: TextStyle(fontSize: 11)),
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _applySample('Attention 3rd year CSE students: Tomorrow lab at 2 PM in Turing Lab is postponed to Friday due to faculty meeting. Hall tickets required.'),
                       ),
                       ActionChip(
-                        label: const Text('🚨 Emergency Drill', style: TextStyle(fontSize: 10)),
+                        avatar: const Icon(Icons.warning_amber_rounded, size: 14),
+                        label: const Text('Emergency Drill', style: TextStyle(fontSize: 11)),
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _applySample('Urgent emergency alert: Mandatory campus fire evacuation drill starting in 10 minutes at main ground.'),
@@ -426,7 +428,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.auto_fix_high_rounded, size: 18),
                 label: Text(
-                  _isProcessing ? 'AI Transforming to Circular...' : '✨ Transform into Official Circular',
+                  _isProcessing ? 'AI Transforming to Circular...' : 'Transform into Official Circular',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 style: ElevatedButton.styleFrom(

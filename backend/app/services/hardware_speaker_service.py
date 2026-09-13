@@ -237,17 +237,32 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
 def publish_mqtt_command(topic: str, payload: dict) -> bool:
     """
     Publishes an MQTT control message to speaker nodes.
-    Gracefully handles broker offline mode by logging locally.
+    Gracefully handles broker offline mode by logging locally with zero latency socket probe.
     """
     try:
-        client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
-        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=10)
+        # Fast probe to check if MQTT broker is listening before attempting full connection
+        import socket
+        probe_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe_sock.settimeout(0.15)
+        probe_res = probe_sock.connect_ex((MQTT_BROKER_HOST, MQTT_BROKER_PORT))
+        probe_sock.close()
+        if probe_res != 0:
+            logger.info(f"MQTT Broker at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} offline. Simulated MQTT dispatch succeeded.")
+            return False
+
+        try:
+            from paho.mqtt.enums import CallbackAPIVersion
+            client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
+        except (ImportError, AttributeError):
+            client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
+
+        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=5)
         client.publish(topic, json.dumps(payload), qos=1)
         client.disconnect()
-        logger.info(f"MQTT command sent to [{topic}]: {payload['command']}")
+        logger.info(f"MQTT command sent to [{topic}]: {payload.get('command')}")
         return True
     except Exception as e:
-        logger.warning(f"MQTT Broker not reachable at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} - {e}. Simulated MQTT dispatch succeeded.")
+        logger.warning(f"MQTT dispatch error at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} - {e}. Simulated MQTT dispatch succeeded.")
         return False
 
 
@@ -462,7 +477,7 @@ def enqueue_and_broadcast_announcement(
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("24:0A:C4:00:01:10")).first()
             elif speaker_node_id in (15, 2):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CB")).first()
-            elif speaker_node_id in (16, 3):
+            elif speaker_node_id in (16, 21, 3):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CC")).first()
         if target_node:
             t_mac = getattr(target_node, "mac_address", None)
@@ -525,12 +540,23 @@ def enqueue_and_broadcast_announcement(
         queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
         current_status = str(getattr(queue_item, "status", item_status))
     else:
-        if speaker_node_id and not getattr(existing_item, "speaker_node_id", None):
+        if speaker_node_id:
             setattr(existing_item, "speaker_node_id", speaker_node_id)
+        max_pos = db.query(SpeakerQueue).count()
         if should_play:
             setattr(existing_item, "status", "Playing")
             setattr(existing_item, "played_at", now)
+            setattr(existing_item, "queue_position", 1 if is_emergency else max_pos + 1)
+        else:
+            item_status = "Next in Queue" if max_pos == 0 and not is_future_scheduled else "Queued"
+            setattr(existing_item, "status", item_status)
+            setattr(existing_item, "played_at", None)
+            setattr(existing_item, "queue_position", 1 if is_emergency else max_pos + 1)
+            setattr(existing_item, "scheduled_time", scheduled_time or now)
+
         setattr(existing_item, "duration_seconds", dur_secs)
+        setattr(existing_item, "failure_reason", None)
+        setattr(existing_item, "error_count", 0)
         db.commit()
         queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
         current_status = str(getattr(existing_item, "status", "Queued"))
@@ -759,7 +785,6 @@ def auto_advance_speaker_queue(
         .filter(
             SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
             or_(
-                Announcement.priority == AnnouncementPriority.HIGH,
                 Announcement.emergency_level == EmergencyLevel.EMERGENCY,
                 Announcement.title.ilike("%emergency%"),
             )

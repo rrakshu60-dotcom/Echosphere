@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -109,6 +109,7 @@ class AnnouncementResponse(BaseModel):
     deliver_in_app: bool = True
     deliver_push: bool = True
     speaker_voice: Optional[str] = "female"
+    repeat_schedule: Optional[Any] = None
 
 
 class AnnouncementApprovalRequest(BaseModel):

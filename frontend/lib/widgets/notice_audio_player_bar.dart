@@ -53,33 +53,38 @@ class NoticeAudioPlayerBar extends StatelessWidget {
     final chimeOptions = [
       {
         'id': 'auto',
-        'title': '⚡ AI Auto-Select',
+        'title': 'AI Auto-Select',
         'desc': 'Intelligently selects chime based on notice urgency and topic',
         'chimeType': 'urgent_academic',
+        'icon': Icons.bolt_rounded,
       },
       {
         'id': 'urgent_academic',
-        'title': '🔔 Professional Double-Beep',
+        'title': 'Academic Alert',
         'desc': 'Crisp attention-grabbing chime for exams, deadlines & circulars',
         'chimeType': 'urgent_academic',
+        'icon': Icons.notifications_active_rounded,
       },
       {
         'id': 'events_sports',
-        'title': '🎉 Upbeat Acoustic Ding',
+        'title': 'Events & Activities',
         'desc': 'Cheerful 3-tone arpeggio for fests, sports, clubs & activities',
         'chimeType': 'events_sports',
+        'icon': Icons.celebration_rounded,
       },
       {
         'id': 'emergency',
-        'title': '🚨 Sweeping Siren Pulse',
+        'title': 'Emergency Siren',
         'desc': 'Rapid acoustic siren sweep to command hallway silence',
         'chimeType': 'emergency',
+        'icon': Icons.emergency_rounded,
       },
       {
         'id': 'standard',
-        'title': '🎵 Gentle Campus Chime',
+        'title': 'Campus Chime',
         'desc': 'Warm dual-tone marimba chime for daily campus announcements',
         'chimeType': 'standard',
+        'icon': Icons.music_note_rounded,
       },
     ];
 
@@ -151,17 +156,34 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              opt['icon'] as IconData,
+                              size: 18,
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: InkWell(
                               onTap: () {
-                                audio.setChimeType(opt['id']!);
+                                audio.setChimeType(opt['id'] as String);
                                 Navigator.of(ctx).pop();
                               },
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    opt['title']!,
+                                    opt['title'] as String,
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
@@ -170,7 +192,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    opt['desc']!,
+                                    opt['desc'] as String,
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: theme.colorScheme.onSurface.withOpacity(0.6),
@@ -182,7 +204,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            onPressed: () => audio.previewChime(opt['chimeType']!),
+                            onPressed: () => audio.previewChime(opt['chimeType'] as String),
                             icon: const Icon(Icons.volume_up_rounded, size: 18),
                             tooltip: 'Preview chime sound',
                             color: const Color(0xFF10B981),
@@ -485,7 +507,8 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 // Gender Toggles
                 _buildConfigChip(
                   context: context,
-                  label: '♀ Female',
+                  label: 'Female',
+                  icon: Icons.record_voice_over_rounded,
                   isSelected: currentGender == 'female',
                   onTap: () => audio.setVoiceConfig(
                     gender: 'female',
@@ -497,7 +520,8 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 ),
                 _buildConfigChip(
                   context: context,
-                  label: '♂ Male',
+                  label: 'Male',
+                  icon: Icons.record_voice_over_outlined,
                   isSelected: currentGender == 'male',
                   onTap: () => audio.setVoiceConfig(
                     gender: 'male',
@@ -508,10 +532,11 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                   ),
                 ),
 
-                // Read Mode Toggle (Full notice vs AI Summary)
+                // Read Mode Toggle (Full notice vs Summary)
                 _buildConfigChip(
                   context: context,
-                  label: '📄 Full Notice',
+                  label: 'Full Notice',
+                  icon: Icons.article_rounded,
                   isSelected: currentMode == 'full',
                   onTap: () {
                     audio.playAnnouncement(
@@ -526,7 +551,8 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 ),
                 _buildConfigChip(
                   context: context,
-                  label: '✨ AI Summary',
+                  label: 'Summary',
+                  icon: Icons.auto_awesome_rounded,
                   isSelected: currentMode == 'summary',
                   onTap: () {
                     audio.playAnnouncement(
@@ -544,11 +570,11 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                 _buildConfigChip(
                   context: context,
                   label: audio.includeChime.value
-                      ? '🔔 Chime: ${_getChimeDisplayLabel(audio.selectedChime.value)}'
-                      : '🔕 Chime: OFF',
+                      ? 'Chime: ${_getChimeDisplayLabel(audio.selectedChime.value)}'
+                      : 'Chime: Off',
                   icon: audio.includeChime.value
-                      ? Icons.notifications_active_outlined
-                      : Icons.notifications_off_outlined,
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_off_rounded,
                   isSelected: audio.includeChime.value,
                   onTap: () => _showChimeSelectorSheet(context),
                 ),

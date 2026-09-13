@@ -137,6 +137,7 @@ class PlayerShaders {
   }
 
   static Future<void> setShaders(dynamic player, String shader) async {
+    if (kIsWeb) return;
     settingsController.selectedShader = shader;
     final separator = Platform.isWindows ? ';' : ':';
     var paths =
@@ -146,6 +147,7 @@ class PlayerShaders {
   }
 
   static Future<bool> areShadersDownloaded() async {
+    if (kIsWeb) return false;
     try {
       final basePath = await getShaderBasePath();
       final dir = Directory(basePath);
@@ -161,6 +163,7 @@ class PlayerShaders {
   }
 
   static Future<bool> createMpvConfigFolder() async {
+    if (kIsWeb) return false;
     try {
       final mpvPath = await getMpvPath();
       final configDir = Directory(mpvPath);

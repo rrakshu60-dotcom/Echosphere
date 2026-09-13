@@ -44,6 +44,16 @@ def resolve_contextual_chime(
         return "emergency"
 
     if (
+        p_upper in ["VIP", "VIP_PROTOCOL"]
+        or any(k in c_lower for k in ["vip", "chief guest", "dignitary", "protocol"])
+        or any(k in combined for k in [
+            "chief guest", "dignitary", "honorable", "keynote speaker",
+            "distinguished guest", "guest of honour", "inauguration by", "presided by"
+        ])
+    ):
+        return "ceremonial"
+
+    if (
         p_upper in ["URGENT", "HIGH"]
         or any(k in c_lower for k in ["exam", "academic", "fee", "deadline", "circular"])
         or any(k in combined for k in ["deadline", "viva", "hall ticket", "mandatory", "urgent"])
@@ -127,6 +137,18 @@ def generate_chime_pcm(chime_type: str, sample_rate: int = 24000) -> bytes:
         tone3 = synthesize_tone(783.99, 0.38, sample_rate=sample_rate, amplitude=16000, decay_exp=3.2)
         trailing = synthesize_silence(0.18, sample_rate=sample_rate)
         return tone1 + gap1 + tone2 + gap2 + tone3 + trailing
+
+    elif c_type in ["ceremonial", "vip", "dignitary", "fanfare"]:
+        # Ceremonial harmonic brass fanfare: F4 (349.23 Hz) -> A4 (440.0 Hz) -> C5 (523.25 Hz) -> F5 (698.46 Hz)
+        tone1 = synthesize_tone(349.23, 0.14, sample_rate=sample_rate, amplitude=14000, decay_exp=4.2)
+        gap1 = synthesize_silence(0.04, sample_rate=sample_rate)
+        tone2 = synthesize_tone(440.0, 0.14, sample_rate=sample_rate, amplitude=15000, decay_exp=4.0)
+        gap2 = synthesize_silence(0.04, sample_rate=sample_rate)
+        tone3 = synthesize_tone(523.25, 0.18, sample_rate=sample_rate, amplitude=16000, decay_exp=3.8)
+        gap3 = synthesize_silence(0.04, sample_rate=sample_rate)
+        tone4 = synthesize_tone(698.46, 0.48, sample_rate=sample_rate, amplitude=18000, decay_exp=2.8)
+        trailing = synthesize_silence(0.25, sample_rate=sample_rate)
+        return tone1 + gap1 + tone2 + gap2 + tone3 + gap3 + tone4 + trailing
 
     elif c_type == "emergency":
         # Immediate sweeping siren pulse (600Hz -> 1200Hz frequency modulation)

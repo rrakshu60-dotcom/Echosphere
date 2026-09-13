@@ -89,10 +89,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('🎙️ Voice Notice Dictation'), findsOneWidget);
+      expect(find.text('Voice Notice Dictation'), findsOneWidget);
       expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
       expect(find.text('Pick Audio File'), findsOneWidget);
-      expect(find.text('✨ Transform into Official Circular'), findsOneWidget);
+      expect(find.text('Transform into Official Circular'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -128,8 +128,8 @@ void main() {
       expect(find.text('AI Fast Intake Studio'), findsOneWidget);
       expect(find.byKey(const Key('voice_dictate_button')), findsOneWidget);
       expect(find.byKey(const Key('scan_ocr_button')), findsOneWidget);
-      expect(find.text('🎙️ Voice Dictate'), findsOneWidget);
-      expect(find.text('📄 Scan / OCR Notice'), findsOneWidget);
+      expect(find.text('Voice Dictate'), findsOneWidget);
+      expect(find.text('Scan / OCR Notice'), findsOneWidget);
 
       expect(tester.takeException(), isNull);
     });

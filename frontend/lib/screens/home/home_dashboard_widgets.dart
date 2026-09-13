@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
@@ -198,19 +199,7 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
   }
 
   Color _getPriorityColor(String priority) {
-    switch (priority.toUpperCase()) {
-      case 'EMERGENCY':
-        return const Color(0xFFF87171);
-      case 'URGENT':
-        return const Color(0xFFFB923C);
-      case 'HIGH':
-        return const Color(0xFFFBBF24);
-      case 'LOW':
-        return const Color(0xFF94A3B8);
-      case 'NORMAL':
-      default:
-        return const Color(0xFF60A5FA);
-    }
+    return EchoSpherePalette.getPriorityColor(priority);
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -571,7 +560,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
           summary: summary,
         );
 
-        snackBar('✨ AI Summary generated!');
+        snackBar('AI Summary generated successfully.');
       }
     } catch (e) {
       if (mounted) {
@@ -609,19 +598,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   }
 
   Color _getPriorityColor(String priority) {
-    switch (priority.toUpperCase()) {
-      case 'EMERGENCY':
-        return const Color(0xFFF87171);
-      case 'URGENT':
-        return const Color(0xFFFB923C);
-      case 'HIGH':
-        return const Color(0xFFFBBF24);
-      case 'LOW':
-        return const Color(0xFF94A3B8);
-      case 'NORMAL':
-      default:
-        return const Color(0xFF60A5FA);
-    }
+    return EchoSpherePalette.getPriorityColor(priority);
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -813,13 +790,13 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.auto_awesome,
+                                Icons.auto_awesome_rounded,
                                 size: 12,
                                 color: theme.colorScheme.primary,
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '🎯 Relevant to You',
+                                'Relevant to You',
                                 style: TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.bold,
@@ -832,11 +809,14 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                          horizontal: 8, vertical: 3.5),
                       decoration: BoxDecoration(
-                        color: pColor.withOpacity(0.12),
+                        color: EchoSpherePalette.getPriorityBgColor(widget.notice.priority, isDark: theme.brightness == Brightness.dark),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: pColor.withOpacity(0.25)),
+                        border: Border.all(
+                          color: EchoSpherePalette.getPriorityBorderColor(widget.notice.priority, isDark: theme.brightness == Brightness.dark),
+                          width: 0.8,
+                        ),
                       ),
                       child: Text(
                         widget.notice.priority,

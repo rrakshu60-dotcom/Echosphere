@@ -13,4 +13,9 @@ from .speaker_node import SpeakerNode as SpeakerNode
 from .speaker_command import SpeakerCommand as SpeakerCommand
 from .user import User as User
 from .password_reset_token import PasswordResetToken as PasswordResetToken
+from .announcement_repeat_schedule import (
+    AnnouncementRepeatSchedule as AnnouncementRepeatSchedule,
+    RepeatSlotExecutionLog as RepeatSlotExecutionLog,
+)
+from .announcement_vip_protocol import AnnouncementVipProtocol as AnnouncementVipProtocol
 

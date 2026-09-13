@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 extension ThemeModeExts on BuildContext {
   ColorScheme get colors => ColorScheme(
@@ -60,5 +59,6 @@ extension ThemeModeExts on BuildContext {
 }
 
 extension ThemeExtensions on Color {
-  Color opaque(double val, {bool iReallyMeanIt = false}) => withValues(alpha: iReallyMeanIt ? val : Get.isDarkMode ? val : 1);
+  Color opaque(double val, {bool iReallyMeanIt = false}) =>
+      withValues(alpha: val.clamp(0.0, 1.0));
 }

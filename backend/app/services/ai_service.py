@@ -256,7 +256,7 @@ class AIService:
 
         # Step 4.5: Calibrated Guardrail Check (guarantee zero false refusals on greetings, identity & academics)
         is_greeting_or_pleasantry = any(
-            w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye"]
+            w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye", "who are you", "who r u", "who are u", "what is your name"]
         )
         is_identity_query = predicted_intent == "USER_IDENTITY" or any(
             w in q_lower for w in ["who am i", "what is my name", "what is my designation", "what is my role", "my profile", "my department", "who i am", "whats my name", "what's my name", "whats my designation", "what's my designation"]

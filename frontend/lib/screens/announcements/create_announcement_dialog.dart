@@ -40,7 +40,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
   bool deliverInApp = true;
   bool deliverPush = true;
-  bool deliverSpeaker = true;
+  bool deliverSpeaker = false;
   String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];
@@ -207,7 +207,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           }
         }
       });
-      snackBar('Voice note transformed into official institutional circular!', title: '🎙️ Voice Notice Dictation');
+      snackBar('Voice note transformed into official institutional circular!', title: 'Voice Notice Dictation');
     }
   }
 
@@ -270,7 +270,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           }
         });
 
-        snackBar('Scanned circular auto-digitized & original document attached!', title: '📄 Document OCR Digitizer');
+        snackBar('Scanned circular auto-digitized & original document attached!', title: 'Document OCR Digitizer');
       }
     } catch (e) {
       errorSnackBar('Document scanning failed: $e');
@@ -561,7 +561,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                         key: const Key('voice_dictate_button'),
                         onPressed: _startVoiceDictation,
                         icon: const Icon(Icons.mic_rounded, size: 14),
-                        label: const Text('🎙️ Voice Dictate', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        label: const Text('Voice Dictate', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF4F46E5),
                           foregroundColor: Colors.white,
@@ -575,7 +575,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                         onPressed: isAiScanningDoc ? null : _scanAndOcrDocument,
                         icon: const Icon(Icons.document_scanner_rounded, size: 14),
                         label: Text(
-                          isAiScanningDoc ? 'Scanning Doc...' : '📄 Scan / OCR Notice',
+                          isAiScanningDoc ? 'Scanning Doc...' : 'Scan / OCR Notice',
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                         ),
                         style: OutlinedButton.styleFrom(

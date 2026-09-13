@@ -237,7 +237,7 @@ class CalendarSyncSheet extends StatelessWidget {
                   Center(
                     child: TextButton.icon(
                       onPressed: () {
-                        final text = '📅 ${event.title}\n⏰ ${dateFmt.format(event.startTime)} at ${timeFmt.format(event.startTime)}\n📍 ${event.location}\n📌 ${event.actionRequired}';
+                        final text = 'Event: ${event.title}\nDate/Time: ${dateFmt.format(event.startTime)} at ${timeFmt.format(event.startTime)}\nLocation: ${event.location}\nAction Required: ${event.actionRequired}';
                         Clipboard.setData(ClipboardData(text: text));
                         snackBar('Event details copied to clipboard');
                       },

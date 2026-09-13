@@ -908,7 +908,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                                 child: Tooltip(
                                                   message: 'Click to change role',
                                                   child: EchoSphereChip(
-                                                    label: '${u['role'] ?? 'Student'} ✏️',
+                                                    label: u['role'] ?? 'Student',
+                                                    icon: Icons.edit_rounded,
                                                     isSelected: true,
                                                     onSelected: (_) => _showRoleChangeDialog(u),
                                                   ),

@@ -166,7 +166,7 @@ class SpeakerQueueController extends GetxController {
     if (nodeId == null) return 'All Nodes (College-Wide)';
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
-        (nodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
     if (match != null) return match['name'] ?? 'Speaker #$nodeId';
@@ -182,7 +182,7 @@ class SpeakerQueueController extends GetxController {
     }
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
-        (nodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
     return (match?['status'] ?? 'OFFLINE').toString().toUpperCase();
@@ -847,13 +847,13 @@ class SpeakerQueueController extends GetxController {
       }
 
       snackBar(
-        '🔊 Now broadcasting "${announcement.title}" on campus speakers!',
+        'Now broadcasting "${announcement.title}" on campus speakers.',
         title: 'Speaker Broadcast Started',
       );
     } else {
       queueItems.refresh();
       snackBar(
-        '📋 Added "${announcement.title}" to speaker queue (Position #${targetIndex + 1})',
+        'Added "${announcement.title}" to speaker queue (Position #${targetIndex + 1}).',
         title: 'Added to Speaker Queue',
       );
     }
@@ -863,7 +863,7 @@ class SpeakerQueueController extends GetxController {
       int? resolvedNodeId = targetNodeId;
       final matchNode = speakerNodes.firstWhereOrNull((n) =>
           n['id'] == targetNodeId ||
-          (targetNodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+          ((targetNodeId == 21 || targetNodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
           (targetNodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
           (targetNodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
       if (matchNode != null && matchNode['id'] is int) {
@@ -905,7 +905,7 @@ class SpeakerQueueController extends GetxController {
     int? resolvedNodeId = speakerNodeId;
     final matchNode = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == speakerNodeId ||
-        (speakerNodeId == 16 && (n['name'] ?? '').toString().contains('Client 2')) ||
+        ((speakerNodeId == 21 || speakerNodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
         (speakerNodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
         (speakerNodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
     if (matchNode != null && matchNode['id'] is int) {
@@ -1030,7 +1030,7 @@ class SpeakerQueueController extends GetxController {
         title: title,
         message: message,
       );
-      snackBar('🚨 EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
+      snackBar('EMERGENCY SIREN BROADCASTING LIVE ACROSS ALL NODES');
     } catch (e) {
       snackBar('Emergency broadcast sent: ${e.toString()}');
     }

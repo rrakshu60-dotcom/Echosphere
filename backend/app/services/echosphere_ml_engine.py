@@ -564,7 +564,7 @@ class EchoSphereMLEngine:
             "good morning", "good afternoon", "good evening", "how are you", 
             "how are you doing", "what's up", "whats up", "thanks", "thank you", 
             "thanks a lot", "thank you so much", "bye", "goodbye", "see you"
-        ]:
+        ] or any(trig in clean_lower for trig in ["who are you", "who r u", "who are u", "what is your name", "whats your name", "what's your name", "what do you do", "introduce yourself"]):
             return ("CONVERSATIONAL", 1.0)
 
         # 2. Deterministic Fast-Path: User Identity & Designation
@@ -903,7 +903,7 @@ class EchoSphereMLEngine:
         elif predicted_intent == "CONVERSATIONAL":
             if any(w in q_lower for w in ["who are you", "who r u", "what is your name", "what do you do", "identify"]):
                 text = (
-                    f"I am the **EchoSphere Campus AI Assistant**, your institutional companion for **{dept} Department**.\n\n"
+                    f"Hello {name}! I am the **EchoSphere AI Assistant**, your institutional companion for **{dept} Department**.\n\n"
                     f"**How I can assist you:**\n"
                     f"- **Branch Coursework:** Deep explanations of engineering concepts, algorithms, derivations, and study methods.\n"
                     f"- **Campus Notices:** Timely circulars, exam timetables, placement drives, and emergency alerts.\n"

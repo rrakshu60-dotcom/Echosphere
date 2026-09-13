@@ -276,6 +276,9 @@ unsigned long lastCycle = 0;
 void loop() {
     // 3-second heartbeat cycle keeps node alive and checks for commands
     if (millis() - lastCycle >= 3000) {
+        if (WiFi.status() != WL_CONNECTED) {
+            WiFi.reconnect();
+        }
         sendHeartbeat();
         lastCycle = millis();
     }
