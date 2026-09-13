@@ -224,10 +224,6 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 18),
               ],
 
-              // ─── Section 3: Stats Dashboard Panel ──────────────────
-              _buildStatsPanel(theme),
-              const SizedBox(height: 20),
-
               // ─── Section 4: Priority Announcements Carousel ────────
               Obx(() {
                 final priorityList = annController.priorityAnnouncements;
@@ -241,10 +237,10 @@ class _HomePageState extends State<HomePage> {
               // ─── Section 5: Integrated Dashboard Search Bar ─────────
               Container(
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+                  color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
+                    color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
                     width: 1,
                   ),
                   boxShadow: [
@@ -326,10 +322,10 @@ class _HomePageState extends State<HomePage> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+            color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
+              color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
               width: 1.0,
             ),
             boxShadow: [
@@ -415,6 +411,53 @@ class _HomePageState extends State<HomePage> {
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Obx(() {
+                      final total = annController.announcements.length;
+                      final today = annController.todayAnnouncements.length;
+                      final urgent = annController.emergencyCount;
+
+                      return Row(
+                        children: [
+                          Icon(Icons.feed_outlined, size: 13, color: theme.colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$total Total Notices',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                            child: Text('•', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.35))),
+                          ),
+                          Text(
+                            '$today Today',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          if (urgent > 0) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                              child: Text('•', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.35))),
+                            ),
+                            Text(
+                              '$urgent Urgent',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: EchoSpherePalette.destructive,
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -485,30 +528,15 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(width: 8),
-            if (role != 'HoD') ...[
-              Expanded(
-                child: _buildWorkspaceActionTile(
-                  theme: theme,
-                  title: 'User Hub',
-                  subtitle: 'Manage roles',
-                  icon: Icons.manage_accounts_rounded,
-                  color: theme.colorScheme.primary,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const UserManagementPage()),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
             Expanded(
               child: _buildWorkspaceActionTile(
                 theme: theme,
-                title: 'Speaker PA',
-                subtitle: 'Hardware queue',
-                icon: Icons.podcasts_rounded,
+                title: 'User Hub',
+                subtitle: 'Directory & roles',
+                icon: Icons.manage_accounts_rounded,
                 color: theme.colorScheme.primary,
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
+                  MaterialPageRoute(builder: (_) => const UserManagementPage()),
                 ),
               ),
             ),
@@ -534,10 +562,10 @@ class _HomePageState extends State<HomePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+          color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
+            color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
             width: 1,
           ),
         ),
@@ -576,82 +604,6 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Stats Dashboard Panel — Animated metric cards
-  // ──────────────────────────────────────────────────────────────────────────
-  Widget _buildStatsPanel(ThemeData theme) {
-    return Obx(() {
-      final user = authController.currentUser.value;
-      final role = user?.role ?? 'Student';
-      final isAdmin = role == 'College Admin' ||
-          role == 'HoD' ||
-          role == 'Principal' ||
-          role == 'Dev Admin' ||
-          role == 'Developer';
-
-      return TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) => Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 16 * (1 - value)),
-            child: child,
-          ),
-        ),
-        child: Row(
-          children: [
-            StatCard(
-              label: 'Total Notices',
-              value: annController.announcements.length,
-              icon: Icons.rss_feed_rounded,
-              color: theme.colorScheme.primary,
-              onTap: () {
-                annController.showTodayOnly.value = false;
-                annController.showForYouOnly.value = false;
-                annController.selectedCategory.value = 'All';
-                annController.searchQuery.value = '';
-              },
-            ),
-            const SizedBox(width: 10),
-            StatCard(
-              label: 'Today',
-              value: annController.todayAnnouncements.length,
-              icon: Icons.today_rounded,
-              color: theme.brightness == Brightness.dark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground,
-              onTap: () {
-                annController.filterTodayOnly();
-              },
-            ),
-            const SizedBox(width: 10),
-            if (isAdmin || role == 'Teacher')
-              StatCard(
-                label: 'Pending',
-                value: annController.pendingApprovals.length,
-                icon: Icons.pending_actions_rounded,
-                color: theme.colorScheme.primary,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
-                ),
-              )
-            else
-              StatCard(
-                label: 'Urgent',
-                value: annController.emergencyCount,
-                icon: Icons.warning_amber_rounded,
-                color: theme.colorScheme.primary,
-                onTap: () {
-                  annController.selectedCategory.value = 'All';
-                  annController.searchQuery.value = 'EMERGENCY';
-                },
-              ),
-          ],
-        ),
-      );
-    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────

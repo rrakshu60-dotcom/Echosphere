@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
@@ -113,13 +114,13 @@ class CalendarSyncSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? const Color(0xFF09080D)
-                      : const Color(0xFFFFFFFF),
+                      ? EchoSpherePalette.darkSurface
+                      : EchoSpherePalette.lightSurface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isDark
-                        ? const Color(0xFF241F2E)
-                        : const Color(0xFFE5E7EB),
+                        ? EchoSpherePalette.darkBorder
+                        : EchoSpherePalette.lightBorder,
                   ),
                 ),
                 child: Column(

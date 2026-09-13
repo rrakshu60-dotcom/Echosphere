@@ -9,6 +9,9 @@ class UserResponse(BaseModel):
     employee_id: Optional[str] = None
     role: Optional[str] = None
     department_id: Optional[int] = None
+    department: Optional[str] = None
+    semester: Optional[int] = None
+    section: Optional[str] = None
     is_active: bool = True
 
     class Config:

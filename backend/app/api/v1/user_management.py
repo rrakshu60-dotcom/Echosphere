@@ -12,12 +12,26 @@ router = APIRouter(prefix="/users", tags=["User Management Module"])
 @router.get("/", response_model=List[UserResponse])
 def list_users(
     department_id: Optional[int] = None,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD")),
+    role: Optional[str] = None,
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 250,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    users = UserManagementService.list_users(db=db, department_id=department_id)
+    users = UserManagementService.list_users(
+        db=db,
+        department_id=department_id,
+        role_name=role,
+        search=search,
+        skip=skip,
+        limit=limit,
+    )
     result = []
     for u in users:
+        dept_name = None
+        if hasattr(u, 'department') and u.department:
+            dept_name = getattr(u.department, 'name', None) or getattr(u.department, 'code', None)
         result.append(UserResponse(
             id=u.id,
             full_name=u.full_name,
@@ -26,6 +40,9 @@ def list_users(
             employee_id=u.employee_id,
             role=u.role.name if u.role else "Student",
             department_id=u.department_id,
+            department=dept_name,
+            semester=getattr(u, 'semester', None),
+            section=getattr(u, 'section', None),
             is_active=u.is_active if hasattr(u, 'is_active') else True,
         ))
     return result
