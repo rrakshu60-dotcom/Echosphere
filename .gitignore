@@ -39,6 +39,7 @@ frontend/build/
 frontend/.dart_tool/
 frontend/android/.gradle/
 frontend/android/app/build/
+frontend_backup_pre_shadcn/
 
 # Media, Screenshots, Temp & Docs
 *.apk

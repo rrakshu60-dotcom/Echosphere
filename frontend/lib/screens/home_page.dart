@@ -623,7 +623,7 @@ class _HomePageState extends State<HomePage> {
               label: 'Today',
               value: annController.todayAnnouncements.length,
               icon: Icons.today_rounded,
-              color: EchoSpherePalette.success,
+              color: theme.brightness == Brightness.dark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground,
               onTap: () {
                 annController.filterTodayOnly();
               },
@@ -634,7 +634,7 @@ class _HomePageState extends State<HomePage> {
                 label: 'Pending',
                 value: annController.pendingApprovals.length,
                 icon: Icons.pending_actions_rounded,
-                color: EchoSpherePalette.urgent,
+                color: theme.colorScheme.primary,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ApprovalQueuePage()),
                 ),
@@ -644,7 +644,7 @@ class _HomePageState extends State<HomePage> {
                 label: 'Urgent',
                 value: annController.emergencyCount,
                 icon: Icons.warning_amber_rounded,
-                color: EchoSpherePalette.emergency,
+                color: theme.colorScheme.primary,
                 onTap: () {
                   annController.selectedCategory.value = 'All';
                   annController.searchQuery.value = 'EMERGENCY';

@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/settings/methods.dart';
 import 'package:anymex/controllers/settings/settings.dart';
 import 'package:flutter/material.dart';
@@ -49,10 +50,19 @@ class EchoSphereChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final unselectedFg = isDark
+        ? EchoSpherePalette.darkSecondaryForeground
+        : EchoSpherePalette.lightSecondaryForeground;
+    final unselectedBg = isDark
+        ? EchoSpherePalette.darkSecondary
+        : EchoSpherePalette.lightSecondary;
+    final unselectedBorder = isDark
+        ? EchoSpherePalette.darkBorder
+        : EchoSpherePalette.lightBorder;
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: isSelected ? [glowingShadow(context)] : null,
       ),
       child: FilterChip(
@@ -62,33 +72,25 @@ class EchoSphereChip extends StatelessWidget {
             ? Icon(
                 icon,
                 size: 14,
-                color: isSelected
-                    ? Colors.white
-                    : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+                color: isSelected ? Colors.white : unselectedFg,
               )
             : null,
         label: Text(label),
         labelStyle: TextStyle(
-          color: isSelected
-              ? Colors.white
-              : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+          color: isSelected ? Colors.white : unselectedFg,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
           fontSize: 12,
         ),
         checkmarkColor: isSelected ? Colors.white : Colors.transparent,
-        backgroundColor: isDark
-            ? const Color(0xFF1E293B)
-            : const Color(0xFFF1F5F9),
+        backgroundColor: unselectedBg,
         selectedColor: theme.colorScheme.primary,
         side: BorderSide(
-          color: isSelected
-              ? theme.colorScheme.primary
-              : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-          width: 0.8,
+          color: isSelected ? theme.colorScheme.primary : unselectedBorder,
+          width: 1.0,
         ),
         showCheckmark: icon == null && showCheck,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
         ),
       ),
     );
@@ -110,6 +112,7 @@ class EchoSphereIconChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return FilterChip(
       selected: isSelected,
       onSelected: onSelected,
@@ -117,18 +120,23 @@ class EchoSphereIconChip extends StatelessWidget {
       label: icon,
       checkmarkColor: isSelected
           ? context.colors.onPrimary
-          : context.colors.onSurfaceVariant,
+          : (isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground),
       labelStyle: TextStyle(
         color: isSelected
             ? context.colors.onPrimary
-            : context.colors.onSurfaceVariant,
+            : (isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground),
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
-      backgroundColor: context.colors.secondaryContainer,
+      backgroundColor: isDark ? EchoSpherePalette.darkSecondary : EchoSpherePalette.lightSecondary,
       selectedColor: context.colors.primary,
-      side: BorderSide.none,
+      side: BorderSide(
+        color: isSelected
+            ? context.colors.primary
+            : (isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder),
+        width: 1.0,
+      ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(10),
       ),
     );
   }
