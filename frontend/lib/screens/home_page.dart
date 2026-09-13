@@ -245,7 +245,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: isDark ? Colors.black.withValues(alpha: 0.4) : const Color(0xFF6E26E5).withValues(alpha: 0.06),
+                      color: isDark ? Colors.black.withValues(alpha: 0.4) : const Color(0xFF0F172A).withValues(alpha: 0.03),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -259,7 +259,7 @@ class _HomePageState extends State<HomePage> {
                     hintText: 'Search notices by title, department, or keyword...',
                     hintStyle: TextStyle(
                       fontSize: 12.5,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                      color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.5) : const Color(0xFF64748B),
                     ),
                     prefixIcon: Icon(
                       Icons.search_rounded,
@@ -332,7 +332,7 @@ class _HomePageState extends State<HomePage> {
               BoxShadow(
                 color: isDark
                     ? Colors.black.withValues(alpha: 0.4)
-                    : const Color(0xFF6E26E5).withValues(alpha: 0.06),
+                    : const Color(0xFF0F172A).withValues(alpha: 0.03),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -385,8 +385,12 @@ class _HomePageState extends State<HomePage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                              color: isDark ? theme.colorScheme.primary.withValues(alpha: 0.15) : const Color(0xFFEEF2FF),
                               borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isDark ? theme.colorScheme.primary.withValues(alpha: 0.3) : const Color(0xFFC7D2FE),
+                                width: 0.8,
+                              ),
                             ),
                             child: Text(
                               role.toUpperCase(),
@@ -408,7 +412,7 @@ class _HomePageState extends State<HomePage> {
                           : 'Log in to access college announcements.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.65) : const Color(0xFF475569),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -426,12 +430,12 @@ class _HomePageState extends State<HomePage> {
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                              color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.8) : const Color(0xFF334155),
                             ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                            child: Text('•', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.35))),
+                            child: Text('•', style: TextStyle(fontSize: 11, color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.4) : const Color(0xFF94A3B8))),
                           ),
                           Text(
                             '$today Today',
@@ -597,7 +601,7 @@ class _HomePageState extends State<HomePage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 10,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.6) : const Color(0xFF64748B),
               ),
             ),
           ],

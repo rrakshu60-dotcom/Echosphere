@@ -88,12 +88,19 @@ class EchoSphereContainer extends StatelessWidget {
                   : [
                       BoxShadow(
                         color: isDark
-                            ? Colors.black.withValues(alpha: 0.60)
-                            : const Color(0xFF6E26E5).withValues(alpha: 0.08),
-                        blurRadius: isDark ? 40 : 30,
-                        offset: Offset(0, isDark ? 20 : 8),
-                        spreadRadius: isDark ? -10 : 0,
+                            ? Colors.black.withValues(alpha: 0.55)
+                            : const Color(0xFF0F172A).withValues(alpha: 0.04),
+                        blurRadius: isDark ? 36 : 20,
+                        offset: Offset(0, isDark ? 16 : 4),
+                        spreadRadius: isDark ? -8 : -2,
                       ),
+                      if (!isDark)
+                        BoxShadow(
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.02),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                          spreadRadius: 0,
+                        ),
                     ],
         );
 

@@ -85,7 +85,9 @@ class StatCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.brightness == Brightness.dark
+                    ? theme.colorScheme.onSurface.withOpacity(0.65)
+                    : const Color(0xFF64748B),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -339,12 +341,19 @@ class _PriorityCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withValues(alpha: 0.60)
-                : const Color(0xFF6E26E5).withValues(alpha: 0.08),
-            blurRadius: isDark ? 40 : 30,
-            offset: Offset(0, isDark ? 20 : 8),
-            spreadRadius: isDark ? -10 : 0,
+                ? Colors.black.withValues(alpha: 0.55)
+                : const Color(0xFF0F172A).withValues(alpha: 0.04),
+            blurRadius: isDark ? 36 : 20,
+            offset: Offset(0, isDark ? 16 : 4),
+            spreadRadius: isDark ? -8 : -2,
           ),
+          if (!isDark)
+            BoxShadow(
+              color: const Color(0xFF0F172A).withValues(alpha: 0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+              spreadRadius: 0,
+            ),
         ],
       ),
       padding: const EdgeInsets.all(14.0),
@@ -369,7 +378,7 @@ class _PriorityCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -394,7 +403,7 @@ class _PriorityCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 height: 1.35,
-                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                color: isDark ? theme.colorScheme.onSurface.withOpacity(0.85) : const Color(0xFF334155),
               ),
             ),
           ),
@@ -403,7 +412,7 @@ class _PriorityCard extends StatelessWidget {
             children: [
               Icon(Icons.person_outline,
                   size: 13,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                  color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B)),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
@@ -413,7 +422,7 @@ class _PriorityCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B),
                   ),
                 ),
               ),
@@ -673,6 +682,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     Map<String, dynamic>? relevance;
     if (Get.isRegistered<AnnouncementController>()) {
@@ -740,7 +750,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       _timeAgo(widget.notice.createdAt),
                       style: TextStyle(
                         fontSize: 11,
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B),
                       ),
                     ),
                   ],
@@ -766,7 +776,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                   style: TextStyle(
                     fontSize: 13.5,
                     height: 1.5,
-                    color: theme.colorScheme.onSurface.withOpacity(0.75),
+                    color: isDark ? theme.colorScheme.onSurface.withOpacity(0.85) : const Color(0xFF334155),
                   ),
                 ),
 
@@ -777,9 +787,9 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.08),
+                      color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF5F3FF),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.28)),
+                      border: Border.all(color: isDark ? theme.colorScheme.outline : const Color(0xFFDDD6FE)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -840,7 +850,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           style: TextStyle(
                             fontSize: 12.5,
                             height: 1.4,
-                            color: theme.colorScheme.onSurface.withOpacity(0.88),
+                            color: isDark ? theme.colorScheme.onSurface : const Color(0xFF1E1B4B),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -856,8 +866,9 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF1F5F9),
                         shape: BoxShape.circle,
+                        border: Border.all(color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0), width: 0.8),
                       ),
                       child: Icon(
                         Icons.person,
@@ -874,7 +885,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: isDark ? theme.colorScheme.onSurface.withOpacity(0.7) : const Color(0xFF475569),
                         ),
                       ),
                     ),
@@ -898,13 +909,14 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             horizontal: 9, vertical: 5),
                         decoration: BoxDecoration(
                           color: _showSummary
-                              ? theme.colorScheme.primary.withOpacity(0.18)
-                              : theme.colorScheme.primary.withOpacity(0.08),
+                              ? (isDark ? theme.colorScheme.primary.withOpacity(0.20) : const Color(0xFFEEF2FF))
+                              : (isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC)),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: _showSummary
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.primary.withOpacity(0.3),
+                                ? (isDark ? theme.colorScheme.primary : const Color(0xFF818CF8))
+                                : (isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0)),
+                            width: 1.0,
                           ),
                         ),
                         child: Row(
@@ -938,8 +950,10 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                           : 'AI Summarize')),
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
+                                fontWeight: _showSummary ? FontWeight.bold : FontWeight.w600,
+                                color: _showSummary
+                                    ? theme.colorScheme.primary
+                                    : (isDark ? theme.colorScheme.onSurface : const Color(0xFF334155)),
                               ),
                             ),
                           ],
@@ -966,13 +980,14 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               horizontal: 8, vertical: 5),
                           decoration: BoxDecoration(
                             color: isThisPlaying
-                                ? theme.colorScheme.primary.withOpacity(0.18)
-                                : theme.colorScheme.primary.withOpacity(0.06),
+                                ? (isDark ? theme.colorScheme.primary.withOpacity(0.20) : const Color(0xFFEEF2FF))
+                                : (isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC)),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: isThisPlaying
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.primary.withOpacity(0.2),
+                                  ? (isDark ? theme.colorScheme.primary : const Color(0xFF818CF8))
+                                  : (isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0)),
+                              width: 1.0,
                             ),
                           ),
                           child: Row(
@@ -997,8 +1012,10 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                 isThisPlaying ? 'Playing' : 'Listen',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
+                                  fontWeight: isThisPlaying ? FontWeight.bold : FontWeight.w600,
+                                  color: isThisPlaying
+                                      ? theme.colorScheme.primary
+                                      : (isDark ? theme.colorScheme.onSurface : const Color(0xFF334155)),
                                 ),
                               ),
                             ],
@@ -1015,10 +1032,11 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: theme.colorScheme.primary.withOpacity(0.28),
+                            color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
+                            width: 1.0,
                           ),
                         ),
                         child: Row(
@@ -1044,8 +1062,8 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               _isLoadingCalendar ? 'Syncing...' : 'Add to Calendar',
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? theme.colorScheme.onSurface : const Color(0xFF334155),
                               ),
                             ),
                           ],
@@ -1065,14 +1083,18 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
+                            width: 1.0,
+                          ),
                         ),
                         child: Text(
                           'Read Details →',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             color: theme.colorScheme.primary,
                           ),
                         ),
