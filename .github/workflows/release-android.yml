@@ -7,6 +7,11 @@ on:
       - 'frontend/**'
       - '.github/workflows/release-android.yml'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Target Release Tag'
+        required: false
+        default: 'v1.1'
 
 concurrency:
   group: release-android-${{ github.ref }}
@@ -73,13 +78,7 @@ jobs:
       - name: Publish Direct to GitHub Releases (Unlimited Storage)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "EchoSphere Latest Release"
-          body: |
-            ## 🌐 EchoSphere Automated Build & Release
-            
-            ### 📱 Android Installation:
-            Download **`echosphere-app.apk`** below directly to your Android device, open it, and tap **Install**.
+          tag_name: ${{ github.event.inputs.tag_name || 'v1.1' }}
           draft: false
           prerelease: false
           files: frontend/echosphere-app.apk
