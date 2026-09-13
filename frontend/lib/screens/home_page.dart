@@ -2,13 +2,9 @@ import 'package:anymex/ai/echosphere_ai.dart';
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/admin/user_management_page.dart';
-import 'package:anymex/screens/admin/announcement_management_page.dart';
 import 'package:anymex/screens/announcements/approval_queue_page.dart';
-import 'package:anymex/screens/announcements/archive_page.dart';
 import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
 import 'package:anymex/screens/announcements/speaker_queue_page.dart';
-import 'package:anymex/screens/auth/login_screen.dart';
 import 'package:anymex/screens/home/home_dashboard_widgets.dart';
 import 'package:anymex/screens/notifications/notifications_page.dart';
 import 'package:anymex/screens/profile/profile_page.dart';
@@ -30,16 +26,44 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedNavIndex = 0;
+  final List<int> _navHistory = [0];
 
   final AuthController authController = Get.put(AuthController());
   final AnnouncementController annController = Get.put(AnnouncementController());
+
+  void _onSelectTab(int index) {
+    if (_selectedNavIndex == index) return;
+    setState(() {
+      _navHistory.add(index);
+      _selectedNavIndex = index;
+    });
+  }
+
+  void _handleBack() {
+    if (_navHistory.length > 1) {
+      setState(() {
+        _navHistory.removeLast();
+        _selectedNavIndex = _navHistory.last;
+      });
+    } else if (_selectedNavIndex != 0) {
+      setState(() {
+        _selectedNavIndex = 0;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 750;
 
-    return Scaffold(
+    return PopScope(
+      canPop: _selectedNavIndex == 0 && _navHistory.length <= 1,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
       body: Glow(
         child: SafeArea(
           top: true,
@@ -119,7 +143,7 @@ class _HomePageState extends State<HomePage> {
         }
         return const SizedBox.shrink();
       }),
-    );
+    ));
   }
 
   List<Widget> _buildPages(BuildContext context, ThemeData theme) {
@@ -161,31 +185,31 @@ class _HomePageState extends State<HomePage> {
         selectedIcon: Icons.grid_view_rounded,
         unselectedIcon: Icons.grid_view_outlined,
         label: 'Notices',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
+        onTap: (index) => _onSelectTab(index),
       ),
       NavItem(
         selectedIcon: secondSelectedIcon,
         unselectedIcon: secondUnselectedIcon,
         label: secondLabel,
-        onTap: (index) => setState(() => _selectedNavIndex = index),
+        onTap: (index) => _onSelectTab(index),
       ),
       NavItem(
         selectedIcon: Icons.auto_awesome_rounded,
         unselectedIcon: Icons.auto_awesome_outlined,
         label: 'AI Assistant',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
+        onTap: (index) => _onSelectTab(index),
       ),
       NavItem(
         selectedIcon: Icons.notifications_rounded,
         unselectedIcon: Icons.notifications_outlined,
         label: 'Alerts',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
+        onTap: (index) => _onSelectTab(index),
       ),
       NavItem(
         selectedIcon: Icons.person_rounded,
         unselectedIcon: Icons.person_outline_rounded,
         label: 'Profile',
-        onTap: (index) => setState(() => _selectedNavIndex = index),
+        onTap: (index) => _onSelectTab(index),
       ),
     ];
   }
@@ -383,10 +407,10 @@ class _HomePageState extends State<HomePage> {
                         if (user != null) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
                               color: isDark ? theme.colorScheme.primary.withValues(alpha: 0.15) : const Color(0xFFEEF2FF),
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: isDark ? theme.colorScheme.primary.withValues(alpha: 0.3) : const Color(0xFFC7D2FE),
                                 width: 0.8,
@@ -452,10 +476,10 @@ class _HomePageState extends State<HomePage> {
                             ),
                             Text(
                               '$urgent Urgent',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                color: EchoSpherePalette.destructive,
+                                color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive,
                               ),
                             ),
                           ],
@@ -468,9 +492,7 @@ class _HomePageState extends State<HomePage> {
               if (user == null)
                 EchoSphereButton(
                   height: 36,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  ),
+                  onTap: () => Get.toNamed('/login'),
                   child: const Text('Login'),
                 ),
             ],
@@ -499,10 +521,10 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 'MANAGEMENT CONSOLE',
@@ -526,9 +548,7 @@ class _HomePageState extends State<HomePage> {
                 subtitle: 'Moderate notices',
                 icon: Icons.auto_fix_high_rounded,
                 color: theme.colorScheme.primary,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AnnouncementManagementPage()),
-                ),
+                onTap: () => Get.toNamed('/announcement-management'),
               ),
             ),
             const SizedBox(width: 8),
@@ -539,9 +559,7 @@ class _HomePageState extends State<HomePage> {
                 subtitle: 'Directory & roles',
                 icon: Icons.manage_accounts_rounded,
                 color: theme.colorScheme.primary,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const UserManagementPage()),
-                ),
+                onTap: () => Get.toNamed('/user-management'),
               ),
             ),
           ],
@@ -577,10 +595,10 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icon, size: 16, color: color),
             ),
@@ -702,10 +720,10 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 6),
                   Obx(() => Container(
                         padding:
-                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(
                           '${annController.filteredAnnouncements.length} Notices',
@@ -718,15 +736,13 @@ class _HomePageState extends State<HomePage> {
                       )),
                   const SizedBox(width: 6),
                   InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ArchivePage()),
-                    ),
-                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => Get.toNamed('/archive'),
+                    borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: theme.colorScheme.outline.withValues(alpha: 0.3),
                           width: 0.8,

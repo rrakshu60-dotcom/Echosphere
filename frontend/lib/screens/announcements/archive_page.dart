@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/common/glow.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -81,60 +81,54 @@ Retrieved from EchoSphere Historical Campus Notice Archive
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
-    return Scaffold(
-      body: Glow(
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        if (canPop) ...[
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back_rounded),
-                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                            padding: EdgeInsets.zero,
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
+    return SubPagePopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
+        body: Glow(
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const EchoSphereBackButton(fallbackRoute: '/home'),
                           const SizedBox(width: 4),
-                        ],
-                        Icon(Icons.inventory_2_rounded, size: 22, color: theme.colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Notice Archive',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface,
+                          Icon(Icons.inventory_2_rounded, size: 22, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Notice Archive',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                'Historical notices older than 1 week',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                Text(
+                                  'Historical notices older than 1 week',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                     const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -367,11 +361,7 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                   IconButton(
                                     tooltip: 'View Full Notice',
                                     icon: const Icon(Icons.open_in_new_rounded),
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => AnnouncementDetailPage(announcement: item),
-                                      ),
-                                    ),
+                                    onPressed: () => openAnnouncementDetail(context, item),
                                   ),
                                 ],
                               ),
@@ -387,6 +377,7 @@ Retrieved from EchoSphere Historical Campus Notice Archive
           ),
         ),
       ),
+    ),
     );
   }
 }

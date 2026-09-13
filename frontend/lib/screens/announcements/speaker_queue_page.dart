@@ -13,6 +13,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
   const SpeakerQueuePage({super.key});
@@ -747,12 +748,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          leading: canPop
-              ? IconButton(
-                  icon: Icon(Icons.arrow_back_rounded, color: context.colors.primary),
-                  onPressed: () => Navigator.of(context).pop(),
-                )
-              : null,
+          leading: canPop ? const EchoSphereBackButton(fallbackRoute: '/home') : null,
           title: const EchoSphereText(
             text: 'Access Restricted',
             size: 16,
@@ -828,12 +824,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
               child: Row(
                 children: [
                   if (canPop) ...[
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_rounded, color: context.colors.primary),
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      padding: EdgeInsets.zero,
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    const EchoSphereBackButton(fallbackRoute: '/home'),
                     const SizedBox(width: 4),
                   ],
                   Container(

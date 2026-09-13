@@ -125,9 +125,13 @@ class EchoSphereBadge extends StatelessWidget {
 
     switch (variant) {
       case BadgeVariant.destructive:
-        bg = EchoSpherePalette.destructive.withOpacity(isDark ? 0.16 : 0.08);
-        fg = isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626);
-        border = EchoSpherePalette.destructive.withOpacity(isDark ? 0.28 : 0.20);
+        bg = isDark
+            ? EchoSpherePalette.darkErrorContainer.withOpacity(0.55)
+            : EchoSpherePalette.lightErrorContainer;
+        fg = isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive;
+        border = isDark
+            ? EchoSpherePalette.darkDestructive.withOpacity(0.35)
+            : EchoSpherePalette.lightDestructive.withOpacity(0.28);
         break;
       case BadgeVariant.outline:
         bg = Colors.transparent;

@@ -1,5 +1,6 @@
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/auth/login_screen.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -160,6 +161,23 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (ModalRoute.of(context)?.canPop ?? false) ...[
+                  Row(
+                    children: [
+                      const EchoSphereBackButton(fallbackRoute: '/home'),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Back to Dashboard',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 // 1. Profile Header Card
                 EchoSphereContainer(
                   padding: const EdgeInsets.all(24.0),

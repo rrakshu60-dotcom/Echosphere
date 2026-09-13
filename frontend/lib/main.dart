@@ -22,6 +22,8 @@ import 'package:anymex/utils/external_font_loader.dart';
 import 'package:anymex/utils/logger.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_splash_screen.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_titlebar.dart';
+import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/utils/url_strategy.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,6 +70,7 @@ Future<void> safeCall(FutureOr<void> Function() function,
 void main(List<String> args) async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    configureAppUrlStrategy();
 
     await safeCall(() async {
       await dotenv.load(fileName: ".env");
@@ -171,22 +174,28 @@ class RootWrapper extends StatefulWidget {
 }
 
 class _RootWrapperState extends State<RootWrapper> {
-  bool _showSplash = true;
+  static bool _hasShownSplash = false;
+  late bool _showSplash;
 
   @override
   void initState() {
     super.initState();
-    // 2.5s fallback to smoothly dismiss splash screen
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted && _showSplash) {
-        setState(() {
-          _showSplash = false;
-        });
-      }
-    });
+    _showSplash = !_hasShownSplash;
+    if (_showSplash) {
+      // 2.5s fallback to smoothly dismiss splash screen
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted && _showSplash) {
+          _hasShownSplash = true;
+          setState(() {
+            _showSplash = false;
+          });
+        }
+      });
+    }
   }
 
   void _onComplete() {
+    _hasShownSplash = true;
     if (mounted && _showSplash) {
       setState(() {
         _showSplash = false;
@@ -306,6 +315,25 @@ class _MainAppState extends State<MainApp> {
           GetPage(name: '/archive', page: () => const ArchivePage()),
           GetPage(name: '/notifications', page: () => const NotificationsPage()),
           GetPage(name: '/profile', page: () => const ProfilePage()),
+          GetPage(
+            name: '/announcement',
+            page: () {
+              final args = Get.arguments;
+              if (args is AnnouncementModel) {
+                return AnnouncementDetailPage(announcement: args);
+              }
+              final idStr = Get.parameters['id'];
+              final id = int.tryParse(idStr ?? '');
+              if (id != null && Get.isRegistered<AnnouncementController>()) {
+                final annCtrl = Get.find<AnnouncementController>();
+                final found = annCtrl.allAnnouncements.firstWhereOrNull((a) => a.id == id);
+                if (found != null) {
+                  return AnnouncementDetailPage(announcement: found);
+                }
+              }
+              return const RootWrapper();
+            },
+          ),
         ],
         builder: (context, child) {
           if (PlatformDispatcher.instance.views.length > 1) {

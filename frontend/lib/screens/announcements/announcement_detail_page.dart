@@ -23,6 +23,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:anymex/widgets/notice_audio_player_bar.dart';
 import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -644,7 +645,9 @@ Downloaded & Saved via EchoSphere Smart Campus System
     final canArchive = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
         (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE');
 
-    return Scaffold(
+    return SubPagePopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
       body: Glow(
         child: SafeArea(
           top: true,
@@ -656,10 +659,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Get.back(),
-                  ),
+                  const EchoSphereBackButton(fallbackRoute: '/home'),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: EchoSphereText(
@@ -1425,23 +1425,27 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     ],
                                   ),
                                 ),
-                                EchoSphereButton(
-                                  height: 42,
-                                  color: EchoSpherePalette.destructive.withOpacity(0.15),
-                                  border: const BorderSide(color: EchoSpherePalette.destructive),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                  onTap: () => _showRejectDialog(context, announcementController),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.cancel_outlined, size: 16, color: EchoSpherePalette.destructive),
-                                      SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: EchoSpherePalette.destructive, fontSize: 12)),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                Builder(builder: (ctx) {
+                                  final isDark = theme.brightness == Brightness.dark;
+                                  final rejectColor = isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive;
+                                  return EchoSphereButton(
+                                    height: 42,
+                                    color: rejectColor.withOpacity(0.12),
+                                    border: BorderSide(color: rejectColor.withOpacity(0.35), width: 1.2),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                    onTap: () => _showRejectDialog(context, announcementController),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.cancel_outlined, size: 16, color: rejectColor),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: rejectColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
                               ],
                               if (canArchive)
                                 EchoSphereButton(
@@ -1496,23 +1500,27 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     ],
                                   ),
                                 ),
-                                EchoSphereButton(
-                                  height: 42,
-                                  color: EchoSpherePalette.destructive.withOpacity(0.15),
-                                  border: const BorderSide(color: EchoSpherePalette.destructive),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                  onTap: () => _showDeleteConfirm(context, announcementController),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.delete_outline_rounded, size: 16, color: EchoSpherePalette.destructive),
-                                      SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text('Delete', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: EchoSpherePalette.destructive, fontSize: 12)),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                Builder(builder: (ctx) {
+                                  final isDark = theme.brightness == Brightness.dark;
+                                  final delColor = isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive;
+                                  return EchoSphereButton(
+                                    height: 42,
+                                    color: delColor.withOpacity(0.12),
+                                    border: BorderSide(color: delColor.withOpacity(0.35), width: 1.2),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                    onTap: () => _showDeleteConfirm(context, announcementController),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.delete_outline_rounded, size: 16, color: delColor),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text('Delete', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: delColor, fontSize: 12, fontWeight: FontWeight.w600)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
                               ],
                             ],
                           ),
@@ -1525,6 +1533,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
           ],
         ),
       ),
+    ),
     ),
     );
   }

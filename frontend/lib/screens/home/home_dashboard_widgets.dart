@@ -1,9 +1,9 @@
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/services/tts_audio_service.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -215,7 +215,7 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.secondary,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: theme.colorScheme.outline, width: 1),
                 ),
                 child: Icon(Icons.campaign_rounded,
@@ -262,12 +262,7 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
                   right: index < widget.items.length - 1 ? 12 : 0,
                 ),
                 child: InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          AnnouncementDetailPage(announcement: item),
-                    ),
-                  ),
+                  onTap: () => openAnnouncementDetail(context, item),
                   borderRadius: BorderRadius.circular(18),
                   child: _PriorityCard(
                     item: item,
@@ -708,11 +703,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12.0),
         child: InkWell(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => AnnouncementDetailPage(announcement: widget.notice),
-            ),
-          ),
+          onTap: () => openAnnouncementDetail(context, widget.notice),
           borderRadius: BorderRadius.circular(16),
           child: EchoSphereContainer(
             padding: const EdgeInsets.all(18.0),
@@ -819,7 +810,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                 Clipboard.setData(ClipboardData(text: _aiSummary!));
                                 snackBar('Summary copied to clipboard');
                               },
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: BorderRadius.circular(12),
                               child: Padding(
                                 padding: const EdgeInsets.all(3.0),
                                 child: Icon(
@@ -832,7 +823,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             const SizedBox(width: 4),
                             InkWell(
                               onTap: () => setState(() => _showSummary = false),
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: BorderRadius.circular(12),
                               child: Padding(
                                 padding: const EdgeInsets.all(3.0),
                                 child: Icon(
@@ -903,7 +894,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     // 1. Dedicated AI Summarizer Button (Text only, powered by trained model)
                     InkWell(
                       onTap: _isSummarizing ? null : _handleSummarizeTap,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(14),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 9, vertical: 5),
@@ -911,7 +902,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           color: _showSummary
                               ? (isDark ? theme.colorScheme.primary.withOpacity(0.20) : const Color(0xFFEEF2FF))
                               : (isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC)),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: _showSummary
                                 ? (isDark ? theme.colorScheme.primary : const Color(0xFF818CF8))
@@ -974,7 +965,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           summary: _aiSummary ?? widget.notice.aiSummary,
                           forceMode: _showSummary ? 'summary' : null,
                         ),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 5),
@@ -982,7 +973,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             color: isThisPlaying
                                 ? (isDark ? theme.colorScheme.primary.withOpacity(0.20) : const Color(0xFFEEF2FF))
                                 : (isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC)),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isThisPlaying
                                   ? (isDark ? theme.colorScheme.primary : const Color(0xFF818CF8))
@@ -1027,13 +1018,13 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     // 3. Calendar Sync Button
                     InkWell(
                       onTap: _isLoadingCalendar ? null : _handleCalendarTap,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(14),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
                           color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
                             width: 1.0,
@@ -1073,18 +1064,14 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
 
                     // 4. Read Details Button
                     InkWell(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => AnnouncementDetailPage(announcement: widget.notice),
-                        ),
-                      ),
-                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => openAnnouncementDetail(context, widget.notice),
+                      borderRadius: BorderRadius.circular(14),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
                           color: isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
                             width: 1.0,
@@ -1214,6 +1201,7 @@ class QuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(right: 12.0),
       child: InkWell(
@@ -1245,7 +1233,7 @@ class QuickActionCard extends StatelessWidget {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: color.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(icon, color: color, size: 22),
                   ),
@@ -1257,8 +1245,8 @@ class QuickActionCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: EchoSpherePalette.destructive,
-                          borderRadius: BorderRadius.circular(10),
+                          color: isDark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive,
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(
                           badgeCount! > 99 ? '99+' : '$badgeCount',

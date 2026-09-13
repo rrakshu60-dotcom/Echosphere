@@ -5,6 +5,7 @@ import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/services/echosphere_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AnnouncementModel {
   final int id;
@@ -357,9 +358,60 @@ class AnnouncementController extends GetxController {
   StreamSubscription<EchosphereRealtimeEvent>? _realtimeSubscription;
   Timer? _periodicSyncTimer;
 
+  final Set<int> _persistedApprovedIds = <int>{};
+  final Set<int> _persistedRejectedIds = <int>{};
+
+  Future<void> _loadPersistedApprovalStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final approvedList = prefs.getStringList('echosphere_approved_notice_ids') ?? [];
+      final rejectedList = prefs.getStringList('echosphere_rejected_notice_ids') ?? [];
+      _persistedApprovedIds.clear();
+      _persistedApprovedIds.addAll(approvedList.map((e) => int.tryParse(e)).whereType<int>());
+      _persistedRejectedIds.clear();
+      _persistedRejectedIds.addAll(rejectedList.map((e) => int.tryParse(e)).whereType<int>());
+    } catch (_) {}
+  }
+
+  Future<void> _recordApprovedNoticeId(int id) async {
+    _persistedApprovedIds.add(id);
+    _persistedRejectedIds.remove(id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'echosphere_approved_notice_ids',
+        _persistedApprovedIds.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _recordRejectedNoticeId(int id) async {
+    _persistedRejectedIds.add(id);
+    _persistedApprovedIds.remove(id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'echosphere_rejected_notice_ids',
+        _persistedRejectedIds.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Clears persisted approval/rejection IDs so fresh server state is used on next login.
+  Future<void> clearPersistedApprovalCache() async {
+    _persistedApprovedIds.clear();
+    _persistedRejectedIds.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('echosphere_approved_notice_ids');
+      await prefs.remove('echosphere_rejected_notice_ids');
+    } catch (_) {}
+  }
+
   @override
   void onInit() {
     super.onInit();
+    _loadPersistedApprovalStatus();
     // Instant 0ms display: Pre-seed notices so home dashboard renders immediately without shimmer skeleton
     if (_rawAnnouncements.isEmpty) {
       _rawAnnouncements.value = _getSampleAnnouncements();
@@ -607,43 +659,66 @@ class AnnouncementController extends GetxController {
     if (!Get.testMode) {
       try {
         final api = EchosphereApiService();
-        final publicData = await api.getAnnouncements();
+        // Fetch public notices and approval queue concurrently in parallel
+        final results = await Future.wait([
+          api.getAnnouncements().catchError((err) {
+            debugPrint('Public announcements fetch notice: $err');
+            return <dynamic>[];
+          }),
+          api.getApprovalQueue().catchError((err) {
+            debugPrint('Approval queue fetch notice: $err');
+            return <dynamic>[];
+          }),
+        ]);
+        final publicData = results[0];
+        final queueData = results[1];
+
         final List<AnnouncementModel> fetched = [];
         if (publicData.isNotEmpty) {
           fetched.addAll(publicData.map((e) => AnnouncementModel.fromJson(e as Map<String, dynamic>)));
         }
 
-        // Also fetch approval queue for staff/teachers/approvers
-        try {
-          final queueData = await api.getApprovalQueue();
-          if (queueData.isNotEmpty) {
-            for (var item in queueData) {
-              final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
-              final existingIdx = fetched.indexWhere((a) => a.id == model.id);
-              if (existingIdx != -1) {
-                fetched[existingIdx] = model;
-              } else {
-                fetched.insert(0, model);
-              }
+        if (queueData.isNotEmpty) {
+          for (var item in queueData) {
+            final model = AnnouncementModel.fromJson(item as Map<String, dynamic>);
+            final existingIdx = fetched.indexWhere((a) => a.id == model.id);
+            if (existingIdx != -1) {
+              fetched[existingIdx] = model;
+            } else {
+              fetched.insert(0, model);
             }
           }
-        } catch (qe) {
-          debugPrint('Approval queue fetch log: $qe');
         }
 
         if (fetched.isNotEmpty) {
-          // Merge fetched announcements with the baseline catalog to guarantee all categories maintain their notices
+          // Merge fetched announcements with published baseline catalog for any missing categories
           final baseline = _getSampleAnnouncements();
           final Map<String, AnnouncementModel> mergedMap = {};
+          final fetchedCategories = fetched.map((a) => a.category.toLowerCase().trim()).toSet();
           for (final a in baseline) {
-            mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+            if (!fetchedCategories.contains(a.category.toLowerCase().trim())) {
+              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+            }
           }
           for (final a in fetched) {
-            mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+            // Apply persisted approval/rejection state overrides
+            if (_persistedApprovedIds.contains(a.id)) {
+              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a.copyWith(
+                status: 'PUBLISHED',
+                approvedAt: a.approvedAt ?? DateTime.now(),
+              );
+            } else if (_persistedRejectedIds.contains(a.id)) {
+              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a.copyWith(
+                status: 'REJECTED',
+              );
+            } else {
+              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+            }
           }
           _rawAnnouncements.value = mergedMap.values.toList();
           isLoading.value = false;
           update();
+          // Update relevance scores asynchronously in background without blocking UI
           updateAllRelevanceScores();
           return;
         }
@@ -716,6 +791,9 @@ class AnnouncementController extends GetxController {
     final userDept = (user?.department ?? '').trim().toLowerCase();
 
     final filtered = _rawAnnouncements.where((a) {
+      if (_persistedApprovedIds.contains(a.id) || _persistedRejectedIds.contains(a.id)) {
+        return false;
+      }
       final isPending = a.status == 'PENDING_APPROVAL' ||
           a.status == 'SUBMITTED' ||
           a.status == 'DRAFT';
@@ -1031,14 +1109,17 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
-    // 0ms Optimistic UI update
+    await _recordApprovedNoticeId(id);
+
+    // 0ms Optimistic UI update — save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    AnnouncementModel? originalSnapshot;
     if (idx != -1) {
-      final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = old.copyWith(
+      originalSnapshot = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = originalSnapshot.copyWith(
         status: 'PUBLISHED',
         remarks: remarks ?? 'Approved for college-wide publication',
-        speakerStatus: old.deliverSpeaker ? 'Queued' : old.speakerStatus,
+        speakerStatus: originalSnapshot.deliverSpeaker ? 'Queued' : originalSnapshot.speakerStatus,
         approvedAt: DateTime.now(),
       );
       _rawAnnouncements.refresh();
@@ -1050,9 +1131,24 @@ class AnnouncementController extends GetxController {
       await fetchAnnouncements();
       return true;
     } catch (e) {
-      debugPrint('Approve announcement API error: $e');
+      debugPrint('Approve announcement API failed: $e');
+      // Rollback optimistic update on API failure
+      if (originalSnapshot != null && idx != -1 && idx < _rawAnnouncements.length) {
+        _rawAnnouncements[idx] = originalSnapshot;
+        _rawAnnouncements.refresh();
+        update();
+      }
+      // Remove from local persisted cache since server didn't accept it
+      _persistedApprovedIds.remove(id);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList(
+          'echosphere_approved_notice_ids',
+          _persistedApprovedIds.map((e) => e.toString()).toList(),
+        );
+      } catch (_) {}
       await fetchAnnouncements();
-      rethrow;
+      return false;
     }
   }
 
@@ -1097,11 +1193,14 @@ class AnnouncementController extends GetxController {
   }
 
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
-    // 0ms Optimistic UI update
+    await _recordRejectedNoticeId(id);
+
+    // 0ms Optimistic UI update — save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+    AnnouncementModel? originalSnapshot;
     if (idx != -1) {
-      final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = old.copyWith(
+      originalSnapshot = _rawAnnouncements[idx];
+      _rawAnnouncements[idx] = originalSnapshot.copyWith(
         status: 'REJECTED',
         remarks: remarks,
         approvedAt: DateTime.now(),
@@ -1115,9 +1214,24 @@ class AnnouncementController extends GetxController {
       await fetchAnnouncements();
       return true;
     } catch (e) {
-      debugPrint('Reject announcement API error: $e');
+      debugPrint('Reject announcement API failed: $e');
+      // Rollback optimistic update on API failure
+      if (originalSnapshot != null && idx != -1 && idx < _rawAnnouncements.length) {
+        _rawAnnouncements[idx] = originalSnapshot;
+        _rawAnnouncements.refresh();
+        update();
+      }
+      // Remove from local persisted cache since server didn't accept it
+      _persistedRejectedIds.remove(id);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList(
+          'echosphere_rejected_notice_ids',
+          _persistedRejectedIds.map((e) => e.toString()).toList(),
+        );
+      } catch (_) {}
       await fetchAnnouncements();
-      rethrow;
+      return false;
     }
   }
 
@@ -1977,17 +2091,17 @@ class AnnouncementController extends GetxController {
       ),
       AnnouncementModel(
         id: 99,
-        title: 'Draft Notice: Guest Lecture on Distributed Cloud Systems',
-        description: 'Draft proposal for hosting an expert talk by AWS Lead Architect next Friday in Auditorium 2.',
+        title: 'Academic Notice: Guest Lecture on Distributed Cloud Systems',
+        description: 'Expert guest talk by AWS Lead Architect scheduled in Auditorium 2. Open to 5th and 7th semester students.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
-        status: 'PENDING_APPROVAL',
+        status: 'PUBLISHED',
         creatorName: 'Dr. B Kursheed',
         creatorRole: 'Teacher',
         department: 'AIML',
         category: 'Academic',
         createdAt: now.subtract(const Duration(hours: 2)),
-        aiSummary: 'Pending HoD approval for guest lecture on Cloud Systems next Friday.',
+        aiSummary: 'Guest lecture on Cloud Systems by AWS Lead Architect in Auditorium 2.',
         deliverSpeaker: false,
         deliverInApp: true,
         deliverPush: true,

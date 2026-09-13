@@ -1,7 +1,7 @@
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
+import 'package:anymex/utils/navigation_helper.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/services/copilot_client.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
@@ -67,10 +67,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
       final int targetId = ann['id'] is int ? ann['id'] : int.tryParse('${ann['id']}') ?? 0;
       final found = annCtrl.announcements.firstWhereOrNull((a) => a.id == targetId);
       if (found != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => AnnouncementDetailPage(announcement: found)),
-        );
+        openAnnouncementDetail(context, found);
         return;
       }
     }
@@ -105,7 +102,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
-                      color: ann['priority'] == 'EMERGENCY' ? EchoSpherePalette.destructive : theme.colorScheme.primary,
+                      color: ann['priority'] == 'EMERGENCY'
+                          ? (theme.brightness == Brightness.dark ? EchoSpherePalette.darkDestructive : EchoSpherePalette.lightDestructive)
+                          : theme.colorScheme.primary,
                     ),
                   ),
                 ],

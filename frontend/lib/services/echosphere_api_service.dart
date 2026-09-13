@@ -37,8 +37,8 @@ class EchosphereApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 45),
-        receiveTimeout: const Duration(seconds: 45),
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 8),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -341,7 +341,13 @@ class EchosphereApiService {
 
   Future<List<dynamic>> getApprovalQueue() async {
     try {
-      final response = await _dio.get('/announcements/approval-queue');
+      final response = await _dio.get(
+        '/announcements/approval-queue',
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
       return response.data as List<dynamic>;
     } on DioException catch (e) {
       debugPrint('Error fetching approval queue: $e');
@@ -781,6 +787,10 @@ class EchosphereApiService {
           'user_profile': userProfile,
           'announcements': announcements,
         },
+        options: Options(
+          sendTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 4),
+        ),
       );
       if (response.data != null && response.data['scores'] != null) {
         final scoresList = (response.data['scores'] as List)
@@ -1029,7 +1039,14 @@ class EchosphereApiService {
       if (search != null && search.trim().isNotEmpty) queryParams['search'] = search.trim();
       if (role != null && role != 'All') queryParams['role'] = role;
 
-      final response = await _dio.get('/users/', queryParameters: queryParams);
+      final response = await _dio.get(
+        '/users/',
+        queryParameters: queryParams,
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
       return response.data as List<dynamic>;
     } catch (e) {
       debugPrint('Error fetching users: $e');
@@ -1069,7 +1086,14 @@ class EchosphereApiService {
       if (zone != null) queryParams['zone'] = zone;
       if (status != null) queryParams['status'] = status;
 
-      final response = await _dio.get('/hardware/speakers', queryParameters: queryParams);
+      final response = await _dio.get(
+        '/hardware/speakers',
+        queryParameters: queryParams,
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
       final list = response.data as List<dynamic>;
       if (list.isNotEmpty) return list;
     } catch (e) {
@@ -1237,7 +1261,14 @@ class EchosphereApiService {
       final queryParams = <String, dynamic>{};
       if (status != null) queryParams['status'] = status;
 
-      final response = await _dio.get('/hardware/queue', queryParameters: queryParams);
+      final response = await _dio.get(
+        '/hardware/queue',
+        queryParameters: queryParams,
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
       return response.data as List<dynamic>;
     } on DioException catch (e) {
       debugPrint('Error fetching speaker queue: ${e.message}');
