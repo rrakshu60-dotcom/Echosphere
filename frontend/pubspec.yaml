@@ -22,6 +22,7 @@ dependencies:
     firebase_core: ^4.4.0
     firebase_analytics: ^12.1.1
     flutter_dotenv: ^5.2.1
+    web_socket_channel: ^3.0.1
 
     # UI Design System, Fonts & Icons
     google_fonts: ^6.2.1

@@ -4,6 +4,7 @@ import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/utils/navigation_helper.dart';
+import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -737,12 +738,41 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           ? BadgeVariant.destructive
                           : BadgeVariant.secondary,
                     ),
-                    Text(
-                      _timeAgo(widget.notice.createdAt),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B),
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _timeAgo(widget.notice.createdAt),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? theme.colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Obx(() {
+                          final isBookmarked = Get.isRegistered<AnnouncementController>() &&
+                              Get.find<AnnouncementController>().isBookmarked(widget.notice.id);
+                          return InkWell(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              if (Get.isRegistered<AnnouncementController>()) {
+                                Get.find<AnnouncementController>().toggleBookmark(widget.notice.id);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Icon(
+                                isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+                                size: 18,
+                                color: isBookmarked
+                                    ? theme.colorScheme.primary
+                                    : (isDark ? theme.colorScheme.onSurface.withOpacity(0.4) : const Color(0xFF94A3B8)),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
                     ),
                   ],
                 ),
@@ -770,6 +800,63 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     color: isDark ? theme.colorScheme.onSurface.withOpacity(0.85) : const Color(0xFF334155),
                   ),
                 ),
+
+                // Attachments Quick Preview
+                if (widget.notice.attachments.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: widget.notice.attachments.map((file) {
+                      final lower = file.toLowerCase();
+                      final isPdf = lower.endsWith('.pdf');
+                      final isImg = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+                      return InkWell(
+                        onTap: () => AttachmentViewerDialog.show(
+                          context,
+                          filename: file,
+                          notice: widget.notice,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.20),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isPdf ? Icons.picture_as_pdf_rounded : (isImg ? Icons.image_rounded : Icons.attachment_rounded),
+                                size: 13,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 5),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 160),
+                                child: Text(
+                                  file,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
 
                 // Dedicated AI Summary Box (Generated by Fine-Tuned Qwen Model)
                 if (_showSummary && _aiSummary != null && _aiSummary!.isNotEmpty) ...[

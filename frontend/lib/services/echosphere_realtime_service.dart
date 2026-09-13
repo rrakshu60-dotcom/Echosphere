@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as ws_status;
 import 'package:anymex/services/echosphere_api_service.dart';
 
 class EchosphereRealtimeEvent {
@@ -45,7 +46,8 @@ class EchosphereRealtimeService extends GetxService {
   factory EchosphereRealtimeService() => _instance;
   EchosphereRealtimeService._internal();
 
-  WebSocket? _webSocket;
+  WebSocketChannel? _channel;
+  StreamSubscription? _channelSubscription;
   Timer? _reconnectTimer;
   Timer? _pingTimer;
   bool _isDisposed = false;
@@ -69,7 +71,23 @@ class EchosphereRealtimeService extends GetxService {
       wsBase = wsBase.substring(0, wsBase.length - 1);
     }
 
-    return '$wsBase/ws/live';
+    var endpoint = '$wsBase/ws/live';
+    final token = EchosphereApiService().authToken;
+    if (token != null && token.isNotEmpty) {
+      endpoint += '?token=${Uri.encodeComponent(token)}';
+    }
+    return endpoint;
+  }
+
+  bool get _isTestEnvironment {
+    if (Get.testMode) return true;
+    try {
+      final binding = WidgetsBinding.instance;
+      if (binding.runtimeType.toString().toLowerCase().contains('test')) {
+        return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   void initialize() {
@@ -79,26 +97,35 @@ class EchosphereRealtimeService extends GetxService {
 
   Future<void> connect() async {
     if (_isDisposed) return;
-    if (Get.testMode || kIsWeb) return;
-    if (isConnected.value && _webSocket != null) return;
+    if (_isTestEnvironment) return;
+    if (isConnected.value && _channel != null) return;
 
     final url = _wsUrl;
     try {
-      debugPrint('[WebSocket] Connecting to EchoSphere Live Sync WebSocket: $url');
-      _webSocket = await WebSocket.connect(url).timeout(const Duration(seconds: 8));
-      isConnected.value = true;
-      debugPrint('[WebSocket] EchoSphere Live Sync WebSocket connected successfully.');
+      debugPrint('[WebSocket] Connecting to EchoSphere Live Sync WebSocket (Web & Native): $url');
+      _channelSubscription?.cancel();
+      _channel = WebSocketChannel.connect(Uri.parse(url));
+
+      // Handle channel readiness without unhandled async exceptions
+      _channel!.ready.then((_) {
+        isConnected.value = true;
+        EchosphereApiService().setServerStatus(ServerConnectionStatus.connected);
+        debugPrint('[WebSocket] EchoSphere Live Sync WebSocket connected successfully.');
+      }).catchError((err) {
+        debugPrint('[WebSocket Error] WebSocket ready handshake failed: $err');
+        _scheduleReconnect();
+      });
 
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-        if (isConnected.value && _webSocket != null) {
+        if (isConnected.value && _channel != null) {
           try {
-            _webSocket?.add('ping');
+            _channel?.sink.add('ping');
           } catch (_) {}
         }
       });
 
-      _webSocket!.listen(
+      _channelSubscription = _channel!.stream.listen(
         (data) {
           _handleIncomingMessage(data);
         },
@@ -150,10 +177,11 @@ class EchosphereRealtimeService extends GetxService {
     _isDisposed = true;
     _pingTimer?.cancel();
     _reconnectTimer?.cancel();
+    _channelSubscription?.cancel();
     isConnected.value = false;
     try {
-      _webSocket?.close();
+      _channel?.sink.close(ws_status.normalClosure);
     } catch (_) {}
-    _webSocket = null;
+    _channel = null;
   }
 }

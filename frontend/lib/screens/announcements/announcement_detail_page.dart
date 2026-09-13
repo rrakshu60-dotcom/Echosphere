@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
@@ -7,6 +5,7 @@ import 'package:anymex/controllers/speaker_queue_controller.dart';
 import 'package:anymex/services/calendar_sync_service.dart';
 import 'package:anymex/widgets/common/glow.dart';
 import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
+import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
@@ -19,8 +18,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:anymex/widgets/notice_audio_player_bar.dart';
 import 'package:anymex/services/tts_audio_service.dart';
 import 'package:anymex/utils/navigation_helper.dart';
@@ -573,59 +570,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       if (mounted) {
         setState(() => _isBroadcasting = false);
       }
-    }
-  }
-
-  Future<void> _downloadAttachment(BuildContext context, String filename) async {
-    final announcement = widget.announcement;
-    if (kIsWeb) {
-      snackBar("Downloading $filename");
-      return;
-    }
-    try {
-      Directory? dir;
-      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-        dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      } else {
-        dir = await getApplicationDocumentsDirectory();
-      }
-
-      final file = File('${dir.path}/$filename');
-      final content = '''
-================================================================================
-                        ECHOSPHERE INSTITUTIONAL NOTICE
-================================================================================
-
-TITLE: ${announcement.title}
-DEPARTMENT: ${announcement.department}
-CATEGORY: ${announcement.category}
-PRIORITY: ${announcement.priority}
-ISSUED BY: ${announcement.creatorName} (Designation: ${announcement.creatorRole})
-DATE: ${DateFormat('MMMM dd, yyyy • hh:mm a').format(announcement.createdAt)}
-
---------------------------------------------------------------------------------
-OFFICIAL NOTICE DETAILS:
---------------------------------------------------------------------------------
-${announcement.description}
-
-AI SUMMARY:
-${_aiSummary ?? announcement.aiSummary ?? 'N/A'}
-
-================================================================================
-Downloaded & Saved via EchoSphere Smart Campus System
-================================================================================
-''';
-
-      await file.writeAsString(content);
-
-      snackBar('Downloaded "$filename" to Downloads directory!');
-
-      final uri = Uri.file(file.path);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      }
-    } catch (e) {
-      snackBar('Saved "$filename" to Downloads directory!');
     }
   }
 
@@ -1307,7 +1251,11 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       child: ActionChip(
                                         avatar: Icon(icon, color: iconCol, size: 18),
                                         label: Text(file, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        onPressed: () => _downloadAttachment(context, file),
+                                        onPressed: () => AttachmentViewerDialog.show(
+                                          context,
+                                          filename: file,
+                                          notice: announcement,
+                                        ),
                                       ),
                                     );
                                   }).toList(),
