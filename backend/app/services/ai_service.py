@@ -255,8 +255,17 @@ class AIService:
             suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
 
         # Step 4.5: Calibrated Guardrail Check (guarantee zero false refusals on greetings, identity & academics)
+        is_ai_identity_query = any(
+            phrase in q_lower for phrase in [
+                "who are you", "who r u", "who are u", "who're you",
+                "what is your name", "whats your name", "what's your name",
+                "what do you do", "introduce yourself", "tell me about yourself",
+                "what are you", "who made you", "are you an ai", "are you human",
+                "identify yourself"
+            ]
+        )
         is_greeting_or_pleasantry = any(
-            w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye", "who are you", "who r u", "who are u", "what is your name"]
+            w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye"]
         )
         is_identity_query = predicted_intent == "USER_IDENTITY" or any(
             w in q_lower for w in ["who am i", "what is my name", "what is my designation", "what is my role", "my profile", "my department", "who i am", "whats my name", "what's my name", "whats my designation", "what's my designation"]
@@ -265,8 +274,18 @@ class AIService:
             w in q_lower for w in ["explain", "what is", "how does", "algorithm", "derive", "circuit", "proof", "concept", "study", "exam", "timetable", "placement", "notes", "tutorial", "machine learning", "dijkstra", "paging"]
         )
 
-        if is_greeting_or_pleasantry:
-            predicted_intent = "CONVERSATIONAL"
+        if is_ai_identity_query:
+            return ml_engine.synthesize_response(
+                query=query,
+                name=name,
+                role=role,
+                dept=dept,
+                usn_or_emp_id=usn_or_emp_id,
+                matched_announcements=matched_announcements,
+                kb_matches=kb_matches,
+                predicted_intent="CONVERSATIONAL",
+                conversation_history=history
+            )
         elif is_identity_query:
             return ml_engine.synthesize_response(
                 query=query,
@@ -279,6 +298,8 @@ class AIService:
                 predicted_intent="USER_IDENTITY",
                 conversation_history=history
             )
+        elif is_greeting_or_pleasantry:
+            predicted_intent = "CONVERSATIONAL"
         elif is_educational_query:
             # High-yield Instant Academic Primer match (< 10ms instant delivery for core engineering topics)
             academic_kb = [k for k in (kb_matches or []) if k.get("category") == "Academics" and k.get("id") != "kb_branch_studies"]
@@ -347,13 +368,11 @@ class AIService:
         id_val = usn_or_emp_id or ("USN: Verified" if role == "STUDENT" else "Emp ID: Verified")
 
         system_instruction = (
-            f"You are the EchoSphere Campus AI Assistant, an intelligent, helpful institutional companion.\n\n"
-            f"Active Verified User Profile:\n"
-            f"- Name: {name}\n"
-            f"- Designation: {designation}\n"
-            f"- Role Tier: {role}\n"
-            f"- Department: {dept} Department\n"
-            f"- ID/USN: {id_val}\n\n"
+            f"CRITICAL ROLE & IDENTITY BOUNDARIES (MANDATORY):\n"
+            f"1. YOUR IDENTITY: You are the EchoSphere Campus AI Assistant (an institutional artificial intelligence, NOT a human, NOT {name}).\n"
+            f"2. THE USER TALKING TO YOU: You are interacting with a verified human campus user named {name} ({designation}, {dept} Department, Role Tier: {role}, ID: {id_val}).\n"
+            f"3. ABSOLUTE PROHIBITION AGAINST ROLE CONFUSION: NEVER introduce yourself as {name} or as the {designation}. That is the human user's name and title, NOT YOURS. If asked 'who are you', introduce yourself as the EchoSphere AI Assistant.\n"
+            f"4. USER IDENTITY CONFIRMATION: If the user asks 'who am I' or 'what is my designation', clearly confirm THEIR details: Name: {name}, Designation: {designation}, Department: {dept}.\n\n"
             f"Live Database Announcements Context (Filtered by RBAC):\n"
             f"{live_notices_text if live_notices_text else 'No directly matching active notices in database.'}\n\n"
             f"Institutional Knowledge Base Context:\n"

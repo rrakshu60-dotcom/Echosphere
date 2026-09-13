@@ -901,7 +901,13 @@ class EchoSphereMLEngine:
             suggested_actions = ["Go to Profile", "Security Preferences", "Browse Announcements"]
 
         elif predicted_intent == "CONVERSATIONAL":
-            if any(w in q_lower for w in ["who are you", "who r u", "what is your name", "what do you do", "identify"]):
+            ai_intro_triggers = [
+                "who are you", "who r u", "who are u", "who're you",
+                "what is your name", "whats your name", "what's your name",
+                "what do you do", "introduce yourself", "tell me about yourself",
+                "who made you", "what are you", "are you an ai", "are you a bot", "identify"
+            ]
+            if any(w in q_lower for w in ai_intro_triggers):
                 text = (
                     f"Hello {name}! I am the **EchoSphere AI Assistant**, your institutional companion for **{dept} Department**.\n\n"
                     f"**How I can assist you:**\n"
