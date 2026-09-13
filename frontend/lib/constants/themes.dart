@@ -40,8 +40,10 @@ class EchoSpherePalette {
   static const Color darkAccent = Color(0xFF210F3D);
   static const Color darkAccentForeground = Color(0xFF945AF2);
 
-  // Destructive: Unified deep violet/plum tone (harmonious with purple palette, no red)
-  static const Color destructive = Color(0xFF7C1E55);
+  // ─── DESTRUCTIVE TOKENS ───────────────────────────────────────────────────
+  // oklch(0.6356 0.2082 25.3782) -> #EF4343 (Tweakcn Exact Red)
+  static const Color destructive = Color(0xFFEF4343);
+  static const Color destructiveForeground = Color(0xFFF8FAFC);
 
   // ─── SURFACES & NEUTRALS ──────────────────────────────────────────────────
   // Light Mode Surfaces
@@ -62,14 +64,60 @@ class EchoSpherePalette {
   static const Color darkTextSecondary = Color(0xFFB0ABBA);
   static const Color darkTextMuted = Color(0xFF7A7584);
 
-  // ─── SHADOW TOKENS ────────────────────────────────────────────────────────
+  // ─── CHART TOKENS ─────────────────────────────────────────────────────────
+  static const Color chart1 = Color(0xFF6B26D9); // oklch(0.4865 0.2423 291.8661)
+  static const Color chart2 = Color(0xFF0CB8DA); // oklch(0.7216 0.1282 217.8676)
+  static const Color chart3 = Color(0xFF29A366); // oklch(0.6356 0.1398 156.1492)
+  static const Color chart4 = Color(0xFFAF57DB); // oklch(0.6192 0.2037 312.7283)
+  static const Color chart5 = Color(0xFFEB4799); // oklch(0.6532 0.2114 353.9392)
+
+  // ─── RADIUS TOKENS (Tweakcn Exact Scale) ──────────────────────────────────
+  static const double radius = 16.0;      // 1rem (Default --radius)
+  static const double radiusSm = 12.0;    // calc(1rem - 4px)
+  static const double radiusMd = 14.0;    // calc(1rem - 2px)
+  static const double radiusLg = 16.0;    // 1rem
+  static const double radiusXl = 20.0;    // calc(1rem + 4px)
+
+  // ─── SHADOW TOKENS (Tweakcn Exact Multi-Layer Colored Shadows) ────────────
   // Light: hsl(263 70% 50% / 0.08)
   static const Color lightShadowColor = Color(0xFF6E26E5);
   // Dark: hsl(0 0% 0% / 0.60)
   static const Color darkShadowColor = Color(0xFF000000);
 
-  // Standard Shadcn 1rem border radius
-  static const double radius = 16.0;
+  /// Generates the signature tweakcn multi-layer elevation shadow
+  static List<BoxShadow> getElevationShadow({required bool isDark, double level = 1}) {
+    if (isDark) {
+      return [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.55),
+          offset: const Offset(0, 16),
+          blurRadius: 36,
+          spreadRadius: -8,
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.35),
+          offset: const Offset(0, 1),
+          blurRadius: 2,
+          spreadRadius: -1,
+        ),
+      ];
+    } else {
+      return [
+        BoxShadow(
+          color: const Color(0xFF6B26D9).withOpacity(0.07),
+          offset: const Offset(0, 8),
+          blurRadius: 28,
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: const Color(0xFF6B26D9).withOpacity(0.05),
+          offset: const Offset(0, 1),
+          blurRadius: 2,
+          spreadRadius: -1,
+        ),
+      ];
+    }
+  }
 
   // Aliases for compatibility
   static const Color primary = lightPrimary;
@@ -79,16 +127,28 @@ class EchoSpherePalette {
   /// Returns the unified, non-color-coded background color for notice priority badges.
   /// Eliminates distracting rainbow colors in favor of subtle Shadcn secondary styling.
   static Color getPriorityBgColor(String priority, {required bool isDark}) {
+    final p = priority.toUpperCase();
+    if (p == 'EMERGENCY') {
+      return destructive.withOpacity(0.12);
+    }
     return isDark ? darkSecondary : lightSecondary;
   }
 
   /// Returns the subtle outline border color for priority badges.
   static Color getPriorityBorderColor(String priority, {required bool isDark}) {
+    final p = priority.toUpperCase();
+    if (p == 'EMERGENCY') {
+      return destructive.withOpacity(0.28);
+    }
     return isDark ? darkBorder : lightBorder;
   }
 
   /// Returns the high-legibility foreground color for priority badges.
   static Color getPriorityColor(String priority, {bool isDark = false}) {
+    final p = priority.toUpperCase();
+    if (p == 'EMERGENCY') {
+      return destructive;
+    }
     return isDark ? darkSecondaryForeground : lightSecondaryForeground;
   }
 }
@@ -103,10 +163,16 @@ ThemeData lightMode = ThemeData(
     brightness: Brightness.light,
     primary: EchoSpherePalette.lightPrimary,
     onPrimary: EchoSpherePalette.lightPrimaryForeground,
+    primaryContainer: EchoSpherePalette.lightAccent,
+    onPrimaryContainer: EchoSpherePalette.lightAccentForeground,
     secondary: EchoSpherePalette.lightSecondary,
     onSecondary: EchoSpherePalette.lightSecondaryForeground,
+    secondaryContainer: EchoSpherePalette.lightSecondary,
+    onSecondaryContainer: EchoSpherePalette.lightSecondaryForeground,
     error: EchoSpherePalette.destructive,
     onError: Colors.white,
+    errorContainer: Color(0xFFFEE2E2),
+    onErrorContainer: EchoSpherePalette.destructive,
     surface: EchoSpherePalette.lightScaffold,
     onSurface: EchoSpherePalette.lightTextPrimary,
     surfaceContainer: EchoSpherePalette.lightSurface,
@@ -120,19 +186,60 @@ ThemeData lightMode = ThemeData(
           platform: const SharedAxisTransition(),
     },
   ),
-  textTheme: GoogleFonts.plusJakartaSansTextTheme(
+  textTheme: GoogleFonts.interTextTheme(
     const TextTheme(
-      bodyLarge: TextStyle(color: EchoSpherePalette.lightTextPrimary, height: 1.4, letterSpacing: -0.2),
-      bodyMedium: TextStyle(color: EchoSpherePalette.lightTextSecondary, height: 1.35, letterSpacing: -0.1),
-      titleLarge: TextStyle(
-          color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.bold, fontSize: 24, letterSpacing: -0.3),
-      bodySmall: TextStyle(color: EchoSpherePalette.lightTextMuted, fontSize: 12, height: 1.3),
+      headlineLarge: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w700, fontSize: 32, letterSpacing: -0.64),
+      headlineMedium: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w700, fontSize: 28, letterSpacing: -0.56),
+      headlineSmall: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w600, fontSize: 24, letterSpacing: -0.48),
+      titleLarge: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w600, fontSize: 20, letterSpacing: -0.40),
+      titleMedium: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: -0.32),
+      titleSmall: TextStyle(color: EchoSpherePalette.lightTextSecondary, fontWeight: FontWeight.w500, fontSize: 14, letterSpacing: -0.28),
+      bodyLarge: TextStyle(color: EchoSpherePalette.lightTextPrimary, height: 1.4, fontSize: 16, letterSpacing: -0.32),
+      bodyMedium: TextStyle(color: EchoSpherePalette.lightTextSecondary, height: 1.35, fontSize: 14, letterSpacing: -0.28),
+      bodySmall: TextStyle(color: EchoSpherePalette.lightTextMuted, fontSize: 12, height: 1.3, letterSpacing: -0.24),
+      labelLarge: TextStyle(color: EchoSpherePalette.lightTextPrimary, fontWeight: FontWeight.w500, fontSize: 14, letterSpacing: -0.28),
+      labelMedium: TextStyle(color: EchoSpherePalette.lightTextSecondary, fontSize: 12, letterSpacing: -0.24),
+      labelSmall: TextStyle(color: EchoSpherePalette.lightTextMuted, fontSize: 11, letterSpacing: -0.22),
     ),
+  ),
+  cardTheme: CardThemeData(
+    color: EchoSpherePalette.lightSurface,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radius),
+      side: const BorderSide(color: EchoSpherePalette.lightBorder, width: 1),
+    ),
+    margin: EdgeInsets.zero,
+  ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: EchoSpherePalette.lightSurface,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radius),
+      side: const BorderSide(color: EchoSpherePalette.lightBorder, width: 1),
+    ),
+  ),
+  snackBarTheme: SnackBarThemeData(
+    backgroundColor: EchoSpherePalette.lightTextPrimary,
+    contentTextStyle: GoogleFonts.inter(
+      color: EchoSpherePalette.lightScaffold,
+      fontSize: 14,
+      letterSpacing: -0.28,
+    ),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radiusSm),
+    ),
+    behavior: SnackBarBehavior.floating,
+  ),
+  dividerTheme: const DividerThemeData(
+    color: EchoSpherePalette.lightBorder,
+    thickness: 1,
+    space: 1,
   ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
     fillColor: EchoSpherePalette.lightSurface,
-    hintStyle: const TextStyle(color: EchoSpherePalette.lightTextMuted, fontSize: 13),
+    hintStyle: const TextStyle(color: EchoSpherePalette.lightTextMuted, fontSize: 13, letterSpacing: -0.26),
     prefixIconColor: EchoSpherePalette.lightTextSecondary,
     suffixIconColor: EchoSpherePalette.lightTextSecondary,
     border: OutlineInputBorder(
@@ -180,24 +287,72 @@ ThemeData darkMode = ThemeData(
     brightness: Brightness.dark,
     primary: EchoSpherePalette.darkPrimary,
     onPrimary: EchoSpherePalette.darkPrimaryForeground,
+    primaryContainer: EchoSpherePalette.darkAccent,
+    onPrimaryContainer: EchoSpherePalette.darkAccentForeground,
     secondary: EchoSpherePalette.darkSecondary,
     onSecondary: EchoSpherePalette.darkSecondaryForeground,
+    secondaryContainer: EchoSpherePalette.darkSecondary,
+    onSecondaryContainer: EchoSpherePalette.darkSecondaryForeground,
     error: EchoSpherePalette.destructive,
     onError: Colors.white,
+    errorContainer: Color(0xFF450A0A),
+    onErrorContainer: EchoSpherePalette.destructive,
     surface: EchoSpherePalette.darkScaffold,
     onSurface: EchoSpherePalette.darkTextPrimary,
     surfaceContainer: EchoSpherePalette.darkSurface,
     surfaceContainerHighest: EchoSpherePalette.darkSurfaceContainer,
     outline: EchoSpherePalette.darkBorder,
   ),
-  textTheme: GoogleFonts.plusJakartaSansTextTheme(
+  textTheme: GoogleFonts.interTextTheme(
     const TextTheme(
-      bodyLarge: TextStyle(color: EchoSpherePalette.darkTextPrimary, height: 1.4, letterSpacing: -0.2),
-      bodyMedium: TextStyle(color: EchoSpherePalette.darkTextSecondary, height: 1.35, letterSpacing: -0.1),
-      titleLarge: TextStyle(
-          color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.bold, letterSpacing: -0.3),
-      bodySmall: TextStyle(color: EchoSpherePalette.darkTextMuted, fontSize: 12, height: 1.3),
+      headlineLarge: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w700, fontSize: 32, letterSpacing: -0.64),
+      headlineMedium: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w700, fontSize: 28, letterSpacing: -0.56),
+      headlineSmall: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w600, fontSize: 24, letterSpacing: -0.48),
+      titleLarge: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w600, fontSize: 20, letterSpacing: -0.40),
+      titleMedium: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: -0.32),
+      titleSmall: TextStyle(color: EchoSpherePalette.darkTextSecondary, fontWeight: FontWeight.w500, fontSize: 14, letterSpacing: -0.28),
+      bodyLarge: TextStyle(color: EchoSpherePalette.darkTextPrimary, height: 1.4, fontSize: 16, letterSpacing: -0.32),
+      bodyMedium: TextStyle(color: EchoSpherePalette.darkTextSecondary, height: 1.35, fontSize: 14, letterSpacing: -0.28),
+      bodySmall: TextStyle(color: EchoSpherePalette.darkTextMuted, fontSize: 12, height: 1.3, letterSpacing: -0.24),
+      labelLarge: TextStyle(color: EchoSpherePalette.darkTextPrimary, fontWeight: FontWeight.w500, fontSize: 14, letterSpacing: -0.28),
+      labelMedium: TextStyle(color: EchoSpherePalette.darkTextSecondary, fontSize: 12, letterSpacing: -0.24),
+      labelSmall: TextStyle(color: EchoSpherePalette.darkTextMuted, fontSize: 11, letterSpacing: -0.22),
     ),
+  ),
+  cardTheme: CardThemeData(
+    color: EchoSpherePalette.darkSurface,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radius),
+      side: const BorderSide(color: EchoSpherePalette.darkBorder, width: 1),
+    ),
+    margin: EdgeInsets.zero,
+  ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: EchoSpherePalette.darkSurface,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radius),
+      side: const BorderSide(color: EchoSpherePalette.darkBorder, width: 1),
+    ),
+  ),
+  snackBarTheme: SnackBarThemeData(
+    backgroundColor: EchoSpherePalette.darkSurfaceContainer,
+    contentTextStyle: GoogleFonts.inter(
+      color: EchoSpherePalette.darkTextPrimary,
+      fontSize: 14,
+      letterSpacing: -0.28,
+    ),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(EchoSpherePalette.radiusSm),
+      side: const BorderSide(color: EchoSpherePalette.darkBorder, width: 1),
+    ),
+    behavior: SnackBarBehavior.floating,
+  ),
+  dividerTheme: const DividerThemeData(
+    color: EchoSpherePalette.darkBorder,
+    thickness: 1,
+    space: 1,
   ),
   pageTransitionsTheme: PageTransitionsTheme(
     builders: {
@@ -209,7 +364,7 @@ ThemeData darkMode = ThemeData(
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
     fillColor: EchoSpherePalette.darkSurface,
-    hintStyle: const TextStyle(color: EchoSpherePalette.darkTextMuted, fontSize: 13),
+    hintStyle: const TextStyle(color: EchoSpherePalette.darkTextMuted, fontSize: 13, letterSpacing: -0.26),
     prefixIconColor: EchoSpherePalette.darkTextSecondary,
     suffixIconColor: EchoSpherePalette.darkTextSecondary,
     border: OutlineInputBorder(

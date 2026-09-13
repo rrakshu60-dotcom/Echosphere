@@ -67,7 +67,7 @@ class EchosphereApiService {
           debugPrint('API Error [${error.response?.statusCode}]: ${error.response?.data}');
           if (error.response?.statusCode == 401 && _authToken != null && _authToken!.isNotEmpty) {
             try {
-              debugPrint('🔄 Silent token auto-renewal triggered...');
+              debugPrint('[Auth] Silent token auto-renewal triggered...');
               final refreshResp = await _dio.post(
                 '/auth/refresh',
                 data: {'token': _authToken},
@@ -76,7 +76,7 @@ class EchosphereApiService {
                 final newToken = refreshResp.data['access_token'] as String?;
                 if (newToken != null && newToken.isNotEmpty) {
                   _authToken = newToken;
-                  debugPrint('✅ Silent token auto-renewal successful! Retrying request...');
+                  debugPrint('[Auth] Silent token auto-renewal successful! Retrying request...');
                   final opts = error.requestOptions;
                   opts.headers['Authorization'] = 'Bearer $newToken';
                   final cloneReq = await _dio.fetch(opts);
@@ -186,6 +186,30 @@ class EchosphereApiService {
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(e.response?.data?['detail'] ?? 'Password reset request failed.');
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyResetToken(String token) async {
+    try {
+      final response = await _dio.post(
+        '/auth/verify-reset-token',
+        data: {'token': token},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Token verification failed.');
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String token, String newPassword) async {
+    try {
+      final response = await _dio.post(
+        '/auth/reset-password',
+        data: {'token': token, 'new_password': newPassword},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Password reset failed.');
     }
   }
 
@@ -1202,6 +1226,10 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> setSpeakerNodeVolume(int nodeId, int volume) async {
+    return controlSpeakerNode(nodeId, command: 'SET_VOLUME', volume: volume);
+  }
+
   Future<List<dynamic>> getSpeakerQueue({String? status}) async {
     try {
       final queryParams = <String, dynamic>{};
@@ -1370,6 +1398,13 @@ class EchosphereApiService {
 
   String getChimePreviewUrl(String chimeType) =>
       '$_baseUrl/announcements/chimes/$chimeType/preview';
+
+  String getAnnouncementChimeUrl(int announcementId, {String? chime}) {
+    if (chime != null && chime.isNotEmpty) {
+      return '$_baseUrl/announcements/$announcementId/chime?chime=$chime';
+    }
+    return '$_baseUrl/announcements/$announcementId/chime';
+  }
 
   Future<Map<String, dynamic>?> getAnnouncementAudio(
     int id, {
@@ -1769,6 +1804,119 @@ class EchosphereApiService {
       'extracted_event': null,
       'raw_text': null,
     };
+  }
+
+  // --- Repeat Schedule Endpoints ---
+  Future<Map<String, dynamic>?> getRepeatSchedule(int announcementId) async {
+    try {
+      final response = await _dio.get('/announcements/$announcementId/repeat-schedule');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to fetch repeat schedule.');
+    }
+  }
+
+  Future<Map<String, dynamic>> setRepeatSchedule(int announcementId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.put(
+        '/announcements/$announcementId/repeat-schedule',
+        data: data,
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to configure repeat schedule.');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateRepeatSchedule(int announcementId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch(
+        '/announcements/$announcementId/repeat-schedule',
+        data: data,
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to update repeat schedule.');
+    }
+  }
+
+  Future<bool> deleteRepeatSchedule(int announcementId) async {
+    try {
+      await _dio.delete('/announcements/$announcementId/repeat-schedule');
+      return true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return false;
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to delete repeat schedule.');
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerRepeatCheck({String? simulatedTime, String? simulatedDate}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (simulatedTime != null) queryParams['simulated_time'] = simulatedTime;
+      if (simulatedDate != null) queryParams['simulated_date'] = simulatedDate;
+
+      final response = await _dio.post(
+        '/repeat-schedule/trigger-check',
+        queryParameters: queryParams,
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to trigger repeat slot check.');
+    }
+  }
+
+  // --- VIP Dignitary Protocol Endpoints ---
+  Future<Map<String, dynamic>?> getVipProtocol(int announcementId) async {
+    try {
+      final response = await _dio.get('/announcements/$announcementId/vip-protocol');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to fetch VIP protocol.');
+    }
+  }
+
+  Future<Map<String, dynamic>> analyzeVipProtocol(int announcementId) async {
+    try {
+      final response = await _dio.post('/announcements/$announcementId/vip-protocol/analyze');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to analyze notice for VIP dignitary.');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateVipProtocol(int announcementId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.put(
+        '/announcements/$announcementId/vip-protocol',
+        data: data,
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to update VIP protocol.');
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerVipArrival(
+    int announcementId, {
+    String? targetZone,
+    String? customWelcomeNote,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/$announcementId/vip-protocol/arrival',
+        data: {
+          if (targetZone != null && targetZone.isNotEmpty) 'target_zone': targetZone,
+          if (customWelcomeNote != null && customWelcomeNote.isNotEmpty)
+            'custom_welcome_note': customWelcomeNote,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to trigger VIP arrival fanfare.');
+    }
   }
 }
 

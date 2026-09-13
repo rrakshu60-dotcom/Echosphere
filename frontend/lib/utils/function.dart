@@ -57,8 +57,6 @@ Future<void> snackString(
             s,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 16.0,
               fontWeight: FontWeight.w600,
               color: theme.onSurface,
             ),

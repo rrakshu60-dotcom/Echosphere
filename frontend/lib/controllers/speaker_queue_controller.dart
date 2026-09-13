@@ -1020,6 +1020,32 @@ class SpeakerQueueController extends GetxController {
     }
   }
 
+  /// Sets volume for a speaker node
+  Future<void> setNodeVolume(int nodeId, int volume, String nodeName) async {
+    try {
+      await _apiService.controlSpeakerNode(nodeId, command: 'SET_VOLUME', volume: volume);
+      final idx = speakerNodes.indexWhere((n) => n['id'] == nodeId);
+      if (idx != -1) {
+        speakerNodes[idx]['volume'] = volume;
+        speakerNodes.refresh();
+      }
+      snackBar('Volume for $nodeName set to $volume%');
+    } catch (e) {
+      snackBar('Volume update: ${e.toString()}');
+    }
+  }
+
+  /// Explicitly advances the hardware queue to the next announcement
+  Future<void> advanceHardwareQueue() async {
+    try {
+      await _apiService.advanceSpeakerQueue();
+      snackBar('Queue advanced to next announcement');
+      await refreshQueue();
+    } catch (e) {
+      snackBar('Advance queue: ${e.toString()}');
+    }
+  }
+
   /// Triggers emergency override
   Future<void> triggerEmergency({
     required String title,

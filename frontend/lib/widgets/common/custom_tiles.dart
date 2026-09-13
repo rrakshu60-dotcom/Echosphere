@@ -260,9 +260,9 @@ class CustomTile extends StatelessWidget {
                           description,
                           style: TextStyle(
                             fontSize: 14,
-                            fontFamily: (isDescBold ?? false)
-                                ? "Poppins-Bold"
-                                : "Poppins",
+                            fontWeight: (isDescBold ?? false)
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             color: descColor ??
                                 Theme.of(context)
                                     .colorScheme

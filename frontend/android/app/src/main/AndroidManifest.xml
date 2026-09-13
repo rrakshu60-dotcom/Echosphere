@@ -28,7 +28,8 @@
         android:name="${applicationName}"
         android:roundIcon="@mipmap/ic_rounded_launcher"
         android:icon="@mipmap/ic_launcher"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

@@ -5,7 +5,8 @@ configured exclusively for In-App Feed and Push Notification deliveries (deliver
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import cast, Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -471,10 +472,10 @@ def seed_notices():
         all_users = db.query(User).all()
 
         total_created = 0
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
         for group in NOTICES_DATA:
-            cat_name = group["category"]
+            cat_name = str(group["category"])
             category = db.query(AnnouncementCategory).filter(AnnouncementCategory.name.ilike(cat_name)).first()
             if not category:
                 category = AnnouncementCategory(name=cat_name, description=f"{cat_name} notices")
@@ -484,7 +485,8 @@ def seed_notices():
 
             print(f"\nProcessing Category: {category.name} (ID: {category.id})")
 
-            for i, item in enumerate(group["notices"]):
+            notices = cast(list[dict[str, Any]], group["notices"])
+            for i, item in enumerate(notices):
                 # Check if notice with this title already exists
                 existing = db.query(Announcement).filter(Announcement.title == item["title"]).first()
                 if existing:

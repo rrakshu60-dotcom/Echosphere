@@ -1,5 +1,6 @@
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class EchoSphereTextSpan {
   final String text;
@@ -36,21 +37,17 @@ class EchoSphereTextSpans extends StatelessWidget {
 
   TextStyle _getTextStyle(TextVariant variant, BuildContext context,
       {Color? color, double? size}) {
-    String fontFamily;
-    switch (variant) {
-      case TextVariant.semiBold:
-        fontFamily = "Poppins-SemiBold";
-        break;
-      case TextVariant.bold:
-        fontFamily = "Poppins-Bold";
-        break;
-      case TextVariant.regular:
-        fontFamily = "Poppins";
-    }
-    return TextStyle(
-      fontFamily: fontFamily,
-      fontSize: size ?? 14.0,
+    final fontWeight = switch (variant) {
+      TextVariant.semiBold => FontWeight.w600,
+      TextVariant.bold => FontWeight.bold,
+      TextVariant.regular => FontWeight.normal,
+    };
+    final effectiveSize = size ?? 14.0;
+    return GoogleFonts.inter(
+      fontWeight: fontWeight,
+      fontSize: effectiveSize,
       color: color ?? Theme.of(context).textTheme.bodyMedium?.color,
+      letterSpacing: -0.02 * effectiveSize,
     );
   }
 

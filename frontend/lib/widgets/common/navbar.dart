@@ -386,7 +386,6 @@ class _MobileNavItem extends StatelessWidget {
             duration: const Duration(milliseconds: 250),
             style: TextStyle(
               fontSize: isSelected ? 10.5 : 10,
-              fontFamily: isSelected ? 'Poppins-SemiBold' : 'Poppins',
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               color: isSelected
                   ? theme.colorScheme.primary

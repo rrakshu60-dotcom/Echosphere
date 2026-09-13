@@ -1,6 +1,7 @@
 import 'package:anymex/widgets/common/marquee_text.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 enum TextVariant { regular, semiBold, bold }
 
@@ -132,19 +133,21 @@ class EchoSphereText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fontFamily = switch (variant) {
-      TextVariant.semiBold => "Poppins-SemiBold",
-      TextVariant.bold => "Poppins-Bold",
-      _ => "Poppins",
+    final fontWeight = switch (variant) {
+      TextVariant.semiBold => FontWeight.w600,
+      TextVariant.bold => FontWeight.bold,
+      _ => FontWeight.normal,
     };
 
     final processedText = stripHtml ? _removeHtmlTags(text) : text;
 
-    final textStyle = TextStyle(
-      fontFamily: fontFamily,
-      fontSize: size ?? 14.0,
+    final effectiveSize = size ?? 14.0;
+    final textStyle = GoogleFonts.inter(
+      fontWeight: fontWeight,
+      fontSize: effectiveSize,
       color: color,
       fontStyle: fontStyle,
+      letterSpacing: -0.02 * effectiveSize,
     );
 
     final effectiveMaxLines = isMarquee ? 1 : maxLines;

@@ -21,7 +21,8 @@ from app.schemas.announcement import (
     AnnouncementCreate,
     AnnouncementUpdate,
 )
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional, Any
 
 from app.models.announcement_approval import AnnouncementApproval
 from app.repositories.announcement_approval_repository import create_approval
@@ -37,8 +38,8 @@ def dispatch_announcement_notifications_and_deliveries(
     deliver_in_app: bool = True,
     deliver_push: bool = True,
     deliver_speaker: bool = False,
-    target_audience: str = None,
-    current_user: User = None,
+    target_audience: Optional[str] = None,
+    current_user: Optional[User] = None,
 ):
     from app.models.delivery_type import DeliveryType
     from app.models.announcement_delivery import AnnouncementDelivery
@@ -149,12 +150,12 @@ def create_announcement_service(
         is_own_dept = dept_name in target and "entire" not in target and "all" not in target
         if not is_own_dept:
             initial_status = AnnouncementStatus.PENDING_APPROVAL
-        elif request.scheduled_at and request.scheduled_at > datetime.utcnow():
+        elif request.scheduled_at and request.scheduled_at > datetime.now(timezone.utc).replace(tzinfo=None):
             initial_status = AnnouncementStatus.SCHEDULED
         else:
             initial_status = AnnouncementStatus.PUBLISHED
     elif user_role in ["Dev Admin", "Developer", "College Admin", "Principal"]:
-        if request.scheduled_at and request.scheduled_at > datetime.utcnow():
+        if request.scheduled_at and request.scheduled_at > datetime.now(timezone.utc).replace(tzinfo=None):
             initial_status = AnnouncementStatus.SCHEDULED
         else:
             initial_status = AnnouncementStatus.PUBLISHED
@@ -237,7 +238,7 @@ def create_announcement_service(
             "category": created_announcement.category_name,
             "creator_name": current_user.full_name,
             "creator_role": user_role,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on announcement creation: {e}")
@@ -437,7 +438,7 @@ def delete_announcement_service(
             "event": "ANNOUNCEMENT_DELETED",
             "announcement_id": announcement_id_value,
             "title": announcement_title,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on delete: {e}")
@@ -467,7 +468,7 @@ def submit_announcement_service(
             detail="Only draft announcements can be submitted for approval.",
         )
 
-    announcement.status = AnnouncementStatus.PENDING_APPROVAL
+    setattr(announcement, "status", AnnouncementStatus.PENDING_APPROVAL)
 
     db.commit()
     db.refresh(announcement)
@@ -518,7 +519,7 @@ def approve_announcement_service(
         approver_id=current_user.id,
         status="Approved",
         remarks=request.remarks or "Approved for publication",
-        approved_at=datetime.utcnow(),
+        approved_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
     create_approval(
@@ -546,6 +547,7 @@ def approve_announcement_service(
         description=f"Approved announcement: {updated_announcement.title}",
     )
 
+    has_speaker_delivery = False
     try:
         from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
         dept_code = "ALL"
@@ -596,7 +598,7 @@ def approve_announcement_service(
             "status": "PUBLISHED",
             "approver_name": current_user.full_name,
             "remarks": request.remarks or "Approved for publication",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on approval: {e}")
@@ -641,7 +643,7 @@ def reject_announcement_service(
         approver_id=current_user.id,
         status="Rejected",
         remarks=request.remarks or "Rejected by reviewer",
-        approved_at=datetime.utcnow(),
+        approved_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
     create_approval(
@@ -649,7 +651,7 @@ def reject_announcement_service(
         approval,
     )
 
-    announcement.status = AnnouncementStatus.REJECTED
+    setattr(announcement, "status", AnnouncementStatus.REJECTED)
 
     db.commit()
     db.refresh(announcement)
@@ -671,7 +673,7 @@ def reject_announcement_service(
             "status": "REJECTED",
             "approver_name": current_user.full_name,
             "remarks": request.remarks or "Rejected by reviewer",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on rejection: {e}")
@@ -700,7 +702,7 @@ def publish_announcement_service(
             detail="Only scheduled announcements can be published.",
         )
 
-    announcement.status = AnnouncementStatus.PUBLISHED
+    setattr(announcement, "status", AnnouncementStatus.PUBLISHED)
 
     db.commit()
     db.refresh(announcement)
@@ -758,7 +760,7 @@ def archive_announcement_service(
             detail="Only published announcements can be archived.",
         )
 
-    announcement.status = AnnouncementStatus.ARCHIVED
+    setattr(announcement, "status", AnnouncementStatus.ARCHIVED)
 
     db.commit()
     db.refresh(announcement)

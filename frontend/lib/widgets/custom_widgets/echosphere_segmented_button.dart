@@ -53,7 +53,7 @@ class EchoSphereSegmentedButton extends StatelessWidget {
                     Text(
                       title ?? '',
                       style: TextStyle(
-                        fontFamily: "Poppins-Bold",
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                         color:
                             isSelected ? context.colors.onPrimary : Colors.grey,

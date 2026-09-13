@@ -212,7 +212,7 @@ def update_queue_item_status(
     if item:
         item.status = status
         if status == "Playing":
-            item.played_at = datetime.utcnow()
+            item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
         if failure_reason:
             item.failure_reason = failure_reason
             item.error_count += 1
@@ -299,7 +299,7 @@ def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
         },
     ]
 
-    canonical_macs = [s["mac_address"].upper() for s in canonical_specs]
+    canonical_macs = [str(s["mac_address"]).upper() for s in canonical_specs]
 
     # Prune any old non-canonical nodes that have never sent a heartbeat or are inactive
     all_nodes = db.query(SpeakerNode).all()
@@ -310,7 +310,7 @@ def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
 
     # Ensure all canonical nodes exist
     for spec in canonical_specs:
-        existing = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(spec["mac_address"])).first()
+        existing = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(str(spec["mac_address"]))).first()
         if not existing:
             new_node = SpeakerNode(
                 name=spec["name"],

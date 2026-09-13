@@ -74,7 +74,6 @@ class StatCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    fontFamily: 'Poppins-Bold',
                     color: theme.colorScheme.onSurface,
                   ),
                 ),
@@ -127,23 +126,10 @@ class TodaySummaryBanner extends StatelessWidget {
           '$todayCount new announcement${todayCount == 1 ? '' : 's'} today';
     }
 
-    return Container(
+    return EchoSphereContainer(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer.withOpacity(0.3),
-            theme.colorScheme.secondaryContainer.withOpacity(0.2),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.15),
-        ),
-      ),
+      radius: EchoSpherePalette.radiusSm,
       child: Row(
         children: [
           Icon(
@@ -237,7 +223,6 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
               Text(
                 'Urgent & Priority Notices',
                 style: TextStyle(
-                  fontFamily: 'Poppins-Bold',
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.onSurface,
@@ -342,9 +327,6 @@ class _PriorityCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final cardBg = theme.colorScheme.surfaceContainer;
     final cardBorder = theme.colorScheme.outline;
-    final badgeBg = EchoSpherePalette.getPriorityBgColor(item.priority, isDark: isDark);
-    final badgeBorder = EchoSpherePalette.getPriorityBorderColor(item.priority, isDark: isDark);
-    final badgeFg = EchoSpherePalette.getPriorityColor(item.priority, isDark: isDark);
 
     return Container(
       decoration: BoxDecoration(
@@ -371,49 +353,15 @@ class _PriorityCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: badgeBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: badgeBorder, width: 1.0),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isEmergency)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(Icons.priority_high_rounded,
-                            size: 13, color: badgeFg),
-                      ),
-                    Text(
-                      item.priority,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                        color: badgeFg,
-                      ),
-                    ),
-                  ],
-                ),
+              EchoSphereBadge(
+                label: item.priority,
+                icon: isEmergency ? Icons.priority_high_rounded : null,
+                variant: isEmergency ? BadgeVariant.destructive : BadgeVariant.secondary,
               ),
               const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondary,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: theme.colorScheme.outline, width: 0.8),
-                ),
-                child: Text(
-                  item.department,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
+              EchoSphereBadge(
+                label: item.department,
+                variant: BadgeVariant.outline,
               ),
               const Spacer(),
               Text(
@@ -469,14 +417,24 @@ class _PriorityCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                'View →',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 12,
+                    color: theme.colorScheme.primary,
+                  ),
+                ],
               ),
             ],
           ),
@@ -599,10 +557,6 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
     }
   }
 
-  Color _getPriorityColor(String priority) {
-    return EchoSpherePalette.getPriorityColor(priority, isDark: Theme.of(context).brightness == Brightness.dark);
-  }
-
   String _timeAgo(DateTime dateTime) {
     final diff = DateTime.now().difference(dateTime);
     if (diff.inMinutes < 1) return 'Just now';
@@ -719,7 +673,6 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pColor = _getPriorityColor(widget.notice.priority);
 
     Map<String, dynamic>? relevance;
     if (Get.isRegistered<AnnouncementController>()) {
@@ -763,85 +716,25 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   alignment: WrapAlignment.spaceBetween,
                   children: [
-                    EchoSphereChip(
+                    EchoSphereBadge(
                       label: widget.notice.category,
-                      isSelected: true,
-                      onSelected: (_) {},
-                      showCheck: false,
+                      variant: BadgeVariant.muted,
                     ),
                     if (rel != null && isHighlyRelevant)
-                      InkWell(
+                      EchoSphereBadge(
+                        label: 'Relevant to You',
+                        icon: Icons.auto_awesome_rounded,
+                        variant: BadgeVariant.secondary,
                         onTap: () => _showRelevanceDialog(context, rel),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                theme.colorScheme.primary.withOpacity(0.18),
-                                theme.colorScheme.secondary.withOpacity(0.10),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withOpacity(0.35),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.auto_awesome_rounded,
-                                size: 12,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Relevant to You',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3.5),
-                      decoration: BoxDecoration(
-                        color: EchoSpherePalette.getPriorityBgColor(widget.notice.priority, isDark: theme.brightness == Brightness.dark),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: EchoSpherePalette.getPriorityBorderColor(widget.notice.priority, isDark: theme.brightness == Brightness.dark),
-                          width: 1.0,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (widget.notice.priority.toUpperCase() == 'EMERGENCY' || widget.notice.priority.toUpperCase() == 'URGENT')
-                            Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Icon(
-                                Icons.priority_high_rounded,
-                                size: 12,
-                                color: pColor,
-                              ),
-                            ),
-                          Text(
-                            widget.notice.priority,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.bold,
-                              color: pColor,
-                            ),
-                          ),
-                        ],
-                      ),
+                    EchoSphereBadge(
+                      label: widget.notice.priority,
+                      icon: (widget.notice.priority.toUpperCase() == 'EMERGENCY')
+                          ? Icons.priority_high_rounded
+                          : null,
+                      variant: (widget.notice.priority.toUpperCase() == 'EMERGENCY')
+                          ? BadgeVariant.destructive
+                          : BadgeVariant.secondary,
                     ),
                     Text(
                       _timeAgo(widget.notice.createdAt),

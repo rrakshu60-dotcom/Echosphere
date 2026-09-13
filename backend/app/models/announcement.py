@@ -188,24 +188,26 @@ class Announcement(TimestampMixin, Base):
 
     @property
     def remarks(self) -> str | None:
-        if self.approvals:
-            # Get latest approval remark
-            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+        approvals = list(self.approvals or []) if self.approvals else []
+        if approvals:
+            latest = sorted(approvals, key=lambda a: getattr(a, 'id', 0))[-1]
             return latest.remarks
         return None
 
     @property
     def approver_name(self) -> str | None:
-        if self.approvals:
-            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+        approvals = list(self.approvals or []) if self.approvals else []
+        if approvals:
+            latest = sorted(approvals, key=lambda a: getattr(a, 'id', 0))[-1]
             if latest.approver:
                 return latest.approver.full_name
         return None
 
     @property
     def approved_at(self):
-        if self.approvals:
-            latest = sorted(self.approvals, key=lambda a: a.id)[-1]
+        approvals = list(self.approvals or []) if self.approvals else []
+        if approvals:
+            latest = sorted(approvals, key=lambda a: getattr(a, 'id', 0))[-1]
             return latest.approved_at
         return None
 

@@ -349,7 +349,7 @@ async def broadcast_announcement_to_speaker(
         existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
         active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
         existing_status = str(getattr(existing_item, "status", "")) if existing_item else ""
-        should_play: bool = bool(is_emergency or (active_playing is None) or (existing_status == "Playing"))
+        should_play: bool = is_emergency or (active_playing is None) or (existing_status == "Playing")
 
         if is_emergency and active_playing and getattr(active_playing, "id", None) != (getattr(existing_item, "id", None) if existing_item else None):
             setattr(active_playing, "status", "Paused")
@@ -452,16 +452,16 @@ def send_node_control_command(
 
 def enqueue_and_broadcast_announcement(
     db: Session,
-    announcement_id: int,
-    title: str,
-    content: str,
+    announcement_id: Any,
+    title: Any,
+    content: Any,
     department_code: str = "ALL",
     zone: str = "College-Wide",
     is_emergency: bool = False,
     speaker_node_id: Optional[int] = None,
     target_mac: Optional[str] = None,
     scheduled_time: Optional[datetime] = None,
-    speaker_voice: Optional[str] = "female",
+    speaker_voice: Optional[Any] = "female",
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
 ) -> dict:
     """

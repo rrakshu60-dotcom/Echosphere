@@ -49,12 +49,87 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   bool _isSummarizing = false;
   bool _isBroadcasting = false;
   CalendarEventData? _calendarEvent;
+  Map<String, dynamic>? _repeatSchedule;
+  bool _isLoadingRepeatSchedule = false;
+  Map<String, dynamic>? _vipProtocol;
+  bool _isLoadingVipProtocol = false;
+  bool _isAnalyzingVip = false;
+  bool _isTriggeringFanfare = false;
+
+  // Regional Translation State
+  String _selectedLang = 'en';
+  bool _isTranslating = false;
+  String? _translatedTitle;
+  String? _translatedDescription;
+  String? _translatedSummary;
+
+  String _getLanguageName(String code) {
+    switch (code) {
+      case 'kn':
+        return 'Kannada (ಕನ್ನಡ)';
+      case 'hi':
+        return 'Hindi (हिंदी)';
+      case 'te':
+        return 'Telugu (తెలుగు)';
+      case 'ta':
+        return 'Tamil (தமிழ்)';
+      case 'en':
+      default:
+        return 'English';
+    }
+  }
+
+  Future<void> _onSelectLanguage(String lang) async {
+    if (_selectedLang == lang) return;
+    if (lang == 'en') {
+      setState(() {
+        _selectedLang = 'en';
+        _translatedTitle = null;
+        _translatedDescription = null;
+        _translatedSummary = null;
+      });
+      await TtsAudioService.instance.setLanguage('en');
+      return;
+    }
+    setState(() {
+      _selectedLang = lang;
+      _isTranslating = true;
+    });
+    await TtsAudioService.instance.setLanguage(lang);
+    try {
+      final res = await EchosphereApiService().translateAnnouncement(
+        id: announcement.id,
+        targetLanguage: lang,
+        title: announcement.title,
+        content: announcement.description,
+        summary: _aiSummary,
+      );
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+          _translatedTitle = res['translated_title'] as String?;
+          _translatedDescription = res['translated_content'] as String?;
+          _translatedSummary = res['translated_summary'] as String?;
+        });
+        snackBar('Notice translated to ${res['language_name'] ?? _getLanguageName(lang)}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+        });
+        snackBar('Translation failed: $e');
+      }
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _aiSummary = widget.announcement.aiSummary;
     _fetchCalendarEvent();
+    _fetchRepeatSchedule();
+    _fetchVipProtocol();
     // Pre-warm speech synthesis in background for zero-latency instant playback
     TtsAudioService.instance.prewarmAnnouncement(
       widget.announcement.id,
@@ -98,6 +173,357 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _fetchRepeatSchedule() async {
+    if (widget.announcement.id <= 0) return;
+    setState(() => _isLoadingRepeatSchedule = true);
+    try {
+      final schedule = await EchosphereApiService().getRepeatSchedule(widget.announcement.id);
+      if (mounted) {
+        setState(() {
+          _repeatSchedule = schedule;
+          _isLoadingRepeatSchedule = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingRepeatSchedule = false);
+    }
+  }
+
+  Future<void> _fetchVipProtocol() async {
+    if (widget.announcement.id <= 0) return;
+    setState(() => _isLoadingVipProtocol = true);
+    try {
+      final protocol = await EchosphereApiService().getVipProtocol(widget.announcement.id);
+      if (mounted) {
+        setState(() {
+          _vipProtocol = protocol;
+          _isLoadingVipProtocol = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingVipProtocol = false);
+    }
+  }
+
+  Future<void> _analyzeVipProtocol() async {
+    setState(() => _isAnalyzingVip = true);
+    try {
+      final protocol = await EchosphereApiService().analyzeVipProtocol(widget.announcement.id);
+      if (mounted) {
+        setState(() {
+          _vipProtocol = protocol;
+          _isAnalyzingVip = false;
+        });
+        snackBar('VIP Protocol analyzed and ceremonial script generated.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isAnalyzingVip = false);
+        errorSnackBar('VIP Analysis: ${e.toString().replaceAll("Exception: ", "")}');
+      }
+    }
+  }
+
+  Future<void> _triggerArrivalFanfare() async {
+    setState(() => _isTriggeringFanfare = true);
+    try {
+      final res = await EchosphereApiService().triggerVipArrival(
+        widget.announcement.id,
+        targetZone: 'Portico-Auditorium',
+        customWelcomeNote: 'Chief Guest has arrived at campus portico.',
+      );
+      if (mounted) {
+        setState(() => _isTriggeringFanfare = false);
+        final statusMsg = res['message'] ?? 'Arrival Fanfare broadcast dispatched at priority Position #2.';
+        snackBar(statusMsg.toString());
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTriggeringFanfare = false);
+        errorSnackBar('Arrival Fanfare failed: ${e.toString().replaceAll("Exception: ", "")}');
+      }
+    }
+  }
+
+  Future<void> _deleteRepeatSchedule() async {
+    try {
+      final ok = await EchosphereApiService().deleteRepeatSchedule(widget.announcement.id);
+      if (ok && mounted) {
+        setState(() => _repeatSchedule = null);
+        snackBar('Repeat broadcast schedule removed.');
+      }
+    } catch (e) {
+      errorSnackBar('Failed to remove repeat schedule: $e');
+    }
+  }
+
+  Future<void> _triggerRepeatSlotCheck() async {
+    try {
+      final res = await EchosphereApiService().triggerRepeatCheck();
+      snackBar('Slot check evaluated: ${res['status'] ?? 'completed'}');
+      _fetchRepeatSchedule();
+    } catch (e) {
+      errorSnackBar('Slot check failed: $e');
+    }
+  }
+
+  void _showConfigureRepeatScheduleDialog() {
+    final selectedSlots = <String>{
+      if (_repeatSchedule != null)
+        ...((_repeatSchedule!['selected_slots'] as List?)?.map((e) => e.toString()) ?? [])
+      else
+        'SHORT_BREAK',
+    };
+    String selectedScope = _repeatSchedule?['target_scope'] ?? 'DEPARTMENT';
+    final customStartCtrl = TextEditingController(text: _repeatSchedule?['custom_start_time'] ?? '10:00');
+    final customEndCtrl = TextEditingController(text: _repeatSchedule?['custom_end_time'] ?? '11:00');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.repeat_rounded, size: 20),
+                SizedBox(width: 8),
+                Text('Configure Repeat Schedule', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Repeat Broadcast Slots:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      FilterChip(
+                        label: const Text('Short Break (11:00 AM)', style: TextStyle(fontSize: 11)),
+                        selected: selectedSlots.contains('SHORT_BREAK'),
+                        onSelected: (val) {
+                          setDlgState(() {
+                            val ? selectedSlots.add('SHORT_BREAK') : selectedSlots.remove('SHORT_BREAK');
+                          });
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Lunch Break (1:15 PM)', style: TextStyle(fontSize: 11)),
+                        selected: selectedSlots.contains('LUNCH_BREAK'),
+                        onSelected: (val) {
+                          setDlgState(() {
+                            val ? selectedSlots.add('LUNCH_BREAK') : selectedSlots.remove('LUNCH_BREAK');
+                          });
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
+                        selected: selectedSlots.contains('CUSTOM_WINDOW'),
+                        onSelected: (val) {
+                          setDlgState(() {
+                            val ? selectedSlots.add('CUSTOM_WINDOW') : selectedSlots.remove('CUSTOM_WINDOW');
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (selectedSlots.contains('CUSTOM_WINDOW')) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: customStartCtrl,
+                            decoration: const InputDecoration(labelText: 'Start (HH:MM)', border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: customEndCtrl,
+                            decoration: const InputDecoration(labelText: 'End (HH:MM)', border: OutlineInputBorder()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  const Text('Target Scope:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    value: selectedScope,
+                    items: const [
+                      DropdownMenuItem(value: 'DEPARTMENT', child: Text('Department Nodes Only', style: TextStyle(fontSize: 12))),
+                      DropdownMenuItem(value: 'COLLEGE_WIDE', child: Text('College-Wide All Nodes', style: TextStyle(fontSize: 12))),
+                      DropdownMenuItem(value: 'HOSTEL', child: Text('Hostel & Common Areas', style: TextStyle(fontSize: 12))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDlgState(() => selectedScope = val);
+                    },
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (selectedSlots.isEmpty) {
+                          errorSnackBar('Please select at least one repeat slot.');
+                          return;
+                        }
+                        setDlgState(() => isSaving = true);
+                        try {
+                          final now = DateTime.now();
+                          final data = {
+                            'selected_slots': selectedSlots.toList(),
+                            'target_scope': selectedScope,
+                            'event_datetime': now.add(const Duration(hours: 24)).toIso8601String(),
+                            'start_date': now.toIso8601String(),
+                            'end_date': now.add(const Duration(hours: 48)).toIso8601String(),
+                            'force_enable_speaker': true,
+                            if (selectedSlots.contains('CUSTOM_WINDOW')) ...{
+                              'custom_start_time': customStartCtrl.text.trim(),
+                              'custom_end_time': customEndCtrl.text.trim(),
+                            },
+                          };
+                          final res = await EchosphereApiService().setRepeatSchedule(widget.announcement.id, data);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) setState(() => _repeatSchedule = res);
+                          snackBar('Repeat broadcast schedule saved.');
+                        } catch (e) {
+                          setDlgState(() => isSaving = false);
+                          errorSnackBar('Save failed: ${e.toString().replaceAll("Exception: ", "")}');
+                        }
+                      },
+                child: isSaving
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Save Schedule'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showEditVipProtocolDialog() {
+    if (_vipProtocol == null) return;
+    final nameCtrl = TextEditingController(text: _vipProtocol!['guest_name'] ?? '');
+    final titleCtrl = TextEditingController(text: _vipProtocol!['guest_title'] ?? '');
+    final venueCtrl = TextEditingController(text: _vipProtocol!['venue'] ?? '');
+    final scriptCtrl = TextEditingController(text: _vipProtocol!['spoken_script'] ?? '');
+    String voiceProfile = _vipProtocol!['voice_profile'] ?? 'FEMALE_EXECUTIVE';
+    bool examSuppression = _vipProtocol!['exam_suppression_active'] == true;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.stars_rounded, size: 20),
+              SizedBox(width: 8),
+              Text('Edit VIP Protocol & Script', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Guest Name', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Guest Title / Designation', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: venueCtrl,
+                  decoration: const InputDecoration(labelText: 'Reception Venue', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: scriptCtrl,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: 'Spoken Broadcast Script', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: voiceProfile,
+                  items: const [
+                    DropdownMenuItem(value: 'FEMALE_EXECUTIVE', child: Text('Female Executive (Clear / Formal)', style: TextStyle(fontSize: 12))),
+                    DropdownMenuItem(value: 'MALE_AUTHORITATIVE', child: Text('Male Authoritative (Formal Announcement)', style: TextStyle(fontSize: 12))),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setDlgState(() => voiceProfile = val);
+                  },
+                  decoration: const InputDecoration(labelText: 'Voice Profile', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                SwitchListTile(
+                  title: const Text('Exam Suppression Active', style: TextStyle(fontSize: 12)),
+                  subtitle: const Text('Suppress broadcast in quiet / exam rooms', style: TextStyle(fontSize: 10)),
+                  value: examSuppression,
+                  onChanged: (val) => setDlgState(() => examSuppression = val),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      setDlgState(() => isSaving = true);
+                      try {
+                        final data = {
+                          'guest_name': nameCtrl.text.trim(),
+                          'guest_title': titleCtrl.text.trim(),
+                          'venue': venueCtrl.text.trim(),
+                          'spoken_script': scriptCtrl.text.trim(),
+                          'voice_profile': voiceProfile,
+                          'exam_suppression_active': examSuppression,
+                        };
+                        final res = await EchosphereApiService().updateVipProtocol(widget.announcement.id, data);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) setState(() => _vipProtocol = res);
+                        snackBar('VIP Protocol updated successfully.');
+                      } catch (e) {
+                        setDlgState(() => isSaving = false);
+                        errorSnackBar('Update failed: ${e.toString().replaceAll("Exception: ", "")}');
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save Changes'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _generateAiSummary() async {
@@ -244,10 +670,26 @@ Downloaded & Saved via EchoSphere Smart Campus System
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  EchoSphereChip(
-                    label: announcement.priority,
-                    isSelected: true,
-                    onSelected: (_) {},
+                  IconButton(
+                    icon: const Icon(Icons.event_note_rounded, size: 20),
+                    tooltip: 'Sync Notice to Calendar',
+                    onPressed: () {
+                      final event = _calendarEvent ?? CalendarEventData(
+                        hasEvent: true,
+                        title: announcement.title,
+                        startTime: announcement.createdAt.add(const Duration(hours: 1)),
+                        endTime: announcement.createdAt.add(const Duration(hours: 2)),
+                        description: announcement.description,
+                        location: announcement.department,
+                        actionRequired: '',
+                      );
+                      showCalendarSyncSheet(context, event);
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  EchoSphereBadge.priority(
+                    priority: announcement.priority,
+                    size: BadgeSize.md,
                   ),
                 ],
               ),
@@ -274,22 +716,114 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 runSpacing: 8,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  EchoSphereChip(
+                                  EchoSphereBadge.secondary(
                                     label: announcement.category,
-                                    isSelected: true,
-                                    onSelected: (_) {},
                                   ),
-                                  EchoSphereChip(
+                                  EchoSphereBadge.outline(
                                     label: announcement.department,
-                                    isSelected: false,
-                                    onSelected: (_) {},
                                   ),
                                   _buildStatusBadge(context, announcement.status),
                                 ],
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
+
+                              // Regional Language Switcher Chips
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    'Translate:',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                  ),
+                                  ...[
+                                    {'code': 'en', 'label': 'English'},
+                                    {'code': 'kn', 'label': 'ಕನ್ನಡ'},
+                                    {'code': 'hi', 'label': 'हिंदी'},
+                                    {'code': 'te', 'label': 'తెలుగు'},
+                                    {'code': 'ta', 'label': 'தமிழ்'},
+                                  ].map((l) {
+                                    final isSelected = _selectedLang == l['code'];
+                                    return InkWell(
+                                      onTap: _isTranslating ? null : () => _onSelectLanguage(l['code']!),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 180),
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? theme.colorScheme.primary.withOpacity(0.15)
+                                              : theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: isSelected
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme.outline.withOpacity(0.2),
+                                            width: isSelected ? 1.2 : 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (isSelected && _isTranslating) ...[
+                                              SizedBox(
+                                                width: 10,
+                                                height: 10,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 1.5,
+                                                  color: theme.colorScheme.primary,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                            ],
+                                            Text(
+                                              l['label']!,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                                color: isSelected
+                                                    ? theme.colorScheme.primary
+                                                    : theme.colorScheme.onSurface.withOpacity(0.75),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                              if (_selectedLang != 'en' && _translatedTitle != null) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    EchoSphereBadge.secondary(
+                                      label: 'Showing ${_getLanguageName(_selectedLang)}',
+                                      icon: Icons.translate_rounded,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    InkWell(
+                                      onTap: () => _onSelectLanguage('en'),
+                                      child: Text(
+                                        'Show Original',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              const SizedBox(height: 14),
                               Text(
-                                announcement.title,
+                                _translatedTitle ?? announcement.title,
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
@@ -429,13 +963,24 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                               ),
                                               InkWell(
                                                 onTap: _isSummarizing ? null : _generateAiSummary,
-                                                child: Text(
-                                                  _isSummarizing ? 'Regenerating...' : 'Regenerate ↻',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: theme.colorScheme.primary,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.refresh_rounded,
+                                                      size: 13,
+                                                      color: theme.colorScheme.primary,
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                    Text(
+                                                      _isSummarizing ? 'Regenerating...' : 'Regenerate',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: theme.colorScheme.primary,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ],
@@ -443,9 +988,11 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                         ],
                                       ),
                                       const SizedBox(height: 6),
-                                       Text(
-                                         _aiSummary!,
-                                         style: TextStyle(
+                                      Text(
+                                        (_translatedSummary != null && _translatedSummary!.isNotEmpty)
+                                            ? _translatedSummary!
+                                            : _aiSummary!,
+                                        style: TextStyle(
                                           fontSize: 13,
                                           height: 1.4,
                                           color: theme.colorScheme.onSurface.withOpacity(0.9),
@@ -515,10 +1062,10 @@ Downloaded & Saved via EchoSphere Smart Campus System
                         // Audio Speech Player
                         NoticeAudioPlayerBar(
                           announcementId: announcement.id,
-                          title: announcement.title,
-                          content: announcement.description,
-                          hasAiSummary: (_aiSummary != null && _aiSummary!.isNotEmpty),
-                          aiSummary: _aiSummary,
+                          title: _translatedTitle ?? announcement.title,
+                          content: _translatedDescription ?? announcement.description,
+                          hasAiSummary: (_translatedSummary != null && _translatedSummary!.isNotEmpty) || (_aiSummary != null && _aiSummary!.isNotEmpty),
+                          aiSummary: (_translatedSummary != null && _translatedSummary!.isNotEmpty) ? _translatedSummary : _aiSummary,
                           initialVoiceGender: announcement.speakerVoice,
                         ),
                         const SizedBox(height: 16),
@@ -684,7 +1231,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               ),
                               const Divider(height: 24),
                               Text(
-                                announcement.description,
+                                _translatedDescription ?? announcement.description,
                                 style: const TextStyle(
                                   fontSize: 15,
                                   height: 1.6,
@@ -777,6 +1324,14 @@ Downloaded & Saved via EchoSphere Smart Campus System
                             ],
                           ),
                         ),
+                        const SizedBox(height: 20),
+
+                        // Automated Repeat Broadcast Schedule Section
+                        _buildRepeatScheduleCard(theme),
+                        const SizedBox(height: 20),
+
+                        // VIP Dignitary Protocol Section
+                        _buildVipProtocolCard(theme),
                         const SizedBox(height: 20),
 
                         // Audit Trail Section
@@ -1321,38 +1876,355 @@ Downloaded & Saved via EchoSphere Smart Campus System
     );
   }
 
-  Widget _buildStatusBadge(BuildContext context, String status) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    Color bg = theme.colorScheme.primary;
-    if (status == 'SUBMITTED' || status == 'DRAFT') {
-      bg = isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground;
-    }
-    if (status == 'SCHEDULED') {
-      bg = theme.colorScheme.primary;
-    }
-    if (status == 'REJECTED') {
-      bg = EchoSpherePalette.destructive;
-    }
-    if (status == 'ARCHIVED') {
-      bg = isDark ? EchoSpherePalette.darkMutedForeground : EchoSpherePalette.lightMutedForeground;
-    }
+  Widget _buildRepeatScheduleCard(ThemeData theme) {
+    final hasSchedule = _repeatSchedule != null;
+    final selectedSlots = hasSchedule ? (_repeatSchedule!['selected_slots'] as List? ?? []) : [];
+    final logs = hasSchedule ? (_repeatSchedule!['execution_logs'] as List? ?? []) : [];
+    final scope = hasSchedule ? (_repeatSchedule!['target_scope'] ?? 'DEPARTMENT') : '';
+    final isActive = hasSchedule && (_repeatSchedule!['is_active'] ?? true);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg.withOpacity(0.3), width: 1),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          color: bg,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-        ),
+    return EchoSphereContainer(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.repeat_rounded, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Automated Repeat Broadcast Schedule',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (_isLoadingRepeatSchedule)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: hasSchedule
+                        ? (isActive ? theme.colorScheme.primary.withOpacity(0.12) : theme.colorScheme.onSurface.withOpacity(0.08))
+                        : theme.colorScheme.onSurface.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: hasSchedule
+                          ? (isActive ? theme.colorScheme.primary.withOpacity(0.3) : theme.colorScheme.outline.withOpacity(0.2))
+                          : theme.colorScheme.outline.withOpacity(0.15),
+                    ),
+                  ),
+                  child: Text(
+                    hasSchedule ? (isActive ? 'ACTIVE' : 'INACTIVE') : 'NOT CONFIGURED',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: hasSchedule && isActive ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (hasSchedule) ...[
+            Text(
+              'Configured to rebroadcast across $scope nodes at campus transition windows.',
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: selectedSlots.map<Widget>((s) {
+                final label = s.toString().replaceAll('_', ' ');
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule_rounded, size: 12, color: theme.colorScheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        label,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+            if (logs.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Recent Execution History (${logs.length} runs):',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+              ),
+              const SizedBox(height: 6),
+              ...logs.take(3).map((l) {
+                final slotName = l['slot_name'] ?? 'Broadcast Slot';
+                final playedAt = l['played_at']?.toString().split('.').first.replaceAll('T', ' ') ?? '';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline_rounded, size: 12, color: theme.colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$slotName • $playedAt',
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.75)),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _showConfigureRepeatScheduleDialog(),
+                  icon: const Icon(Icons.edit_calendar_rounded, size: 13),
+                  label: const Text('Edit Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _triggerRepeatSlotCheck(),
+                  icon: const Icon(Icons.play_circle_outline_rounded, size: 13),
+                  label: const Text('Test Slot Check', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _deleteRepeatSchedule(),
+                  icon: Icon(Icons.delete_outline_rounded, size: 13, color: theme.colorScheme.error),
+                  label: Text('Remove Schedule', style: TextStyle(fontSize: 11, color: theme.colorScheme.error)),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(
+              'No automated repeat broadcast schedule configured for this notice. Configure to periodically rebroadcast during short break, lunch break, or dismissal.',
+              style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurface.withOpacity(0.65)),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () => _showConfigureRepeatScheduleDialog(),
+              icon: const Icon(Icons.add_alarm_rounded, size: 14),
+              label: const Text('Configure Repeat Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+            ),
+          ],
+        ],
       ),
     );
+  }
+
+  Widget _buildVipProtocolCard(ThemeData theme) {
+    final hasVip = _vipProtocol != null;
+    final guestName = hasVip ? (_vipProtocol!['guest_name'] ?? '') : '';
+    final guestTitle = hasVip ? (_vipProtocol!['guest_title'] ?? '') : '';
+    final venue = hasVip ? (_vipProtocol!['venue'] ?? '') : '';
+    final spokenScript = hasVip ? (_vipProtocol!['spoken_script'] ?? '') : '';
+    final voiceProfile = hasVip ? (_vipProtocol!['voice_profile'] ?? 'FEMALE_EXECUTIVE') : 'FEMALE_EXECUTIVE';
+    final examSuppression = hasVip && (_vipProtocol!['exam_suppression_active'] == true);
+    final confidenceScore = hasVip ? ((_vipProtocol!['confidence_score'] as num? ?? 0.95) * 100).toInt() : 0;
+
+    return EchoSphereContainer(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.stars_rounded, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'VIP Dignitary Protocol & Arrival Fanfare',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (_isLoadingVipProtocol || _isAnalyzingVip)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (hasVip)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    '$confidenceScore% MATCH',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (hasVip) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.person_pin_rounded, size: 16, color: theme.colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '$guestName${guestTitle.isNotEmpty ? ' — $guestTitle' : ''}',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (venue.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Designated Reception Venue: $venue',
+                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                    ),
+                  ],
+                  const Divider(height: 16),
+                  Text(
+                    'Ceremonial Radio Broadcast Script ($voiceProfile):',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '"$spokenScript"',
+                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, height: 1.4),
+                  ),
+                  if (examSuppression) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.volume_off_rounded, size: 12, color: theme.colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Exam Zone Suppression Active (Quiet Zone respected)',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isTriggeringFanfare ? null : () => _triggerArrivalFanfare(),
+                  icon: _isTriggeringFanfare
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.campaign_rounded, size: 14),
+                  label: Text(
+                    _isTriggeringFanfare ? 'Broadcasting Fanfare...' : 'Trigger Arrival Fanfare',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 0,
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _showEditVipProtocolDialog(),
+                  icon: const Icon(Icons.edit_note_rounded, size: 14),
+                  label: const Text('Edit Protocol Script', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(
+              'Automated entity extraction and ceremonial fanfare protocol for Chief Guests, resource persons, and visiting dignitaries.',
+              style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurface.withOpacity(0.65)),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isAnalyzingVip ? null : () => _analyzeVipProtocol(),
+              icon: _isAnalyzingVip
+                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome_rounded, size: 14),
+              label: Text(
+                _isAnalyzingVip ? 'Analyzing Dignitary Details...' : 'Analyze for VIP Dignitary',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(BuildContext context, String status) {
+    if (status == 'REJECTED') {
+      return EchoSphereBadge.destructive(label: status);
+    }
+    if (status == 'ARCHIVED') {
+      return EchoSphereBadge.muted(label: status);
+    }
+    if (status == 'SUBMITTED' || status == 'DRAFT') {
+      return EchoSphereBadge.secondary(label: status);
+    }
+    return EchoSphereBadge.defaultBadge(label: status);
   }
 }
