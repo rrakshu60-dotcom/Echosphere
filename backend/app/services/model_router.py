@@ -14,6 +14,7 @@ Features:
 """
 
 import os
+import re
 import time
 import json
 import logging
@@ -727,9 +728,25 @@ class ModelRouter:
         navigation_target: Optional[str],
         matched_announcements: List[Dict[str, Any]],
         model_used: str,
-        raw_action: Optional[Dict[str, Any]] = None
+        raw_action: Optional[Dict[str, Any]] = None,
+        full_name: Optional[str] = None
     ) -> Dict[str, Any]:
         clean_text, copilot_act = self._extract_copilot_action(raw_text, navigation_target, raw_action)
+
+        # Defense-in-depth against LLM persona leakage / adopting user's name
+        if full_name and full_name.strip():
+            fn = re.escape(full_name.strip())
+            clean_text = re.sub(
+                rf"(?i)^(hello[!., ]+|hi[!., ]+)?i'?m\s+{fn}[,.]*",
+                r"Hello! I am the EchoSphere AI Assistant,",
+                clean_text
+            )
+            clean_text = re.sub(
+                rf"(?i)^(hello[!., ]+|hi[!., ]+)?i\s+am\s+{fn}[,.]*",
+                r"Hello! I am the EchoSphere AI Assistant,",
+                clean_text
+            )
+
         return {
             "response": clean_text,
             "category_badge": category_badge,
@@ -777,7 +794,8 @@ class ModelRouter:
                 navigation_target=action_result.get("navigation_target", navigation_target),
                 matched_announcements=announcements,
                 model_used=action_result.get("model_used", "Gemma Action Engine (Local)"),
-                raw_action=action_result
+                raw_action=action_result,
+                full_name=full_name
             )
 
         # TIER 1.3: Fine-Tuned Qwen 2.5 3B Campus Frontier AI (Local GPU Port 8009)
@@ -794,7 +812,8 @@ class ModelRouter:
                     suggested_actions=actions,
                     navigation_target=navigation_target,
                     matched_announcements=announcements,
-                    model_used="Qwen 2.5 3B Instruct (Local GPU)"
+                    model_used="Qwen 2.5 3B Instruct (Local GPU)",
+                    full_name=full_name
                 )
 
         # TIER 1.5: Fine-Tuned Gemma 2 Campus Model (Local GPU or HuggingFace weights)
@@ -811,7 +830,8 @@ class ModelRouter:
                     suggested_actions=actions,
                     navigation_target=navigation_target,
                     matched_announcements=announcements,
-                    model_used=f"Fine-Tuned Gemma 2 ({GEMMA_ADAPTER_ID})"
+                    model_used=f"Fine-Tuned Gemma 2 ({GEMMA_ADAPTER_ID})",
+                    full_name=full_name
                 )
 
         # TIER 2: Evaluate Cloud Providers Availability & Congestion
@@ -831,7 +851,8 @@ class ModelRouter:
                     suggested_actions=actions,
                     navigation_target=navigation_target,
                     matched_announcements=announcements,
-                    model_used=model_name
+                    model_used=model_name,
+                    full_name=full_name
                 )
 
         # ADAPTIVE TRAFFIC BALANCER:
@@ -865,7 +886,8 @@ class ModelRouter:
                             suggested_actions=actions,
                             navigation_target=navigation_target,
                             matched_announcements=announcements,
-                            model_used=model_name or "Google Gemini 2.5 Flash"
+                            model_used=model_name or "Google Gemini 2.5 Flash",
+                            full_name=full_name
                         )
                 except requests.exceptions.HTTPError as e:
                     is_429 = "429" in str(e)
@@ -890,7 +912,8 @@ class ModelRouter:
                             suggested_actions=actions,
                             navigation_target=navigation_target,
                             matched_announcements=announcements,
-                            model_used="Cloudflare LLaMA 3.1 (Edge)"
+                            model_used="Cloudflare LLaMA 3.1 (Edge)",
+                            full_name=full_name
                         )
                 except requests.exceptions.HTTPError as e:
                     is_429 = "429" in str(e)
