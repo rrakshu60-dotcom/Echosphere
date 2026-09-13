@@ -1,7 +1,7 @@
 name: anymex
 description: "EchoSphere - Smart AI-Powered College Announcement Management System"
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
     sdk: ">=3.4.4 <4.0.0"
