@@ -16,6 +16,8 @@ from app.api.v1.notification import router as notification_router
 from app.api.v1.password_reset import router as password_reset_router
 from app.api.v1.user_management import router as user_management_router
 from app.api.v1.websocket import router as websocket_router
+from app.api.v1.repeat_schedule import router as repeat_schedule_router
+from app.api.v1.vip_protocol import router as vip_protocol_router
 import app.models
 from app.models.speaker_command import SpeakerCommand
 from app.core.rate_limiter import limiter
@@ -58,11 +60,16 @@ try:
     from app.seeders.user import seed_users
 
     with SessionLocal() as db_session:
+        from app.models.user import User
         if db_session.query(Role).count() == 0:
             seed_roles(db_session)
+        if db_session.query(Department).count() == 0:
             seed_departments(db_session)
+        if db_session.query(Category).count() == 0:
             seed_categories(db_session)
+        if db_session.query(DeliveryType).count() == 0:
             seed_delivery_types(db_session)
+        if db_session.query(User).count() == 0:
             seed_users(db_session)
         seed_default_speaker_nodes_if_empty(db_session)
 except Exception:
@@ -160,6 +167,37 @@ app.include_router(
 app.include_router(
     websocket_router,
 )
+
+app.include_router(
+    repeat_schedule_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    vip_protocol_router,
+    prefix="/api/v1",
+)
+
+
+import threading
+import time
+
+def _repeat_notice_background_daemon():
+    """Lightweight background runner that monitors campus break slots and hostel custom frames every 45s."""
+    from app.db.database import SessionLocal
+    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
+    while True:
+        try:
+            time.sleep(45)
+            with SessionLocal() as db_session:
+                evaluate_and_dispatch_repeat_slots(db_session)
+        except Exception:
+            pass
+
+@app.on_event("startup")
+def start_repeat_scheduler():
+    t = threading.Thread(target=_repeat_notice_background_daemon, daemon=True, name="RepeatNoticeSchedulerDaemon")
+    t.start()
 
 
 # -------------------------

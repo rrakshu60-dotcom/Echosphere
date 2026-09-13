@@ -4,6 +4,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
+import 'package:anymex/widgets/custom_widgets/privacy_policy_dialog.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -380,6 +381,23 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 5. Privacy Policy & Data Safety Link (Google Play Compliance)
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => showEchoSpherePrivacyPolicy(context),
+                    icon: Icon(Icons.shield_outlined, size: 16, color: theme.colorScheme.primary.withOpacity(0.8)),
+                    label: Text(
+                      'Privacy Policy & Institutional Data Safety',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.primary.withOpacity(0.85),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],

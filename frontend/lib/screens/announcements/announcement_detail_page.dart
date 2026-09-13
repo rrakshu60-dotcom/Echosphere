@@ -117,7 +117,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           content: widget.announcement.description,
           summary: summary,
         );
-        snackBar('✨ AI Summary generated!');
+        snackBar('AI Summary generated successfully.');
       }
     } catch (e) {
       if (mounted) {
@@ -140,7 +140,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       await queueCtrl.broadcastAnnouncement(announcement);
     } catch (e) {
       debugPrint('[Broadcast] Error: $e');
-      snackBar('❌ Failed to broadcast: ${e.toString().replaceAll('Exception: ', '')}');
+      snackBar('Failed to broadcast: ${e.toString().replaceAll('Exception: ', '')}');
     } finally {
       if (mounted) {
         setState(() => _isBroadcasting = false);

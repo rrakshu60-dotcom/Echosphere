@@ -70,7 +70,6 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
 
         await check(Permission.storage);
         await check(Permission.photos);
-        await check(Permission.manageExternalStorage);
 
         try {
           final directory = Directory('/storage/emulated/0/Download/EchoSphere');
@@ -143,7 +142,7 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
   }
 
   Future<void> _shareImage(String url) async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    if (kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       await Clipboard.setData(ClipboardData(text: url));
       if (mounted) snackBar("Link copied to clipboard!");
       return;

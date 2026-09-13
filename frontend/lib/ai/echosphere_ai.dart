@@ -532,7 +532,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
     Color accentColor = theme.colorScheme.primary;
     String title = 'Action Ready';
     String description = '';
-    String buttonText = 'Open Screen ➔';
+    String buttonText = 'Open Screen';
 
     if (actionName == 'navigate') {
       final screen = (params['screen'] as String? ?? 'notices').toLowerCase();
@@ -545,38 +545,38 @@ class _EchosphereAiState extends State<EchosphereAi> {
         accentColor = Colors.orange;
         title = 'Speaker Audio Queue';
         description = 'Corridor broadcast nodes & audio queue';
-        buttonText = 'Open Speaker Queue ➔';
+        buttonText = 'Open Speaker Queue';
       } else if (screen.contains('preference') || screen.contains('profile') || screen.contains('security') || screen.contains('smart_notes') || screen.contains('setting')) {
         iconData = Icons.tune_rounded;
         accentColor = Colors.teal;
         final secName = section != null ? section.replaceAll('_', ' ') : 'Preferences';
         title = 'Preferences • ${secName.toUpperCase()}';
         description = 'Profile, credentials, and app preferences';
-        buttonText = 'Open Preferences ➔';
+        buttonText = 'Open Preferences';
       } else if (cat != null && cat.isNotEmpty) {
         iconData = Icons.filter_alt_rounded;
         accentColor = Colors.indigoAccent;
         title = '$cat Circulars';
         description = 'Department notices matching $cat';
-        buttonText = 'View Circulars ➔';
+        buttonText = 'View Circulars';
       } else if (dept != null && dept.isNotEmpty) {
         iconData = Icons.apartment_rounded;
         accentColor = Colors.deepPurpleAccent;
         title = '$dept Department Notices';
         description = 'Filtered departmental circulars';
-        buttonText = 'View Notices ➔';
+        buttonText = 'View Notices';
       } else if (screen.contains('approval')) {
         iconData = Icons.verified_user_rounded;
         accentColor = Colors.green;
         title = 'Announcement Approvals';
         description = 'Review pending broadcast circulars';
-        buttonText = 'Review Approvals ➔';
+        buttonText = 'Review Approvals';
       } else {
         iconData = Icons.explore_rounded;
         accentColor = theme.colorScheme.primary;
         title = 'Navigate to ${screen.replaceAll('_', ' ')}';
         description = 'Quick access screen link';
-        buttonText = 'Open Screen ➔';
+        buttonText = 'Open Screen';
       }
     } else if (actionName == 'toggle_theme') {
       final mode = (params['mode'] as String? ?? 'toggle').toLowerCase();
@@ -590,7 +590,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
       accentColor = Colors.green;
       title = 'Draft Announcement';
       description = 'Open verified circular publishing studio';
-      buttonText = 'Open Composer ➔';
+      buttonText = 'Open Composer';
     } else if (actionName == 'control_speaker_queue') {
       iconData = Icons.speaker_group_rounded;
       accentColor = Colors.orange;
@@ -705,6 +705,12 @@ class _EchosphereAiState extends State<EchosphereAi> {
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 13,
+                        color: Colors.white,
                       ),
                     ],
                   ),

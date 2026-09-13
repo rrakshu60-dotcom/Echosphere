@@ -25,21 +25,25 @@ from app.models.role import Role
 from app.models.user import User
 from app.core.dependencies import get_current_user
 
-# Setup isolated SQLite test DB
-Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 with SessionLocal() as db_session:
-    r_student = Role(name="Student")
-    r_teacher = Role(name="Teacher")
-    r_admin = Role(name="Dev Admin")
-    db_session.add_all([r_student, r_teacher, r_admin])
+    for r_name in ["Student", "Teacher", "Dev Admin"]:
+        if not db_session.query(Role).filter_by(name=r_name).first():
+            db_session.add(Role(name=r_name))
     db_session.commit()
 
-    u_student = User(id=1, full_name="Alice Student", username="alice_s", official_email="alice@echosphere.edu", role_id=r_student.id, password_hash="dummy")
-    u_teacher = User(id=2, full_name="Bob Teacher", username="bob_t", official_email="bob@echosphere.edu", role_id=r_teacher.id, password_hash="dummy")
-    u_admin = User(id=3, full_name="Charlie Admin", username="charlie_a", official_email="charlie@echosphere.edu", role_id=r_admin.id, password_hash="dummy")
-    db_session.add_all([u_student, u_teacher, u_admin])
+    r_student = db_session.query(Role).filter_by(name="Student").first()
+    r_teacher = db_session.query(Role).filter_by(name="Teacher").first()
+    r_admin = db_session.query(Role).filter_by(name="Dev Admin").first()
+
+    for u_name, r_id, email in [
+        ("alice_s", r_student.id, "alice@echosphere.edu"),
+        ("bob_t", r_teacher.id, "bob@echosphere.edu"),
+        ("charlie_a", r_admin.id, "charlie@echosphere.edu"),
+    ]:
+        if not db_session.query(User).filter_by(username=u_name).first():
+            db_session.add(User(full_name=u_name, username=u_name, official_email=email, role_id=r_id, password_hash="dummy"))
     db_session.commit()
 
 client = TestClient(app)
@@ -232,29 +236,39 @@ def test_content_authoring_tools():
 def test_ai_train_rbac():
     print("\n--- 7. Testing AI Model Retraining RBAC ---")
 
-    # Student should receive 403 Forbidden
-    def mock_student_user():
-        with SessionLocal() as db_session:
-            return db_session.query(User).filter_by(username="alice_s").first()
+    try:
+        # Student should receive 403 Forbidden
+        def mock_student_user():
+            with SessionLocal() as db_session:
+                user = db_session.query(User).filter_by(username="alice_s").first()
+                if user:
+                    _ = user.role.name if user.role else None
+                    return user
+            return User(id=101, username="alice_s", full_name="Alice Student", official_email="alice@echosphere.edu", role=Role(name="Student"))
 
-    app.dependency_overrides[get_current_user] = mock_student_user
-    res_student = client.post("/api/v1/ai/train")
-    assert res_student.status_code == 403, f"Expected 403 Forbidden for Student, got {res_student.status_code}"
-    print("  -> PASSED: Student role blocked from /ai/train with HTTP 403.")
+        app.dependency_overrides[get_current_user] = mock_student_user
+        res_student = client.post("/api/v1/ai/train")
+        assert res_student.status_code == 403, f"Expected 403 Forbidden for Student, got {res_student.status_code}"
+        print("  -> PASSED: Student role blocked from /ai/train with HTTP 403.")
 
-    # Dev Admin should succeed
-    def mock_admin_user():
-        with SessionLocal() as db_session:
-            return db_session.query(User).filter_by(username="charlie_a").first()
+        # Dev Admin should succeed
+        def mock_admin_user():
+            with SessionLocal() as db_session:
+                user = db_session.query(User).filter_by(username="charlie_a").first()
+                if user:
+                    _ = user.role.name if user.role else None
+                    return user
+            return User(id=103, username="charlie_a", full_name="Charlie Admin", official_email="charlie@echosphere.edu", role=Role(name="Dev Admin"))
 
-    app.dependency_overrides[get_current_user] = mock_admin_user
-    res_admin = client.post("/api/v1/ai/train")
-    assert res_admin.status_code == 200, f"Expected 200 for Admin, got {res_admin.status_code}"
-    admin_data = res_admin.json()
-    assert admin_data["status"] == "success"
-    assert admin_data["intents_trained"] >= 5
-    print(f"  -> PASSED: Admin retrained {admin_data['intents_trained']} intents across {admin_data['intent_samples']} samples.")
-    app.dependency_overrides.clear()
+        app.dependency_overrides[get_current_user] = mock_admin_user
+        res_admin = client.post("/api/v1/ai/train")
+        assert res_admin.status_code == 200, f"Expected 200 for Admin, got {res_admin.status_code}"
+        admin_data = res_admin.json()
+        assert admin_data["status"] == "success"
+        assert admin_data["intents_trained"] >= 5
+        print(f"  -> PASSED: Admin retrained {admin_data['intents_trained']} intents across {admin_data['intent_samples']} samples.")
+    finally:
+        app.dependency_overrides.clear()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from typing import Callable, Optional
+from sqlalchemy import or_
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -13,6 +14,21 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 
+def _find_user_by_sub(db: Session, sub: str) -> Optional[User]:
+    return (
+        db.query(User)
+        .filter(
+            or_(
+                User.official_email == sub,
+                User.usn == sub,
+                User.username == sub,
+                User.employee_id == sub,
+            )
+        )
+        .first()
+    )
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -25,15 +41,15 @@ def get_current_user(
             detail="Invalid or expired token",
         )
 
-    official_email = payload.get("sub")
+    sub = payload.get("sub")
 
-    if official_email is None:
+    if sub is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
 
-    user = get_user_by_email(db, official_email)
+    user = _find_user_by_sub(db, str(sub))
 
     if user is None:
         raise HTTPException(
@@ -52,9 +68,9 @@ def get_optional_current_user(
         return None
     try:
         payload = verify_access_token(token)
-        official_email = payload.get("sub")
-        if official_email:
-            return get_user_by_email(db, official_email)
+        sub = payload.get("sub")
+        if sub:
+            return _find_user_by_sub(db, str(sub))
     except Exception:
         pass
     return None
@@ -82,6 +98,11 @@ def require_roles(*allowed_roles) -> Callable:
     def role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated.",
+            )
         user_role = current_user.role.name if current_user.role else "Student"
         if user_role not in expanded_roles:
             raise HTTPException(

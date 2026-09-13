@@ -18,29 +18,44 @@ from app.main import app
 from app.core.dependencies import get_current_user
 from app.models.role import Role
 from app.models.user import User
+import pytest
+from app.db.database import SessionLocal
 
 def mock_get_current_user():
+    with SessionLocal() as db_session:
+        user = db_session.query(User).filter_by(username="admin_test").first()
+        if user:
+            _ = user.role.name if user.role else None
+            return user
+    r = Role(name="Dev Admin")
     return User(
-        id=1,
+        id=999,
         full_name="Admin Test User",
-        official_email="admin@echosphere.edu",
-        role=Role(name="Dev Admin"),
+        username="admin_test",
+        official_email="admin_test@echosphere.edu",
+        role=r,
     )
 
-app.dependency_overrides[get_current_user] = mock_get_current_user
-
-Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
-from app.db.database import SessionLocal
 with SessionLocal() as db_session:
-    r = Role(name="Dev Admin")
-    db_session.add(r)
-    db_session.commit()
-    db_session.refresh(r)
-    u = User(id=1, full_name="Admin Test User", username="admin_test", official_email="admin@echosphere.edu", role_id=r.id, password_hash="dummy")
-    db_session.add(u)
-    db_session.commit()
+    r = db_session.query(Role).filter_by(name="Dev Admin").first()
+    if not r:
+        r = Role(name="Dev Admin")
+        db_session.add(r)
+        db_session.commit()
+        db_session.refresh(r)
+    u = db_session.query(User).filter_by(username="admin_test").first()
+    if not u:
+        u = User(id=999, full_name="Admin Test User", username="admin_test", official_email="admin_test@echosphere.edu", role_id=r.id, password_hash="dummy")
+        db_session.add(u)
+        db_session.commit()
+
+@pytest.fixture(autouse=True)
+def setup_teardown_hardware_test():
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 client = TestClient(app)
 

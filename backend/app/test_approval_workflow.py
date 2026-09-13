@@ -22,13 +22,11 @@ def setup_test_db():
     Base.metadata.create_all(bind=engine)
     db = next(get_db())
     try:
-        from app.models.role import Role
-        if db.query(Role).count() == 0:
-            seed_roles(db)
-            seed_departments(db)
-            seed_categories(db)
-            seed_delivery_types(db)
-            seed_users(db)
+        seed_roles(db)
+        seed_departments(db)
+        seed_categories(db)
+        seed_delivery_types(db)
+        seed_users(db)
     finally:
         db.close()
 

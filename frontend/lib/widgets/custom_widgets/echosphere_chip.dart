@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 
 class EchoSphereChip extends StatelessWidget {
   final String label;
+  final IconData? icon;
   final bool isSelected;
   final Function(bool e) onSelected;
   final bool showCheck;
@@ -13,6 +14,7 @@ class EchoSphereChip extends StatelessWidget {
   const EchoSphereChip({
     super.key,
     required this.label,
+    this.icon,
     required this.isSelected,
     required this.onSelected,
     this.showCheck = true,
@@ -22,10 +24,10 @@ class EchoSphereChip extends StatelessWidget {
     if (!Get.isRegistered<Settings>()) {
       return BoxShadow(
         color: context.colors.primary.opaque(
-            Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
-        blurRadius: 20.0,
-        spreadRadius: -1.0,
-        offset: const Offset(0, 0),
+            Theme.of(context).brightness == Brightness.dark ? 0.08 : 0.15),
+        blurRadius: 16.0,
+        spreadRadius: -2.0,
+        offset: const Offset(0, 2),
       );
     }
     final controller = Get.find<Settings>();
@@ -34,40 +36,59 @@ class EchoSphereChip extends StatelessWidget {
     } else {
       return BoxShadow(
         color: context.colors.primary.opaque(
-            Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.2),
-        blurRadius: 20.0.multiplyBlur(),
+            Theme.of(context).brightness == Brightness.dark ? 0.08 : 0.15),
+        blurRadius: 16.0.multiplyBlur(),
         spreadRadius:
-            -1.0.multiplyGlow(), // Negative spread makes shadow smaller
-        offset: const Offset(0, 0), // Centered shadow
+            -2.0.multiplyGlow(),
+        offset: const Offset(0, 2),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [glowingShadow(context)]),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isSelected ? [glowingShadow(context)] : null,
+      ),
       child: FilterChip(
         selected: isSelected,
         onSelected: onSelected,
+        avatar: icon != null
+            ? Icon(
+                icon,
+                size: 14,
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+              )
+            : null,
         label: Text(label),
         labelStyle: TextStyle(
           color: isSelected
-              ? context.colors.onPrimary
-              : context.colors.onSurfaceVariant,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ? Colors.white
+              : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          fontSize: 12,
         ),
-        checkmarkColor: isSelected
-            ? context.colors.onPrimary
-            : context.colors.onSurfaceVariant,
-        backgroundColor: context.colors.secondaryContainer,
-        selectedColor: context.colors.primary,
-        side: BorderSide.none,
-        showCheckmark: showCheck,
+        checkmarkColor: isSelected ? Colors.white : Colors.transparent,
+        backgroundColor: isDark
+            ? const Color(0xFF1E293B)
+            : const Color(0xFFF1F5F9),
+        selectedColor: theme.colorScheme.primary,
+        side: BorderSide(
+          color: isSelected
+              ? theme.colorScheme.primary
+              : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+          width: 0.8,
+        ),
+        showCheckmark: icon == null && showCheck,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );

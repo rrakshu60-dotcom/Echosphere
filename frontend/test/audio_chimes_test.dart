@@ -116,11 +116,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify voice controls and chime chip render
-      expect(find.text('♀ Female'), findsOneWidget);
-      expect(find.text('♂ Male'), findsOneWidget);
-      expect(find.text('📄 Full Notice'), findsOneWidget);
-      expect(find.text('✨ AI Summary'), findsOneWidget);
-      expect(find.textContaining('🔔 Chime:'), findsOneWidget);
+      expect(find.text('Female'), findsOneWidget);
+      expect(find.text('Male'), findsOneWidget);
+      expect(find.text('Full Notice'), findsOneWidget);
+      expect(find.text('Summary'), findsOneWidget);
+      expect(find.textContaining('Chime:'), findsOneWidget);
 
       // Verify zero layout overflow
       expect(tester.takeException(), isNull);
@@ -146,24 +146,24 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap on the Chime chip
-      final chimeChip = find.textContaining('🔔 Chime:');
+      final chimeChip = find.textContaining('Chime:');
       expect(chimeChip, findsOneWidget);
       await tester.tap(chimeChip);
       await tester.pumpAndSettle();
 
       // Verify bottom sheet opened
       expect(find.text('Broadcast Intro Chimes'), findsOneWidget);
-      expect(find.text('⚡ AI Auto-Select'), findsOneWidget);
-      expect(find.text('🔔 Professional Double-Beep'), findsOneWidget);
-      expect(find.text('🎉 Upbeat Acoustic Ding'), findsOneWidget);
-      expect(find.text('🚨 Sweeping Siren Pulse'), findsOneWidget);
-      expect(find.text('🎵 Gentle Campus Chime'), findsOneWidget);
+      expect(find.text('AI Auto-Select'), findsOneWidget);
+      expect(find.text('Academic Alert'), findsOneWidget);
+      expect(find.text('Events & Activities'), findsOneWidget);
+      expect(find.text('Emergency Siren'), findsOneWidget);
+      expect(find.text('Campus Chime'), findsOneWidget);
 
       // Verify zero layout overflow occurred in sheet
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('Tapping ♂ Male switches voice to American Male and vice versa', (WidgetTester tester) async {
+    testWidgets('Tapping Male switches voice to American Male and vice versa', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(360, 700);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -190,8 +190,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // Tap ♂ Male chip
-      final maleChip = find.text('♂ Male');
+      // Tap Male chip
+      final maleChip = find.text('Male');
       expect(maleChip, findsOneWidget);
       await tester.tap(maleChip);
       await tester.pumpAndSettle();
@@ -200,8 +200,8 @@ void main() {
       expect(audio.selectedGender.value, 'male');
       expect(audio.voiceName.value, 'American Male');
 
-      // Tap ♀ Female chip
-      final femaleChip = find.text('♀ Female');
+      // Tap Female chip
+      final femaleChip = find.text('Female');
       expect(femaleChip, findsOneWidget);
       await tester.tap(femaleChip);
       await tester.pumpAndSettle();

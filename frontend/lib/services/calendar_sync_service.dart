@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -78,7 +79,7 @@ class CalendarEventData {
     final startStr = formatRfcTimestamp(startTime);
     final endStr = formatRfcTimestamp(endTime);
     final detailsStr = actionRequired.isNotEmpty
-        ? '$description\n\n📌 Required Action: $actionRequired'
+        ? '$description\n\nRequired Action: $actionRequired'
         : description;
 
     final params = {
@@ -146,16 +147,26 @@ class CalendarSyncService {
   static Future<bool> exportAndShareIcs(CalendarEventData event) async {
     try {
       final icsContent = event.generateIcsContent();
-      final tempDir = await getTemporaryDirectory();
       final safeName = event.title
           .replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_')
           .toLowerCase();
+
+      if (kIsWeb) {
+        await Share.shareXFiles(
+          [XFile.fromData(Uint8List.fromList(utf8.encode(icsContent)), mimeType: 'text/calendar', name: '${safeName}_event.ics')],
+          text: '${event.title} - EchoSphere Calendar Event',
+          subject: event.title,
+        );
+        return true;
+      }
+
+      final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/${safeName}_event.ics');
       await file.writeAsString(icsContent);
 
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'text/calendar')],
-        text: '📅 ${event.title} - EchoSphere Calendar Event',
+        text: '${event.title} - EchoSphere Calendar Event',
         subject: event.title,
       );
       return true;

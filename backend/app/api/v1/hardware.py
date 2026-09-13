@@ -402,7 +402,9 @@ def fetch_speaker_queue(
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
     try:
+        evaluate_and_dispatch_repeat_slots(db)
         auto_advance_speaker_queue(db)
     except Exception:
         pass

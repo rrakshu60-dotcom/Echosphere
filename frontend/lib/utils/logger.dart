@@ -319,7 +319,7 @@ Pretty Name: ${info.prettyName}
 
     await _fileSink?.flush();
 
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       await SharePlus.instance.share(ShareParams(
         files: [XFile(_logFile!.path)],
       ));

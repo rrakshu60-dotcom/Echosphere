@@ -139,8 +139,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Verify "🎯 Relevant to You" badge is displayed
-      final badgeFinder = find.text('🎯 Relevant to You');
+      // Verify "Relevant to You" badge is displayed
+      final badgeFinder = find.text('Relevant to You');
       expect(badgeFinder, findsOneWidget);
 
       // Verify zero layout overflow exception

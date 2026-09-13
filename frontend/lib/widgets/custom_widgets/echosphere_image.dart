@@ -252,6 +252,7 @@ class _EchoSphereImageState extends State<EchoSphereImage> {
           widget.imageUrl,
         );
       } else {
+        if (kIsWeb) return;
         imageProvider = FileImage(_fileFromPath(widget.imageUrl));
       }
 
@@ -283,26 +284,25 @@ class _EchoSphereImageState extends State<EchoSphereImage> {
   }
 
   Widget _fallback(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Theme.of(context).colorScheme.surfaceContainerHighest.opaque(0.3),
-            context.colors.surfaceContainer.opaque(0.5),
-          ],
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          width: 0.8,
         ),
       ),
       child: Center(
-        child: Text(
-          '(╥﹏╥)',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color:
-                    Theme.of(context).colorScheme.onSurfaceVariant.opaque(0.3),
-              ),
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 24,
+          color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
         ),
       ),
     );

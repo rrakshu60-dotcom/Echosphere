@@ -572,7 +572,7 @@ class EchosphereApiService {
         'conflicting_venue': 'Seminar Hall B',
         'conflicting_time': 'Oct 25, 2:00 PM',
         'conflict_type': 'venue_collision',
-        'conflict_message': '⚠️ Conflict Detected: Mechanical Dept has booked Seminar Hall B on Oct 25, 2:00 PM (Notice #214).',
+        'conflict_message': 'Conflict Detected: Mechanical Dept has booked Seminar Hall B on Oct 25, 2:00 PM (Notice #214).',
       });
       alternatives.addAll([
         {
@@ -607,7 +607,7 @@ class EchosphereApiService {
           'conflicting_venue': 'Central Auditorium',
           'conflicting_time': 'Nov 12, 2:00 PM',
           'conflict_type': 'academic_clash',
-          'conflict_message': "⚠️ Examination Schedule Conflict: 'End-Semester Theory Examination' clashes on Nov 12, 2:00 PM (Notice #216).",
+          'conflict_message': "Examination Schedule Conflict: 'End-Semester Theory Examination' clashes on Nov 12, 2:00 PM (Notice #216).",
         });
         alternatives.addAll([
           {
@@ -692,46 +692,46 @@ class EchosphereApiService {
 
     if (isFaculty && selectedAudience != 'Faculty Members') {
       suggested.add('Faculty Members');
-      warning = "⚠️ Audience Warning: This notice appears specifically for Faculty & Staff, but target audience is set to '$selectedAudience'. Avoid notifying students.";
+      warning = "Audience Warning: This notice appears specifically for Faculty & Staff, but target audience is set to '$selectedAudience'. Avoid notifying students.";
       type = 'faculty_only';
     } else if (selectedAudience == 'Entire College') {
       if (has3rdYear && hasCse) {
         suggested.addAll(['3rd Year Students', 'CSE Department']);
-        warning = '⚠️ Audience Warning: Notice mentions 3rd Year Students (CSE Department), but target audience is set to Entire College.';
+        warning = 'Audience Warning: Notice mentions 3rd Year Students (CSE Department), but target audience is set to Entire College.';
         type = 'overly_broad_combined';
       } else if (hasCse) {
         suggested.add('CSE Department');
-        warning = '⚠️ Audience Warning: This notice specifically mentions CSE Department, but target audience is set to Entire College (alerting 2,400+ students).';
+        warning = 'Audience Warning: This notice specifically mentions CSE Department, but target audience is set to Entire College (alerting 2,400+ students).';
         type = 'overly_broad_department';
       } else if (hasMech) {
         suggested.add('Mechanical Department');
-        warning = '⚠️ Audience Warning: This notice specifically mentions Mechanical Department, but target audience is set to Entire College.';
+        warning = 'Audience Warning: This notice specifically mentions Mechanical Department, but target audience is set to Entire College.';
         type = 'overly_broad_department';
       } else if (hasCivil) {
         suggested.add('Civil Department');
-        warning = '⚠️ Audience Warning: This notice specifically mentions Civil Department, but target audience is set to Entire College.';
+        warning = 'Audience Warning: This notice specifically mentions Civil Department, but target audience is set to Entire College.';
         type = 'overly_broad_department';
       } else if (hasAiml) {
         suggested.add('AIML Department');
-        warning = '⚠️ Audience Warning: This notice specifically mentions AIML Department, but target audience is set to Entire College.';
+        warning = 'Audience Warning: This notice specifically mentions AIML Department, but target audience is set to Entire College.';
         type = 'overly_broad_department';
       } else if (has1stYear) {
         suggested.add('1st Year Students');
-        warning = '⚠️ Audience Warning: Notice targets 1st Year Students, but is addressed to Entire College.';
+        warning = 'Audience Warning: Notice targets 1st Year Students, but is addressed to Entire College.';
         type = 'overly_broad_year';
       } else if (has3rdYear) {
         suggested.add('3rd Year Students');
-        warning = '⚠️ Audience Warning: Notice targets 3rd Year Students, but is addressed to Entire College.';
+        warning = 'Audience Warning: Notice targets 3rd Year Students, but is addressed to Entire College.';
         type = 'overly_broad_year';
       }
     } else if (selectedAudience.endsWith('Department')) {
       if (hasCivil && selectedAudience != 'Civil Department') {
         suggested.add('Civil Department');
-        warning = "⚠️ Department Mismatch: Notice mentions Civil Department, but audience is set to '$selectedAudience'.";
+        warning = "Department Mismatch: Notice mentions Civil Department, but audience is set to '$selectedAudience'.";
         type = 'wrong_department';
       } else if (hasMech && selectedAudience != 'Mechanical Department') {
         suggested.add('Mechanical Department');
-        warning = "⚠️ Department Mismatch: Notice mentions Mechanical Department, but audience is set to '$selectedAudience'.";
+        warning = "Department Mismatch: Notice mentions Mechanical Department, but audience is set to '$selectedAudience'.";
         type = 'wrong_department';
       }
     }

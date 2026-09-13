@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cross_platform_video_thumbnails/cross_platform_video_thumbnails.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -15,7 +16,7 @@ class LocalThumbnailService {
   static bool _isBusy = false;
 
   static Future<String?> getThumbnailPath(String filePath) async {
-    if (filePath.isEmpty) return null;
+    if (kIsWeb || filePath.isEmpty) return null;
     if (_pathCache.containsKey(filePath)) {
       final cachedPath = _pathCache[filePath]!;
       if (File(cachedPath).existsSync()) return cachedPath;
@@ -36,7 +37,7 @@ class LocalThumbnailService {
   }
 
   static Future<Uint8List?> getThumbnail(String filePath) async {
-    if (filePath.isEmpty) return null;
+    if (kIsWeb || filePath.isEmpty) return null;
 
     if (_memCache.containsKey(filePath)) {
       return _memCache[filePath];

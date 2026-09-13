@@ -19,6 +19,8 @@ import time
 import json
 import requests
 
+__test__ = False
+
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')

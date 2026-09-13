@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anymex/utils/theme_extensions.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -246,7 +247,7 @@ int getResponsiveCrossAxisVal(double screenWidth, {int itemWidth = 150}) {
 }
 
 Future<bool> isTv() async {
-  if (!Platform.isAndroid) return false;
+  if (kIsWeb || !Platform.isAndroid) return false;
   DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
   AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
   bool isTV = androidInfo.systemFeatures.contains('android.software.leanback');

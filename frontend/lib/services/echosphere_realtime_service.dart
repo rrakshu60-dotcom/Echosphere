@@ -79,6 +79,7 @@ class EchosphereRealtimeService extends GetxService {
 
   Future<void> connect() async {
     if (_isDisposed) return;
+    if (Get.testMode || kIsWeb) return;
     if (isConnected.value && _webSocket != null) return;
 
     final url = _wsUrl;
