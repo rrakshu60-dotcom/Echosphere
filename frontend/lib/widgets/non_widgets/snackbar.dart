@@ -566,7 +566,7 @@ void successSnackBar(
     title: title,
     duration: duration,
     icon: Icons.check_circle_outline_rounded,
-    iconColor: const Color(0xFF4CAF50),
+    iconColor: const Color(0xFF945AF2),
     showDurationAnimation: showDurationAnimation,
   );
 }
@@ -582,7 +582,7 @@ void errorSnackBar(
     title: title,
     duration: duration,
     icon: Icons.error_outline_rounded,
-    iconColor: const Color(0xFFEF5350),
+    iconColor: const Color(0xFF7C1E55),
     showCloseButton: true,
     showDurationAnimation: showDurationAnimation,
   );
@@ -599,7 +599,7 @@ void infoSnackBar(
     title: title,
     duration: duration,
     icon: Icons.info_outline_rounded,
-    iconColor: const Color(0xFF42A5F5),
+    iconColor: const Color(0xFF945AF2),
     showDurationAnimation: showDurationAnimation,
   );
 }
@@ -615,7 +615,7 @@ void warningSnackBar(
     title: title,
     duration: duration,
     icon: Icons.warning_amber_rounded,
-    iconColor: const Color(0xFFFFB74D),
+    iconColor: const Color(0xFFB46FF9),
     showDurationAnimation: showDurationAnimation,
   );
 }

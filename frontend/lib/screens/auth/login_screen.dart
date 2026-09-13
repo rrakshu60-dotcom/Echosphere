@@ -92,61 +92,63 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.security_rounded, color: Colors.purple, size: 24),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Executive Verification',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
             children: [
-              const Text(
-                'College Admin login requires authorization by a registered Staff, Teacher, or HoD. Input your Official Employee ID:',
-                style: TextStyle(fontSize: 12, height: 1.4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.security_rounded, color: theme.colorScheme.primary, size: 24),
               ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: empIdCtrl,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Official Staff Employee ID',
-                  hintText: 'e.g. DBITAIMLT022022, DBITADM001, PRI001, DEVADM01',
-                  prefixIcon: const Icon(Icons.badge_outlined, size: 20),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Executive Verification',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'College Admin login requires authorization by a registered Staff, Teacher, or HoD. Input your Official Employee ID:',
+                  style: TextStyle(fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: empIdCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Official Staff Employee ID',
+                    hintText: 'e.g. DBITAIMLT022022, DBITADM001, PRI001, DEVADM01',
+                    prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             onPressed: () async {
               final enteredEmpId = empIdCtrl.text.trim();
               if (enteredEmpId.isEmpty) {
@@ -189,9 +191,10 @@ class _LoginScreenState extends State<LoginScreen> {
             child: const Text('Verify & Enter'),
           ),
         ],
-      ),
-    );
-  }
+      );
+    },
+  );
+}
 
   @override
   void dispose() {
@@ -501,15 +504,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.25)),
                   ),
-                  child: const Text(
+                  child: Text(
                     '• Student Accounts: For academic integrity, contact your Department Faculty or HoD.\n'
                     '• Faculty & Staff: A secure reset link will be sent to your registered official email.\n'
                     '• Administrators: Backend audit trail verification applies.',
-                    style: TextStyle(fontSize: 11, height: 1.5, color: Colors.blue),
+                    style: TextStyle(fontSize: 11, height: 1.5, color: Theme.of(context).colorScheme.primary),
                   ),
                 ),
               ],

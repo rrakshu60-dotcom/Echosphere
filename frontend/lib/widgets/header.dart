@@ -122,8 +122,8 @@ class Header extends StatelessWidget {
                     Icons.podcasts_rounded,
                     size: isMobile ? 20 : 22,
                     color: isPlaying
-                        ? const Color(0xFF10B981)
-                        : theme.colorScheme.primary,
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
@@ -137,7 +137,7 @@ class Header extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
+                        color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
                         border: Border.all(color: theme.scaffoldBackgroundColor, width: 1.5),
                       ),

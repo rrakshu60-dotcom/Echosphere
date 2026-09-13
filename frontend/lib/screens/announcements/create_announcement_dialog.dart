@@ -477,14 +477,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         showCancelButton: false,
         confirmText: 'Dismiss',
         onConfirm: () => Navigator.of(context).pop(),
-        contentWidget: const Padding(
-          padding: EdgeInsets.all(16.0),
+        contentWidget: Padding(
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.gpp_bad_rounded, color: Colors.redAccent, size: 40),
-              SizedBox(height: 12),
-              Text(
+              Icon(Icons.gpp_bad_rounded, color: theme.colorScheme.primary, size: 40),
+              const SizedBox(height: 12),
+              const Text(
                 "I don't have the authority to author or publish announcements directly from this account. If you have an announcement proposal, please coordinate with your faculty advisor or department office.",
                 style: TextStyle(fontSize: 12),
                 textAlign: TextAlign.center,
@@ -511,13 +511,13 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFF6366F1).withOpacity(0.12),
-                    const Color(0xFF8B5CF6).withOpacity(0.06),
+                    theme.colorScheme.primary.withOpacity(0.12),
+                    theme.colorScheme.primary.withOpacity(0.06),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF6366F1).withOpacity(0.25),
+                  color: theme.colorScheme.primary.withOpacity(0.25),
                 ),
               ),
               child: Column(
@@ -526,28 +526,28 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Flexible(
+                      Flexible(
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.auto_awesome, size: 14, color: Color(0xFF818CF8)),
-                            SizedBox(width: 6),
+                            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+                            const SizedBox(width: 6),
                             Flexible(
                               child: Text(
                                 'AI Fast Intake Studio',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF818CF8)),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary),
                               ),
                             ),
                           ],
                         ),
                       ),
                       if (isAiScanningDoc)
-                        const SizedBox(
+                        SizedBox(
                           width: 14,
                           height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF818CF8)),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
                         ),
                     ],
                   ),
@@ -563,7 +563,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                         icon: const Icon(Icons.mic_rounded, size: 14),
                         label: const Text('Voice Dictate', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4F46E5),
+                          backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -597,7 +597,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               children: [
                 const Text('Announcement Title', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 ActionChip(
-                  avatar: const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                  avatar: Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
                   label: isAiDrafting
                       ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('AI Auto-Draft', style: TextStyle(fontSize: 11)),
@@ -616,7 +616,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 14),
 
             // Description Header with AI Tools
-            // Description Header with AI Tools
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -630,14 +629,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                   children: [
                     if (textLength >= 10)
                       ActionChip(
-                        avatar: const Icon(Icons.spellcheck_rounded, size: 14, color: Color(0xFF60A5FA)),
+                        avatar: Icon(Icons.spellcheck_rounded, size: 14, color: theme.colorScheme.primary),
                         label: isAiPolishing
                             ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('Grammar', style: TextStyle(fontSize: 11)),
                         onPressed: isAiPolishing ? null : _polishGrammar,
                       ),
                     ActionChip(
-                      avatar: const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                      avatar: Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
                       label: isAiExpanding
                           ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Text('AI Expand', style: TextStyle(fontSize: 11)),
@@ -676,22 +675,22 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.12),
+                  color: theme.colorScheme.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.warning_amber_rounded, size: 16, color: Colors.amber),
-                        SizedBox(width: 6),
+                        Icon(Icons.warning_amber_rounded, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text('AI Content Assistance Warnings',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                         ),
                       ],
                     ),
@@ -699,9 +698,9 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                     if (aiValidationWarning != null)
                       Text('• $aiValidationWarning', style: const TextStyle(fontSize: 11)),
                     if (aiSpamWarning != null)
-                      Text('• Spam Alert: $aiSpamWarning', style: const TextStyle(fontSize: 11, color: Color(0xFFF87171))),
+                      Text('• Spam Alert: $aiSpamWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                     if (aiDuplicateWarning != null)
-                      Text('• Duplicate Alert: $aiDuplicateWarning', style: const TextStyle(fontSize: 11, color: Color(0xFFFB923C))),
+                      Text('• Duplicate Alert: $aiDuplicateWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                   ],
                 ),
               ),
@@ -717,15 +716,15 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.auto_awesome, size: 18, color: Colors.amber),
+                  Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.primary),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'AI Auto-Classification',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                         ),
                         const SizedBox(height: 4),
                         Wrap(
@@ -780,13 +779,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                               ? Icons.table_chart_rounded
                               : Icons.description_rounded;
 
-                  final iconColor = isImage
-                      ? const Color(0xFFC084FC)
-                      : isPdf
-                          ? const Color(0xFFF87171)
-                          : isExcel
-                              ? const Color(0xFF34D399)
-                              : const Color(0xFF60A5FA);
+                  final iconColor = theme.colorScheme.primary;
 
                   final sizeKb = (file.size / 1024).toStringAsFixed(0);
 
@@ -1165,8 +1158,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     final alternatives = (activeConflictReport!['suggested_alternatives'] as List?)?.whereType<Map>().toList() ?? [];
     if (conflicts.isEmpty) return const SizedBox.shrink();
 
-    final isSevere = conflicts.any((c) => c['conflict_type'] == 'venue_collision');
-    final accentColor = isSevere ? const Color(0xFFEF4444) : Colors.amber;
+    final accentColor = theme.colorScheme.primary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1231,7 +1223,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 6),
             Row(
               children: [
-                const Icon(Icons.auto_awesome, size: 14, color: Colors.amber),
+                Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -1282,22 +1274,23 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     if (activeAudienceWarning == null) return const SizedBox.shrink();
     final warningMsg = activeAudienceWarning!['warning_message'] as String? ?? 'Audience mismatch detected.';
     final suggested = (activeAudienceWarning!['suggested_audiences'] as List?)?.whereType<String>().toList() ?? [];
+    final accentColor = theme.colorScheme.primary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.12),
+        color: accentColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+        border: Border.all(color: accentColor.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.groups_rounded, size: 18, color: Colors.amber),
-              SizedBox(width: 8),
+              Icon(Icons.groups_rounded, size: 18, color: accentColor),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Audience Recommendation (Anti-Spam Guard)',
@@ -1306,7 +1299,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.amber,
+                    color: accentColor,
                   ),
                 ),
               ),
@@ -1321,7 +1314,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.auto_awesome, size: 13, color: Colors.amber),
+                Icon(Icons.auto_awesome, size: 13, color: accentColor),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -1341,17 +1334,17 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               runSpacing: 6,
               children: suggested.map((target) {
                 return ActionChip(
-                  avatar: const Icon(Icons.gps_fixed_rounded, size: 13, color: Color(0xFF10B981)),
+                  avatar: Icon(Icons.gps_fixed_rounded, size: 13, color: accentColor),
                   label: Text(
                     'Narrow to: $target',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF10B981),
+                      color: accentColor,
                     ),
                   ),
-                  backgroundColor: const Color(0xFF10B981).withOpacity(0.08),
-                  side: BorderSide(color: const Color(0xFF10B981).withOpacity(0.3)),
+                  backgroundColor: accentColor.withOpacity(0.08),
+                  side: BorderSide(color: accentColor.withOpacity(0.3)),
                   onPressed: () {
                     setState(() {
                       selectedAudience = target;

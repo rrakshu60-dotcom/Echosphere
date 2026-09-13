@@ -250,10 +250,10 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withOpacity(0.15),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.mic_rounded, color: Color(0xFF818CF8), size: 22),
+                    child: Icon(Icons.mic_rounded, color: theme.colorScheme.primary, size: 22),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -296,12 +296,12 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
                               colors: _isListening
-                                  ? [const Color(0xFFEC4899), const Color(0xFFEF4444)]
-                                  : [const Color(0xFF6366F1), const Color(0xFF4F46E5)],
+                                  ? [theme.colorScheme.primary, const Color(0xFFC084FC)]
+                                  : [theme.colorScheme.primary, const Color(0xFF7C3AED)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: (_isListening ? const Color(0xFFEC4899) : const Color(0xFF6366F1)).withOpacity(0.4),
+                                color: theme.colorScheme.primary.withValues(alpha: 0.4),
                                 blurRadius: _isListening ? 18 : 10,
                                 spreadRadius: _isListening ? 4 : 1,
                               ),
@@ -329,7 +329,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: _isListening ? const Color(0xFFEC4899) : theme.textTheme.bodySmall?.color,
+                    color: _isListening ? theme.colorScheme.primary : theme.textTheme.bodySmall?.color,
                   ),
                 ),
               ),
@@ -358,13 +358,13 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.12),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.audio_file_rounded, color: Color(0xFF10B981), size: 18),
+                      Icon(Icons.audio_file_rounded, color: theme.colorScheme.primary, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -432,7 +432,7 @@ class _VoiceDictationSheetState extends State<VoiceDictationSheet> with SingleTi
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6366F1),
+                  backgroundColor: theme.colorScheme.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

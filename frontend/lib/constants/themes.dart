@@ -40,8 +40,8 @@ class EchoSpherePalette {
   static const Color darkAccent = Color(0xFF210F3D);
   static const Color darkAccentForeground = Color(0xFF945AF2);
 
-  // Destructive: oklch(0.6356 0.2082 25.3782) -> #EF4343
-  static const Color destructive = Color(0xFFEF4343);
+  // Destructive: Unified deep violet/plum tone (harmonious with purple palette, no red)
+  static const Color destructive = Color(0xFF7C1E55);
 
   // ─── SURFACES & NEUTRALS ──────────────────────────────────────────────────
   // Light Mode Surfaces

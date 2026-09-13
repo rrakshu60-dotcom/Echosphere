@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
@@ -49,7 +50,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                     ),
                     const SizedBox(width: 4),
                   ],
-                  const Icon(Icons.auto_fix_high_rounded, size: 22, color: Colors.amber),
+                  const Icon(Icons.auto_fix_high_rounded, size: 22, color: EchoSpherePalette.lightPrimary),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: EchoSphereText(
@@ -179,7 +180,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                                 children: [
                                   EchoSphereChip(label: item.category, isSelected: true, onSelected: (_) {}),
                                   EchoSphereChip(label: item.priority, isSelected: false, onSelected: (_) {}),
-                                  _buildStatusBadge(item.status),
+                                  _buildStatusBadge(context, item.status),
                                 ],
                               ),
                               const SizedBox(height: 10),
@@ -214,31 +215,31 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                                   ),
                                   EchoSphereButton(
                                     height: 34,
-                                    color: Colors.blue.withOpacity(0.15),
-                                    border: const BorderSide(color: Colors.blue),
+                                    color: theme.colorScheme.primary.withOpacity(0.12),
+                                    border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     onTap: () => _showReschedulePicker(context, item),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.event_rounded, size: 14, color: Colors.blue),
-                                        SizedBox(width: 4),
-                                        Text('Reschedule', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                                        Icon(Icons.event_rounded, size: 14, color: theme.colorScheme.primary),
+                                        const SizedBox(width: 4),
+                                        Text('Reschedule', style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
                                       ],
                                     ),
                                   ),
                                   EchoSphereButton(
                                     height: 34,
-                                    color: Colors.red.withOpacity(0.15),
-                                    border: const BorderSide(color: Colors.red),
+                                    color: EchoSpherePalette.destructive.withOpacity(0.15),
+                                    border: const BorderSide(color: EchoSpherePalette.destructive),
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     onTap: () => _showDeleteConfirm(context, item),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.delete_outline_rounded, size: 14, color: Colors.red),
+                                        Icon(Icons.delete_outline_rounded, size: 14, color: EchoSpherePalette.destructive),
                                         SizedBox(width: 4),
-                                        Text('Delete', style: TextStyle(fontSize: 12, color: Colors.red)),
+                                        Text('Delete', style: TextStyle(fontSize: 12, color: EchoSpherePalette.destructive)),
                                       ],
                                     ),
                                   ),
@@ -505,18 +506,26 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color bg = Colors.green;
-    if (status == 'SUBMITTED' || status == 'DRAFT') bg = Colors.orange;
-    if (status == 'SCHEDULED') bg = Colors.blue;
-    if (status == 'REJECTED') bg = Colors.red;
+  Widget _buildStatusBadge(BuildContext context, String status) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    Color bg = theme.colorScheme.primary;
+    if (status == 'SUBMITTED' || status == 'DRAFT') {
+      bg = isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground;
+    }
+    if (status == 'SCHEDULED') {
+      bg = theme.colorScheme.primary;
+    }
+    if (status == 'REJECTED') {
+      bg = EchoSpherePalette.destructive;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: bg.withOpacity(0.2),
+        color: bg.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg, width: 1),
+        border: Border.all(color: bg.withOpacity(0.3), width: 1),
       ),
       child: Text(
         status,

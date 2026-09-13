@@ -129,7 +129,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                     const SizedBox(width: 8),
                     Obx(() => Switch.adaptive(
                           value: audio.includeChime.value,
-                          activeColor: const Color(0xFF10B981),
+                          activeColor: theme.colorScheme.primary,
                           onChanged: (val) => audio.toggleChime(val),
                         )),
                   ],
@@ -207,7 +207,7 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                             onPressed: () => audio.previewChime(opt['chimeType'] as String),
                             icon: const Icon(Icons.volume_up_rounded, size: 18),
                             tooltip: 'Preview chime sound',
-                            color: const Color(0xFF10B981),
+                            color: theme.colorScheme.primary,
                           ),
                         ],
                       ),
@@ -427,8 +427,8 @@ class NoticeAudioPlayerBar extends StatelessWidget {
                         Container(
                           width: 8,
                           height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.greenAccent,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
                             shape: BoxShape.circle,
                           ),
                         ),

@@ -23,7 +23,7 @@ class _EchoSphereSplashScreenState extends State<EchoSphereSplashScreen> {
         math.min(screenSize.width * 0.45, 210.0).clamp(120.0, 220.0);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07060D),
+      backgroundColor: const Color(0xFF050406),
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -32,9 +32,9 @@ class _EchoSphereSplashScreenState extends State<EchoSphereSplashScreen> {
             center: Alignment.center,
             radius: 0.95,
             colors: [
-              Color(0xFF17142E),
-              Color(0xFF0C0A18),
-              Color(0xFF06050B),
+              Color(0xFF210F3D), // Shadcn dark accent violet glow
+              Color(0xFF130924), // Subtle mid violet-obsidian transition
+              Color(0xFF050406), // True Shadcn dark obsidian background
             ],
             stops: [0.0, 0.55, 1.0],
           ),

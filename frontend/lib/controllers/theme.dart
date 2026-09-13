@@ -16,7 +16,7 @@ class ThemeProvider extends ChangeNotifier {
   List<String> availThemeModes = ["default", "material", "custom"];
 
   ThemeProvider()
-      : _seedColor = Colors.indigo,
+      : _seedColor = EchoSpherePalette.lightPrimary,
         isLightMode = false,
         isSystemMode = false,
         isOled = false,
@@ -28,14 +28,15 @@ class ThemeProvider extends ChangeNotifier {
 
   ThemeData get lightTheme => _lightTheme;
   ThemeData get darkTheme => _darkTheme;
+  Color get seedColor => _seedColor;
 
   void _determineSeedColor() {
     if (currentThemeMode == "default") {
-      _seedColor = Colors.indigo;
+      _seedColor = EchoSpherePalette.lightPrimary;
     } else if (currentThemeMode == "material") {
       loadDynamicTheme();
     } else {
-      _seedColor = Colors.indigo;
+      _seedColor = EchoSpherePalette.lightPrimary;
     }
   }
 
@@ -44,7 +45,7 @@ class ThemeProvider extends ChangeNotifier {
     final corePalette = await DynamicColorPlugin.getCorePalette();
     _seedColor = corePalette != null
         ? Color(corePalette.primary.get(40))
-        : Colors.indigo;
+        : EchoSpherePalette.lightPrimary;
     _updateTheme();
   }
 
@@ -77,7 +78,7 @@ class ThemeProvider extends ChangeNotifier {
 
   void setDefaultTheme() {
     currentThemeMode = "default";
-    _seedColor = Colors.indigo;
+    _seedColor = EchoSpherePalette.lightPrimary;
     _updateTheme();
   }
 
@@ -86,7 +87,7 @@ class ThemeProvider extends ChangeNotifier {
     if (customColor != null) {
       _seedColor = customColor;
     } else {
-      _seedColor = Colors.indigo;
+      _seedColor = EchoSpherePalette.lightPrimary;
     }
     _updateTheme();
   }
@@ -116,32 +117,23 @@ class ThemeProvider extends ChangeNotifier {
     isOled = false;
     selectedVariantIndex = 0;
     currentThemeMode = "default";
-    _seedColor = Colors.indigo;
+    _seedColor = EchoSpherePalette.lightPrimary;
 
     _updateTheme();
     notifyListeners();
   }
 
   void _updateTheme() {
-    final lightSurface = ColorScheme.fromSeed(seedColor: _seedColor, brightness: Brightness.light).surface;
-    final darkSurface = isOled
-        ? Colors.black
-        : ColorScheme.fromSeed(seedColor: _seedColor, brightness: Brightness.dark).surface;
-
-    _lightTheme = lightMode.copyWith(
-      scaffoldBackgroundColor: lightSurface,
-      colorScheme: ColorScheme.fromSeed(
-          seedColor: _seedColor,
-          brightness: Brightness.light,
-          primary: _seedColor),
-    );
-    _darkTheme = darkMode.copyWith(
-      scaffoldBackgroundColor: darkSurface,
-      colorScheme: ColorScheme.fromSeed(
-          seedColor: _seedColor,
-          brightness: Brightness.dark,
-          primary: _seedColor),
-    );
+    _lightTheme = lightMode;
+    _darkTheme = isOled
+        ? darkMode.copyWith(
+            scaffoldBackgroundColor: Colors.black,
+            colorScheme: darkMode.colorScheme.copyWith(
+              surface: Colors.black,
+              surfaceContainer: Colors.black,
+            ),
+          )
+        : darkMode;
 
     syncStatusBar();
     notifyListeners();

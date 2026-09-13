@@ -110,7 +110,7 @@ class SmallTickMarkShape extends SliderTickMarkShape {
 
     final Paint paint = Paint()
       ..color = isActive
-          ? sliderTheme.activeTickMarkColor ?? Colors.blue
+          ? sliderTheme.activeTickMarkColor ?? const Color(0xFF945AF2)
           : sliderTheme.inactiveTickMarkColor ?? Colors.grey
       ..style = PaintingStyle.fill;
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/speaker_queue_controller.dart';
@@ -283,7 +284,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     isSelected: false,
                                     onSelected: (_) {},
                                   ),
-                                  _buildStatusBadge(announcement.status),
+                                  _buildStatusBadge(context, announcement.status),
                                 ],
                               ),
                               const SizedBox(height: 16),
@@ -349,7 +350,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.auto_awesome, color: Colors.amber, size: 24),
+                                const Icon(Icons.auto_awesome, color: EchoSpherePalette.lightPrimary, size: 24),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -361,12 +362,12 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                         spacing: 8,
                                         runSpacing: 4,
                                         children: [
-                                          const Text(
+                                          Text(
                                             'AI Summary',
                                             style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.amber,
+                                              color: theme.colorScheme.primary,
                                             ),
                                           ),
                                           Wrap(
@@ -395,7 +396,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                                         Icon(
                                                           isPlayingSummary ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
                                                           size: 14,
-                                                          color: Colors.amber.shade800,
+                                                          color: theme.colorScheme.primary,
                                                         ),
                                                         const SizedBox(width: 3),
                                                         Text(
@@ -403,7 +404,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                                           style: TextStyle(
                                                             fontSize: 11,
                                                             fontWeight: FontWeight.bold,
-                                                            color: Colors.amber.shade800,
+                                                            color: theme.colorScheme.primary,
                                                           ),
                                                         ),
                                                       ],
@@ -422,7 +423,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                                   child: Icon(
                                                     Icons.copy_rounded,
                                                     size: 14,
-                                                    color: Colors.amber.shade700,
+                                                    color: theme.colorScheme.primary,
                                                   ),
                                                 ),
                                               ),
@@ -432,7 +433,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                                   _isSummarizing ? 'Regenerating...' : 'Regenerate ↻',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    color: Colors.amber.shade700,
+                                                    color: theme.colorScheme.primary,
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -461,7 +462,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                             padding: const EdgeInsets.all(16.0),
                             child: Row(
                               children: [
-                                const Icon(Icons.auto_awesome, color: Colors.amber, size: 24),
+                                const Icon(Icons.auto_awesome, color: EchoSpherePalette.lightPrimary, size: 24),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -489,7 +490,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 ElevatedButton.icon(
                                   onPressed: _isSummarizing ? null : _generateAiSummary,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.amber.shade700,
+                                    backgroundColor: theme.colorScheme.primary,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -527,10 +528,10 @@ Downloaded & Saved via EchoSphere Smart Campus System
                           Container(
                             padding: const EdgeInsets.all(16.0),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withOpacity(0.08),
+                              color: theme.colorScheme.primary.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFF10B981).withOpacity(0.28),
+                                color: theme.colorScheme.primary.withOpacity(0.28),
                               ),
                             ),
                             child: Column(
@@ -541,12 +542,12 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                     Container(
                                       padding: const EdgeInsets.all(6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981).withOpacity(0.16),
+                                        color: theme.colorScheme.primary.withOpacity(0.16),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.event_available_rounded,
-                                        color: Color(0xFF10B981),
+                                        color: theme.colorScheme.primary,
                                         size: 16,
                                       ),
                                     ),
@@ -560,7 +561,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,
                                           letterSpacing: 0.2,
-                                          color: Colors.green.shade800,
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                                     ),
@@ -569,7 +570,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: Colors.green.shade800,
+                                        color: theme.colorScheme.primary,
                                       ),
                                     ),
                                   ],
@@ -585,7 +586,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [
-                                    const Icon(Icons.schedule_rounded, size: 13, color: Color(0xFF10B981)),
+                                    Icon(Icons.schedule_rounded, size: 13, color: theme.colorScheme.primary),
                                     const SizedBox(width: 5),
                                     Expanded(
                                       child: Text(
@@ -604,7 +605,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      const Icon(Icons.task_alt_rounded, size: 13, color: Colors.blue),
+                                      Icon(Icons.task_alt_rounded, size: 13, color: theme.colorScheme.primary),
                                       const SizedBox(width: 5),
                                       Expanded(
                                         child: Text(
@@ -635,7 +636,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                       ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF10B981),
+                                        backgroundColor: theme.colorScheme.primary,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -656,7 +657,7 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                       ),
                                       style: OutlinedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                        side: BorderSide(color: const Color(0xFF10B981).withOpacity(0.4)),
+                                        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
                                     ),
@@ -743,20 +744,16 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                   runSpacing: 10,
                                   children: announcement.attachments.map((file) {
                                     IconData icon = Icons.insert_drive_file_rounded;
-                                    Color iconCol = Colors.blue;
+                                    final iconCol = theme.colorScheme.primary;
                                     final lower = file.toLowerCase();
                                     if (lower.endsWith('.pdf')) {
                                       icon = Icons.picture_as_pdf_rounded;
-                                      iconCol = const Color(0xFFF87171);
                                     } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
                                       icon = Icons.table_chart_rounded;
-                                      iconCol = const Color(0xFF34D399);
                                     } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
                                       icon = Icons.image_rounded;
-                                      iconCol = Colors.amber;
                                     } else if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
                                       icon = Icons.description_rounded;
-                                      iconCol = Colors.indigoAccent;
                                     }
                                     return ConstrainedBox(
                                       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
@@ -788,11 +785,11 @@ Downloaded & Saved via EchoSphere Smart Campus System
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Row(
-                                children: [
-                                  Icon(Icons.history, size: 20, color: Colors.blue),
-                                  SizedBox(width: 8),
-                                  Expanded(
+                                Row(
+                                  children: [
+                                    Icon(Icons.history, size: 20, color: theme.colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
                                     child: Text(
                                       'Audit Trail & Delivery Info',
                                       maxLines: 1,
@@ -830,28 +827,28 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               if (canBroadcast)
                                 EchoSphereButton(
                                   height: 42,
-                                  color: _isBroadcasting ? Colors.purple.withOpacity(0.08) : Colors.purple.withOpacity(0.15),
-                                  border: const BorderSide(color: Colors.purple),
+                                  color: _isBroadcasting ? theme.colorScheme.primary.withOpacity(0.08) : theme.colorScheme.primary.withOpacity(0.15),
+                                  border: BorderSide(color: theme.colorScheme.primary),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: _isBroadcasting ? null : () => _broadcastToSpeakers(),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       if (_isBroadcasting)
-                                        const SizedBox(
+                                        SizedBox(
                                           width: 14,
                                           height: 14,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple),
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
                                         )
                                       else
-                                        const Icon(Icons.podcasts_rounded, size: 16, color: Colors.purple),
+                                        Icon(Icons.podcasts_rounded, size: 16, color: theme.colorScheme.primary),
                                       const SizedBox(width: 6),
                                       Flexible(
                                         child: Text(
                                           _isBroadcasting ? 'Sending...' : 'Broadcast to Speakers',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: Colors.purple, fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
@@ -875,17 +872,17 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 ),
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.red.withOpacity(0.2),
-                                  border: const BorderSide(color: Colors.red),
+                                  color: EchoSpherePalette.destructive.withOpacity(0.15),
+                                  border: const BorderSide(color: EchoSpherePalette.destructive),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: () => _showRejectDialog(context, announcementController),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
+                                      Icon(Icons.cancel_outlined, size: 16, color: EchoSpherePalette.destructive),
                                       SizedBox(width: 6),
                                       Flexible(
-                                        child: Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.red, fontSize: 12)),
+                                        child: Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: EchoSpherePalette.destructive, fontSize: 12)),
                                       ),
                                     ],
                                   ),
@@ -894,17 +891,17 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               if (canArchive)
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.blueGrey.withOpacity(0.15),
-                                  border: const BorderSide(color: Colors.blueGrey),
+                                  color: theme.colorScheme.primary.withOpacity(0.12),
+                                  border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: () => _showArchiveConfirm(context, announcementController),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.archive_outlined, size: 16, color: Colors.blueGrey),
-                                      SizedBox(width: 6),
+                                      Icon(Icons.archive_outlined, size: 16, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 6),
                                       Flexible(
-                                        child: Text('Archive', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+                                        child: Text('Archive', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: theme.colorScheme.primary, fontSize: 12)),
                                       ),
                                     ],
                                   ),
@@ -912,16 +909,16 @@ Downloaded & Saved via EchoSphere Smart Campus System
                               if (canDelete) ...[
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.amber.withOpacity(0.15),
-                                  border: const BorderSide(color: Colors.amber),
+                                  color: theme.colorScheme.primary.withOpacity(0.12),
+                                  border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: () => _showEditDialog(context, announcementController),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.edit_rounded, size: 16, color: Colors.amber),
-                                      SizedBox(width: 6),
-                                      Flexible(
+                                      Icon(Icons.edit_rounded, size: 16, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 6),
+                                      const Flexible(
                                         child: Text('Modify', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12)),
                                       ),
                                     ],
@@ -929,34 +926,34 @@ Downloaded & Saved via EchoSphere Smart Campus System
                                 ),
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.blue.withOpacity(0.15),
-                                  border: const BorderSide(color: Colors.blue),
+                                  color: theme.colorScheme.primary.withOpacity(0.12),
+                                  border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: () => _showReschedulePicker(context, announcementController),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.event_rounded, size: 16, color: Colors.blue),
-                                      SizedBox(width: 6),
+                                      Icon(Icons.event_rounded, size: 16, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 6),
                                       Flexible(
-                                        child: Text('Reschedule', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                        child: Text('Reschedule', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: theme.colorScheme.primary, fontSize: 12)),
                                       ),
                                     ],
                                   ),
                                 ),
                                 EchoSphereButton(
                                   height: 42,
-                                  color: Colors.red.withOpacity(0.15),
-                                  border: const BorderSide(color: Colors.red),
+                                  color: EchoSpherePalette.destructive.withOpacity(0.15),
+                                  border: const BorderSide(color: EchoSpherePalette.destructive),
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                   onTap: () => _showDeleteConfirm(context, announcementController),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                      Icon(Icons.delete_outline_rounded, size: 16, color: EchoSpherePalette.destructive),
                                       SizedBox(width: 6),
                                       Flexible(
-                                        child: Text('Delete', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.red, fontSize: 12)),
+                                        child: Text('Delete', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: EchoSpherePalette.destructive, fontSize: 12)),
                                       ),
                                     ],
                                   ),
@@ -1324,19 +1321,29 @@ Downloaded & Saved via EchoSphere Smart Campus System
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color bg = Colors.green;
-    if (status == 'SUBMITTED' || status == 'DRAFT') bg = Colors.orange;
-    if (status == 'SCHEDULED') bg = Colors.blue;
-    if (status == 'REJECTED') bg = Colors.red;
-    if (status == 'ARCHIVED') bg = Colors.blueGrey;
+  Widget _buildStatusBadge(BuildContext context, String status) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    Color bg = theme.colorScheme.primary;
+    if (status == 'SUBMITTED' || status == 'DRAFT') {
+      bg = isDark ? EchoSpherePalette.darkSecondaryForeground : EchoSpherePalette.lightSecondaryForeground;
+    }
+    if (status == 'SCHEDULED') {
+      bg = theme.colorScheme.primary;
+    }
+    if (status == 'REJECTED') {
+      bg = EchoSpherePalette.destructive;
+    }
+    if (status == 'ARCHIVED') {
+      bg = isDark ? EchoSpherePalette.darkMutedForeground : EchoSpherePalette.lightMutedForeground;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: bg.withOpacity(0.2),
+        color: bg.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bg, width: 1),
+        border: Border.all(color: bg.withOpacity(0.3), width: 1),
       ),
       child: Text(
         status,

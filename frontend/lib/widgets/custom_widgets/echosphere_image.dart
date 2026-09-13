@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import 'package:anymex/utils/theme_extensions.dart';
+import 'package:anymex/constants/themes.dart';
 
 bool isBase64Image(String value) {
   if (value.isEmpty) return false;
@@ -291,10 +292,10 @@ class _EchoSphereImageState extends State<EchoSphereImage> {
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
           width: 0.8,
         ),
       ),
@@ -302,7 +303,7 @@ class _EchoSphereImageState extends State<EchoSphereImage> {
         child: Icon(
           Icons.image_not_supported_outlined,
           size: 24,
-          color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+          color: isDark ? EchoSpherePalette.darkMutedForeground : EchoSpherePalette.lightMutedForeground,
         ),
       ),
     );

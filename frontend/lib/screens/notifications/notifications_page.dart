@@ -59,7 +59,7 @@ class NotificationsPage extends StatelessWidget {
                         tooltip: 'Clear Alerts History',
                         constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                         padding: EdgeInsets.zero,
-                        icon: const Icon(Icons.delete_sweep_rounded, size: 20, color: Colors.redAccent),
+                        icon: Icon(Icons.delete_sweep_rounded, size: 20, color: theme.colorScheme.primary),
                         onPressed: () {
                           _showClearHistoryDialog(context, controller);
                         },
@@ -178,10 +178,10 @@ class NotificationsPage extends StatelessWidget {
         Color iconColor = theme.colorScheme.primary;
         if (type == 'EMERGENCY') {
           iconData = Icons.warning_amber_rounded;
-          iconColor = const Color(0xFFF87171);
+          iconColor = theme.colorScheme.primary;
         } else if (type == 'APPROVAL') {
           iconData = Icons.check_circle_outline_rounded;
-          iconColor = const Color(0xFF34D399);
+          iconColor = theme.colorScheme.primary;
         }
 
         return Padding(
@@ -394,13 +394,13 @@ class NotificationsPage extends StatelessWidget {
 
                     IconData iconData = Icons.history_rounded;
                     Color iconColor = theme.colorScheme.primary;
-                    if (type == 'EMERGENCY') {
-                      iconData = Icons.warning_amber_rounded;
-                      iconColor = const Color(0xFFF87171);
-                    } else if (type == 'APPROVAL') {
-                      iconData = Icons.check_circle_outline_rounded;
-                      iconColor = const Color(0xFF34D399);
-                    }
+                      if (type == 'EMERGENCY') {
+                        iconData = Icons.warning_amber_rounded;
+                        iconColor = theme.colorScheme.primary;
+                      } else if (type == 'APPROVAL') {
+                        iconData = Icons.check_circle_outline_rounded;
+                        iconColor = theme.colorScheme.primary;
+                      }
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10.0),
@@ -514,18 +514,19 @@ class NotificationsPage extends StatelessWidget {
   }
 
   void _showClearHistoryDialog(BuildContext context, NotificationController controller) {
+    final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Clear Alerts History?'),
+            Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('Clear All Notifications?'),
           ],
         ),
         content: const Text(
-          'This will clear all archived read alerts from your device history. Unread alerts will remain intact.',
+          'This will permanently remove all notifications from your feed. Announcements themselves will not be affected.',
         ),
         actions: [
           TextButton(
@@ -533,7 +534,7 @@ class NotificationsPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.primary),
             onPressed: () {
               controller.clearAllHistory();
               Navigator.of(ctx).pop();
