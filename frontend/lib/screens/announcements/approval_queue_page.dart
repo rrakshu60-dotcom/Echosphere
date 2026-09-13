@@ -2,7 +2,6 @@ import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
-import 'package:anymex/services/echosphere_realtime_service.dart';
 
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
@@ -257,43 +256,6 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                               isSelected: true,
                               onSelected: (_) {},
                             )),
-                        const SizedBox(width: 8),
-                        Obx(() {
-                          final isLive = EchosphereRealtimeService().isConnected.value;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isLive ? theme.colorScheme.primary.withOpacity(0.12) : theme.colorScheme.onSurface.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isLive ? theme.colorScheme.primary.withOpacity(0.4) : theme.colorScheme.onSurface.withOpacity(0.2),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isLive ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.4),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  isLive ? 'Live Sync' : 'Reconnecting...',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: isLive ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.6),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
                       ],
                     ),
                   ),

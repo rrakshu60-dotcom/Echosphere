@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/settings/methods.dart';
 import 'package:anymex/controllers/settings/settings.dart';
 import 'package:flutter/material.dart';
@@ -56,11 +57,11 @@ class EchoSphereContainer extends StatelessWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final defaultBgColor = isDark
-        ? const Color(0xFF09080D)
-        : const Color(0xFFFFFFFF);
+        ? EchoSpherePalette.darkSurface
+        : EchoSpherePalette.lightSurface;
     final defaultBorderColor = isDark
-        ? const Color(0xFF241F2E)
-        : const Color(0xFFE5E7EB);
+        ? EchoSpherePalette.darkBorder
+        : EchoSpherePalette.lightBorder;
 
     final BoxDecoration effectiveDecoration = decoration ??
         BoxDecoration(

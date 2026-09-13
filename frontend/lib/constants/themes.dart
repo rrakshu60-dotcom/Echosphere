@@ -10,35 +10,35 @@ class EchoSpherePalette {
   static const Color lightPrimary = Color(0xFF6B26D9);
   static const Color lightPrimaryForeground = Color(0xFFF8FAFC);
 
-  // Dark Mode: oklch(0.6083 0.2172 297.1153) -> #945AF2 (Electric Violet)
-  static const Color darkPrimary = Color(0xFF945AF2);
-  static const Color darkPrimaryForeground = Color(0xFF050406);
+  // Dark Mode: Soft, elegant modern violet (easy on eyes)
+  static const Color darkPrimary = Color(0xFF8B5CF6);
+  static const Color darkPrimaryForeground = Color(0xFFFFFFFF);
 
   // ─── SECONDARY & NEUTRAL BADGE TOKENS ─────────────────────────────────────
   // Light: oklch(0.9486 0.0085 303.5068) & oklch(0.3410 0.1625 292.9477)
   static const Color lightSecondary = Color(0xFFEFEDF3);
   static const Color lightSecondaryForeground = Color(0xFF401782);
 
-  // Dark: oklch(0.2363 0.0582 299.6364) & oklch(0.8266 0.0933 301.9462)
-  static const Color darkSecondary = Color(0xFF231736);
-  static const Color darkSecondaryForeground = Color(0xFFD1B8F9);
+  // Dark: Soft harmonious slate-violet
+  static const Color darkSecondary = Color(0xFF262235);
+  static const Color darkSecondaryForeground = Color(0xFFD6C8F5);
 
   // ─── MUTED & ACCENT TOKENS ────────────────────────────────────────────────
   // Light Muted: oklch(0.9679 0.0027 264.5424) -> #F3F4F6
   static const Color lightMuted = Color(0xFFF3F4F6);
   static const Color lightMutedForeground = Color(0xFF6B7280);
 
-  // Dark Muted: oklch(0.2217 0.0242 299.7054) -> #1D1825
-  static const Color darkMuted = Color(0xFF1D1825);
-  static const Color darkMutedForeground = Color(0xFFB0ABBA);
+  // Dark Muted: Soft slate-charcoal
+  static const Color darkMuted = Color(0xFF222631);
+  static const Color darkMutedForeground = Color(0xFFA1A8B8);
 
   // Light Accent: oklch(0.9546 0.0227 303.2883) -> #F3EDFD
   static const Color lightAccent = Color(0xFFF3EDFD);
   static const Color lightAccentForeground = Color(0xFF6B26D9);
 
-  // Dark Accent: oklch(0.2255 0.0836 296.7401) -> #210F3D
-  static const Color darkAccent = Color(0xFF210F3D);
-  static const Color darkAccentForeground = Color(0xFF945AF2);
+  // Dark Accent
+  static const Color darkAccent = Color(0xFF28223D);
+  static const Color darkAccentForeground = Color(0xFFA78BFA);
 
   // ─── DESTRUCTIVE TOKENS ───────────────────────────────────────────────────
   // oklch(0.6356 0.2082 25.3782) -> #EF4343 (Tweakcn Exact Red)
@@ -55,14 +55,14 @@ class EchoSpherePalette {
   static const Color lightTextSecondary = Color(0xFF4B5563);
   static const Color lightTextMuted = Color(0xFF6B7280);
 
-  // Dark Mode Surfaces
-  static const Color darkScaffold = Color(0xFF050406); // oklch(0.1091 0.0091 301.6956) - True obsidian
-  static const Color darkSurface = Color(0xFF09080D);  // oklch(0.1376 0.0118 301.0607) - Elevated obsidian card
-  static const Color darkSurfaceContainer = Color(0xFF1D1825);
-  static const Color darkBorder = Color(0xFF241F2E);   // oklch(0.2505 0.0293 299.5707)
-  static const Color darkTextPrimary = Color(0xFFF8FAFC); // oklch(0.9838 0.0035 247.8583)
-  static const Color darkTextSecondary = Color(0xFFB0ABBA);
-  static const Color darkTextMuted = Color(0xFF7A7584);
+  // Dark Mode Surfaces - Softer charcoal & slate (comfortable and modern, no eye-strain)
+  static const Color darkScaffold = Color(0xFF111318); // Soft deep slate-charcoal
+  static const Color darkSurface = Color(0xFF181B22);  // Refined dark card surface
+  static const Color darkSurfaceContainer = Color(0xFF20242E); // Subtle container
+  static const Color darkBorder = Color(0xFF2D323E);   // Softer border
+  static const Color darkTextPrimary = Color(0xFFF1F3F9);
+  static const Color darkTextSecondary = Color(0xFFA1A8B8);
+  static const Color darkTextMuted = Color(0xFF737A8C);
 
   // ─── CHART TOKENS ─────────────────────────────────────────────────────────
   static const Color chart1 = Color(0xFF6B26D9); // oklch(0.4865 0.2423 291.8661)

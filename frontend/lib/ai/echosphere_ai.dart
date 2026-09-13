@@ -2,7 +2,6 @@ import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/controllers/echosphere_ai_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
-import 'package:anymex/utils/usn_parser.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/services/copilot_client.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
@@ -138,7 +137,6 @@ class _EchosphereAiState extends State<EchosphereAi> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'CSE');
     final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal');
 
     return Column(
@@ -178,21 +176,12 @@ class _EchosphereAiState extends State<EchosphereAi> {
                   ],
                 ),
               ),
-              if (isAdminRole) ...[
+              if (isAdminRole)
                 IconButton(
                   icon: Icon(Icons.memory_rounded, size: 20, color: theme.colorScheme.primary),
                   tooltip: 'AI Engine Diagnostics & Retraining',
                   onPressed: () => _showAiDiagnosticsDialog(context),
                 ),
-                const SizedBox(width: 4),
-              ],
-              Flexible(
-                child: EchoSphereChip(
-                  label: '$dept Dept',
-                  isSelected: true,
-                  onSelected: (_) {},
-                ),
-              ),
             ],
           ),
         ),
@@ -333,22 +322,6 @@ class _EchosphereAiState extends State<EchosphereAi> {
                     ),
                   ],
                 ),
-                if (msg.contextBadge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      msg.contextBadge!,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
                 if (msg.modelUsed != null)
                   Text(
                     msg.modelUsed!,

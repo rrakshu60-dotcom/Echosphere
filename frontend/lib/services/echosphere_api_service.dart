@@ -1022,10 +1022,12 @@ class EchosphereApiService {
   }
 
   // --- User Management Endpoints ---
-  Future<List<dynamic>> getUsers({int? departmentId}) async {
+  Future<List<dynamic>> getUsers({int? departmentId, String? search, String? role}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (departmentId != null) queryParams['department_id'] = departmentId;
+      if (search != null && search.trim().isNotEmpty) queryParams['search'] = search.trim();
+      if (role != null && role != 'All') queryParams['role'] = role;
 
       final response = await _dio.get('/users/', queryParameters: queryParams);
       return response.data as List<dynamic>;

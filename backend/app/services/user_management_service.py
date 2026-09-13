@@ -7,11 +7,28 @@ from app.models.role import Role
 
 class UserManagementService:
     @staticmethod
-    def list_users(db: Session, department_id: Optional[int] = None) -> List[User]:
+    def list_users(
+        db: Session,
+        department_id: Optional[int] = None,
+        role_name: Optional[str] = None,
+        search: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 250,
+    ) -> List[User]:
         query = db.query(User)
         if department_id:
             query = query.filter(User.department_id == department_id)
-        return query.order_by(User.id).all()
+        if role_name and role_name.lower() != "all":
+            query = query.join(User.role).filter(Role.name.ilike(role_name))
+        if search and search.strip():
+            pat = f"%{search.strip()}%"
+            query = query.filter(
+                (User.full_name.ilike(pat))
+                | (User.official_email.ilike(pat))
+                | (User.usn.ilike(pat))
+                | (User.employee_id.ilike(pat))
+            )
+        return query.order_by(User.id).offset(skip).limit(limit).all()
 
     @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> Optional[User]:

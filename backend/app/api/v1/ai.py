@@ -54,8 +54,12 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
         user_dept = req.department
         usn_id = req.usn_or_emp_id
 
-        if db and req.user_id and (not user_name or user_name in ["Student", "User", "Faculty Member"]):
-            db_user = db.query(User).filter(User.id == req.user_id).first()
+        if db and (not user_name or user_name in ["Student", "User", "Faculty Member", "Campus Member"]):
+            db_user = None
+            if req.user_id:
+                db_user = db.query(User).filter(User.id == req.user_id).first()
+            if not db_user and usn_id:
+                db_user = db.query(User).filter((User.usn == usn_id) | (User.employee_id == usn_id) | (User.official_email == usn_id)).first()
             if db_user is not None:
                 full_name_val = getattr(db_user, "full_name", None)
                 if full_name_val:

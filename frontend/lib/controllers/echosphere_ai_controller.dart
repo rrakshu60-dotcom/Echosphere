@@ -38,22 +38,37 @@ class EchosphereAiController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    syncUserGreeting();
+    final authCtrl = Get.find<AuthController>();
+    ever(authCtrl.currentUser, (_) => syncUserGreeting());
+  }
+
+  void syncUserGreeting() {
     final authCtrl = Get.find<AuthController>();
     final user = authCtrl.currentUser.value;
     final dept = user?.department ?? (user?.usn != null ? detectDepartmentFromUsn(user?.usn ?? '') : 'AIML');
     final role = user?.role ?? 'Student';
-    final name = user?.fullName ?? 'Student';
+    final rawName = user?.fullName;
+    final firstName = (rawName != null && rawName.trim().isNotEmpty && rawName.trim().toLowerCase() != 'student')
+        ? rawName.trim().split(' ').first
+        : '';
+    final greeting = firstName.isNotEmpty
+        ? 'Hello $firstName! How can I assist you today?'
+        : 'Hello! How can I assist you with campus announcements and knowledge today?';
 
-    messages.add(
-      AiChatMessage(
-        text: 'Hello $name! How can I help you today?',
-        isUser: false,
-        categoryBadge: 'EchoSphere AI',
-        contextBadge: '$role • $dept Department',
-        suggestedActions: _getDefaultActionsForRole(role, dept),
-        modelUsed: 'EchoSphere Campus AI',
-      ),
+    final initialMsg = AiChatMessage(
+      text: greeting,
+      isUser: false,
+      categoryBadge: 'EchoSphere AI',
+      suggestedActions: _getDefaultActionsForRole(role, dept),
+      modelUsed: 'EchoSphere Campus AI',
     );
+
+    if (messages.isEmpty) {
+      messages.add(initialMsg);
+    } else if (!messages.first.isUser && messages.first.text.startsWith('Hello')) {
+      messages[0] = initialMsg;
+    }
   }
 
   String sanitizeClientMarkdown(String text) {
@@ -182,7 +197,6 @@ class EchosphereAiController extends GetxController {
       final rawResponse = apiRes['response'] as String? ?? _generateFallbackResponse(userMsg, role, dept, fullName, usnOrEmpId);
       final responseText = sanitizeClientMarkdown(rawResponse);
       final catBadge = apiRes['category_badge'] as String? ?? 'EchoSphere AI';
-      final ctxBadge = apiRes['context_badge'] as String? ?? '$role • $dept Department';
       final actions = List<String>.from(apiRes['suggested_actions'] ?? []);
       final navTarget = apiRes['navigation_target'] as String?;
       final matchedList = List<Map<String, dynamic>>.from(apiRes['matched_announcements'] ?? []);
@@ -232,7 +246,7 @@ class EchosphereAiController extends GetxController {
         text: responseText,
         isUser: false,
         categoryBadge: catBadge,
-        contextBadge: ctxBadge,
+        contextBadge: null,
         suggestedActions: actions.isEmpty ? _getDefaultActionsForRole(role, dept) : actions,
         navigationTarget: navTarget,
         matchedAnnouncements: matchedList,
@@ -247,7 +261,7 @@ class EchosphereAiController extends GetxController {
         text: fallbackText,
         isUser: false,
         categoryBadge: _detectCategoryBadge(userMsg),
-        contextBadge: '$role • $dept Department',
+        contextBadge: null,
         suggestedActions: _getDefaultActionsForRole(role, dept),
         modelUsed: 'EchoSphere Campus AI (Offline)',
       ));

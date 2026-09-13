@@ -206,49 +206,46 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 6,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   EchoSphereButton(
-                                    height: 34,
+                                    height: 32,
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     onTap: () => _showEditDialog(context, item),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.edit_rounded, size: 14),
+                                        Icon(Icons.edit_rounded, size: 13),
                                         SizedBox(width: 4),
                                         Text('Modify', style: TextStyle(fontSize: 12)),
                                       ],
                                     ),
                                   ),
                                   EchoSphereButton(
-                                    height: 34,
-                                    color: theme.colorScheme.primary.withOpacity(0.12),
-                                    border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
+                                    height: 32,
+                                    color: theme.colorScheme.primary.withOpacity(0.08),
+                                    border: BorderSide(color: theme.colorScheme.primary.withOpacity(0.25)),
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     onTap: () => _showReschedulePicker(context, item),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.event_rounded, size: 14, color: theme.colorScheme.primary),
+                                        Icon(Icons.event_rounded, size: 13, color: theme.colorScheme.primary),
                                         const SizedBox(width: 4),
                                         Text('Reschedule', style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
                                       ],
                                     ),
                                   ),
-                                  EchoSphereButton(
-                                    height: 34,
-                                    color: EchoSpherePalette.destructive.withOpacity(0.15),
-                                    border: const BorderSide(color: EchoSpherePalette.destructive),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    onTap: () => _showDeleteConfirm(context, item),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.delete_outline_rounded, size: 14, color: EchoSpherePalette.destructive),
-                                        SizedBox(width: 4),
-                                        Text('Delete', style: TextStyle(fontSize: 12, color: EchoSpherePalette.destructive)),
-                                      ],
+                                  IconButton(
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(6),
+                                    icon: Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 18,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.5),
                                     ),
+                                    tooltip: 'Delete Notice',
+                                    onPressed: () => _showDeleteConfirm(context, item),
                                   ),
                                 ],
                               ),
