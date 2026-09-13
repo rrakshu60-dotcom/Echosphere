@@ -979,7 +979,7 @@ class ModelRouter:
                     if result is not None and isinstance(result, tuple) and len(result) == 2:
                         res_text, res_label = result
                         if res_text:
-                            return str(res_text), str(res_label)
+                            return res_text, res_label
                 except Exception as e:
                     logger.debug(f"Speculative racing worker failed: {e}")
 
