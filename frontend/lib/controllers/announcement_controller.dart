@@ -632,7 +632,16 @@ class AnnouncementController extends GetxController {
         }
 
         if (fetched.isNotEmpty) {
-          _rawAnnouncements.value = fetched;
+          // Merge fetched announcements with the baseline catalog to guarantee all categories maintain their notices
+          final baseline = _getSampleAnnouncements();
+          final Map<String, AnnouncementModel> mergedMap = {};
+          for (final a in baseline) {
+            mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+          }
+          for (final a in fetched) {
+            mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
+          }
+          _rawAnnouncements.value = mergedMap.values.toList();
           isLoading.value = false;
           update();
           updateAllRelevanceScores();

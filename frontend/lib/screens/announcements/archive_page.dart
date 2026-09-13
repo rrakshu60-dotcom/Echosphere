@@ -286,7 +286,7 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                   ),
                                   const SizedBox(width: 12),
-                                  const Icon(Icons.cell_tower_rounded, size: 15, color: Colors.blue),
+                                  Icon(Icons.cell_tower_rounded, size: 15, color: theme.colorScheme.primary),
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
@@ -308,13 +308,13 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.1),
+                                    color: theme.colorScheme.primary.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.auto_awesome, color: Colors.amber, size: 18),
+                                      Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 18),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
@@ -351,20 +351,16 @@ Retrieved from EchoSphere Historical Campus Notice Archive
                                             runSpacing: 6,
                                             children: item.attachments.map((file) {
                                               IconData icon = Icons.insert_drive_file_rounded;
-                                              Color iconCol = Colors.blue;
+                                              final Color iconCol = theme.colorScheme.primary;
                                               final lower = file.toLowerCase();
                                               if (lower.endsWith('.pdf')) {
                                                 icon = Icons.picture_as_pdf_rounded;
-                                                iconCol = const Color(0xFFF87171);
                                               } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
                                                 icon = Icons.table_chart_rounded;
-                                                iconCol = const Color(0xFF34D399);
                                               } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
                                                 icon = Icons.image_rounded;
-                                                iconCol = Colors.amber;
                                               } else if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
                                                 icon = Icons.description_rounded;
-                                                iconCol = Colors.indigoAccent;
                                               }
                                               return ActionChip(
                                                 avatar: Icon(icon, color: iconCol, size: 16),

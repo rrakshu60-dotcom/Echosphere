@@ -66,12 +66,12 @@ class CalendarSyncSheet extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.12),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.event_available_rounded,
-                      color: Color(0xFF10B981),
+                      color: theme.colorScheme.primary,
                       size: 20,
                     ),
                   ),
@@ -113,11 +113,13 @@ class CalendarSyncSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFFF1F5F9),
+                      ? const Color(0xFF09080D)
+                      : const Color(0xFFFFFFFF),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: const Color(0xFF10B981).withOpacity(0.25),
+                    color: isDark
+                        ? const Color(0xFF241F2E)
+                        : const Color(0xFFE5E7EB),
                   ),
                 ),
                 child: Column(
@@ -137,7 +139,7 @@ class CalendarSyncSheet extends StatelessWidget {
                     // Date & Time Row
                     _buildMetaRow(
                       icon: Icons.calendar_today_rounded,
-                      iconColor: const Color(0xFF10B981),
+                      iconColor: theme.colorScheme.primary,
                       label: dateFmt.format(event.startTime),
                       subLabel: '${timeFmt.format(event.startTime)} - ${timeFmt.format(event.endTime)}',
                       theme: theme,
@@ -147,7 +149,7 @@ class CalendarSyncSheet extends StatelessWidget {
                     // Location Row
                     _buildMetaRow(
                       icon: Icons.location_on_outlined,
-                      iconColor: Colors.amber.shade700,
+                      iconColor: theme.colorScheme.primary,
                       label: event.location,
                       theme: theme,
                     ),
@@ -157,7 +159,7 @@ class CalendarSyncSheet extends StatelessWidget {
                       const SizedBox(height: 8),
                       _buildMetaRow(
                         icon: Icons.assignment_outlined,
-                        iconColor: Colors.blue.shade600,
+                        iconColor: theme.colorScheme.primary,
                         label: event.actionRequired,
                         theme: theme,
                       ),
@@ -191,7 +193,7 @@ class CalendarSyncSheet extends StatelessWidget {
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
+                        backgroundColor: theme.colorScheme.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(

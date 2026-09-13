@@ -44,10 +44,10 @@ class StatCard extends StatelessWidget {
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
+          color: theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(EchoSpherePalette.radius),
           border: Border.all(
-            color: color.withOpacity(0.2),
+            color: theme.colorScheme.outline,
             width: 1,
           ),
         ),
@@ -884,17 +884,17 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.08),
+                      color: theme.colorScheme.primary.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber.withOpacity(0.32)),
+                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.28)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.auto_awesome,
-                                size: 14, color: Colors.amber),
+                            Icon(Icons.auto_awesome,
+                                size: 14, color: theme.colorScheme.primary),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -905,7 +905,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.2,
-                                  color: Colors.amber.shade700,
+                                  color: theme.colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -922,7 +922,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                 child: Icon(
                                   Icons.copy_rounded,
                                   size: 13,
-                                  color: Colors.amber.shade700,
+                                  color: theme.colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -935,7 +935,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                 child: Icon(
                                   Icons.close_rounded,
                                   size: 14,
-                                  color: Colors.amber.shade700,
+                                  color: theme.colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -1005,25 +1005,25 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                             horizontal: 9, vertical: 5),
                         decoration: BoxDecoration(
                           color: _showSummary
-                              ? Colors.amber.withOpacity(0.18)
-                              : Colors.amber.withOpacity(0.08),
+                              ? theme.colorScheme.primary.withOpacity(0.18)
+                              : theme.colorScheme.primary.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: _showSummary
-                                ? Colors.amber.shade700
-                                : Colors.amber.withOpacity(0.3),
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.primary.withOpacity(0.3),
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (_isSummarizing)
-                              const SizedBox(
+                              SizedBox(
                                 width: 12,
                                 height: 12,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 1.5,
-                                  color: Colors.amber,
+                                  color: theme.colorScheme.primary,
                                 ),
                               )
                             else
@@ -1032,7 +1032,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                                     ? Icons.auto_awesome
                                     : Icons.auto_awesome_outlined,
                                 size: 13,
-                                color: Colors.amber.shade700,
+                                color: theme.colorScheme.primary,
                               ),
                             const SizedBox(width: 5),
                             Text(
@@ -1046,7 +1046,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade800,
+                                color: theme.colorScheme.primary,
                               ),
                             ),
                           ],
@@ -1122,37 +1122,37 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withOpacity(0.08),
+                          color: theme.colorScheme.primary.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: const Color(0xFF10B981).withOpacity(0.28),
+                            color: theme.colorScheme.primary.withOpacity(0.28),
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (_isLoadingCalendar)
-                              const SizedBox(
+                              SizedBox(
                                 width: 12,
                                 height: 12,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 1.5,
-                                  color: Color(0xFF10B981),
+                                  color: theme.colorScheme.primary,
                                 ),
                               )
                             else
-                              const Icon(
+                              Icon(
                                 Icons.calendar_month_outlined,
                                 size: 13,
-                                color: Color(0xFF10B981),
+                                color: theme.colorScheme.primary,
                               ),
                             const SizedBox(width: 4),
                             Text(
                               _isLoadingCalendar ? 'Syncing...' : 'Add to Calendar',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF059669),
+                                color: theme.colorScheme.primary,
                               ),
                             ),
                           ],
@@ -1342,7 +1342,7 @@ class QuickActionCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.red,
+                          color: EchoSpherePalette.destructive,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(

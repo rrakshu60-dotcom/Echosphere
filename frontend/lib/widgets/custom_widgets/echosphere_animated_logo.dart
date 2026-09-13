@@ -284,7 +284,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
               opacity: 0.4,
               child: ColorFiltered(
                 colorFilter: ColorFilter.mode(
-                  Colors.cyan.opaque(0.7, iReallyMeanIt: true),
+                  const Color(0xFFC084FC).opaque(0.7, iReallyMeanIt: true),
                   BlendMode.modulate,
                 ),
                 child: _buildBaseLogo(100),
@@ -298,7 +298,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
               opacity: 0.4,
               child: ColorFiltered(
                 colorFilter: ColorFilter.mode(
-                  Colors.red.opaque(0.7, iReallyMeanIt: true),
+                  const Color(0xFF6B26D9).opaque(0.7, iReallyMeanIt: true),
                   BlendMode.modulate,
                 ),
                 child: _buildBaseLogo(100),
@@ -531,11 +531,11 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
       final opacity = (1.0 - ringPhase) * (1.0 - index * 0.15);
 
       final colors = [
-        Colors.cyan,
-        Colors.purple,
-        Colors.pink,
-        Colors.amber,
-        Colors.teal,
+        const Color(0xFF945AF2),
+        const Color(0xFF6B26D9),
+        const Color(0xFFC084FC),
+        const Color(0xFFD1B8F9),
+        const Color(0xFF7C3AED),
       ];
 
       return Transform.rotate(
@@ -695,16 +695,16 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
       final opacity = adjustedProgress < 0.75 ? 1.0 : 1.0 - logoPhase;
 
       final colors = [
-        Colors.blue.shade400,
-        Colors.cyan.shade400,
-        Colors.teal.shade400,
-        Colors.lightBlue.shade300,
-        Colors.indigo.shade400,
-        Colors.blue.shade600,
-        Colors.cyan.shade600,
-        Colors.teal.shade600,
-        Colors.lightBlue.shade500,
-        Colors.indigo.shade600,
+        const Color(0xFF6B26D9),
+        const Color(0xFF7C3AED),
+        const Color(0xFF8B5CF6),
+        const Color(0xFF945AF2),
+        const Color(0xFFA855F7),
+        const Color(0xFFB46FF9),
+        const Color(0xFFC084FC),
+        const Color(0xFFD1B8F9),
+        const Color(0xFFE9D5FF),
+        const Color(0xFF581C87),
       ];
 
       return Positioned(
@@ -769,14 +769,14 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
       final scale = 1.2 - (unfoldPhase * 0.7);
 
       final shapeColors = [
-        Colors.red.shade400,
-        Colors.orange.shade400,
-        Colors.amber.shade400,
-        Colors.lime.shade400,
-        Colors.green.shade400,
-        Colors.cyan.shade400,
-        Colors.blue.shade400,
-        Colors.purple.shade400,
+        const Color(0xFF6B26D9),
+        const Color(0xFF7C3AED),
+        const Color(0xFF8B5CF6),
+        const Color(0xFF945AF2),
+        const Color(0xFFA855F7),
+        const Color(0xFFC084FC),
+        const Color(0xFFD1B8F9),
+        const Color(0xFFE9D5FF),
       ];
 
       Widget shape;
@@ -915,16 +915,16 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.lightGreen
+                        const Color(0xFFD1B8F9)
                             .opaque(brightness, iReallyMeanIt: true),
-                        Colors.green
+                        const Color(0xFF945AF2)
                             .opaque(brightness * 0.3, iReallyMeanIt: true),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(2),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green
+                        color: const Color(0xFF945AF2)
                             .opaque(0.5 * brightness, iReallyMeanIt: true),
                         blurRadius: 8,
                         spreadRadius: 1,
@@ -995,10 +995,10 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
               : 0.8;
 
       final colors = [
-        Colors.cyan.shade200,
-        Colors.blue.shade200,
-        Colors.lightBlue.shade200,
-        Colors.teal.shade200,
+        const Color(0xFFD1B8F9),
+        const Color(0xFFC084FC),
+        const Color(0xFF945AF2),
+        const Color(0xFFE9D5FF),
       ];
       final color = colors[index % colors.length];
 
@@ -1080,7 +1080,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
         ((adjustedProgress * 20) % 1.0) > 0.8;
 
     final logoOpacity = adjustedProgress.clamp(0.2, 0.9);
-    final hologramColor = Colors.cyan.shade400;
+    const hologramColor = Color(0xFF945AF2);
 
     return Stack(
       alignment: Alignment.center,
@@ -1092,7 +1092,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
               width: widget.size,
               height: 3,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [
                     Colors.transparent,
                     hologramColor,
@@ -1127,7 +1127,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
                 child: Transform.scale(
                   scale: 1.1,
                   child: ColorFiltered(
-                    colorFilter: ColorFilter.mode(
+                    colorFilter: const ColorFilter.mode(
                       hologramColor,
                       BlendMode.srcATop,
                     ),
@@ -1156,7 +1156,7 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
               child: Container(
                 width: widget.size,
                 height: 1,
-                color: Colors.cyan.shade100,
+                color: const Color(0xFFD1B8F9),
               ),
             ),
           );
@@ -1185,10 +1185,11 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
       final zDepth = 1.0 - (depth * 0.5);
 
       final colors = [
-        Colors.purple.shade400,
-        Colors.deepPurple.shade400,
-        Colors.indigo.shade400,
-        Colors.blue.shade400,
+        const Color(0xFF945AF2),
+        const Color(0xFF7C3AED),
+        const Color(0xFF6B26D9),
+        const Color(0xFFC084FC),
+        const Color(0xFFD1B8F9),
       ];
       final color = colors[index % colors.length];
 
@@ -1264,9 +1265,9 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
           _createFillGradient([widget.color!, widget.color!], fillHeight);
     } else {
       fillGradientDef = _createFillGradient([
-        const Color(0xFF5B68DF), // EchoSphere Royal Blue
-        const Color(0xFF9D84E8), // EchoSphere Lilac / Lavender
-        const Color(0xFFFFFFFF), // EchoSphere Gloss White
+        const Color(0xFF6B26D9), // EchoSphere Royal Violet (Shadcn Light Primary)
+        const Color(0xFF945AF2), // EchoSphere Electric Violet (Shadcn Dark Primary)
+        const Color(0xFFFFFFFF), // EchoSphere Gloss White Highlight
       ], fillHeight);
     }
 
@@ -1275,8 +1276,8 @@ class _EchoSphereAnimatedLogoState extends State<EchoSphereAnimatedLogo>
         <defs>
           $fillGradientDef
           <linearGradient id="bevelGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#352B62" />
-            <stop offset="100%" stop-color="#1A1535" />
+            <stop offset="0%" stop-color="#231736" />
+            <stop offset="100%" stop-color="#09080D" />
           </linearGradient>
         </defs>
         <!-- 3D Bevel / Silhouette Base -->

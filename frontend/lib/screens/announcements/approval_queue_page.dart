@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/announcement_controller.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/screens/announcements/announcement_detail_page.dart';
@@ -33,7 +34,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
 
   void _showApproveModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController(text: 'Approved for college-wide publication');
-    const emeraldColor = Color(0xFF10B981);
+    final approveColor = Theme.of(context).colorScheme.primary;
 
     showDialog(
       context: context,
@@ -44,10 +45,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: emeraldColor.withOpacity(0.15),
+                color: approveColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_rounded, color: emeraldColor, size: 24),
+              child: Icon(Icons.check_circle_rounded, color: approveColor, size: 24),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -87,7 +88,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: emeraldColor,
+              backgroundColor: approveColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -108,7 +109,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
 
   void _showRejectModal(BuildContext context, AnnouncementModel item, AnnouncementController controller) {
     final remarksController = TextEditingController();
-    const roseColor = Color(0xFFEF4444);
+    const rejectColor = EchoSpherePalette.destructive;
 
     showDialog(
       context: context,
@@ -119,10 +120,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: roseColor.withOpacity(0.15),
+                color: rejectColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.cancel_rounded, color: roseColor, size: 24),
+              child: const Icon(Icons.cancel_rounded, color: rejectColor, size: 24),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -164,7 +165,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: roseColor,
+              backgroundColor: rejectColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -262,10 +263,10 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: isLive ? const Color(0xFF10B981).withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+                              color: isLive ? theme.colorScheme.primary.withOpacity(0.12) : theme.colorScheme.onSurface.withOpacity(0.06),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: isLive ? const Color(0xFF10B981).withOpacity(0.5) : Colors.orange.withOpacity(0.5),
+                                color: isLive ? theme.colorScheme.primary.withOpacity(0.4) : theme.colorScheme.onSurface.withOpacity(0.2),
                                 width: 1,
                               ),
                             ),
@@ -277,7 +278,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                                   height: 7,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: isLive ? const Color(0xFF10B981) : Colors.orange,
+                                    color: isLive ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.4),
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -286,7 +287,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: isLive ? const Color(0xFF10B981) : Colors.orange,
+                                    color: isLive ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.6),
                                   ),
                                 ),
                               ],
@@ -322,7 +323,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.gpp_bad_rounded, size: 56, color: Colors.orange.withOpacity(0.8)),
+            Icon(Icons.gpp_bad_rounded, size: 56, color: theme.colorScheme.primary.withOpacity(0.8)),
             const SizedBox(height: 14),
             const Text(
               'Access Restricted',
@@ -442,16 +443,14 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                   final isApproved = item.status == 'PUBLISHED' || item.status == 'APPROVED';
                   final isRejected = item.status == 'REJECTED';
 
-                  Color statusColor = Colors.orange;
+                  Color statusColor = theme.colorScheme.primary;
                   IconData statusIcon = Icons.hourglass_top_rounded;
                   String statusLabel = 'PENDING APPROVAL';
 
                   if (isApproved) {
-                    statusColor = Colors.green;
                     statusIcon = Icons.verified_rounded;
                     statusLabel = 'APPROVED & PUBLISHED';
                   } else if (isRejected) {
-                    statusColor = Colors.red;
                     statusIcon = Icons.cancel_rounded;
                     statusLabel = 'REJECTED';
                   }
@@ -674,17 +673,16 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH')
-                                ? Colors.red.withOpacity(0.15)
-                                : Colors.blue.withOpacity(0.15),
+                            color: theme.colorScheme.secondary,
                             borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: theme.colorScheme.outline),
                           ),
                           child: Text(
                             item.priority,
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: (item.priority == 'EMERGENCY' || item.priority == 'HIGH') ? Colors.red : Colors.blue,
+                              color: theme.colorScheme.onSecondary,
                             ),
                           ),
                         ),
@@ -757,31 +755,31 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                       children: [
                         EchoSphereButton(
                           height: 36,
-                          color: Colors.green.withOpacity(0.18),
-                          border: const BorderSide(color: Colors.green, width: 1.2),
+                          color: theme.colorScheme.primary.withOpacity(0.14),
+                          border: BorderSide(color: theme.colorScheme.primary, width: 1.2),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           onTap: () => _showApproveModal(context, item, controller),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
-                              SizedBox(width: 4),
-                              Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                              Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Text('Approve', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                             ],
                           ),
                         ),
                         EchoSphereButton(
                           height: 36,
-                          color: Colors.red.withOpacity(0.18),
-                          border: const BorderSide(color: Colors.red, width: 1.2),
+                          color: theme.colorScheme.secondary,
+                          border: BorderSide(color: theme.colorScheme.outline, width: 1.2),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           onTap: () => _showRejectModal(context, item, controller),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.cancel_rounded, size: 16, color: Colors.red),
-                              SizedBox(width: 4),
-                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                              Icon(Icons.cancel_rounded, size: 16, color: theme.colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                             ],
                           ),
                         ),

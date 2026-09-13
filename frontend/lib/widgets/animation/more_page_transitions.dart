@@ -318,7 +318,7 @@ class _PageAnimationDemoState extends State<PageAnimationDemo> {
                       _buildCard(
                         'Slide Up Gentle',
                         'Perfect for most pages - subtle and smooth',
-                        Colors.blue,
+                        const Color(0xFF6B26D9),
                         () =>
                             _triggerAnimation(PageEntranceStyle.slideUpGentle),
                       ),
@@ -326,28 +326,28 @@ class _PageAnimationDemoState extends State<PageAnimationDemo> {
                       _buildCard(
                         'Elastic Bounce',
                         'Fun bouncy animation with elastic curve',
-                        Colors.purple,
+                        const Color(0xFF945AF2),
                         () => _triggerAnimation(PageEntranceStyle.elastic),
                       ),
                       const SizedBox(height: 16),
                       _buildCard(
                         'Smooth Fade',
                         'Simple fade in - minimal and clean',
-                        Colors.green,
+                        const Color(0xFFC084FC),
                         () => _triggerAnimation(PageEntranceStyle.smooth),
                       ),
                       const SizedBox(height: 16),
                       _buildCard(
                         'Bouncy Scale',
                         'Scale + slide with bounce effect',
-                        Colors.orange,
+                        const Color(0xFF7C3AED),
                         () => _triggerAnimation(PageEntranceStyle.bouncy),
                       ),
                       const SizedBox(height: 16),
                       _buildCard(
                         'Professional',
                         'Quick, clean animation for business apps',
-                        Colors.teal,
+                        const Color(0xFFD1B8F9),
                         () => _triggerAnimation(PageEntranceStyle.professional),
                       ),
                     ],

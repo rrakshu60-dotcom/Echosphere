@@ -1,3 +1,4 @@
+import 'package:anymex/constants/themes.dart';
 import 'package:anymex/controllers/auth_controller.dart';
 import 'package:anymex/services/echosphere_api_service.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
@@ -314,9 +315,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   void _showAccessLogDialog() {
     final theme = Theme.of(context);
-    const successColor = Color(0xFF10B981);
-    const dangerColor = Color(0xFFEF4444);
-    const primaryColor = Color(0xFF6366F1);
 
     showDialog(
       context: context,
@@ -463,22 +461,17 @@ class _UserManagementPageState extends State<UserManagementPage> {
                               final createdAtStr = log['created_at']?.toString() ?? '';
                               final userId = log['user_id']?.toString() ?? '-';
 
-                              Color actionColor = primaryColor;
+                              Color actionColor = theme.colorScheme.primary;
                               IconData actionIcon = Icons.fact_check_rounded;
                               if (action.contains('CREATE')) {
-                                actionColor = successColor;
                                 actionIcon = Icons.add_circle_outline_rounded;
                               } else if (action.contains('APPROVE')) {
-                                actionColor = const Color(0xFF059669);
                                 actionIcon = Icons.check_circle_outline_rounded;
                               } else if (action.contains('REJECT') || action.contains('DELETE')) {
-                                actionColor = dangerColor;
                                 actionIcon = Icons.highlight_off_rounded;
                               } else if (action.contains('OVERRIDE')) {
-                                actionColor = Colors.orange;
                                 actionIcon = Icons.warning_amber_rounded;
                               } else if (action.contains('ARCHIVE')) {
-                                actionColor = Colors.amber.shade700;
                                 actionIcon = Icons.inventory_2_outlined;
                               }
 
@@ -565,6 +558,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             itemBuilder: (context, index) {
                               final log = logs[index];
                               final isSuccess = log.status.contains('SUCCESS');
+                              final statusColor = isSuccess ? Theme.of(context).colorScheme.primary : EchoSpherePalette.destructive;
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
@@ -573,10 +567,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                   dense: true,
                                   leading: CircleAvatar(
                                     radius: 16,
-                                    backgroundColor: (isSuccess ? successColor : dangerColor).withOpacity(0.15),
+                                    backgroundColor: statusColor.withOpacity(0.15),
                                     child: Icon(
                                       isSuccess ? Icons.verified_user_rounded : Icons.gpp_bad_rounded,
-                                      color: isSuccess ? successColor : dangerColor,
+                                      color: statusColor,
                                       size: 18,
                                     ),
                                   ),
@@ -589,7 +583,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                     children: [
                                       Text('Location: ${log.location}', style: const TextStyle(fontSize: 10)),
                                       Text('Time: ${log.timestamp}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                                      Text('Status: ${log.status}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: isSuccess ? successColor : dangerColor)),
+                                      Text('Status: ${log.status}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
                                     ],
                                   ),
                                 ),

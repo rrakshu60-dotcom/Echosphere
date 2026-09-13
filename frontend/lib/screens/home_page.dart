@@ -241,15 +241,15 @@ class _HomePageState extends State<HomePage> {
               // ─── Section 5: Integrated Dashboard Search Bar ─────────
               Container(
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF131D33) : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: isDark ? Colors.black.withValues(alpha: 0.2) : const Color(0xFF4F46E5).withValues(alpha: 0.03),
+                      color: isDark ? Colors.black.withValues(alpha: 0.4) : const Color(0xFF6E26E5).withValues(alpha: 0.06),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -326,17 +326,17 @@ class _HomePageState extends State<HomePage> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF131D33) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+              color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
               width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
                 color: isDark
-                    ? Colors.black.withValues(alpha: 0.25)
-                    : const Color(0xFF4F46E5).withValues(alpha: 0.04),
+                    ? Colors.black.withValues(alpha: 0.4)
+                    : const Color(0xFF6E26E5).withValues(alpha: 0.06),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -494,7 +494,7 @@ class _HomePageState extends State<HomePage> {
                   title: 'User Hub',
                   subtitle: 'Manage roles',
                   icon: Icons.manage_accounts_rounded,
-                  color: const Color(0xFF0EA5E9),
+                  color: theme.colorScheme.primary,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const UserManagementPage()),
                   ),
@@ -508,7 +508,7 @@ class _HomePageState extends State<HomePage> {
                 title: 'Speaker PA',
                 subtitle: 'Hardware queue',
                 icon: Icons.podcasts_rounded,
-                color: const Color(0xFF10B981),
+                color: theme.colorScheme.primary,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const SpeakerQueuePage()),
                 ),
@@ -536,10 +536,10 @@ class _HomePageState extends State<HomePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D33) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          color: isDark ? const Color(0xFF09080D) : const Color(0xFFFFFFFF),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+            color: isDark ? const Color(0xFF241F2E) : const Color(0xFFE5E7EB),
             width: 1,
           ),
         ),

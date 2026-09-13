@@ -1,23 +1,13 @@
 import 'package:flutter/material.dart';
 
 Map<String, Color> colorMap = {
-  "Green": Colors.green,
-  "Red": Colors.red,
-  "Pink": Colors.pink,
-  "Purple": Colors.purple,
-  "DeepPurple": Colors.deepPurple,
-  "Indigo": Colors.indigo,
-  "Blue": Colors.blue,
-  "LightBlue": Colors.lightBlue,
-  "Cyan": Colors.cyan,
-  "Teal": Colors.teal,
-  "LightGreen": Colors.lightGreen,
-  "Lime": Colors.lime,
-  "Yellow": Colors.yellow,
-  "Amber": Colors.amber,
-  "Orange": Colors.orange,
-  "DeepOrange": Colors.deepOrange,
-  "Brown": Colors.brown,
+  "Violet": const Color(0xFF6B26D9),
+  "ElectricViolet": const Color(0xFF945AF2),
+  "LightViolet": const Color(0xFFC084FC),
+  "PastelViolet": const Color(0xFFD1B8F9),
+  "DeepViolet": const Color(0xFF401782),
+  "DarkViolet": const Color(0xFF231736),
+  "Plum": const Color(0xFF7C1E55),
 };
 List<Color> colorList = colorMap.values.toList();
 List<String> colorKeys = colorMap.keys.toList();
@@ -52,22 +42,18 @@ final Map<String, Color> colorOptions = {
   'None': Colors.transparent,
   'White': Colors.white,
   'Black': Colors.black,
-  'Red': Colors.red,
-  'Green': Colors.green,
-  'Blue': Colors.blue,
-  'Yellow': Colors.yellow,
-  'Cyan': Colors.cyan,
+  'Violet': const Color(0xFF6B26D9),
+  'ElectricViolet': const Color(0xFF945AF2),
+  'PastelViolet': const Color(0xFFD1B8F9),
 };
 
 final Map<String, Color> fontColorOptions = {
   'Default': Colors.white70,
   'White': Colors.white,
   'Black': Colors.black,
-  'Red': Colors.red,
-  'Green': Colors.green,
-  'Blue': Colors.blue,
-  'Yellow': Colors.yellow,
-  'Cyan': Colors.cyan,
+  'Violet': const Color(0xFF6B26D9),
+  'ElectricViolet': const Color(0xFF945AF2),
+  'PastelViolet': const Color(0xFFD1B8F9),
 };
 
 final cursedSpeed = [

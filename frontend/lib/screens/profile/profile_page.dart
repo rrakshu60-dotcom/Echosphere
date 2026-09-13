@@ -240,12 +240,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         runSpacing: 8,
                         spacing: 8,
                         children: [
-                          const Row(
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.lock_reset_rounded, color: Colors.purple, size: 22),
-                              SizedBox(width: 8),
-                              EchoSphereText(
+                              Icon(Icons.lock_reset_rounded, color: theme.colorScheme.primary, size: 22),
+                              const SizedBox(width: 8),
+                              const EchoSphereText(
                                 text: 'Reset Account Password',
                                 size: 16,
                                 variant: TextVariant.bold,
@@ -260,16 +260,16 @@ class _ProfilePageState extends State<ProfilePage> {
                               return Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isMax ? Colors.red.withOpacity(0.15) : Colors.purple.withOpacity(0.15),
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: isMax ? Colors.red : Colors.purple),
+                                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: isMax ? 0.8 : 0.4)),
                                 ),
                                 child: Text(
                                   'Resets Used: $used / 5',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: isMax ? Colors.red : Colors.purple,
+                                    color: theme.colorScheme.primary,
                                   ),
                                 ),
                               );
@@ -277,16 +277,16 @@ class _ProfilePageState extends State<ProfilePage> {
                               return Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.15),
+                                  color: theme.colorScheme.secondary,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: Colors.green),
+                                  border: Border.all(color: theme.colorScheme.outline),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'Unlimited Resets',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.green,
+                                    color: theme.colorScheme.primary,
                                   ),
                                 ),
                               );
@@ -345,7 +345,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
+                          backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
                           minimumSize: const Size(double.infinity, 46),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -365,20 +365,20 @@ class _ProfilePageState extends State<ProfilePage> {
                 EchoSphereButton(
                   width: double.infinity,
                   height: 48,
-                  color: Colors.red.withOpacity(0.2),
-                  border: const BorderSide(color: Colors.red),
+                  color: theme.colorScheme.secondary,
+                  border: BorderSide(color: theme.colorScheme.outline),
                   onTap: () {
                     authController.logout();
                     Get.offAll(() => const LoginScreen());
                   },
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.logout, color: Colors.red, size: 20),
-                      SizedBox(width: 10),
+                      Icon(Icons.logout, color: theme.colorScheme.primary, size: 20),
+                      const SizedBox(width: 10),
                       Text(
                         'Log Out from EchoSphere',
-                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -409,11 +409,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildInfoTile(String title, String value, IconData icon) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.purple.withOpacity(0.8)),
+          Icon(icon, size: 20, color: theme.colorScheme.primary.withOpacity(0.8)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

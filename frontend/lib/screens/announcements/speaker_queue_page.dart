@@ -100,11 +100,11 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
         return AlertDialog(
           backgroundColor: context.colors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
-              SizedBox(width: 8),
-              Expanded(
+              Icon(Icons.warning_amber_rounded, color: context.colors.primary, size: 24),
+              const SizedBox(width: 8),
+              const Expanded(
                 child: EchoSphereText(
                   text: 'Emergency Speaker Override',
                   size: 15,
@@ -152,7 +152,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
               ),
             ),
             EchoSphereButton(
-              color: Colors.redAccent,
+              color: context.colors.primary,
               radius: 12,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               onTap: () async {
@@ -351,7 +351,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     height: 7,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: isOnline ? Colors.green : Colors.red,
+                                      color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -770,13 +770,13 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.12),
+                      color: context.colors.primary.withOpacity(0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.gpp_bad_rounded,
                       size: 48,
-                      color: Colors.redAccent,
+                      color: context.colors.primary,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -877,7 +877,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   ),
                   const SizedBox(width: 4),
                   EchoSphereButton(
-                    color: Colors.redAccent,
+                    color: context.colors.primary,
                     radius: 12,
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                     onTap: () => _showEmergencyDialog(context),
@@ -968,16 +968,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: isPlaying
-                                ? const Color(0xFF10B981).opaque(0.15)
-                                : context.colors.primary.opaque(0.15),
+                            color: context.colors.primary.opaque(0.15),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             isPlaying
                                 ? Icons.graphic_eq_rounded
                                 : Icons.pause_circle_filled_rounded,
-                            color: isPlaying ? const Color(0xFF10B981) : context.colors.primary,
+                            color: context.colors.primary,
                             size: 20,
                           ),
                         ),
@@ -990,7 +988,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 text: isPlaying ? 'Broadcasting Now' : 'Speaker Queue Ready',
                                 size: 12,
                                 variant: TextVariant.bold,
-                                color: isPlaying ? const Color(0xFF10B981) : context.colors.primary,
+                                color: context.colors.primary,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1026,7 +1024,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: isPlaying
-                                      ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                                      ? [context.colors.primary, const Color(0xFF7C3AED)]
                                       : [const Color(0xFF8B5CF6), const Color(0xFF6D28D9)],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
@@ -1034,10 +1032,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 borderRadius: BorderRadius.circular(18),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (isPlaying
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFF8B5CF6))
-                                        .opaque(0.35),
+                                    color: context.colors.primary.opaque(0.35),
                                     blurRadius: 8,
                                     spreadRadius: 1,
                                     offset: const Offset(0, 2),
@@ -1077,7 +1072,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           minHeight: 4,
                           backgroundColor: context.colors.outline.opaque(0.15),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isPlaying ? const Color(0xFF10B981) : context.colors.primary,
+                            context.colors.primary,
                           ),
                         ),
                       ),
@@ -1093,9 +1088,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                               size: 9,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              color: isPlaying
-                                  ? const Color(0xFF10B981)
-                                  : context.colors.onSurface.opaque(0.5),
+                              color: context.colors.primary,
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -1123,7 +1116,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                               : null,
                         ),
                         IconButton(
-                          icon: const Icon(Icons.stop_rounded, size: 20, color: Colors.redAccent),
+                          icon: Icon(Icons.stop_rounded, size: 20, color: context.colors.primary),
                           tooltip: 'Stop Playback',
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           padding: EdgeInsets.zero,
@@ -1258,7 +1251,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           child: EchoSphereContainer(
                             padding: const EdgeInsets.all(10.0),
                             color: isCurrentlyPlaying
-                                ? const Color(0xFF10B981).opaque(0.08)
+                                ? context.colors.primary.opaque(0.12)
                                 : isCurrent
                                     ? context.colors.primary.opaque(0.08)
                                     : null,
@@ -1269,11 +1262,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                   height: 28,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: isCurrentlyPlaying
-                                        ? const Color(0xFF10B981)
-                                        : isCurrent
-                                            ? context.colors.primary
-                                            : context.colors.primary.opaque(0.15),
+                                    color: isCurrentlyPlaying || isCurrent
+                                        ? context.colors.primary
+                                        : context.colors.primary.opaque(0.15),
                                   ),
                                   alignment: Alignment.center,
                                   child: EchoSphereText(
@@ -1317,10 +1308,10 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: (isOnline ? const Color(0xFF10B981) : Colors.redAccent).opaque(0.12),
+                                                  color: (isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3)).opaque(0.12),
                                                   borderRadius: BorderRadius.circular(6),
                                                   border: Border.all(
-                                                    color: (isOnline ? const Color(0xFF10B981) : Colors.redAccent).opaque(0.3),
+                                                    color: (isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3)).opaque(0.3),
                                                     width: 0.8,
                                                   ),
                                                 ),
@@ -1332,7 +1323,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                       height: 5,
                                                       decoration: BoxDecoration(
                                                         shape: BoxShape.circle,
-                                                        color: isOnline ? const Color(0xFF10B981) : Colors.redAccent,
+                                                        color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
                                                       ),
                                                     ),
                                                     const SizedBox(width: 4),
@@ -1341,7 +1332,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                         text: '$nodeName • ${isOnline ? "ONLINE" : "OFFLINE"}',
                                                         size: 9,
                                                         variant: TextVariant.semiBold,
-                                                        color: isOnline ? const Color(0xFF10B981) : Colors.redAccent,
+                                                        color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
                                                       ),
@@ -1356,22 +1347,22 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                               padding: const EdgeInsets.symmetric(
                                                   horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFF10B981).opaque(0.15),
+                                                color: context.colors.primary.opaque(0.15),
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
-                                              child: const FittedBox(
+                                              child: FittedBox(
                                                 fit: BoxFit.scaleDown,
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
                                                     Icon(Icons.volume_up_rounded,
-                                                        size: 10, color: Color(0xFF10B981)),
-                                                    SizedBox(width: 3),
+                                                        size: 10, color: context.colors.primary),
+                                                    const SizedBox(width: 3),
                                                     EchoSphereText(
                                                       text: 'PLAYING',
                                                       size: 9,
                                                       variant: TextVariant.bold,
-                                                      color: Color(0xFF10B981),
+                                                      color: context.colors.primary,
                                                     ),
                                                   ],
                                                 ),
@@ -1408,7 +1399,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: isCurrentlyPlaying
-                                          ? const Color(0xFF10B981)
+                                          ? context.colors.primary
                                           : context.colors.primary.opaque(0.15),
                                     ),
                                     child: Icon(
@@ -1451,8 +1442,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 IconButton(
                                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                   padding: EdgeInsets.zero,
-                                  icon: const Icon(Icons.delete_outline_rounded,
-                                      size: 16, color: Colors.redAccent),
+                                  icon: Icon(Icons.delete_outline_rounded,
+                                      size: 16, color: context.colors.primary),
                                   tooltip: 'Remove from Queue',
                                   onPressed: () => _queueCtrl.removeNotice(i),
                                 ),
@@ -1577,7 +1568,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       height: 8,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: isOnline ? Colors.green : Colors.red,
+                                        color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
                                       ),
                                     ),
                                     const SizedBox(width: 6),
@@ -1608,7 +1599,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.wifi_rounded, size: 12, color: Colors.blue),
+                                        Icon(Icons.wifi_rounded, size: 12, color: context.colors.primary),
                                         const SizedBox(width: 4),
                                         Flexible(
                                           child: EchoSphereText(
@@ -1624,8 +1615,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.numbers_rounded,
-                                            size: 12, color: Colors.purple),
+                                        Icon(Icons.numbers_rounded,
+                                            size: 12, color: context.colors.primary),
                                         const SizedBox(width: 4),
                                         Flexible(
                                           child: EchoSphereText(
@@ -1641,8 +1632,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.location_on_rounded,
-                                            size: 12, color: Colors.orange),
+                                        Icon(Icons.location_on_rounded,
+                                            size: 12, color: context.colors.primary),
                                         const SizedBox(width: 4),
                                         Flexible(
                                           child: EchoSphereText(
@@ -1710,8 +1701,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       onPressed: () => _showEditNodeDialog(context, node),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.delete_outline_rounded,
-                                          size: 16, color: Colors.redAccent),
+                                      icon: Icon(Icons.delete_outline_rounded,
+                                          size: 16, color: context.colors.primary),
                                       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                                       padding: EdgeInsets.zero,
                                       tooltip: 'Delete Node',

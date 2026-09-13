@@ -10,6 +10,7 @@ import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:anymex/constants/themes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:get/get.dart';
@@ -105,7 +106,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
-                      color: ann['priority'] == 'EMERGENCY' ? Colors.red : theme.colorScheme.primary,
+                      color: ann['priority'] == 'EMERGENCY' ? EchoSpherePalette.destructive : theme.colorScheme.primary,
                     ),
                   ),
                 ],
@@ -150,10 +151,10 @@ class _EchosphereAiState extends State<EchosphereAi> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.2),
+                  color: theme.colorScheme.primary.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
+                child: Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -179,7 +180,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
               ),
               if (isAdminRole) ...[
                 IconButton(
-                  icon: const Icon(Icons.memory_rounded, size: 20, color: Colors.teal),
+                  icon: Icon(Icons.memory_rounded, size: 20, color: theme.colorScheme.primary),
                   tooltip: 'AI Engine Diagnostics & Retraining',
                   onPressed: () => _showAiDiagnosticsDialog(context),
                 ),
@@ -324,11 +325,11 @@ class _EchosphereAiState extends State<EchosphereAi> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.smart_toy, size: 14, color: Colors.amber),
+                    Icon(Icons.smart_toy, size: 14, color: theme.colorScheme.primary),
                     const SizedBox(width: 4),
                     Text(
                       msg.categoryBadge ?? 'EchoSphere AI',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                     ),
                   ],
                 ),
@@ -542,32 +543,32 @@ class _EchosphereAiState extends State<EchosphereAi> {
 
       if (screen.contains('speaker')) {
         iconData = Icons.volume_up_rounded;
-        accentColor = Colors.orange;
+        accentColor = theme.colorScheme.primary;
         title = 'Speaker Audio Queue';
         description = 'Corridor broadcast nodes & audio queue';
         buttonText = 'Open Speaker Queue';
       } else if (screen.contains('preference') || screen.contains('profile') || screen.contains('security') || screen.contains('smart_notes') || screen.contains('setting')) {
         iconData = Icons.tune_rounded;
-        accentColor = Colors.teal;
+        accentColor = theme.colorScheme.primary;
         final secName = section != null ? section.replaceAll('_', ' ') : 'Preferences';
         title = 'Preferences • ${secName.toUpperCase()}';
         description = 'Profile, credentials, and app preferences';
         buttonText = 'Open Preferences';
       } else if (cat != null && cat.isNotEmpty) {
         iconData = Icons.filter_alt_rounded;
-        accentColor = Colors.indigoAccent;
+        accentColor = theme.colorScheme.primary;
         title = '$cat Circulars';
         description = 'Department notices matching $cat';
         buttonText = 'View Circulars';
       } else if (dept != null && dept.isNotEmpty) {
         iconData = Icons.apartment_rounded;
-        accentColor = Colors.deepPurpleAccent;
+        accentColor = theme.colorScheme.primary;
         title = '$dept Department Notices';
         description = 'Filtered departmental circulars';
         buttonText = 'View Notices';
       } else if (screen.contains('approval')) {
         iconData = Icons.verified_user_rounded;
-        accentColor = Colors.green;
+        accentColor = theme.colorScheme.primary;
         title = 'Announcement Approvals';
         description = 'Review pending broadcast circulars';
         buttonText = 'Review Approvals';
@@ -581,19 +582,19 @@ class _EchosphereAiState extends State<EchosphereAi> {
     } else if (actionName == 'toggle_theme') {
       final mode = (params['mode'] as String? ?? 'toggle').toLowerCase();
       iconData = mode == 'dark' ? Icons.dark_mode_rounded : Icons.light_mode_rounded;
-      accentColor = mode == 'dark' ? Colors.amber : Colors.blue;
+      accentColor = theme.colorScheme.primary;
       title = 'Appearance Customization';
       description = 'Switched app display to ${mode == 'dark' ? 'Dark' : 'Light'} Mode';
       buttonText = 'Apply Theme';
     } else if (actionName == 'create_announcement_draft') {
       iconData = Icons.edit_note_rounded;
-      accentColor = Colors.green;
+      accentColor = theme.colorScheme.primary;
       title = 'Draft Announcement';
       description = 'Open verified circular publishing studio';
       buttonText = 'Open Composer';
     } else if (actionName == 'control_speaker_queue') {
       iconData = Icons.speaker_group_rounded;
-      accentColor = Colors.orange;
+      accentColor = theme.colorScheme.primary;
       title = 'Speaker Hardware Command';
       description = 'Dispatch hardware control to corridor nodes';
       buttonText = 'Dispatch Command';
@@ -733,6 +734,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDlgState) {
+          final theme = Theme.of(context);
           if (isLoading) {
             EchosphereApiService().getAiStatus().then((val) {
               if (context.mounted) {
@@ -758,11 +760,11 @@ class _EchosphereAiState extends State<EchosphereAi> {
           }
 
           return AlertDialog(
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.psychology_rounded, color: Colors.teal),
-                SizedBox(width: 8),
-                Expanded(
+                Icon(Icons.psychology_rounded, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     'AI Diagnostics & Model Health',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -785,16 +787,16 @@ class _EchosphereAiState extends State<EchosphereAi> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.teal.withOpacity(0.1),
+                              color: theme.colorScheme.primary.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                              border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.check_circle_outline, color: Colors.teal, size: 16),
+                                    Icon(Icons.check_circle_outline, color: theme.colorScheme.primary, size: 16),
                                     const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
@@ -842,20 +844,20 @@ class _EchosphereAiState extends State<EchosphereAi> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
+                                color: theme.colorScheme.primary.withOpacity(0.08),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.green.withOpacity(0.3)),
+                                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Row(
+                                  Row(
                                     children: [
-                                      Icon(Icons.verified, color: Colors.green, size: 16),
-                                      SizedBox(width: 6),
+                                      Icon(Icons.verified, color: theme.colorScheme.primary, size: 16),
+                                      const SizedBox(width: 6),
                                       Text(
                                         'Campus ML Retraining Complete!',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green),
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary),
                                       ),
                                     ],
                                   ),
