@@ -85,7 +85,7 @@ DEPARTMENT: ${notice.department}
 CATEGORY: ${notice.category}
 PRIORITY: ${notice.priority}
 ISSUED BY: ${notice.creatorName} (Designation: ${notice.creatorRole})
-DATE: ${DateFormat('MMMM dd, yyyy â€¢ hh:mm a').format(notice.createdAt)}
+DATE: ${DateFormat('MMMM dd, yyyy \u2022 hh:mm a').format(notice.createdAt)}
 ATTACHMENT: $filename
 
 --------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ Generated at: ${DateTime.now().toIso8601String()}
 
 ${notice.description}
 
-â€” Shared via EchoSphere Smart Campus System
+-- Shared via EchoSphere Smart Campus System
 ''';
       await Share.share(shareText, subject: notice.title);
     } catch (e) {
@@ -173,7 +173,7 @@ ${notice.description}
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '$_fileTypeLabel Â· Attached to "${notice.title}"',
+                          '$_fileTypeLabel \u2022 Attached to "${notice.title}"',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -253,7 +253,7 @@ ${notice.description}
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'INSTITUTIONAL DOCUMENT VIEW Â· ${notice.department.toUpperCase()}',
+                                    'INSTITUTIONAL DOCUMENT VIEW \u2022 ${notice.department.toUpperCase()}',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,

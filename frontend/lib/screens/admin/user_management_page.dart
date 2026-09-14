@@ -729,7 +729,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             Text(
                               isLoading
                                   ? 'Updating campus directory...'
-                                  : '${users.length} registered â€¢ ${filteredUsers.length} shown',
+                                  : '${users.length} registered \u2022 ${filteredUsers.length} shown',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: theme.colorScheme.onSurface.withOpacity(0.55),
@@ -991,7 +991,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              'ID: $identifier â€¢ Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " â€¢ Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
+                                              'ID: $identifier \u2022 Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " \u2022 Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(

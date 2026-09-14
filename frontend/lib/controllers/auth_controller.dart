@@ -297,7 +297,7 @@ class AuthController extends GetxController {
             timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 2))),
             username: 'CAdmin',
             role: 'College Admin',
-            location: 'Bangalore Campus Node (Main Admin Block â€¢ 192.168.1.105)',
+            location: 'Bangalore Campus Node (Main Admin Block \u2022 192.168.1.105)',
             status: 'SUCCESS (Employee ID Verified)',
             employeeId: 'DBITADM001',
           ),
@@ -305,7 +305,7 @@ class AuthController extends GetxController {
             timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 5))),
             username: '1db23ci079',
             role: 'Student',
-            location: 'Bangalore Campus Wi-Fi (Academic Block B â€¢ 192.168.2.14)',
+            location: 'Bangalore Campus Wi-Fi (Academic Block B \u2022 192.168.2.14)',
             status: 'LOGIN SUCCESS',
           ),
         ];
@@ -333,7 +333,7 @@ class AuthController extends GetxController {
     String? employeeId,
   }) async {
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-    const location = 'Bangalore Campus Node (Main Admin Block â€¢ 192.168.1.105)';
+    const location = 'Bangalore Campus Node (Main Admin Block \u2022 192.168.1.105)';
 
     final entry = LoginLogEntry(
       timestamp: now,

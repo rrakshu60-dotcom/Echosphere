@@ -82,10 +82,10 @@ void showEchoSpherePrivacyPolicy(BuildContext context) {
                       _buildSectionTitle('3. Device Permissions & Scoped Storage'),
                       _buildParagraph(
                         'EchoSphere strictly obeys modern Android Scoped Storage and Google Play Store policies:\n'
-                        'â€¢ File Downloads: Official notices and circular attachments are saved directly to your device without requiring broad storage permissions.\n'
-                        'â€¢ Media Upload: Media permissions (READ_MEDIA_IMAGES/VIDEO) are only requested when you explicitly choose to attach an image or PDF to a notice.\n'
-                        'â€¢ Audio Recording: Audio permission is used solely for optional speech-to-text dictation when drafting announcements.\n'
-                        'â€¢ Notifications: POST_NOTIFICATIONS is requested on Android 13+ to deliver critical campus emergency alerts.',
+                        '\u2022 File Downloads: Official notices and circular attachments are saved directly to your device without requiring broad storage permissions.\n'
+                        '\u2022 Media Upload: Media permissions (READ_MEDIA_IMAGES/VIDEO) are only requested when you explicitly choose to attach an image or PDF to a notice.\n'
+                        '\u2022 Audio Recording: Audio permission is used solely for optional speech-to-text dictation when drafting announcements.\n'
+                        '\u2022 Notifications: POST_NOTIFICATIONS is requested on Android 13+ to deliver critical campus emergency alerts.',
                       ),
                       const SizedBox(height: 14),
 
@@ -164,7 +164,7 @@ Widget _buildBullet(String text) {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('â€¢ ', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const Text('\u2022 ', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
         Expanded(
           child: Text(
             text,

@@ -42,8 +42,8 @@ void main() {
         startTime: start,
         endTime: end,
         location: 'Room 302',
-        description: 'Submit exam forms with â‚¹500 fee.',
-        actionRequired: 'Submit form and pay â‚¹500',
+        description: 'Submit exam forms with \u20B9500 fee.',
+        actionRequired: 'Submit form and pay \u20B9500',
       );
 
       final url = event.toGoogleCalendarUrl();

@@ -696,11 +696,11 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                     ),
                     const SizedBox(height: 4),
                     if (aiValidationWarning != null)
-                      Text('â€¢ $aiValidationWarning', style: const TextStyle(fontSize: 11)),
+                      Text('\u2022 $aiValidationWarning', style: const TextStyle(fontSize: 11)),
                     if (aiSpamWarning != null)
-                      Text('â€¢ Spam Alert: $aiSpamWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                      Text('\u2022 Spam Alert: $aiSpamWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                     if (aiDuplicateWarning != null)
-                      Text('â€¢ Duplicate Alert: $aiDuplicateWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                      Text('\u2022 Duplicate Alert: $aiDuplicateWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                   ],
                 ),
               ),
@@ -995,7 +995,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Scheduled for: ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)}',
+                          'Scheduled for: ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -1047,14 +1047,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         String statusMessage = '';
         if (isTeacher) {
           statusMessage = isScheduleLater
-              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)})!'
+              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)})!'
               : 'Notice submitted for HoD/Principal approval!';
         } else if (isHodCrossDept) {
           statusMessage = isScheduleLater
-              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)})!'
+              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)})!'
               : 'Institution-wide notice submitted for Principal/College Admin approval!';
         } else if (isScheduleLater) {
-          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)}!';
+          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)}!';
         } else {
           statusMessage = deliverSpeaker
               ? 'Notice published and queued for speaker broadcast!'
@@ -1204,7 +1204,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('â€¢ ', style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
+                  Text('\u2022 ', style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
                   Expanded(
                     child: Text(
                       msg,

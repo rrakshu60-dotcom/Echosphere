@@ -408,9 +408,9 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     );
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ----------------------------------------------------------------------
   // TEACHER STATUS TRACKER VIEW
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ----------------------------------------------------------------------
   Widget _buildTeacherStatusView(ThemeData theme, AnnouncementController controller) {
     return Column(
       children: [
@@ -635,9 +635,9 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     );
   }
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ----------------------------------------------------------------------
   // APPROVER QUEUE VIEW (HoD, Admin, Principal, DevAdmin)
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ----------------------------------------------------------------------
   Widget _buildApproverQueueView(ThemeData theme, AnnouncementController controller) {
     final isDark = theme.brightness == Brightness.dark;
     return Obx(() {
@@ -936,7 +936,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                             ],
                             const SizedBox(height: 10),
                             Text(
-                              'Submitted by: ${item.creatorName} (${item.creatorRole}) â€¢ ${item.department}',
+                              'Submitted by: ${item.creatorName} (${item.creatorRole}) \u2022 ${item.department}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),

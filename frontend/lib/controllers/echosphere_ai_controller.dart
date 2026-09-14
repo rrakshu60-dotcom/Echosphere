@@ -102,7 +102,7 @@ class EchosphereAiController extends GetxController {
     final processed = <String>[];
     bool inList = false;
     for (final line in lines) {
-      final isItem = RegExp(r'^[ \t]*[-â€¢*]\s+').hasMatch(line) || RegExp(r'^[ \t]*\d+\.\s+').hasMatch(line);
+      final isItem = RegExp(r'^[ \t]*[-\u2022*]\s+').hasMatch(line) || RegExp(r'^[ \t]*\d+\.\s+').hasMatch(line);
       if (isItem) {
         if (!inList && processed.isNotEmpty && processed.last.trim().isNotEmpty) {
           processed.add('');
@@ -439,7 +439,7 @@ class EchosphereAiController extends GetxController {
           '3. Faculty notices route to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options.';
     }
 
-    return '### Guidance for $name ($role Â· $dept Department)\n\n'
+    return '### Guidance for $name ($role \u2022 $dept Department)\n\n'
         'Your question has been matched against EchoSphere institutional knowledge.\n\n'
         '- **Recent Circulars:** View the latest department updates under the **Notices** tab.\n'
         '- **Support:** Consult your Class Teacher or Department HoD for official academic signatures and approvals.';

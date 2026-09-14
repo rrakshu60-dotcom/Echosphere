@@ -360,7 +360,7 @@ class SpeakerQueueController extends GetxController {
     final item = queueItems[activeIndex.value];
     final dept = item['department']?.toString() ?? 'College-Wide';
     final node = item['node_name']?.toString() ?? 'All Nodes';
-    return '$dept â€¢ $node';
+    return '$dept \u2022 $node';
   }
 
   String get currentElapsedFormatted {

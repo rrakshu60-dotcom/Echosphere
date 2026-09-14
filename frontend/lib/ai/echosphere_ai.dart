@@ -116,7 +116,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Department: ${ann['department'] ?? 'College-Wide'} â€¢ ${ann['created_at'] ?? 'Recent'}',
+                'Department: ${ann['department'] ?? 'College-Wide'} \u2022 ${ann['created_at'] ?? 'Recent'}',
                 style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6)),
               ),
               const Divider(height: 24),
@@ -537,7 +537,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
         iconData = Icons.tune_rounded;
         accentColor = theme.colorScheme.primary;
         final secName = section != null ? section.replaceAll('_', ' ') : 'Preferences';
-        title = 'Preferences â€¢ ${secName.toUpperCase()}';
+        title = 'Preferences \u2022 ${secName.toUpperCase()}';
         description = 'Profile, credentials, and app preferences';
         buttonText = 'Open Preferences';
       } else if (cat != null && cat.isNotEmpty) {
@@ -811,11 +811,11 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'â€¢ Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          'â€¢ Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          'â€¢ Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
-                                          'â€¢ Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
-                                          'â€¢ Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
+                                          '\u2022 Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          '\u2022 Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          '\u2022 Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
+                                          '\u2022 Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
+                                          '\u2022 Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
                                           style: const TextStyle(fontSize: 11, height: 1.5),
                                         ),
                                       ],
@@ -849,9 +849,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'â€¢ Intent Accuracy: ${((trainResult!["intent_accuracy"] ?? 0.95) * 100).toStringAsFixed(1)}%\n'
-                                    'â€¢ Emergency Classifier: ${((trainResult!["emergency_f1"] ?? 0.98) * 100).toStringAsFixed(1)}% F1-score\n'
-                                    'â€¢ Training Samples: ${trainResult!["training_samples"] ?? 120}',
+                                    '\u2022 Intent Accuracy: ${((trainResult!["intent_accuracy"] ?? 0.95) * 100).toStringAsFixed(1)}%\n'
+                                    '\u2022 Emergency Classifier: ${((trainResult!["emergency_f1"] ?? 0.98) * 100).toStringAsFixed(1)}% F1-score\n'
+                                    '\u2022 Training Samples: ${trainResult!["training_samples"] ?? 120}',
                                     style: const TextStyle(fontSize: 11, height: 1.4),
                                   ),
                                 ],

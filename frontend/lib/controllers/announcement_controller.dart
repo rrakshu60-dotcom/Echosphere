@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
@@ -36,21 +36,38 @@ class AnnouncementModel {
   final int durationSeconds;
   final String speakerVoice; // 'female' | 'male'
 
+  static String sanitizeText(String input) {
+    if (input.isEmpty) return input;
+    return input
+        .replaceAll('\u00E2\u20AC\u00A2', '\u2022') // bullet -> •
+        .replaceAll('\u00E2\u201A\u00B9', '\u20B9') // rupee -> ₹
+        .replaceAll('\u00C2\u00B7', '\u2022')         // middle dot -> •
+        .replaceAll('\u00C2', '')                     // stray A
+        .replaceAll('\u00E2\u20AC\u201D', '\u2014') // em-dash -> —
+        .replaceAll('\u00E2\u20AC\u2013', '\u2013') // en-dash -> –
+        .replaceAll('\u00E2\u2020\u2019', '\u2192') // right arrow -> →
+        .replaceAll('\u00E2\u20AC\u00A6', '...')     // ellipsis -> ...
+        .replaceAll('\u00E2\u20AC\u02DC', "'")       // single quote
+        .replaceAll('\u00E2\u20AC\u2122', "'")       // single quote
+        .replaceAll('\u00E2\u20AC\u0153', '"')       // double quote
+        .replaceAll('\u00E2\u20AC\u009D', '"');      // double quote
+  }
+
   AnnouncementModel({
     required this.id,
-    required this.title,
-    required this.description,
+    required String title,
+    required String description,
     required this.priority,
     required this.emergencyLevel,
     required this.status,
-    required this.creatorName,
-    this.creatorRole = 'Faculty / Official',
-    required this.department,
-    this.targetAudience = 'Entire College',
+    required String creatorName,
+    String creatorRole = 'Faculty / Official',
+    required String department,
+    String targetAudience = 'Entire College',
     required this.category,
     required this.createdAt,
     this.scheduledAt,
-    this.aiSummary,
+    String? aiSummary,
     this.remarks,
     this.approverName,
     this.approvedAt,
@@ -63,7 +80,13 @@ class AnnouncementModel {
     this.playedOnSpeaker = false,
     this.durationSeconds = 15,
     this.speakerVoice = 'female',
-  });
+  })  : title = sanitizeText(title),
+        description = sanitizeText(description),
+        creatorName = sanitizeText(creatorName),
+        creatorRole = sanitizeText(creatorRole),
+        department = sanitizeText(department),
+        targetAudience = sanitizeText(targetAudience),
+        aiSummary = aiSummary != null ? sanitizeText(aiSummary) : null;
 
   AnnouncementModel copyWith({
     int? id,
@@ -1195,7 +1218,7 @@ class AnnouncementController extends GetxController {
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
     await _recordApprovedNoticeId(id);
 
-    // 0ms Optimistic UI update â€” save original for rollback
+    // 0ms Optimistic UI update -- save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     AnnouncementModel? originalSnapshot;
     if (idx != -1) {
@@ -1279,7 +1302,7 @@ class AnnouncementController extends GetxController {
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
     await _recordRejectedNoticeId(id);
 
-    // 0ms Optimistic UI update â€” save original for rollback
+    // 0ms Optimistic UI update -- save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     AnnouncementModel? originalSnapshot;
     if (idx != -1) {
@@ -1564,7 +1587,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 9,
         title: 'Summer Technology Internship Drive at Goldman Sachs & Morgan Stanley',
-        description: 'Registrations are open for the 8-week Summer Technology Analyst Internship program offering a monthly stipend of â‚¹75,000 with Pre-Placement Interview (PPI) opportunities. Eligible candidates must apply through the Superset portal before October 26, 2026 at 11:59 PM.',
+        description: 'Registrations are open for the 8-week Summer Technology Analyst Internship program offering a monthly stipend of \u20B975,000 with Pre-Placement Interview (PPI) opportunities. Eligible candidates must apply through the Superset portal before October 26, 2026 at 11:59 PM.',
         priority: 'HIGH',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1573,7 +1596,7 @@ class AnnouncementController extends GetxController {
         department: 'Placements',
         category: 'Placement',
         createdAt: now.subtract(const Duration(hours: 19)),
-        aiSummary: 'Goldman Sachs and Morgan Stanley summer internship applications open on Superset until October 26, 2026 at 11:59 PM with â‚¹75,000 monthly stipend.',
+        aiSummary: 'Goldman Sachs and Morgan Stanley summer internship applications open on Superset until October 26, 2026 at 11:59 PM with \u20B975,000 monthly stipend.',
         attachments: const [],
         deliverSpeaker: false,
         deliverInApp: true,
@@ -1582,7 +1605,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 10,
         title: 'HackEcho 2026: 24-Hour National Collegiate Hackathon',
-        description: 'Registrations are live for HackEcho 2026, our flagship national 24-hour hackathon happening on November 7, 2026 at 9:00 AM in the Main Campus Auditorium. Total cash prize pool of â‚¹2,50,000 across AI/ML, Cyber Defense, and IoT tracks. Free food, mentoring, high-speed WiFi, and overnight accommodation provided for registered teams.',
+        description: 'Registrations are live for HackEcho 2026, our flagship national 24-hour hackathon happening on November 7, 2026 at 9:00 AM in the Main Campus Auditorium. Total cash prize pool of \u20B92,50,000 across AI/ML, Cyber Defense, and IoT tracks. Free food, mentoring, high-speed WiFi, and overnight accommodation provided for registered teams.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1591,7 +1614,7 @@ class AnnouncementController extends GetxController {
         department: 'Institution',
         category: 'Event',
         createdAt: now.subtract(const Duration(hours: 21)),
-        aiSummary: 'HackEcho 2026 national 24-hour hackathon begins November 7, 2026 at 9:00 AM in Main Auditorium with â‚¹2.5 Lakhs prize pool.',
+        aiSummary: 'HackEcho 2026 national 24-hour hackathon begins November 7, 2026 at 9:00 AM in Main Auditorium with \u20B92.5 Lakhs prize pool.',
         attachments: const ['HackEcho_Rulebook_2026.pdf'],
         deliverSpeaker: false,
         deliverInApp: true,
@@ -1618,7 +1641,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 12,
         title: 'Campus Founder Pitchfest: Angel Investors & Startup Seed Grants',
-        description: 'The Centre for Innovation and Entrepreneurship (CIE) hosts the annual Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1. Student startup founders can pitch to venture capitalists for seed grants up to â‚¹5,00,000. Submit your pitch deck before October 26, 2026.',
+        description: 'The Centre for Innovation and Entrepreneurship (CIE) hosts the annual Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1. Student startup founders can pitch to venture capitalists for seed grants up to \u20B95,00,000. Submit your pitch deck before October 26, 2026.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1627,7 +1650,7 @@ class AnnouncementController extends GetxController {
         department: 'Institution',
         category: 'Event',
         createdAt: now.subtract(const Duration(hours: 25)),
-        aiSummary: 'CIE Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1; startup seed funding grants up to â‚¹5,00,000.',
+        aiSummary: 'CIE Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1; startup seed funding grants up to \u20B95,00,000.',
         attachments: const [],
         deliverSpeaker: false,
         deliverInApp: true,
