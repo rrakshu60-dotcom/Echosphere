@@ -67,9 +67,11 @@ try:
     from app.seeders.category import seed_categories
     from app.seeders.delivery_type import seed_delivery_types
     from app.seeders.user import seed_users
+    from app.seeders.announcement import seed_announcements
 
     with SessionLocal() as db_session:
         from app.models.user import User
+        from app.models.announcement import Announcement
         if db_session.query(Role).count() == 0:
             seed_roles(db_session)
         if db_session.query(Department).count() == 0:
@@ -80,6 +82,8 @@ try:
             seed_delivery_types(db_session)
         if db_session.query(User).count() == 0:
             seed_users(db_session)
+        if db_session.query(Announcement).count() == 0:
+            seed_announcements(db_session)
         seed_default_speaker_nodes_if_empty(db_session)
 except Exception:
     pass

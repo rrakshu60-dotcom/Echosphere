@@ -726,6 +726,16 @@ class AnnouncementController extends GetxController {
       return true;
     }).toList();
 
+    if (filtered.isEmpty && _rawAnnouncements.isNotEmpty) {
+      final published = _rawAnnouncements
+          .where((a) => a.status == 'PUBLISHED' || a.status == 'APPROVED')
+          .toList();
+      if (published.isNotEmpty) {
+        return _applySort(published);
+      }
+      return _applySort(_rawAnnouncements.toList());
+    }
+
     return _applySort(filtered);
   }
 

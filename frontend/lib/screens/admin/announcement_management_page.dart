@@ -146,7 +146,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                       a.title.toLowerCase().contains(q) ||
                       a.creatorName.toLowerCase().contains(q) ||
                       a.department.toLowerCase().contains(q);
-                  final matchesStatus = selectedStatusFilter == 'All' || a.status == selectedStatusFilter;
+                  final matchesStatus = selectedStatusFilter == 'All' ||
+                      a.status.toUpperCase() == selectedStatusFilter.toUpperCase();
                   return matchesQuery && matchesStatus;
                 }).toList();
 
