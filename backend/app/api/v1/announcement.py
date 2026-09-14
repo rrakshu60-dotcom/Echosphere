@@ -79,12 +79,16 @@ def create_announcement(
 def get_announcements(
     status: str | None = None,
     category_id: int | None = None,
+    skip: int = 0,
+    limit: int | None = None,
     db: Session = Depends(get_db),
 ):
     return get_all_announcements_service(
         db=db,
         status=status,
         category_id=category_id,
+        skip=skip,
+        limit=limit,
     )
 
 

@@ -60,6 +60,8 @@ def get_all_announcements(
     status: str | None = None,
     category_id: int | None = None,
     created_by: int | None = None,
+    skip: int = 0,
+    limit: int | None = None,
 ):
     query = db.query(Announcement).options(
         joinedload(Announcement.creator),
@@ -81,7 +83,14 @@ def get_all_announcements(
     if created_by:
         query = query.filter(Announcement.created_by == created_by)
 
-    return query.order_by(Announcement.created_at.desc()).all()
+    query = query.order_by(Announcement.created_at.desc())
+
+    if skip and skip > 0:
+        query = query.offset(skip)
+    if limit and limit > 0:
+        query = query.limit(limit)
+
+    return query.all()
 
 
 def update_announcement(
