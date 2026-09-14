@@ -1637,7 +1637,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(newDateTime)}!');
         Get.back();
       }
     }

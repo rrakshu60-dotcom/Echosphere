@@ -190,7 +190,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'By: ${item.creatorName} (${item.department}) â€¢ ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(item.createdAt)}',
+                                'By: ${item.creatorName} (${item.department}) \u2022 ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(item.createdAt)}',
                                 style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.65)),
                               ),
                               const Divider(height: 20),
@@ -483,7 +483,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(newDateTime)}!');
         setState(() {});
       }
     }
@@ -659,7 +659,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                                               ),
                                               const SizedBox(height: 2),
                                               Text(
-                                                'Actor: ${userId.isNotEmpty ? "User #$userId" : "System"} â€¢ $createdAt',
+                                                'Actor: ${userId.isNotEmpty ? "User #$userId" : "System"} \u2022 $createdAt',
                                                 style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.6)),
                                               ),
                                             ],

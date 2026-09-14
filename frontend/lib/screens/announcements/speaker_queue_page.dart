@@ -1092,7 +1092,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           Expanded(
                             child: EchoSphereText(
                               text: isPlaying
-                                  ? 'Playing once â€¢ auto-removes on finish'
+                                  ? 'Playing once \u2022 auto-removes on finish'
                                   : 'Paused',
                               size: 9,
                               maxLines: 1,
@@ -1346,7 +1346,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                     const SizedBox(width: 4),
                                                     Flexible(
                                                       child: EchoSphereText(
-                                                        text: '$nodeName â€¢ ${isOnline ? "ONLINE" : "OFFLINE"}',
+                                                        text: '$nodeName \u2022 ${isOnline ? "ONLINE" : "OFFLINE"}',
                                                         size: 9,
                                                         variant: TextVariant.semiBold,
                                                         color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
@@ -1404,7 +1404,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       ),
                                       const SizedBox(height: 3),
                                       EchoSphereText(
-                                        text: 'Scheduled: $scheduledDisplay â€¢ Status: $statusStr',
+                                        text: 'Scheduled: $scheduledDisplay \u2022 Status: $statusStr',
                                         size: 10,
                                         color: context.colors.onSurface.opaque(0.6),
                                         maxLines: 1,
