@@ -54,73 +54,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   bool _isAnalyzingVip = false;
   bool _isTriggeringFanfare = false;
 
-  // Regional Translation State
-  String _selectedLang = 'en';
-  bool _isTranslating = false;
-  String? _translatedTitle;
-  String? _translatedDescription;
-  String? _translatedSummary;
-
-  String _getLanguageName(String code) {
-    switch (code) {
-      case 'kn':
-        return 'Kannada (à²•à²¨à³à²¨à²¡)';
-      case 'hi':
-        return 'Hindi (à¤¹à¤¿à¤‚à¤¦à¥€)';
-      case 'te':
-        return 'Telugu (à°¤à±†à°²à±à°—à±)';
-      case 'ta':
-        return 'Tamil (à®¤à®®à®¿à®´à¯)';
-      case 'en':
-      default:
-        return 'English';
-    }
-  }
-
-  Future<void> _onSelectLanguage(String lang) async {
-    if (_selectedLang == lang) return;
-    if (lang == 'en') {
-      setState(() {
-        _selectedLang = 'en';
-        _translatedTitle = null;
-        _translatedDescription = null;
-        _translatedSummary = null;
-      });
-      await TtsAudioService.instance.setLanguage('en');
-      return;
-    }
-    setState(() {
-      _selectedLang = lang;
-      _isTranslating = true;
-    });
-    await TtsAudioService.instance.setLanguage(lang);
-    try {
-      final res = await EchosphereApiService().translateAnnouncement(
-        id: announcement.id,
-        targetLanguage: lang,
-        title: announcement.title,
-        content: announcement.description,
-        summary: _aiSummary,
-      );
-      if (mounted) {
-        setState(() {
-          _isTranslating = false;
-          _translatedTitle = res['translated_title'] as String?;
-          _translatedDescription = res['translated_content'] as String?;
-          _translatedSummary = res['translated_summary'] as String?;
-        });
-        snackBar('Notice translated to ${res['language_name'] ?? _getLanguageName(lang)}');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isTranslating = false;
-        });
-        snackBar('Translation failed: $e');
-      }
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -691,105 +624,9 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                   _buildStatusBadge(context, announcement.status),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-
-                              // Regional Language Switcher Chips
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(
-                                    'Translate:',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                                    ),
-                                  ),
-                                  ...[
-                                    {'code': 'en', 'label': 'English'},
-                                    {'code': 'kn', 'label': 'à²•à²¨à³à²¨à²¡'},
-                                    {'code': 'hi', 'label': 'à¤¹à¤¿à¤‚à¤¦à¥€'},
-                                    {'code': 'te', 'label': 'à°¤à±†à°²à±à°—à±'},
-                                    {'code': 'ta', 'label': 'à®¤à®®à®¿à®´à¯'},
-                                  ].map((l) {
-                                    final isSelected = _selectedLang == l['code'];
-                                    return InkWell(
-                                      onTap: _isTranslating ? null : () => _onSelectLanguage(l['code']!),
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 180),
-                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? theme.colorScheme.primary.withOpacity(0.15)
-                                              : theme.colorScheme.surfaceVariant.withOpacity(0.3),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? theme.colorScheme.primary
-                                                : theme.colorScheme.outline.withOpacity(0.2),
-                                            width: isSelected ? 1.2 : 0.8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (isSelected && _isTranslating) ...[
-                                              SizedBox(
-                                                width: 10,
-                                                height: 10,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 1.5,
-                                                  color: theme.colorScheme.primary,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 4),
-                                            ],
-                                            Text(
-                                              l['label']!,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                                color: isSelected
-                                                    ? theme.colorScheme.primary
-                                                    : theme.colorScheme.onSurface.withOpacity(0.75),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              ),
-                              if (_selectedLang != 'en' && _translatedTitle != null) ...[
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    EchoSphereBadge.secondary(
-                                      label: 'Showing ${_getLanguageName(_selectedLang)}',
-                                      icon: Icons.translate_rounded,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    InkWell(
-                                      onTap: () => _onSelectLanguage('en'),
-                                      child: Text(
-                                        'Show Original',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 16),
                               Text(
-                                _translatedTitle ?? announcement.title,
+                                announcement.title,
                                 style: const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
@@ -814,7 +651,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '${announcement.creatorName} â€¢ Designation: ${announcement.creatorRole}',
+                                          '${announcement.creatorName} \u2022 Designation: ${announcement.creatorRole}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -824,7 +661,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                           ),
                                         ),
                                         Text(
-                                          'Department: ${announcement.department} â€¢ ${DateFormat("MMMM dd, yyyy â€¢ hh:mm a").format(announcement.createdAt)}',
+                                          'Department: ${announcement.department} \u2022 ${DateFormat("MMMM dd, yyyy \u2022 hh:mm a").format(announcement.createdAt)}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -832,7 +669,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                             color: theme.colorScheme.onSurface.withOpacity(0.6),
                                           ),
                                         ),
-
                                       ],
                                     ),
                                   ),
@@ -955,9 +791,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        (_translatedSummary != null && _translatedSummary!.isNotEmpty)
-                                            ? _translatedSummary!
-                                            : _aiSummary!,
+                                        _aiSummary!,
                                         style: TextStyle(
                                           fontSize: 13,
                                           height: 1.4,
@@ -978,25 +812,12 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                 const Icon(Icons.auto_awesome, color: EchoSpherePalette.lightPrimary, size: 24),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'No AI Summary Yet',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Summarize this notice with AI',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: theme.colorScheme.onSurface.withOpacity(0.65),
-                                        ),
-                                      ),
-                                    ],
+                                  child: Text(
+                                    'Need a fast overview? Generate an AI summary in seconds.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -1006,7 +827,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                     backgroundColor: theme.colorScheme.primary,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
                                   icon: _isSummarizing
                                       ? const SizedBox(
@@ -1028,10 +848,10 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                         // Audio Speech Player
                         NoticeAudioPlayerBar(
                           announcementId: announcement.id,
-                          title: _translatedTitle ?? announcement.title,
-                          content: _translatedDescription ?? announcement.description,
-                          hasAiSummary: (_translatedSummary != null && _translatedSummary!.isNotEmpty) || (_aiSummary != null && _aiSummary!.isNotEmpty),
-                          aiSummary: (_translatedSummary != null && _translatedSummary!.isNotEmpty) ? _translatedSummary : _aiSummary,
+                          title: announcement.title,
+                          content: announcement.description,
+                          hasAiSummary: (_aiSummary != null && _aiSummary!.isNotEmpty),
+                          aiSummary: _aiSummary,
                           initialVoiceGender: announcement.speakerVoice,
                         ),
                         const SizedBox(height: 16),
@@ -1197,7 +1017,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                               ),
                               const Divider(height: 24),
                               Text(
-                                _translatedDescription ?? announcement.description,
+                                announcement.description,
                                 style: const TextStyle(
                                   fontSize: 15,
                                   height: 1.6,
@@ -1310,9 +1130,9 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.history, size: 20, color: theme.colorScheme.primary),
+                              Row(
+                                children: [
+                                  Icon(Icons.history_rounded, size: 20, color: theme.colorScheme.primary),
                                   const SizedBox(width: 8),
                                   const Expanded(
                                     child: Text(
@@ -1324,18 +1144,40 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'â€¢ Created By: ${announcement.creatorName} (${announcement.department})\n'
-                                'â€¢ Target Audience: Entire College & Department\n'
-                                'â€¢ Delivery Channels: In-App Feed, Push Notification\n'
-                                'â€¢ Approval Status: ${announcement.status}\n'
-                                'â€¢ Timestamp: ${DateFormat("MMM dd, yyyy â€¢ hh:mm:ss a").format(announcement.createdAt)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  height: 1.6,
-                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
-                                ),
+                              const SizedBox(height: 16),
+                              _buildAuditRow(
+                                icon: Icons.person_outline_rounded,
+                                label: 'Created By',
+                                value: '${announcement.creatorName} (${announcement.department})',
+                                theme: theme,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildAuditRow(
+                                icon: Icons.groups_outlined,
+                                label: 'Target Audience',
+                                value: 'Entire College & Department',
+                                theme: theme,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildAuditRow(
+                                icon: Icons.cell_tower_rounded,
+                                label: 'Delivery Channels',
+                                value: 'In-App Feed, Push Notification',
+                                theme: theme,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildAuditRow(
+                                icon: Icons.verified_outlined,
+                                label: 'Approval Status',
+                                value: announcement.status,
+                                theme: theme,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildAuditRow(
+                                icon: Icons.schedule_rounded,
+                                label: 'Timestamp',
+                                value: DateFormat('MMM dd, yyyy \u2022 hh:mm:ss a').format(announcement.createdAt),
+                                theme: theme,
                               ),
                             ],
                           ),
@@ -1960,7 +1802,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                       Icon(Icons.check_circle_outline_rounded, size: 12, color: theme.colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
-                        '$slotName â€¢ $playedAt',
+                        '$slotName \u2022 $playedAt',
                         style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.75)),
                       ),
                     ],
@@ -2205,5 +2047,47 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       return EchoSphereBadge.secondary(label: status);
     }
     return EchoSphereBadge.defaultBadge(label: status);
+  }
+
+  Widget _buildAuditRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required ThemeData theme,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1.0),
+          child: Icon(icon, size: 15, color: theme.colorScheme.primary.withOpacity(0.85)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Poppins',
+                color: theme.colorScheme.onSurface.withOpacity(0.9),
+              ),
+              children: [
+                TextSpan(
+                  text: '$label: ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                  ),
+                ),
+                TextSpan(
+                  text: value,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

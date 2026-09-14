@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
@@ -1165,7 +1165,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           ),
                         ),
                         child: Text(
-                          'Read Details â†’',
+                          'Read Details \u2192',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

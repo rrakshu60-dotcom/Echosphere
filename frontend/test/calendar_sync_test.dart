@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -83,7 +83,7 @@ void main() {
     test('extractEventClientSide extracts dates, times, venues, and fees offline', () {
       final parsed = CalendarSyncService.extractEventClientSide(
         'Fee Payment Deadline',
-        'Submit exam fee by Oct 24th, 5 PM to Room 302 with â‚¹500 fee.',
+        'Submit exam fee by Oct 24th, 5 PM to Room 302 with ₹500 fee.',
       );
 
       expect(parsed.hasEvent, isTrue);
@@ -91,7 +91,7 @@ void main() {
       expect(parsed.startTime.day, equals(24));
       expect(parsed.startTime.hour, equals(17));
       expect(parsed.location.toLowerCase(), contains('302'));
-      expect(parsed.actionRequired, contains('â‚¹500'));
+      expect(parsed.actionRequired, contains('₹500'));
     });
   });
 
@@ -107,7 +107,7 @@ void main() {
         startTime: DateTime(2026, 10, 24, 17, 0),
         endTime: DateTime(2026, 10, 24, 18, 0),
         location: 'Admin Block Room 302',
-        description: 'Submit exam registration and pay â‚¹500 fee.',
+        description: 'Submit exam registration and pay ₹500 fee.',
         actionRequired: 'Pay fee and submit forms to office',
       );
 
@@ -160,7 +160,7 @@ void main() {
       expect(find.text('Add to Calendar'), findsOneWidget);
       expect(find.text('AI Summarize'), findsOneWidget);
       expect(find.text('Listen'), findsOneWidget);
-      expect(find.text('Read Details â†’'), findsOneWidget);
+      expect(find.text('Read Details \u2192'), findsOneWidget);
 
       // Verify NO layout overflow occurred
       expect(tester.takeException(), isNull);

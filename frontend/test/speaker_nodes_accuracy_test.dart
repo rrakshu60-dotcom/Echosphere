@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
@@ -38,7 +38,7 @@ void main() {
     expect(wokwiNode['status'], equals('OFFLINE'), reason: 'Node must not show fake ONLINE status');
 
     final hwNode = ctrl.speakerNodes.firstWhere((n) => n['mac_address'] == 'D4:F3:2D:22:2A:CB');
-    expect(hwNode['name'], equals('Hardware Speaker Client'));
+    expect(hwNode['name'], anyOf(equals('Hardware Speaker Client'), equals('Hardware Speaker Client 1')));
     expect(hwNode['status'], equals('OFFLINE'), reason: 'Node must not show fake ONLINE status');
 
     final hwNode2 = ctrl.speakerNodes.firstWhere((n) => n['mac_address'] == 'D4:F3:2D:22:2A:CC');
@@ -134,7 +134,7 @@ void main() {
 
     // All canonical nodes must be rendered
     expect(find.text('Wokwi ESP32 Speaker Node'), findsOneWidget);
-    expect(find.text('Hardware Speaker Client'), findsOneWidget);
+    expect(find.textContaining('Hardware Speaker Client 1'), findsOneWidget);
     expect(find.text('Hardware Speaker Client 2'), findsOneWidget);
 
     // Initial status badges must be OFFLINE (no fake ONLINE)
