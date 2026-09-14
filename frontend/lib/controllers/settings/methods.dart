@@ -1,4 +1,4 @@
-import 'package:anymex/controllers/settings/settings.dart';
+﻿import 'package:echosphere/controllers/settings/settings.dart';
 import 'package:get/get.dart';
 
 extension UIMultiplierExtension on num {

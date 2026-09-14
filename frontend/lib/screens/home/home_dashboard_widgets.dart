@@ -1,23 +1,23 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/services/calendar_sync_service.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/utils/navigation_helper.dart';
-import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/calendar_sync_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 
-// ────────────────────────────────────────────────────────────────────────────
-// Stat Card — Animated metric display for the stats panel
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Stat Card â€” Animated metric display for the stats panel
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class StatCard extends StatelessWidget {
   final String label;
   final int value;
@@ -101,9 +101,9 @@ class StatCard extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Today Summary Banner — Shows at-a-glance daily summary
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Today Summary Banner â€” Shows at-a-glance daily summary
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class TodaySummaryBanner extends StatelessWidget {
   final int todayCount;
   final int pendingCount;
@@ -123,7 +123,7 @@ class TodaySummaryBanner extends StatelessWidget {
     String message;
     if (isAuthorized && pendingCount > 0) {
       message =
-          '$todayCount new announcement${todayCount == 1 ? '' : 's'} today · $pendingCount pending your approval';
+          '$todayCount new announcement${todayCount == 1 ? '' : 's'} today Â· $pendingCount pending your approval';
     } else {
       message =
           '$todayCount new announcement${todayCount == 1 ? '' : 's'} today';
@@ -165,9 +165,9 @@ class TodaySummaryBanner extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Priority Carousel — Horizontal scrollable priority announcements
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Priority Carousel â€” Horizontal scrollable priority announcements
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class PriorityCarousel extends StatefulWidget {
   final List<AnnouncementModel> items;
 
@@ -449,11 +449,11 @@ class _PriorityCard extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Enhanced Announcement Feed Card — With priority bar & attachment indicator
-// ────────────────────────────────────────────────────────────────────────────
-// Enhanced Announcement Feed Card — With priority bar, AI Summarizer & Kokoro TTS
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Enhanced Announcement Feed Card â€” With priority bar & attachment indicator
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Enhanced Announcement Feed Card â€” With priority bar, AI Summarizer & Kokoro TTS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class AnnouncementFeedCard extends StatefulWidget {
   final AnnouncementModel notice;
   final int index;
@@ -957,7 +957,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${widget.notice.creatorName} · ${widget.notice.department}',
+                        '${widget.notice.creatorName} Â· ${widget.notice.department}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1165,7 +1165,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                           ),
                         ),
                         child: Text(
-                          'Read Details →',
+                          'Read Details â†’',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1185,9 +1185,9 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Dashboard Skeleton — Shimmer loading placeholder
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Dashboard Skeleton â€” Shimmer loading placeholder
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DashboardSkeleton extends StatelessWidget {
   const DashboardSkeleton({super.key});
 
@@ -1266,9 +1266,9 @@ class DashboardSkeleton extends StatelessWidget {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Quick Action Card — Enhanced with badge support
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Quick Action Card â€” Enhanced with badge support
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class QuickActionCard extends StatelessWidget {
   final String title;
   final IconData icon;

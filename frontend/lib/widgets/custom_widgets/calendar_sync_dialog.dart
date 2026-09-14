@@ -1,6 +1,6 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/services/calendar_sync_service.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';

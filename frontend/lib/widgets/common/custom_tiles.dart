@@ -1,9 +1,9 @@
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/widgets/common/echosphere_slider_m3.dart';
-import 'package:anymex/widgets/common/glow.dart';
-import 'package:anymex/widgets/custom_widgets/custom_icon_wrapper.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/helper/tv_wrapper.dart';
+﻿import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/widgets/common/echosphere_slider_m3.dart';
+import 'package:echosphere/widgets/common/glow.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_icon_wrapper.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/helper/tv_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_iconly/flutter_iconly.dart';

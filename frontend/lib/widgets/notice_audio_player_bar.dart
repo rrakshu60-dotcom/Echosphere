@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 
 class NoticeAudioPlayerBar extends StatelessWidget {
   final int announcementId;
@@ -49,13 +49,13 @@ class NoticeAudioPlayerBar extends StatelessWidget {
   String _getLanguageDisplayLabel(String lang) {
     switch (lang) {
       case 'kn':
-        return 'ಕನ್ನಡ (KN)';
+        return 'à²•à²¨à³à²¨à²¡ (KN)';
       case 'hi':
-        return 'हिंदी (HI)';
+        return 'à¤¹à¤¿à¤‚à¤¦à¥€ (HI)';
       case 'te':
-        return 'తెలుగు (TE)';
+        return 'à°¤à±†à°²à±à°—à± (TE)';
       case 'ta':
-        return 'தமிழ் (TA)';
+        return 'à®¤à®®à®¿à®´à¯ (TA)';
       case 'en':
       default:
         return 'English';
@@ -68,10 +68,10 @@ class NoticeAudioPlayerBar extends StatelessWidget {
 
     final languages = [
       {'code': 'en', 'name': 'English', 'native': 'Default Campus English', 'desc': 'Original announcement speech'},
-      {'code': 'kn', 'name': 'Kannada', 'native': 'ಕನ್ನಡ', 'desc': 'State regional broadcast language'},
-      {'code': 'hi', 'name': 'Hindi', 'native': 'हिंदी', 'desc': 'National official language broadcast'},
-      {'code': 'te', 'name': 'Telugu', 'native': 'తెలుగు', 'desc': 'Regional South language translation'},
-      {'code': 'ta', 'name': 'Tamil', 'native': 'தமிழ்', 'desc': 'Regional South language translation'},
+      {'code': 'kn', 'name': 'Kannada', 'native': 'à²•à²¨à³à²¨à²¡', 'desc': 'State regional broadcast language'},
+      {'code': 'hi', 'name': 'Hindi', 'native': 'à¤¹à¤¿à¤‚à¤¦à¥€', 'desc': 'National official language broadcast'},
+      {'code': 'te', 'name': 'Telugu', 'native': 'à°¤à±†à°²à±à°—à±', 'desc': 'Regional South language translation'},
+      {'code': 'ta', 'name': 'Tamil', 'native': 'à®¤à®®à®¿à®´à¯', 'desc': 'Regional South language translation'},
     ];
 
     showModalBottomSheet(

@@ -1,17 +1,17 @@
-// ignore_for_file: depend_on_referenced_packages, use_build_context_synchronously
+﻿// ignore_for_file: depend_on_referenced_packages, use_build_context_synchronously
 
-import 'package:anymex/utils/logger.dart';
+import 'package:echosphere/utils/logger.dart';
 import 'dart:isolate';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/widgets/common/echosphere_slider_m3.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_progress.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/widgets/common/echosphere_slider_m3.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_progress.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image/image.dart' as img;

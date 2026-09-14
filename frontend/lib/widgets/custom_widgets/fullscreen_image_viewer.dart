@@ -1,7 +1,7 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_image.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_image.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';

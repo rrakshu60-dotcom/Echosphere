@@ -1,17 +1,17 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:anymex/screens/announcements/approval_queue_page.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
-import 'package:anymex/screens/admin/announcement_management_page.dart';
-import 'package:anymex/utils/navigation_helper.dart';
-import 'package:anymex/utils/usn_parser.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/screens/announcements/approval_queue_page.dart';
+import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
+import 'package:echosphere/screens/admin/announcement_management_page.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -729,7 +729,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             Text(
                               isLoading
                                   ? 'Updating campus directory...'
-                                  : '${users.length} registered • ${filteredUsers.length} shown',
+                                  : '${users.length} registered â€¢ ${filteredUsers.length} shown',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: theme.colorScheme.onSurface.withOpacity(0.55),
@@ -991,7 +991,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              'ID: $identifier • Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " • Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
+                                              'ID: $identifier â€¢ Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " â€¢ Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(

@@ -1,8 +1,8 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/settings/methods.dart';
-import 'package:anymex/controllers/settings/settings.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/settings/methods.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
 import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:get/get.dart';
 
 class EchoSphereContainer extends StatelessWidget {

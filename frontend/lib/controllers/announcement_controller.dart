@@ -1,9 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/services/calendar_sync_service.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/services/echosphere_realtime_service.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/echosphere_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1195,7 +1195,7 @@ class AnnouncementController extends GetxController {
   Future<bool> approveAnnouncement(int id, {String? remarks}) async {
     await _recordApprovedNoticeId(id);
 
-    // 0ms Optimistic UI update — save original for rollback
+    // 0ms Optimistic UI update â€” save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     AnnouncementModel? originalSnapshot;
     if (idx != -1) {
@@ -1279,7 +1279,7 @@ class AnnouncementController extends GetxController {
   Future<bool> rejectAnnouncement(int id, {required String remarks}) async {
     await _recordRejectedNoticeId(id);
 
-    // 0ms Optimistic UI update — save original for rollback
+    // 0ms Optimistic UI update â€” save original for rollback
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     AnnouncementModel? originalSnapshot;
     if (idx != -1) {
@@ -1564,7 +1564,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 9,
         title: 'Summer Technology Internship Drive at Goldman Sachs & Morgan Stanley',
-        description: 'Registrations are open for the 8-week Summer Technology Analyst Internship program offering a monthly stipend of ₹75,000 with Pre-Placement Interview (PPI) opportunities. Eligible candidates must apply through the Superset portal before October 26, 2026 at 11:59 PM.',
+        description: 'Registrations are open for the 8-week Summer Technology Analyst Internship program offering a monthly stipend of â‚¹75,000 with Pre-Placement Interview (PPI) opportunities. Eligible candidates must apply through the Superset portal before October 26, 2026 at 11:59 PM.',
         priority: 'HIGH',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1573,7 +1573,7 @@ class AnnouncementController extends GetxController {
         department: 'Placements',
         category: 'Placement',
         createdAt: now.subtract(const Duration(hours: 19)),
-        aiSummary: 'Goldman Sachs and Morgan Stanley summer internship applications open on Superset until October 26, 2026 at 11:59 PM with ₹75,000 monthly stipend.',
+        aiSummary: 'Goldman Sachs and Morgan Stanley summer internship applications open on Superset until October 26, 2026 at 11:59 PM with â‚¹75,000 monthly stipend.',
         attachments: const [],
         deliverSpeaker: false,
         deliverInApp: true,
@@ -1582,7 +1582,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 10,
         title: 'HackEcho 2026: 24-Hour National Collegiate Hackathon',
-        description: 'Registrations are live for HackEcho 2026, our flagship national 24-hour hackathon happening on November 7, 2026 at 9:00 AM in the Main Campus Auditorium. Total cash prize pool of ₹2,50,000 across AI/ML, Cyber Defense, and IoT tracks. Free food, mentoring, high-speed WiFi, and overnight accommodation provided for registered teams.',
+        description: 'Registrations are live for HackEcho 2026, our flagship national 24-hour hackathon happening on November 7, 2026 at 9:00 AM in the Main Campus Auditorium. Total cash prize pool of â‚¹2,50,000 across AI/ML, Cyber Defense, and IoT tracks. Free food, mentoring, high-speed WiFi, and overnight accommodation provided for registered teams.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1591,7 +1591,7 @@ class AnnouncementController extends GetxController {
         department: 'Institution',
         category: 'Event',
         createdAt: now.subtract(const Duration(hours: 21)),
-        aiSummary: 'HackEcho 2026 national 24-hour hackathon begins November 7, 2026 at 9:00 AM in Main Auditorium with ₹2.5 Lakhs prize pool.',
+        aiSummary: 'HackEcho 2026 national 24-hour hackathon begins November 7, 2026 at 9:00 AM in Main Auditorium with â‚¹2.5 Lakhs prize pool.',
         attachments: const ['HackEcho_Rulebook_2026.pdf'],
         deliverSpeaker: false,
         deliverInApp: true,
@@ -1618,7 +1618,7 @@ class AnnouncementController extends GetxController {
       AnnouncementModel(
         id: 12,
         title: 'Campus Founder Pitchfest: Angel Investors & Startup Seed Grants',
-        description: 'The Centre for Innovation and Entrepreneurship (CIE) hosts the annual Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1. Student startup founders can pitch to venture capitalists for seed grants up to ₹5,00,000. Submit your pitch deck before October 26, 2026.',
+        description: 'The Centre for Innovation and Entrepreneurship (CIE) hosts the annual Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1. Student startup founders can pitch to venture capitalists for seed grants up to â‚¹5,00,000. Submit your pitch deck before October 26, 2026.',
         priority: 'NORMAL',
         emergencyLevel: 'NORMAL',
         status: 'PUBLISHED',
@@ -1627,7 +1627,7 @@ class AnnouncementController extends GetxController {
         department: 'Institution',
         category: 'Event',
         createdAt: now.subtract(const Duration(hours: 25)),
-        aiSummary: 'CIE Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1; startup seed funding grants up to ₹5,00,000.',
+        aiSummary: 'CIE Campus Founder Pitchfest on October 29, 2026 at 11:00 AM in Seminar Hall 1; startup seed funding grants up to â‚¹5,00,000.',
         attachments: const [],
         deliverSpeaker: false,
         deliverInApp: true,

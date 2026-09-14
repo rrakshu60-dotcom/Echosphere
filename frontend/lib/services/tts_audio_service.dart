@@ -1,8 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 
 class TtsAudioService extends GetxService {
   static TtsAudioService get instance {
@@ -363,7 +363,7 @@ class TtsAudioService extends GetxService {
       if (streamUrl == null || streamUrl.isEmpty) {
         String textToSpeak = '';
         if (readMode.value == 'summary') {
-          // Strictly speak the Qwen AI Summary — NEVER the full body text!
+          // Strictly speak the Qwen AI Summary â€” NEVER the full body text!
           if (_activeSummary != null && _activeSummary!.trim().isNotEmpty) {
             textToSpeak = _activeSummary!.trim();
           } else if (_activeTitle != null && _activeTitle!.isNotEmpty) {

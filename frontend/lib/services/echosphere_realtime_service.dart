@@ -1,10 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
-import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 
 class EchosphereRealtimeEvent {
   final String event;

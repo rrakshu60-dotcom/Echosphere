@@ -1,10 +1,10 @@
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/utils/navigation_helper.dart';
-import 'package:anymex/widgets/common/glow.dart';
-import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
+﻿import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/widgets/common/glow.dart';
+import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';

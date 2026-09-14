@@ -1,16 +1,16 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/theme.dart';
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
-import 'package:anymex/screens/announcements/archive_page.dart';
-import 'package:anymex/screens/admin/announcement_management_page.dart';
-import 'package:anymex/screens/admin/user_management_page.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/theme.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/screens/announcements/announcement_detail_page.dart';
+import 'package:echosphere/screens/announcements/archive_page.dart';
+import 'package:echosphere/screens/admin/announcement_management_page.dart';
+import 'package:echosphere/screens/admin/user_management_page.dart';
 
 Widget createTestApp(Widget home) {
   return ChangeNotifierProvider(

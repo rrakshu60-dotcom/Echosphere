@@ -1,15 +1,15 @@
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/utils/navigation_helper.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/services/copilot_client.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:anymex/constants/themes.dart';
+﻿import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/echosphere_ai_controller.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/services/copilot_client.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:get/get.dart';
@@ -116,7 +116,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Department: ${ann['department'] ?? 'College-Wide'} • ${ann['created_at'] ?? 'Recent'}',
+                'Department: ${ann['department'] ?? 'College-Wide'} â€¢ ${ann['created_at'] ?? 'Recent'}',
                 style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.6)),
               ),
               const Divider(height: 24),
@@ -537,7 +537,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
         iconData = Icons.tune_rounded;
         accentColor = theme.colorScheme.primary;
         final secName = section != null ? section.replaceAll('_', ' ') : 'Preferences';
-        title = 'Preferences • ${secName.toUpperCase()}';
+        title = 'Preferences â€¢ ${secName.toUpperCase()}';
         description = 'Profile, credentials, and app preferences';
         buttonText = 'Open Preferences';
       } else if (cat != null && cat.isNotEmpty) {
@@ -811,11 +811,11 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '• Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          '• Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          '• Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
-                                          '• Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
-                                          '• Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
+                                          'â€¢ Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          'â€¢ Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
+                                          'â€¢ Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
+                                          'â€¢ Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
+                                          'â€¢ Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
                                           style: const TextStyle(fontSize: 11, height: 1.5),
                                         ),
                                       ],
@@ -849,9 +849,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    '• Intent Accuracy: ${((trainResult!["intent_accuracy"] ?? 0.95) * 100).toStringAsFixed(1)}%\n'
-                                    '• Emergency Classifier: ${((trainResult!["emergency_f1"] ?? 0.98) * 100).toStringAsFixed(1)}% F1-score\n'
-                                    '• Training Samples: ${trainResult!["training_samples"] ?? 120}',
+                                    'â€¢ Intent Accuracy: ${((trainResult!["intent_accuracy"] ?? 0.95) * 100).toStringAsFixed(1)}%\n'
+                                    'â€¢ Emergency Classifier: ${((trainResult!["emergency_f1"] ?? 0.98) * 100).toStringAsFixed(1)}% F1-score\n'
+                                    'â€¢ Training Samples: ${trainResult!["training_samples"] ?? 120}',
                                     style: const TextStyle(fontSize: 11, height: 1.4),
                                   ),
                                 ],

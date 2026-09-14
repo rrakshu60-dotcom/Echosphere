@@ -1,7 +1,7 @@
-import 'package:anymex/controllers/settings/methods.dart';
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
+﻿import 'package:echosphere/controllers/settings/methods.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 

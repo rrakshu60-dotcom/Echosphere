@@ -1,6 +1,6 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_animated_logo.dart';
 
 /// Splash Screen with Animated EchoSphere ES Logo
 class EchoSphereSplashScreen extends StatefulWidget {

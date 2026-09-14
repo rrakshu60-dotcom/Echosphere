@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/speaker_queue_controller.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
 
 void main() {
   setUp(() {

@@ -1,26 +1,26 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/speaker_queue_controller.dart';
-import 'package:anymex/services/calendar_sync_service.dart';
-import 'package:anymex/widgets/common/glow.dart';
-import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/attachment_viewer_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/widgets/common/glow.dart';
+import 'package:echosphere/widgets/custom_widgets/calendar_sync_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/notice_audio_player_bar.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/utils/navigation_helper.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/notice_audio_player_bar.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -64,13 +64,13 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   String _getLanguageName(String code) {
     switch (code) {
       case 'kn':
-        return 'Kannada (ಕನ್ನಡ)';
+        return 'Kannada (à²•à²¨à³à²¨à²¡)';
       case 'hi':
-        return 'Hindi (हिंदी)';
+        return 'Hindi (à¤¹à¤¿à¤‚à¤¦à¥€)';
       case 'te':
-        return 'Telugu (తెలుగు)';
+        return 'Telugu (à°¤à±†à°²à±à°—à±)';
       case 'ta':
-        return 'Tamil (தமிழ்)';
+        return 'Tamil (à®¤à®®à®¿à®´à¯)';
       case 'en':
       default:
         return 'English';
@@ -687,10 +687,10 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                   ),
                                   ...[
                                     {'code': 'en', 'label': 'English'},
-                                    {'code': 'kn', 'label': 'ಕನ್ನಡ'},
-                                    {'code': 'hi', 'label': 'हिंदी'},
-                                    {'code': 'te', 'label': 'తెలుగు'},
-                                    {'code': 'ta', 'label': 'தமிழ்'},
+                                    {'code': 'kn', 'label': 'à²•à²¨à³à²¨à²¡'},
+                                    {'code': 'hi', 'label': 'à¤¹à¤¿à¤‚à¤¦à¥€'},
+                                    {'code': 'te', 'label': 'à°¤à±†à°²à±à°—à±'},
+                                    {'code': 'ta', 'label': 'à®¤à®®à®¿à®´à¯'},
                                   ].map((l) {
                                     final isSelected = _selectedLang == l['code'];
                                     return InkWell(
@@ -792,7 +792,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '${announcement.creatorName} • Designation: ${announcement.creatorRole}',
+                                          '${announcement.creatorName} â€¢ Designation: ${announcement.creatorRole}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -802,7 +802,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                           ),
                                         ),
                                         Text(
-                                          'Department: ${announcement.department} • ${DateFormat("MMMM dd, yyyy • hh:mm a").format(announcement.createdAt)}',
+                                          'Department: ${announcement.department} â€¢ ${DateFormat("MMMM dd, yyyy â€¢ hh:mm a").format(announcement.createdAt)}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -1304,11 +1304,11 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                '• Created By: ${announcement.creatorName} (${announcement.department})\n'
-                                '• Target Audience: Entire College & Department\n'
-                                '• Delivery Channels: In-App Feed, Push Notification\n'
-                                '• Approval Status: ${announcement.status}\n'
-                                '• Timestamp: ${DateFormat("MMM dd, yyyy • hh:mm:ss a").format(announcement.createdAt)}',
+                                'â€¢ Created By: ${announcement.creatorName} (${announcement.department})\n'
+                                'â€¢ Target Audience: Entire College & Department\n'
+                                'â€¢ Delivery Channels: In-App Feed, Push Notification\n'
+                                'â€¢ Approval Status: ${announcement.status}\n'
+                                'â€¢ Timestamp: ${DateFormat("MMM dd, yyyy â€¢ hh:mm:ss a").format(announcement.createdAt)}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   height: 1.6,
@@ -1773,7 +1773,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(newDateTime)}!');
         Get.back();
       }
     }
@@ -1938,7 +1938,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                       Icon(Icons.check_circle_outline_rounded, size: 12, color: theme.colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
-                        '$slotName • $playedAt',
+                        '$slotName â€¢ $playedAt',
                         style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.75)),
                       ),
                     ],
@@ -2072,7 +2072,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '$guestName${guestTitle.isNotEmpty ? ' — $guestTitle' : ''}',
+                          '$guestName${guestTitle.isNotEmpty ? ' â€” $guestTitle' : ''}',
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                       ),

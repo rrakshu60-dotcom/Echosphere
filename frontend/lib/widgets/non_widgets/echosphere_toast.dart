@@ -1,9 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:get/get.dart';
 
 class EchoSphereToast {

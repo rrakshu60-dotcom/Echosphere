@@ -1,14 +1,14 @@
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:anymex/utils/navigation_helper.dart';
+﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -190,7 +190,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'By: ${item.creatorName} (${item.department}) • ${DateFormat("MMM dd, yyyy • hh:mm a").format(item.createdAt)}',
+                                'By: ${item.creatorName} (${item.department}) â€¢ ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(item.createdAt)}',
                                 style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.65)),
                               ),
                               const Divider(height: 20),
@@ -483,7 +483,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(newDateTime)}!');
         setState(() {});
       }
     }
@@ -659,7 +659,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                                               ),
                                               const SizedBox(height: 2),
                                               Text(
-                                                'Actor: ${userId.isNotEmpty ? "User #$userId" : "System"} • $createdAt',
+                                                'Actor: ${userId.isNotEmpty ? "User #$userId" : "System"} â€¢ $createdAt',
                                                 style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.6)),
                                               ),
                                             ],

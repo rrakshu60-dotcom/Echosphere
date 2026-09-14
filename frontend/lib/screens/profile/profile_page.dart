@@ -1,12 +1,12 @@
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/auth/login_screen.dart';
-import 'package:anymex/utils/navigation_helper.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/custom_widgets/privacy_policy_dialog.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/screens/auth/login_screen.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/custom_widgets/privacy_policy_dialog.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
