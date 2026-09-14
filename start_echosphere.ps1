@@ -6,22 +6,46 @@ Write-Host "       EchoSphere Full-Stack App & AI Ecosystem Launcher        " -F
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$VenvPython = Join-Path $ScriptDir "backend\ml\gemma_training\.venv\Scripts\python.exe"
+$CandidatePythons = @(
+    (Join-Path $ScriptDir "backend\ml\gemma_training\.venv\Scripts\python.exe"),
+    (Join-Path $ScriptDir "backend\.venv\Scripts\python.exe"),
+    (Join-Path $ScriptDir ".venv\Scripts\python.exe"),
+    "C:\Python314\python.exe",
+    "C:\Users\Rakshitha\AppData\Local\Programs\Python\Python312\python.exe"
+)
+
+$VenvPython = $null
+foreach ($cand in $CandidatePythons) {
+    if (Test-Path $cand) {
+        $VenvPython = $cand
+        break
+    }
+}
+if ($null -eq $VenvPython) {
+    $sysPy = (Get-Command python -ErrorAction SilentlyContinue)
+    if ($sysPy) { $VenvPython = $sysPy.Source }
+}
+
+if ($null -eq $VenvPython -or -not (Test-Path $VenvPython)) {
+    Write-Host "[ERROR] Valid Python interpreter not found." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Using Python: $VenvPython" -ForegroundColor Green
+
 $GemmaScript = Join-Path $ScriptDir "backend\ml\gemma_training\serve_gemma.py"
 $BackendScript = Join-Path $ScriptDir "backend\run_server.py"
 
-if (-not (Test-Path $VenvPython)) {
-    Write-Host "[ERROR] Python venv not found at: $VenvPython" -ForegroundColor Red
-    exit 1
-}
-
-# 1. Start Gemma 2 GPU Microservice on port 8008 if not running
+# 1. Start Gemma 2 GPU Microservice on port 8008 if available and not running
 Write-Host "`n[1/3] Checking Gemma 2 Local GPU Microservice (Port 8008)..." -ForegroundColor Yellow
 $GemmaActive = Get-NetTCPConnection -LocalPort 8008 -ErrorAction SilentlyContinue
 if ($null -eq $GemmaActive) {
-    Write-Host "      Starting Gemma GPU Microservice..." -ForegroundColor Green
-    Start-Process -FilePath $VenvPython -ArgumentList $GemmaScript -WorkingDirectory (Split-Path $GemmaScript) -WindowStyle Hidden
-    Start-Sleep -Seconds 4
+    if (Test-Path $GemmaScript) {
+        Write-Host "      Starting Gemma GPU Microservice..." -ForegroundColor Green
+        Start-Process -FilePath $VenvPython -ArgumentList $GemmaScript -WorkingDirectory (Split-Path $GemmaScript) -WindowStyle Hidden
+        Start-Sleep -Seconds 3
+    } else {
+        Write-Host "      [INFO] Gemma script not present, skipping Gemma microservice." -ForegroundColor Gray
+    }
 } else {
     Write-Host "      Gemma GPU Microservice is already running on port 8008." -ForegroundColor Green
 }

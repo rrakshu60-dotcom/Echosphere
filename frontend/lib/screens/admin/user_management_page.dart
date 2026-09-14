@@ -940,13 +940,19 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                       CircleAvatar(
                                         radius: 18,
                                         backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
-                                        child: Text(
-                                          (u['full_name'] as String? ?? 'U')[0].toUpperCase(),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                            color: theme.colorScheme.primary,
-                                          ),
+                                        child: Builder(
+                                          builder: (_) {
+                                            final rawName = (u['full_name'] as String?)?.trim() ?? '';
+                                            final initial = rawName.isNotEmpty ? rawName[0].toUpperCase() : 'U';
+                                            return Text(
+                                              initial,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                                color: theme.colorScheme.primary,
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ),
                                       const SizedBox(width: 10),

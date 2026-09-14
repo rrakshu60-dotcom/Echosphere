@@ -93,6 +93,12 @@ def get_announcements(
     response_model=list[AnnouncementResponse],
     summary="Get Role-Based Approval Queue",
 )
+@router.get(
+    "/pending",
+    response_model=list[AnnouncementResponse],
+    summary="Get Pending Approval Queue Alias",
+    include_in_schema=False,
+)
 def get_approval_queue(
     db: Session = Depends(get_db),
     current_user: User = Depends(
@@ -110,6 +116,16 @@ def get_approval_queue(
         db=db,
         current_user=current_user,
     )
+
+
+@router.get("/chimes/{chime_type}/preview")
+def preview_chime(chime_type: str):
+    """
+    Direct preview of any acoustic chime (urgent_academic, events_sports, emergency, standard).
+    """
+    from app.services.chime_service import get_or_create_chime_wav
+    wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
+    return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
 
 
 @router.get(
@@ -547,15 +563,6 @@ def get_announcement_chime(
     wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
     return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
 
-
-@router.get("/chimes/{chime_type}/preview")
-def preview_chime(chime_type: str):
-    """
-    Direct preview of any acoustic chime (urgent_academic, events_sports, emergency, standard).
-    """
-    from app.services.chime_service import get_or_create_chime_wav
-    wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
-    return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
 
 
 @router.get("/{announcement_id}/summary")
