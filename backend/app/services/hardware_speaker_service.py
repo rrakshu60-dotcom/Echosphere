@@ -637,7 +637,9 @@ def dispatch_queue_action_to_speakers(
     dept_code = "ALL"
     if ann and getattr(ann, 'creator', None) and getattr(ann.creator, 'department', None):
         dept_code = ann.creator.department.code or "ALL"
-    target_mac = queue_item.speaker_node.mac_address if queue_item.speaker_node else None
+    target_aud = str(getattr(ann, 'target_audience', '') or '').lower()
+    is_college_wide = "entire" in target_aud or "all" in target_aud or "college" in target_aud or not queue_item.speaker_node
+    target_mac = None if is_college_wide else (queue_item.speaker_node.mac_address if queue_item.speaker_node else None)
 
 
 
