@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,11 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
 class AttachmentViewerDialog extends StatelessWidget {
   final String filename;
@@ -85,7 +85,7 @@ DEPARTMENT: ${notice.department}
 CATEGORY: ${notice.category}
 PRIORITY: ${notice.priority}
 ISSUED BY: ${notice.creatorName} (Designation: ${notice.creatorRole})
-DATE: ${DateFormat('MMMM dd, yyyy • hh:mm a').format(notice.createdAt)}
+DATE: ${DateFormat('MMMM dd, yyyy â€¢ hh:mm a').format(notice.createdAt)}
 ATTACHMENT: $filename
 
 --------------------------------------------------------------------------------
@@ -112,14 +112,14 @@ Generated at: ${DateTime.now().toIso8601String()}
     HapticFeedback.lightImpact();
     try {
       final shareText = '''
-📢 ${notice.title}
-📁 Attachment: $filename
-🏛 Department: ${notice.department}
-📅 Date: ${DateFormat('MMM dd, yyyy').format(notice.createdAt)}
+ðŸ“¢ ${notice.title}
+ðŸ“ Attachment: $filename
+ðŸ› Department: ${notice.department}
+ðŸ“… Date: ${DateFormat('MMM dd, yyyy').format(notice.createdAt)}
 
 ${notice.description}
 
-— Shared via EchoSphere Smart Campus System
+â€” Shared via EchoSphere Smart Campus System
 ''';
       await Share.share(shareText, subject: notice.title);
     } catch (e) {
@@ -173,7 +173,7 @@ ${notice.description}
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '$_fileTypeLabel · Attached to "${notice.title}"',
+                          '$_fileTypeLabel Â· Attached to "${notice.title}"',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -253,7 +253,7 @@ ${notice.description}
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'INSTITUTIONAL DOCUMENT VIEW · ${notice.department.toUpperCase()}',
+                                    'INSTITUTIONAL DOCUMENT VIEW Â· ${notice.department.toUpperCase()}',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,

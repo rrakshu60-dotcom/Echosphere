@@ -1,14 +1,14 @@
-import 'dart:io';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/controllers/speaker_queue_controller.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dialog.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_dropdown.dart';
-import 'package:anymex/widgets/custom_widgets/voice_dictation_sheet.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'dart:io';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/echosphere_ai_controller.dart';
+import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:echosphere/widgets/custom_widgets/voice_dictation_sheet.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -696,11 +696,11 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                     ),
                     const SizedBox(height: 4),
                     if (aiValidationWarning != null)
-                      Text('• $aiValidationWarning', style: const TextStyle(fontSize: 11)),
+                      Text('â€¢ $aiValidationWarning', style: const TextStyle(fontSize: 11)),
                     if (aiSpamWarning != null)
-                      Text('• Spam Alert: $aiSpamWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                      Text('â€¢ Spam Alert: $aiSpamWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                     if (aiDuplicateWarning != null)
-                      Text('• Duplicate Alert: $aiDuplicateWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                      Text('â€¢ Duplicate Alert: $aiDuplicateWarning', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                   ],
                 ),
               ),
@@ -995,7 +995,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Scheduled for: ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}',
+                          'Scheduled for: ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -1047,14 +1047,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         String statusMessage = '';
         if (isTeacher) {
           statusMessage = isScheduleLater
-              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)})!'
+              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)})!'
               : 'Notice submitted for HoD/Principal approval!';
         } else if (isHodCrossDept) {
           statusMessage = isScheduleLater
-              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)})!'
+              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)})!'
               : 'Institution-wide notice submitted for Principal/College Admin approval!';
         } else if (isScheduleLater) {
-          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy • hh:mm a").format(scheduledDateTime)}!';
+          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy â€¢ hh:mm a").format(scheduledDateTime)}!';
         } else {
           statusMessage = deliverSpeaker
               ? 'Notice published and queued for speaker broadcast!'
@@ -1204,7 +1204,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('• ', style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
+                  Text('â€¢ ', style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
                   Expanded(
                     child: Text(
                       msg,

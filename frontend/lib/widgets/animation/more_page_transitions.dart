@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 
 // Main page animation wrapper - perfect for entire screens
 class PageAnimationWrapper extends StatefulWidget {

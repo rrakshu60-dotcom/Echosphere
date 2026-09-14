@@ -1,6 +1,6 @@
-import 'dart:math' as math;
-import 'package:anymex/models/logo_animation_type.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+﻿import 'dart:math' as math;
+import 'package:echosphere/models/logo_animation_type.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 

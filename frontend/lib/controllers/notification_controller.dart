@@ -1,8 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/screens/announcements/announcement_detail_page.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/screens/announcements/announcement_detail_page.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';

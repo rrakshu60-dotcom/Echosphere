@@ -1,13 +1,13 @@
-import 'dart:convert';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/screens/auth/login_screen.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
+﻿import 'dart:convert';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/screens/auth/login_screen.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:anymex/utils/usn_parser.dart';
+import 'package:echosphere/utils/usn_parser.dart';
 
 class EchosphereUser {
   final int id;
@@ -297,7 +297,7 @@ class AuthController extends GetxController {
             timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 2))),
             username: 'CAdmin',
             role: 'College Admin',
-            location: 'Bangalore Campus Node (Main Admin Block • 192.168.1.105)',
+            location: 'Bangalore Campus Node (Main Admin Block â€¢ 192.168.1.105)',
             status: 'SUCCESS (Employee ID Verified)',
             employeeId: 'DBITADM001',
           ),
@@ -305,7 +305,7 @@ class AuthController extends GetxController {
             timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 5))),
             username: '1db23ci079',
             role: 'Student',
-            location: 'Bangalore Campus Wi-Fi (Academic Block B • 192.168.2.14)',
+            location: 'Bangalore Campus Wi-Fi (Academic Block B â€¢ 192.168.2.14)',
             status: 'LOGIN SUCCESS',
           ),
         ];
@@ -333,7 +333,7 @@ class AuthController extends GetxController {
     String? employeeId,
   }) async {
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-    const location = 'Bangalore Campus Node (Main Admin Block • 192.168.1.105)';
+    const location = 'Bangalore Campus Node (Main Admin Block â€¢ 192.168.1.105)';
 
     final entry = LoginLogEntry(
       timestamp: now,

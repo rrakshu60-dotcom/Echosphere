@@ -1,14 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/theme.dart';
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/screens/home/home_dashboard_widgets.dart';
-import 'package:anymex/services/calendar_sync_service.dart';
-import 'package:anymex/widgets/custom_widgets/calendar_sync_dialog.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/theme.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/screens/home/home_dashboard_widgets.dart';
+import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/widgets/custom_widgets/calendar_sync_dialog.dart';
 
 Widget createTestApp(Widget home) {
   return ChangeNotifierProvider(
@@ -42,8 +42,8 @@ void main() {
         startTime: start,
         endTime: end,
         location: 'Room 302',
-        description: 'Submit exam forms with ₹500 fee.',
-        actionRequired: 'Submit form and pay ₹500',
+        description: 'Submit exam forms with â‚¹500 fee.',
+        actionRequired: 'Submit form and pay â‚¹500',
       );
 
       final url = event.toGoogleCalendarUrl();
@@ -83,7 +83,7 @@ void main() {
     test('extractEventClientSide extracts dates, times, venues, and fees offline', () {
       final parsed = CalendarSyncService.extractEventClientSide(
         'Fee Payment Deadline',
-        'Submit exam fee by Oct 24th, 5 PM to Room 302 with ₹500 fee.',
+        'Submit exam fee by Oct 24th, 5 PM to Room 302 with â‚¹500 fee.',
       );
 
       expect(parsed.hasEvent, isTrue);
@@ -91,7 +91,7 @@ void main() {
       expect(parsed.startTime.day, equals(24));
       expect(parsed.startTime.hour, equals(17));
       expect(parsed.location.toLowerCase(), contains('302'));
-      expect(parsed.actionRequired, contains('₹500'));
+      expect(parsed.actionRequired, contains('â‚¹500'));
     });
   });
 
@@ -107,7 +107,7 @@ void main() {
         startTime: DateTime(2026, 10, 24, 17, 0),
         endTime: DateTime(2026, 10, 24, 18, 0),
         location: 'Admin Block Room 302',
-        description: 'Submit exam registration and pay ₹500 fee.',
+        description: 'Submit exam registration and pay â‚¹500 fee.',
         actionRequired: 'Pay fee and submit forms to office',
       );
 
@@ -160,7 +160,7 @@ void main() {
       expect(find.text('Add to Calendar'), findsOneWidget);
       expect(find.text('AI Summarize'), findsOneWidget);
       expect(find.text('Listen'), findsOneWidget);
-      expect(find.text('Read Details →'), findsOneWidget);
+      expect(find.text('Read Details â†’'), findsOneWidget);
 
       // Verify NO layout overflow occurred
       expect(tester.takeException(), isNull);

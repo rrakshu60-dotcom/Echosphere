@@ -1,6 +1,6 @@
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';

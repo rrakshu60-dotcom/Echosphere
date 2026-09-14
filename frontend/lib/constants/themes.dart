@@ -1,11 +1,11 @@
-import 'package:anymex/widgets/animation/page_transition.dart';
+﻿import 'package:echosphere/widgets/animation/page_transition.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Central Design Token System for EchoSphere
 /// Official Shadcn Violet Design System (OKLCH color space, 1rem/16px radius, slate/obsidian neutrals)
 class EchoSpherePalette {
-  // ─── SHADCN VIOLET BRAND CORE ─────────────────────────────────────────────
+  // â”€â”€â”€ SHADCN VIOLET BRAND CORE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Light Mode: Refined modern violet-indigo (soft on eyes, premium, high contrast)
   static const Color lightPrimary = Color(0xFF5B50D6);
   static const Color lightPrimaryForeground = Color(0xFFFFFFFF);
@@ -14,7 +14,7 @@ class EchoSpherePalette {
   static const Color darkPrimary = Color(0xFF8B5CF6);
   static const Color darkPrimaryForeground = Color(0xFFFFFFFF);
 
-  // ─── SECONDARY & NEUTRAL BADGE TOKENS ─────────────────────────────────────
+  // â”€â”€â”€ SECONDARY & NEUTRAL BADGE TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Light: Clean calm slate neutrals with high-contrast text
   static const Color lightSecondary = Color(0xFFF1F5F9);
   static const Color lightSecondaryForeground = Color(0xFF334155);
@@ -23,7 +23,7 @@ class EchoSpherePalette {
   static const Color darkSecondary = Color(0xFF262235);
   static const Color darkSecondaryForeground = Color(0xFFD6C8F5);
 
-  // ─── MUTED & ACCENT TOKENS ────────────────────────────────────────────────
+  // â”€â”€â”€ MUTED & ACCENT TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Light Muted: Calm slate surface & legible text
   static const Color lightMuted = Color(0xFFF8FAFC);
   static const Color lightMutedForeground = Color(0xFF64748B);
@@ -40,7 +40,7 @@ class EchoSpherePalette {
   static const Color darkAccent = Color(0xFF28223D);
   static const Color darkAccentForeground = Color(0xFFA78BFA);
 
-  // ─── HARMONIOUS ACCENT / NOTICE TOKENS (No Harsh Red) ──────────────────────
+  // â”€â”€â”€ HARMONIOUS ACCENT / NOTICE TOKENS (No Harsh Red) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Elegant muted rose/plum tones that seamlessly blend with indigo and purple:
   // Light mode: Sophisticated muted rose-wine #8E3B56 (gentle, high legibility)
   // Dark mode: Soft eye-friendly dusty rose #D47A9A (zero eye strain, warm glow)
@@ -51,7 +51,7 @@ class EchoSpherePalette {
   static const Color lightErrorContainer = Color(0xFFF8EBF0);
   static const Color darkErrorContainer = Color(0xFF331B26);
 
-  // ─── SURFACES & NEUTRALS ──────────────────────────────────────────────────
+  // â”€â”€â”€ SURFACES & NEUTRALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Light Mode Surfaces - Serene, soft off-white & crisp high-legibility slate
   static const Color lightScaffold = Color(0xFFF8F9FA); // Gentle eye-resting canvas
   static const Color lightSurface = Color(0xFFFFFFFF);  // Pure crisp white card
@@ -70,21 +70,21 @@ class EchoSpherePalette {
   static const Color darkTextSecondary = Color(0xFFA1A8B8);
   static const Color darkTextMuted = Color(0xFF737A8C);
 
-  // ─── CHART TOKENS ─────────────────────────────────────────────────────────
+  // â”€â”€â”€ CHART TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const Color chart1 = Color(0xFF5B50D6);
   static const Color chart2 = Color(0xFF0CB8DA);
   static const Color chart3 = Color(0xFF29A366);
   static const Color chart4 = Color(0xFFAF57DB);
   static const Color chart5 = Color(0xFFEB4799);
 
-  // ─── RADIUS TOKENS (Tweakcn Exact Scale) ──────────────────────────────────
+  // â”€â”€â”€ RADIUS TOKENS (Tweakcn Exact Scale) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const double radius = 16.0;      // 1rem (Default --radius)
   static const double radiusSm = 12.0;    // calc(1rem - 4px)
   static const double radiusMd = 14.0;    // calc(1rem - 2px)
   static const double radiusLg = 16.0;    // 1rem
   static const double radiusXl = 20.0;    // calc(1rem + 4px)
 
-  // ─── SHADOW TOKENS ────────────────────────────────────────────────────────
+  // â”€â”€â”€ SHADOW TOKENS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Light: Soft natural slate drop shadow (no harsh purple halos)
   static const Color lightShadowColor = Color(0x0A0F172A);
   // Dark: Deep charcoal shadow

@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:anymex/controllers/echosphere_ai_controller.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:echosphere/controllers/echosphere_ai_controller.dart';
 
 void main() {
   test('EchosphereAiController.sanitizeClientMarkdown eliminates raw formatting artifacts', () {

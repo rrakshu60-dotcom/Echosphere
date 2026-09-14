@@ -1,21 +1,21 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:anymex/ai/echosphere_ai.dart';
-import 'package:anymex/constants/themes.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/announcements/approval_queue_page.dart';
-import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
-import 'package:anymex/screens/home/home_dashboard_widgets.dart';
-import 'package:anymex/screens/notifications/notifications_page.dart';
-import 'package:anymex/screens/profile/profile_page.dart';
-import 'package:anymex/widgets/common/glow.dart';
-import 'package:anymex/widgets/common/navbar.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/notice_sort_button.dart';
-import 'package:anymex/widgets/header.dart';
+import 'package:echosphere/ai/echosphere_ai.dart';
+import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/screens/announcements/approval_queue_page.dart';
+import 'package:echosphere/screens/announcements/create_announcement_dialog.dart';
+import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
+import 'package:echosphere/screens/home/home_dashboard_widgets.dart';
+import 'package:echosphere/screens/notifications/notifications_page.dart';
+import 'package:echosphere/screens/profile/profile_page.dart';
+import 'package:echosphere/widgets/common/glow.dart';
+import 'package:echosphere/widgets/common/navbar.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
+import 'package:echosphere/widgets/header.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -258,9 +258,9 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Central Dashboard — The Home Screen
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Central Dashboard â€” The Home Screen
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildAnnouncementsDashboard(BuildContext context, ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
 
@@ -287,17 +287,17 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ─── Section 1: Welcome Banner ─────────────────────────
+              // â”€â”€â”€ Section 1: Welcome Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               _buildWelcomeBanner(theme),
               const SizedBox(height: 16),
 
-              // ─── Section 2: Admin Quick Workspace Console (for Staff/Admin) ─
+              // â”€â”€â”€ Section 2: Admin Quick Workspace Console (for Staff/Admin) â”€
               if (isStaffOrAdmin) ...[
                 _buildAdminWorkspaceBar(theme, role),
                 const SizedBox(height: 18),
               ],
 
-              // ─── Section 4: Priority Announcements Carousel ────────
+              // â”€â”€â”€ Section 4: Priority Announcements Carousel â”€â”€â”€â”€â”€â”€â”€â”€
               Obx(() {
                 final priorityList = annController.priorityAnnouncements;
                 if (priorityList.isEmpty) return const SizedBox.shrink();
@@ -307,7 +307,7 @@ class _HomePageState extends State<HomePage> {
                 );
               }),
 
-              // ─── Section 5: Integrated Dashboard Search Bar ─────────
+              // â”€â”€â”€ Section 5: Integrated Dashboard Search Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€
               Container(
                 decoration: BoxDecoration(
                   color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
@@ -361,11 +361,11 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 16),
 
-              // ─── Section 6: Category Filter Chips ──────────────────
+              // â”€â”€â”€ Section 6: Category Filter Chips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               _buildCategoryFilters(theme),
               const SizedBox(height: 16),
 
-              // ─── Section 7: Announcement Feed ──────────────────────
+              // â”€â”€â”€ Section 7: Announcement Feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               _buildAnnouncementFeed(theme),
             ],
           ),
@@ -374,9 +374,9 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Welcome Banner
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildWelcomeBanner(ThemeData theme) {
     return Obx(() {
       final user = authController.currentUser.value;
@@ -510,7 +510,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                            child: Text('•', style: TextStyle(fontSize: 11, color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.4) : const Color(0xFF94A3B8))),
+                            child: Text('â€¢', style: TextStyle(fontSize: 11, color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.4) : const Color(0xFF94A3B8))),
                           ),
                           Text(
                             '$today Today',
@@ -523,7 +523,7 @@ class _HomePageState extends State<HomePage> {
                           if (urgent > 0) ...[
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                              child: Text('•', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.35))),
+                              child: Text('â€¢', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.35))),
                             ),
                             Text(
                               '$urgent Urgent',
@@ -553,9 +553,9 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Admin Quick Workspace Bar (For Staff / Admins)
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildAdminWorkspaceBar(ThemeData theme, String role) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,9 +679,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Category Filter Chips
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildCategoryFilters(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,9 +764,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Announcement Feed List
-  // ──────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildAnnouncementFeed(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

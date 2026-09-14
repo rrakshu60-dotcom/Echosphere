@@ -1,10 +1,10 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
 class SpeakerQueueController extends GetxController {
   final EchosphereApiService _apiService = EchosphereApiService();
@@ -357,7 +357,7 @@ class SpeakerQueueController extends GetxController {
     final item = queueItems[activeIndex.value];
     final dept = item['department']?.toString() ?? 'College-Wide';
     final node = item['node_name']?.toString() ?? 'All Nodes';
-    return '$dept • $node';
+    return '$dept â€¢ $node';
   }
 
   String get currentElapsedFormatted {

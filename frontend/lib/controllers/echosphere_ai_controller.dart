@@ -1,8 +1,8 @@
-import 'dart:convert';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/services/copilot_client.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/utils/usn_parser.dart';
+﻿import 'dart:convert';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/services/copilot_client.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/utils/usn_parser.dart';
 import 'package:get/get.dart';
 
 class AiChatMessage {
@@ -102,7 +102,7 @@ class EchosphereAiController extends GetxController {
     final processed = <String>[];
     bool inList = false;
     for (final line in lines) {
-      final isItem = RegExp(r'^[ \t]*[-•*]\s+').hasMatch(line) || RegExp(r'^[ \t]*\d+\.\s+').hasMatch(line);
+      final isItem = RegExp(r'^[ \t]*[-â€¢*]\s+').hasMatch(line) || RegExp(r'^[ \t]*\d+\.\s+').hasMatch(line);
       if (isItem) {
         if (!inList && processed.isNotEmpty && processed.last.trim().isNotEmpty) {
           processed.add('');
@@ -439,7 +439,7 @@ class EchosphereAiController extends GetxController {
           '3. Faculty notices route to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options.';
     }
 
-    return '### Guidance for $name ($role · $dept Department)\n\n'
+    return '### Guidance for $name ($role Â· $dept Department)\n\n'
         'Your question has been matched against EchoSphere institutional knowledge.\n\n'
         '- **Recent Circulars:** View the latest department updates under the **Notices** tab.\n'
         '- **Support:** Consult your Class Teacher or Department HoD for official academic signatures and approvals.';

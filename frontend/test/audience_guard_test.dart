@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/screens/announcements/create_announcement_dialog.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/echosphere_ai_controller.dart';
+import 'package:echosphere/screens/announcements/create_announcement_dialog.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 
 void main() {
   setUp(() {

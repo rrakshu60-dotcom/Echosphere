@@ -1,10 +1,10 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_animated_logo.dart';
 import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/controllers/theme.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/controllers/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 

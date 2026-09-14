@@ -1,9 +1,9 @@
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/theme.dart';
-import 'package:anymex/screens/announcements/speaker_queue_page.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
-import 'package:anymex/widgets/custom_widgets/server_status_indicator.dart';
+﻿import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/theme.dart';
+import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:echosphere/widgets/custom_widgets/server_status_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';

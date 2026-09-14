@@ -1,20 +1,20 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/speaker_queue_controller.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_chip.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_container.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:anymex/services/tts_audio_service.dart';
-import 'package:anymex/widgets/custom_widgets/audio_waveform_visualizer.dart';
-import 'package:anymex/utils/navigation_helper.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/services/tts_audio_service.dart';
+import 'package:echosphere/widgets/custom_widgets/audio_waveform_visualizer.dart';
+import 'package:echosphere/utils/navigation_helper.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
   const SpeakerQueuePage({super.key});
@@ -1092,7 +1092,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           Expanded(
                             child: EchoSphereText(
                               text: isPlaying
-                                  ? 'Playing once • auto-removes on finish'
+                                  ? 'Playing once â€¢ auto-removes on finish'
                                   : 'Paused',
                               size: 9,
                               maxLines: 1,
@@ -1346,7 +1346,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                     const SizedBox(width: 4),
                                                     Flexible(
                                                       child: EchoSphereText(
-                                                        text: '$nodeName • ${isOnline ? "ONLINE" : "OFFLINE"}',
+                                                        text: '$nodeName â€¢ ${isOnline ? "ONLINE" : "OFFLINE"}',
                                                         size: 9,
                                                         variant: TextVariant.semiBold,
                                                         color: isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3),
@@ -1404,7 +1404,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       ),
                                       const SizedBox(height: 3),
                                       EchoSphereText(
-                                        text: 'Scheduled: $scheduledDisplay • Status: $statusStr',
+                                        text: 'Scheduled: $scheduledDisplay â€¢ Status: $statusStr',
                                         size: 10,
                                         color: context.colors.onSurface.opaque(0.6),
                                         maxLines: 1,

@@ -1,7 +1,7 @@
-import 'dart:io';
+﻿import 'dart:io';
 
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/utils/logger.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 

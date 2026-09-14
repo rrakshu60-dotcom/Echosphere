@@ -1,15 +1,15 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:anymex/controllers/settings/settings.dart';
-import 'package:anymex/controllers/announcement_controller.dart';
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/controllers/theme.dart';
-import 'package:anymex/controllers/echosphere_ai_controller.dart';
-import 'package:anymex/screens/home/home_dashboard_widgets.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
+import 'package:echosphere/controllers/settings/settings.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/theme.dart';
+import 'package:echosphere/controllers/echosphere_ai_controller.dart';
+import 'package:echosphere/screens/home/home_dashboard_widgets.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 
 Widget createTestApp(Widget home) {
   return ChangeNotifierProvider(
@@ -57,7 +57,7 @@ void main() {
 
       expect(res['target_language'], 'kn');
       expect(res['language_name'], 'Kannada');
-      expect(res['native_name'], 'ಕನ್ನಡ');
+      expect(res['native_name'], 'à²•à²¨à³à²¨à²¡');
 
       // Check Kannada Unicode script range (\u0C80-\u0CFF)
       expect(RegExp(r'[\u0C80-\u0CFF]').hasMatch(res['translated_content']), isTrue);
@@ -160,7 +160,7 @@ void main() {
 
       // Verify title and description are rendered
       expect(find.text('Workshop on Artificial Intelligence'), findsOneWidget);
-      expect(find.text('Read Details →'), findsOneWidget);
+      expect(find.text('Read Details â†’'), findsOneWidget);
       expect(find.text('Add to Calendar'), findsOneWidget);
 
       // Verify Translate chip is completely removed per user instruction

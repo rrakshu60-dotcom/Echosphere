@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/widgets/custom_widgets/custom_text.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_button.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 
 void showEchoSpherePrivacyPolicy(BuildContext context) {
   showDialog(
@@ -82,10 +82,10 @@ void showEchoSpherePrivacyPolicy(BuildContext context) {
                       _buildSectionTitle('3. Device Permissions & Scoped Storage'),
                       _buildParagraph(
                         'EchoSphere strictly obeys modern Android Scoped Storage and Google Play Store policies:\n'
-                        '• File Downloads: Official notices and circular attachments are saved directly to your device without requiring broad storage permissions.\n'
-                        '• Media Upload: Media permissions (READ_MEDIA_IMAGES/VIDEO) are only requested when you explicitly choose to attach an image or PDF to a notice.\n'
-                        '• Audio Recording: Audio permission is used solely for optional speech-to-text dictation when drafting announcements.\n'
-                        '• Notifications: POST_NOTIFICATIONS is requested on Android 13+ to deliver critical campus emergency alerts.',
+                        'â€¢ File Downloads: Official notices and circular attachments are saved directly to your device without requiring broad storage permissions.\n'
+                        'â€¢ Media Upload: Media permissions (READ_MEDIA_IMAGES/VIDEO) are only requested when you explicitly choose to attach an image or PDF to a notice.\n'
+                        'â€¢ Audio Recording: Audio permission is used solely for optional speech-to-text dictation when drafting announcements.\n'
+                        'â€¢ Notifications: POST_NOTIFICATIONS is requested on Android 13+ to deliver critical campus emergency alerts.',
                       ),
                       const SizedBox(height: 14),
 
@@ -164,7 +164,7 @@ Widget _buildBullet(String text) {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('• ', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+        const Text('â€¢ ', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
         Expanded(
           child: Text(
             text,

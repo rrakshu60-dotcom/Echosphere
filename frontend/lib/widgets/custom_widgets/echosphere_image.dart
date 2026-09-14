@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 
-import 'package:anymex/utils/theme_extensions.dart';
-import 'package:anymex/constants/themes.dart';
+import 'package:echosphere/utils/theme_extensions.dart';
+import 'package:echosphere/constants/themes.dart';
 
 bool isBase64Image(String value) {
   if (value.isEmpty) return false;

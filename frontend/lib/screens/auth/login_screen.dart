@@ -1,9 +1,9 @@
-import 'package:anymex/controllers/auth_controller.dart';
-import 'package:anymex/screens/home_page.dart';
-import 'package:anymex/services/echosphere_api_service.dart';
-import 'package:anymex/widgets/custom_widgets/echosphere_animated_logo.dart';
-import 'package:anymex/widgets/custom_widgets/privacy_policy_dialog.dart';
-import 'package:anymex/widgets/non_widgets/snackbar.dart';
+﻿import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/screens/home_page.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_animated_logo.dart';
+import 'package:echosphere/widgets/custom_widgets/privacy_policy_dialog.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
