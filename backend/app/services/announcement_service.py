@@ -250,11 +250,15 @@ def get_all_announcements_service(
     db: Session,
     status: str | None = None,
     category_id: int | None = None,
+    skip: int = 0,
+    limit: int | None = None,
 ):
     return get_all_announcements(
         db=db,
         status=status,
         category_id=category_id,
+        skip=skip,
+        limit=limit,
     )
 
 

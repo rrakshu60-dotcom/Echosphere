@@ -569,8 +569,8 @@ class AnnouncementController extends GetxController {
       } else {
         _silentApprovalQueueSync();
       }
-    } else if (event.event == 'ANNOUNCEMENT_CREATED') {
-      _silentApprovalQueueSync();
+    } else if (event.event == 'ANNOUNCEMENT_CREATED' || event.event == 'ANNOUNCEMENT_PUBLISHED') {
+      fetchAnnouncements();
     } else if (event.event == 'ANNOUNCEMENT_DELETED') {
       _rawAnnouncements.removeWhere((a) => a.id == id);
       _rawAnnouncements.refresh();
@@ -789,31 +789,12 @@ class AnnouncementController extends GetxController {
         }
 
         if (fetched.isNotEmpty) {
-          // Merge fetched announcements with published baseline catalog for any missing categories
-          final baseline = _getSampleAnnouncements();
-          final Map<String, AnnouncementModel> mergedMap = {};
-          final fetchedCategories = fetched.map((a) => a.category.toLowerCase().trim()).toSet();
-          for (final a in baseline) {
-            if (!fetchedCategories.contains(a.category.toLowerCase().trim())) {
-              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
-            }
-          }
+          // Dynamic database notices: preserve all announcements by unique database ID
+          final Map<int, AnnouncementModel> mergedById = {};
           for (final a in fetched) {
-            // Apply persisted approval/rejection state overrides
-            if (_persistedApprovedIds.contains(a.id)) {
-              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a.copyWith(
-                status: 'PUBLISHED',
-                approvedAt: a.approvedAt ?? DateTime.now(),
-              );
-            } else if (_persistedRejectedIds.contains(a.id)) {
-              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a.copyWith(
-                status: 'REJECTED',
-              );
-            } else {
-              mergedMap['${a.category.toLowerCase().trim()}_${a.title.toLowerCase().trim()}'] = a;
-            }
+            mergedById[a.id] = a;
           }
-          _rawAnnouncements.value = mergedMap.values.toList();
+          _rawAnnouncements.value = mergedById.values.toList();
           _savePersistentCache(_rawAnnouncements.toList());
           isLoading.value = false;
           update();
