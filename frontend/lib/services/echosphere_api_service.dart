@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -1881,10 +1881,18 @@ class EchosphereApiService {
   Future<Map<String, dynamic>?> getRepeatSchedule(int announcementId) async {
     try {
       final response = await _dio.get('/announcements/$announcementId/repeat-schedule');
-      return response.data as Map<String, dynamic>;
+      if (response.data == null) return null;
+      if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null;
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to fetch repeat schedule.');
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        return null;
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1942,10 +1950,18 @@ class EchosphereApiService {
   Future<Map<String, dynamic>?> getVipProtocol(int announcementId) async {
     try {
       final response = await _dio.get('/announcements/$announcementId/vip-protocol');
-      return response.data as Map<String, dynamic>;
+      if (response.data == null) return null;
+      if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null;
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to fetch VIP protocol.');
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        return null;
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 

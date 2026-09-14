@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/speaker_queue_controller.dart';
@@ -177,7 +177,9 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     if (widget.announcement.id <= 0) return;
     setState(() => _isLoadingRepeatSchedule = true);
     try {
-      final schedule = await EchosphereApiService().getRepeatSchedule(widget.announcement.id);
+      final schedule = await EchosphereApiService()
+          .getRepeatSchedule(widget.announcement.id)
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
       if (mounted) {
         setState(() {
           _repeatSchedule = schedule;
@@ -185,7 +187,16 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _isLoadingRepeatSchedule = false);
+      if (mounted) {
+        setState(() {
+          _repeatSchedule = null;
+          _isLoadingRepeatSchedule = false;
+        });
+      }
+    } finally {
+      if (mounted && _isLoadingRepeatSchedule) {
+        setState(() => _isLoadingRepeatSchedule = false);
+      }
     }
   }
 
@@ -193,7 +204,9 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     if (widget.announcement.id <= 0) return;
     setState(() => _isLoadingVipProtocol = true);
     try {
-      final protocol = await EchosphereApiService().getVipProtocol(widget.announcement.id);
+      final protocol = await EchosphereApiService()
+          .getVipProtocol(widget.announcement.id)
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
       if (mounted) {
         setState(() {
           _vipProtocol = protocol;
@@ -201,7 +214,16 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _isLoadingVipProtocol = false);
+      if (mounted) {
+        setState(() {
+          _vipProtocol = null;
+          _isLoadingVipProtocol = false;
+        });
+      }
+    } finally {
+      if (mounted && _isLoadingVipProtocol) {
+        setState(() => _isLoadingVipProtocol = false);
+      }
     }
   }
 
@@ -1851,7 +1873,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Automated Repeat Broadcast Schedule',
+                  'Repeat Notice Broadcast',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
@@ -2023,7 +2045,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'VIP Dignitary Protocol & Arrival Fanfare',
+                  'Guest Arrival Broadcast',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
@@ -2072,7 +2094,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '$guestName${guestTitle.isNotEmpty ? ' â€” $guestTitle' : ''}',
+                          '$guestName${guestTitle.isNotEmpty ? ' — $guestTitle' : ''}',
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                         ),
                       ),

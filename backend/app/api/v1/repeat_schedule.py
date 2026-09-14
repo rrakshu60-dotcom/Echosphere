@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.repeat_schedule import (
@@ -78,7 +78,7 @@ def patch_announcement_repeat_schedule(
 def get_announcement_repeat_schedule(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Retrieves the repeat schedule configuration and historical execution logs

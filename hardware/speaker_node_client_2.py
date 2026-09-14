@@ -165,8 +165,12 @@ def speak_text_kokoro(text: str, voice: str = "af_bella", volume: int = 85, stop
         if samples is None or len(samples) == 0:
             return False
 
+        # Convert float samples to standard 16-bit PCM WAV so Windows audio drivers play reliably
+        import numpy as np
+        int16_samples = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+
         tmp_wav = os.path.join(os.path.dirname(__file__), f"node2_kokoro_{uuid.uuid4().hex[:6]}.wav")
-        sf.write(tmp_wav, samples, sample_rate)
+        sf.write(tmp_wav, int16_samples, sample_rate, subtype="PCM_16")
         if os.path.exists(tmp_wav) and os.path.getsize(tmp_wav) > 500:
             logger.info(f"🔊 [KOKORO TTS PLAYBACK] Broadcasting speech via Kokoro ({len(samples)} samples at {sample_rate}Hz)...")
             ok = play_audio_file(tmp_wav, volume=volume, stop_event=stop_event)
@@ -588,18 +592,19 @@ class SpeakerNode2Client:
                 play_attention_chime()
 
             # 2. High-Fidelity Audio Playback:
-            # Primary: Kokoro Neural Speech TTS!
             played = False
             vol = 100 if is_emergency else self.volume
             speech_text = f"{title}. {message}" if message else title
 
-            # Priority 1: Direct Kokoro TTS synthesis on the node
-            if not (self._current_stop_event and self._current_stop_event.is_set()):
-                played = speak_text_kokoro(speech_text, voice="af_bella", volume=vol, stop_event=self._current_stop_event)
-
-            # Priority 2: Streaming backend audio stream (which also serves Kokoro TTS)
-            if not played and audio_url and not (self._current_stop_event and self._current_stop_event.is_set()):
+            # Priority 1: Streaming backend neural audio stream (pre-rendered Kokoro TTS + Attention Chimes)
+            if audio_url and not (self._current_stop_event and self._current_stop_event.is_set()):
+                logger.info(f"🌐 [PRIORITY 1: STREAM] Playing backend Kokoro audio stream from {audio_url}")
                 played = download_and_play_stream(self.server_url, audio_url, volume=vol, stop_event=self._current_stop_event)
+
+            # Priority 2: Direct Kokoro TTS synthesis on the node (offline / fallback)
+            if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
+                logger.info("🎙️ [PRIORITY 2: LOCAL KOKORO] Synthesizing speech via local Kokoro-82M ONNX...")
+                played = speak_text_kokoro(speech_text, voice="af_bella", volume=vol, stop_event=self._current_stop_event)
 
             # Priority 3: Fallback Edge-TTS / Windows SAPI
             if not played and not (self._current_stop_event and self._current_stop_event.is_set()):

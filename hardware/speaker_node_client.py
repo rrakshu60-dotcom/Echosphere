@@ -165,8 +165,12 @@ def speak_text_kokoro(text: str, voice: str = "af_heart", volume: int = 90, stop
         if samples is None or len(samples) == 0:
             return False
 
+        # Convert float samples to standard 16-bit PCM WAV so Windows audio drivers play reliably
+        import numpy as np
+        int16_samples = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+
         tmp_wav = os.path.join(os.path.dirname(__file__), f"node1_kokoro_{uuid.uuid4().hex[:6]}.wav")
-        sf.write(tmp_wav, samples, sample_rate)
+        sf.write(tmp_wav, int16_samples, sample_rate, subtype="PCM_16")
         if os.path.exists(tmp_wav) and os.path.getsize(tmp_wav) > 500:
             logger.info(f"🔊 [KOKORO TTS PLAYBACK] Broadcasting speech via Kokoro ({len(samples)} samples at {sample_rate}Hz)...")
             ok = play_audio_file(tmp_wav, volume=volume, stop_event=stop_event)

@@ -1,7 +1,8 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user
 from app.db.database import get_db
 from app.models.announcement import Announcement
 from app.models.announcement_vip_protocol import AnnouncementVipProtocol
@@ -28,7 +29,7 @@ router = APIRouter(tags=["VIP Dignitary Protocols"])
 def get_vip_protocol(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Retrieves the extracted dignitary details, spoken PA broadcast script,
@@ -36,13 +37,10 @@ def get_vip_protocol(
     """
     protocol = db.query(AnnouncementVipProtocol).filter(AnnouncementVipProtocol.announcement_id == announcement_id).first()
     if not protocol:
-        # Check if notice can be auto-analyzed
-        protocol = analyze_and_extract_vip(db, announcement_id)
-        if not protocol:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No VIP Protocol detected or configured for Announcement #{announcement_id}.",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No VIP Protocol detected or configured for Announcement #{announcement_id}.",
+        )
     return protocol
 
 
