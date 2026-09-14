@@ -52,6 +52,13 @@ jobs:
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
+      - name: Ensure frontend .env exists
+        run: |
+          if [ ! -f frontend/.env ]; then
+            echo "ECHOSPHERE_API_URL=https://echosphere-backend-9lv8.onrender.com/api/v1" > frontend/.env
+          fi
+        shell: bash
+
       - name: Install Dependencies
         run: cd frontend && flutter pub get
 
