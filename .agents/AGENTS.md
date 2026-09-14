@@ -32,3 +32,47 @@
 - **Staging Rule**: Only stage verified application code explicitly (`git add frontend/ backend/` or targeted file paths). Avoid indiscriminate staging of untracked files.
 - **Continuous Deployment**: Code pushed to `main` is automatically built and deployed by Render. Render connects directly to Supabase, guaranteeing zero data loss, zero reset of user accounts, and zero reset of announcements across all redeployments and restarts.
 - **Production Server Independence**: The frontend app must always point to the live Render backend (`https://echosphere-backend-9lv8.onrender.com`). Never require or assume a running local server for user-facing app functionality.
+
+## Production Ecosystem & Cloud Deployment Topology
+All components of EchoSphere are deployed and permanently orchestrated as follows:
+
+| Component | Provider / Platform | Host / Resource | Function & Responsibility |
+|---|---|---|---|
+| **Database** | **Supabase PostgreSQL** | `aws-0-ap-south-1.pooler.supabase.com:6543/postgres` (Project `wvugkkwykdnyzcmaoxgj`, Mumbai) | Permanent source of truth for all announcements, user credentials, approval queues, notifications, audit logs. Secured with Row-Level Security (RLS). |
+| **Backend API** | **Render Web Service** | `https://echosphere-backend-9lv8.onrender.com` (Service `srv-dabdp2rtqb8s73fjp000`) | FastAPI + Uvicorn server handling auth, announcements, AI summarization, audio generation, and WebSockets. Connected via private `DATABASE_URL` environment variable to Supabase. |
+| **Web Frontend** | **Cloudflare Pages / GitHub Pages** | Deployed via `.github/workflows/deploy-web.yml` | Hosted Flutter Web application. Communicates with Render backend over HTTPS & WebSockets. |
+| **Keep-Alive Daemon** | **UptimeRobot** | Monitors `https://echosphere-backend-9lv8.onrender.com/docs` | Pings the server periodically to prevent Render free-tier containers from idling/sleeping (zero cold starts) and keeps Supabase permanently active. |
+| **Version Control** | **GitHub Repository** | `rrakshu60-dotcom/Echosphere` (`main` branch) | Auto-triggers Render backend rebuilds and GitHub Actions CI/CD workflows upon push. |
+
+## Protocol for Future Updates & Modifications
+
+### 1. Frontend Updates (Flutter App, UI, Screens, Assets)
+- **Files**: `frontend/lib/`, `frontend/pubspec.yaml`, `frontend/assets/`.
+- **Rules**:
+  - Always respect the **Zero Overflow Guarantee** and test with responsive constraints (`Expanded`, `Flexible`, `SingleChildScrollView`, `Wrap`).
+  - Keep `ECHOSPHERE_API_URL` pointing to `https://echosphere-backend-9lv8.onrender.com/api/v1`.
+  - Maintain Dio connection and receive timeouts at **35 seconds** in `EchosphereApiService` to tolerate occasional network latency.
+- **Deployment**:
+  - Commit and push to `main`. Cloudflare / GitHub Actions automatically compiles and publishes the new web client.
+
+### 2. Backend API Updates (Endpoints, Services, Logic)
+- **Files**: `backend/app/api/v1/`, `backend/app/services/`, `backend/app/schemas/`.
+- **Rules**:
+  - Never hardcode database credentials or private keys; read from `os.getenv()`.
+  - Ensure route definitions maintain unambiguous prefixes to prevent FastAPI 422 routing collisions.
+- **Deployment**:
+  - Commit and push to `main`. Render automatically detects the commit, rebuilds the container, and goes live in ~90 seconds with zero manual intervention.
+
+### 3. Database Schema Updates (New Tables, Columns, or Indexes)
+- **Files**: `backend/app/models/`, `backend/app/main.py`.
+- **Rules**:
+  - Step 1: Update the SQLAlchemy model class in `backend/app/models/`.
+  - Step 2: Add an idempotent migration statement to the startup migration block in `backend/app/main.py`:
+    ```python
+    if engine.dialect.name == "postgresql":
+        conn.execute(text("ALTER TABLE <table_name> ADD COLUMN IF NOT EXISTS <col_name> <type>;"))
+        conn.commit()
+    ```
+  - Step 3: Commit and push to `main`. When Render boots up with the new code, it executes this migration safely against Supabase, preserving all existing data with zero downtime.
+- **Data Inspection**: View and edit live records directly via the Supabase Table Editor (`https://supabase.com/dashboard/project/wvugkkwykdnyzcmaoxgj/editor`).
+
