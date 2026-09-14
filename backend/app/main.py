@@ -88,9 +88,49 @@ try:
 except Exception:
     pass
 
+import threading
+import time
+from contextlib import asynccontextmanager
+
+
+def _speaker_and_repeat_daemon():
+    """
+    High-precision background daemon:
+    - Runs every 3 seconds: Auto-advances speaker queue (progresses playing items after duration,
+      triggers queued notices when scheduled_time <= now, and dispatches to hardware nodes).
+    - Runs every 45 seconds: Evaluates campus break slot repeat announcement schedules.
+    """
+    from app.db.database import SessionLocal
+    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
+
+    tick_count = 0
+    while True:
+        try:
+            time.sleep(3)
+            tick_count += 1
+            with SessionLocal() as db_session:
+                # 1. Real-time speaker queue progression & scheduled time triggers (every 3s)
+                auto_advance_speaker_queue(db_session)
+
+                # 2. Campus acoustic window repeat schedules (every ~45s = 15 ticks)
+                if tick_count % 15 == 0:
+                    evaluate_and_dispatch_repeat_slots(db_session)
+        except Exception:
+            time.sleep(1)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    t = threading.Thread(target=_speaker_and_repeat_daemon, daemon=True, name="SpeakerAndRepeatDaemon")
+    t.start()
+    yield
+
+
 app = FastAPI(
     title="EchoSphere Backend",
     version="1.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -197,39 +237,6 @@ app.include_router(
 )
 
 
-import threading
-import time
-
-def _speaker_and_repeat_daemon():
-    """
-    High-precision background daemon:
-    - Runs every 3 seconds: Auto-advances speaker queue (progresses playing items after duration,
-      triggers queued notices when scheduled_time <= now, and dispatches to hardware nodes).
-    - Runs every 45 seconds: Evaluates campus break slot repeat announcement schedules.
-    """
-    from app.db.database import SessionLocal
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue
-    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
-
-    tick_count = 0
-    while True:
-        try:
-            time.sleep(3)
-            tick_count += 1
-            with SessionLocal() as db_session:
-                # 1. Real-time speaker queue progression & scheduled time triggers (every 3s)
-                auto_advance_speaker_queue(db_session)
-
-                # 2. Campus acoustic window repeat schedules (every ~45s = 15 ticks)
-                if tick_count % 15 == 0:
-                    evaluate_and_dispatch_repeat_slots(db_session)
-        except Exception as e:
-            time.sleep(1)
-
-@app.on_event("startup")
-def start_repeat_scheduler():
-    t = threading.Thread(target=_speaker_and_repeat_daemon, daemon=True, name="SpeakerAndRepeatDaemon")
-    t.start()
 
 
 # -------------------------
