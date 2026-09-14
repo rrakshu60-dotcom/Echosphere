@@ -158,6 +158,48 @@ def resolve_voice_profile(gender: str = "female", accent: str = "american", voic
 
 _kokoro_pipelines = {}
 _kokoro_lock = None
+_kokoro_onnx_instance = None
+_kokoro_onnx_lock = None
+
+
+def get_kokoro_onnx():
+    """Returns a thread-safe cached Kokoro-ONNX instance if installed and weights are found."""
+    global _kokoro_onnx_instance, _kokoro_onnx_lock
+    if _kokoro_onnx_lock is None:
+        import threading
+        _kokoro_onnx_lock = threading.Lock()
+    with _kokoro_onnx_lock:
+        if _kokoro_onnx_instance is not None:
+            return _kokoro_onnx_instance
+        try:
+            from kokoro_onnx import Kokoro
+            candidate_dirs = [
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "kokoro")),
+                os.path.abspath("models/kokoro"),
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models_data", "kokoro")),
+                os.path.expanduser("~/.cache/kokoro"),
+            ]
+            model_path = None
+            voices_path = None
+            for d in candidate_dirs:
+                m1 = os.path.join(d, "kokoro-v1.0.onnx")
+                m2 = os.path.join(d, "kokoro-v0_19.onnx")
+                v1 = os.path.join(d, "voices-v1.0.bin")
+                v2 = os.path.join(d, "voices.bin")
+                m_chosen = m1 if os.path.exists(m1) else (m2 if os.path.exists(m2) else None)
+                v_chosen = v1 if os.path.exists(v1) else (v2 if os.path.exists(v2) else None)
+                if m_chosen and v_chosen:
+                    model_path = m_chosen
+                    voices_path = v_chosen
+                    break
+            if model_path and voices_path:
+                _kokoro_onnx_instance = Kokoro(model_path, voices_path)
+                logger.info(f"Initialized Kokoro-ONNX neural TTS pipeline from '{model_path}'.")
+                return _kokoro_onnx_instance
+        except Exception as e:
+            logger.debug(f"Kokoro-ONNX initialization note: {e}")
+            return None
+    return None
 
 
 def get_kokoro_pipeline(lang_code: str = "a"):
@@ -179,7 +221,9 @@ def get_kokoro_pipeline(lang_code: str = "a"):
 
 
 def is_kokoro_available() -> bool:
-    """Check whether Kokoro-82M offline neural TTS is installed and operational."""
+    """Check whether Kokoro neural TTS (ONNX or PyTorch) is installed and operational."""
+    if get_kokoro_onnx() is not None:
+        return True
     try:
         pipeline = get_kokoro_pipeline("a")
         return pipeline is not None
@@ -279,8 +323,40 @@ def generate_announcement_audio_sync(
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # Tier 1: Try Kokoro-82M (if available)
+    # Tier 1: Try Kokoro Neural Engine (ONNX or PyTorch pipeline)
     if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
+        kok_onnx = get_kokoro_onnx()
+        if kok_onnx is not None:
+            try:
+                import soundfile as sf
+                import numpy as np
+
+                v = kok_voice or "af_heart"
+                samples, sample_rate = kok_onnx.create(speech_text, voice=v, speed=1.0, lang="en-us")
+                if samples is not None and len(samples) > 0:
+                    if include_chime:
+                        chime_bytes = generate_chime_pcm(selected_chime, sample_rate=sample_rate)
+                        chime_float = np.frombuffer(chime_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+                        combined = np.concatenate([chime_float, samples])
+                    else:
+                        combined = samples
+
+                    sf.write(wav_filepath, combined, sample_rate)
+                    duration = round(len(combined) / float(sample_rate), 2)
+                    logger.info(f"Kokoro-ONNX offline audio generated: {wav_filepath}")
+                    return {
+                        "file_name": wav_filename,
+                        "file_path": wav_filepath,
+                        "url_path": f"/static/audio_streams/{wav_filename}",
+                        "type": "wav",
+                        "engine": f"Kokoro TTS ({voice_name})",
+                        "voice": voice_name,
+                        "duration_sec": duration,
+                        "chime": selected_chime if include_chime else "none",
+                    }
+            except Exception as k_err:
+                logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying PyTorch pipeline...")
+
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:
@@ -454,8 +530,29 @@ def synthesize_text_audio(
             "voice": voice_name,
         }
 
-    # Tier 1: Kokoro-82M (if available)
+    # Tier 1: Kokoro Neural Engine (ONNX or PyTorch pipeline)
     if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
+        kok_onnx = get_kokoro_onnx()
+        if kok_onnx is not None:
+            try:
+                import soundfile as sf
+                v = kok_voice or "af_heart"
+                samples, sample_rate = kok_onnx.create(clean_text, voice=v, speed=1.0, lang="en-us")
+                if samples is not None and len(samples) > 0:
+                    sf.write(wav_filepath, samples, sample_rate)
+                    duration = round(len(samples) / float(sample_rate), 2)
+                    return {
+                        "file_name": wav_filename,
+                        "file_path": wav_filepath,
+                        "url_path": f"/static/audio_streams/{wav_filename}",
+                        "type": "wav",
+                        "engine": f"Kokoro TTS ({voice_name})",
+                        "voice": voice_name,
+                        "duration_sec": duration,
+                    }
+            except Exception as k_err:
+                logger.debug(f"Kokoro-ONNX text synthesis note: {k_err}")
+
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
             if pipeline is not None:

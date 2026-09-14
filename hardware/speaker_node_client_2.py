@@ -114,9 +114,76 @@ def play_emergency_siren():
         pass
 
 
+_kokoro_instance = None
+_kokoro_lock = threading.Lock()
+
+
+def get_node_kokoro():
+    """Returns cached Kokoro-ONNX instance if available on the node."""
+    global _kokoro_instance
+    with _kokoro_lock:
+        if _kokoro_instance is not None:
+            return _kokoro_instance
+        try:
+            from kokoro_onnx import Kokoro
+            candidate_dirs = [
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "kokoro")),
+                os.path.abspath("models/kokoro"),
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "kokoro")),
+                os.path.expanduser("~/.cache/kokoro"),
+            ]
+            for d in candidate_dirs:
+                m1 = os.path.join(d, "kokoro-v1.0.onnx")
+                m2 = os.path.join(d, "kokoro-v0_19.onnx")
+                v1 = os.path.join(d, "voices-v1.0.bin")
+                v2 = os.path.join(d, "voices.bin")
+                m_chosen = m1 if os.path.exists(m1) else (m2 if os.path.exists(m2) else None)
+                v_chosen = v1 if os.path.exists(v1) else (v2 if os.path.exists(v2) else None)
+                if m_chosen and v_chosen:
+                    _kokoro_instance = Kokoro(m_chosen, v_chosen)
+                    logger.info(f"🔊 [KOKORO TTS LOADED] Successfully loaded Kokoro-82M model from {m_chosen}")
+                    return _kokoro_instance
+        except Exception as e:
+            logger.debug(f"Kokoro load note: {e}")
+    return None
+
+
+def speak_text_kokoro(text: str, voice: str = "af_bella", volume: int = 85, stop_event: Optional[threading.Event] = None) -> bool:
+    """
+    Synthesizes speech using Kokoro-82M neural TTS and plays aloud via WinMM MCI.
+    """
+    kokoro = get_node_kokoro()
+    if kokoro is None:
+        return False
+    try:
+        import soundfile as sf
+        clean_text = text.replace("'", " ").replace('"', " ").strip()
+        if not clean_text:
+            return False
+
+        samples, sample_rate = kokoro.create(clean_text, voice=voice, speed=1.0, lang="en-us")
+        if samples is None or len(samples) == 0:
+            return False
+
+        tmp_wav = os.path.join(os.path.dirname(__file__), f"node2_kokoro_{uuid.uuid4().hex[:6]}.wav")
+        sf.write(tmp_wav, samples, sample_rate)
+        if os.path.exists(tmp_wav) and os.path.getsize(tmp_wav) > 500:
+            logger.info(f"🔊 [KOKORO TTS PLAYBACK] Broadcasting speech via Kokoro ({len(samples)} samples at {sample_rate}Hz)...")
+            ok = play_audio_file(tmp_wav, volume=volume, stop_event=stop_event)
+            try:
+                if os.path.exists(tmp_wav):
+                    os.remove(tmp_wav)
+            except Exception:
+                pass
+            return ok
+    except Exception as e:
+        logger.warning(f"Kokoro TTS playback error: {e}")
+    return False
+
+
 def speak_text_neural(text: str, volume: int = 90, stop_event: Optional[threading.Event] = None) -> bool:
     """
-    Synthesizes speech aloud using Kokoro-grade neural voices via edge-tts.
+    Synthesizes speech aloud using neural voices via edge-tts.
     """
     try:
         import asyncio
@@ -224,6 +291,37 @@ def play_audio_file(file_path: str, volume: int = 90, stop_event: Optional[threa
     return False
 
 
+def download_and_play_stream(server_url: str, audio_url: str, volume: int = 90, stop_event: Optional[threading.Event] = None) -> bool:
+    """
+    Directly streams / downloads the backend neural MP3 audio stream and plays via WinMM MCI.
+    Supports both absolute URLs and relative endpoints.
+    """
+    try:
+        full_url = audio_url
+        if audio_url.startswith("/"):
+            full_url = f"{server_url.rstrip('/')}{audio_url}"
+
+        logger.info(f"📥 [STREAMING AUDIO] Downloading speech stream from: {full_url}")
+        resp = requests.get(full_url, timeout=15.0)
+        if resp.status_code == 200 and len(resp.content) > 500:
+            tmp_path = os.path.join(os.path.dirname(__file__), f"node2_stream_{uuid.uuid4().hex[:6]}.mp3")
+            with open(tmp_path, "wb") as f:
+                f.write(resp.content)
+            logger.info(f"▶️ [STREAM PLAYBACK] Audio stream ready ({len(resp.content)} bytes). Broadcasting via speaker...")
+            success = play_audio_file(tmp_path, volume=volume, stop_event=stop_event)
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            return success
+        else:
+            logger.warning(f"Audio stream fetch returned HTTP {resp.status_code} ({len(resp.content)} bytes)")
+    except Exception as e:
+        logger.warning(f"Audio stream download error: {e}")
+    return False
+
+
 # -----------------------------------------------------------------------------
 # Speaker Node 2 Client Engine
 # -----------------------------------------------------------------------------
@@ -242,7 +340,7 @@ class SpeakerNode2Client:
         self.current_status = "ONLINE"
         self.active_announcement_id: Optional[int] = None
         self.active_queue_id: Optional[int] = None
-        self.played_announcement_ids: Set[int] = set()
+        self.played_signatures: Set[str] = set()
 
         self._playback_lock = threading.Lock()
         self._current_stop_event: Optional[threading.Event] = None
@@ -305,9 +403,9 @@ class SpeakerNode2Client:
             "mac_address": self.mac_address,
             "ip_address": self.ip_address,
             "status": self.current_status,
-            "cpu_usage": 14.2,
-            "memory_usage": 42.1,
-            "disk_space": 68.5,
+            "cpu_usage": 12.5,
+            "memory_usage": 38.0,
+            "disk_space": 72.0,
         }
         try:
             resp = requests.post(url, json=payload, timeout=4.0)
@@ -334,40 +432,47 @@ class SpeakerNode2Client:
             if not isinstance(items, list):
                 return
 
-            # Check if any announcement is currently marked 'Playing'
             for item in items:
                 status = str(item.get("status", "")).lower()
                 ann_id = item.get("announcement_id") or item.get("id")
+                queue_id = item.get("id")
                 if not ann_id:
                     continue
 
                 target_node_id = item.get("speaker_node_id")
+                target_mac = str(item.get("speaker_node_mac") or "").upper().strip()
                 node_name = str(item.get("speaker_node_name", ""))
 
                 # Check if announcement is targeted to Node 2 or All Nodes
-                is_for_this_node = (
+                is_broadcast = (
                     target_node_id is None
                     or target_node_id == 0
-                    or target_node_id == self.node_id
+                    or not target_mac
+                    or target_mac == "ALL"
+                    or "All" in node_name
+                )
+                is_targeted_to_me = (
+                    (target_mac and target_mac == self.mac_address.upper())
+                    or (target_node_id and target_node_id == self.node_id)
+                    or target_node_id in (9, 21, 3)
                     or "Client 2" in node_name
                     or "Block B" in node_name
                     or "AI Lab" in node_name
-                    or "All" in node_name
                 )
 
-                if not is_for_this_node:
+                if not (is_broadcast or is_targeted_to_me):
                     continue
 
+                sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
+
                 if status == "playing":
-                    # If this announcement is marked 'Playing' and we haven't played it yet, PLAY IT!
-                    if ann_id not in self.played_announcement_ids and ann_id != self.active_announcement_id:
+                    if sig not in self.played_signatures and ann_id != self.active_announcement_id:
                         title = item.get("title") or f"Notice #{ann_id}"
                         message = item.get("description") or item.get("content") or ""
                         audio_url = item.get("audio_url")
-                        queue_id = item.get("id")
                         is_emerg = str(item.get("priority", "")).upper() == "EMERGENCY"
 
-                        logger.info(f"🔗 [QUEUE LINK DETECTED] Announcement #{ann_id} ('{title}') is PLAYING in queue!")
+                        logger.info(f"🔗 [QUEUE DETECTED] Announcement #{ann_id} ('{title}') is PLAYING! (Target: Node 2 / All)")
                         threading.Thread(
                             target=self.play_announcement_sync,
                             args=(ann_id, title, message, audio_url, is_emerg, queue_id),
@@ -393,6 +498,10 @@ class SpeakerNode2Client:
     def handle_command(self, cmd: Dict[str, Any]):
         """Executes a control or playback command received from backend."""
         c = cmd.get("command")
+        target_mac = str(cmd.get("target_mac") or "").upper().strip()
+        if target_mac and target_mac not in ("ALL", self.mac_address.upper()):
+            return
+
         logger.info(f"⚡ [COMMAND DISPATCHED] Action: '{c}'")
 
         if c == "TEST_SPEAKER":
@@ -406,14 +515,15 @@ class SpeakerNode2Client:
 
         elif c in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
             ann_id = cmd.get("announcement_id", 0)
-            if ann_id and (ann_id == self.active_announcement_id or ann_id in self.played_announcement_ids):
-                logger.info(f"ℹ️ Notice #{ann_id} is already playing or completed. Skipping duplicate command.")
+            queue_id = cmd.get("queue_id")
+            sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
+            if sig in self.played_signatures or ann_id == self.active_announcement_id:
+                logger.info(f"ℹ️ Notice #{ann_id} ({sig}) is already playing or completed. Skipping duplicate.")
                 return
             title = cmd.get("title") or "Campus Notice"
             message = cmd.get("message") or cmd.get("content") or ""
             audio_url = cmd.get("audio_url")
             is_emerg = (c == "PLAY_EMERGENCY")
-            queue_id = cmd.get("queue_id")
             threading.Thread(
                 target=self.play_announcement_sync,
                 args=(ann_id, title, message, audio_url, is_emerg, queue_id),
@@ -451,7 +561,7 @@ class SpeakerNode2Client:
         queue_id: Optional[int] = None,
     ):
         """
-        Executes announcement broadcast with chime/siren, neural voice, and backend auto-advance.
+        Executes announcement broadcast with chime/siren, backend neural stream, and auto-advance.
         """
         with self._playback_lock:
             self.active_announcement_id = ann_id
@@ -459,6 +569,7 @@ class SpeakerNode2Client:
             self.current_status = "PLAYING"
             self._is_paused = False
             self._current_stop_event = threading.Event()
+            sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
 
             print("\n" + "─" * 60)
             if is_emergency:
@@ -466,34 +577,47 @@ class SpeakerNode2Client:
             else:
                 print(f"📢 [BROADCASTING NOTICE #{ann_id}] {title}")
             print(f"   Message: {message[:120]}..." if len(message) > 120 else f"   Message: {message}")
+            if audio_url:
+                print(f"   Stream:  {audio_url}")
             print("─" * 60)
 
-            # 1. Play attention chime or emergency siren
+            # 1. Attention chime or emergency siren
             if is_emergency:
                 play_emergency_siren()
             else:
                 play_attention_chime()
 
-            # 2. Kokoro Neural Voice: Synthesize and speak announcement aloud
+            # 2. High-Fidelity Audio Playback:
+            # Primary: Kokoro Neural Speech TTS!
+            played = False
+            vol = 100 if is_emergency else self.volume
+            speech_text = f"{title}. {message}" if message else title
+
+            # Priority 1: Direct Kokoro TTS synthesis on the node
             if not (self._current_stop_event and self._current_stop_event.is_set()):
-                speech_text = f"{title}. {message}" if message else title
-                vol = 100 if is_emergency else self.volume
-                logger.info(f"🎙️ [KOKORO NEURAL VOICE] Speaking text aloud: '{speech_text}'")
+                played = speak_text_kokoro(speech_text, voice="af_bella", volume=vol, stop_event=self._current_stop_event)
+
+            # Priority 2: Streaming backend audio stream (which also serves Kokoro TTS)
+            if not played and audio_url and not (self._current_stop_event and self._current_stop_event.is_set()):
+                played = download_and_play_stream(self.server_url, audio_url, volume=vol, stop_event=self._current_stop_event)
+
+            # Priority 3: Fallback Edge-TTS / Windows SAPI
+            if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
+                logger.info(f"🎙️ [LOCAL TTS FALLBACK] Speaking text aloud: '{speech_text}'")
                 ok = speak_text_neural(speech_text, volume=vol, stop_event=self._current_stop_event)
                 if not ok:
-                    logger.info(f"🎙️ [SAPI FALLBACK] Speaking text via Windows SAPI: '{speech_text}'")
                     speak_text_sapi(speech_text, volume=vol)
 
             logger.info(f"✅ [BROADCAST FINISHED] Completed playback for Notice #{ann_id} ('{title}')")
-            self.played_announcement_ids.add(ann_id)
+            self.played_signatures.add(sig)
             self.active_announcement_id = None
             self.current_status = "ONLINE"
 
-            # 3. Notify backend that playback completed so the queue advances automatically!
+            # 4. Notify backend that playback completed so the queue advances immediately!
             if queue_id:
                 try:
                     complete_url = f"{self.server_url}/api/v1/hardware/queue/{queue_id}/action?action=complete"
-                    requests.post(complete_url, timeout=3.0)
+                    requests.post(complete_url, timeout=4.0)
                     logger.info(f"⏩ [QUEUE ADVANCED] Notified backend of item #{queue_id} completion.")
                 except Exception as e:
                     logger.debug(f"Complete notification note: {e}")
@@ -504,8 +628,10 @@ class SpeakerNode2Client:
             self.current_status = "PLAYING"
             logger.info("🎛️ [DIAGNOSTIC TEST] Running Speaker Node 2 self-test...")
             play_attention_chime()
-            test_msg = f"EchoSphere Smart Speaker Node 2 diagnostic self test. Audio subsystem is operational in {self.zone}. Volume is at {self.volume} percent."
-            ok = speak_text_neural(test_msg, volume=self.volume)
+            test_msg = f"EchoSphere Smart Speaker Node 2 diagnostic self test. Audio subsystem is operational in {self.zone}. Powered by Kokoro neural TTS."
+            ok = speak_text_kokoro(test_msg, voice="af_bella", volume=self.volume)
+            if not ok:
+                ok = speak_text_neural(test_msg, volume=self.volume)
             if not ok:
                 speak_text_sapi(test_msg, volume=self.volume)
             logger.info("✅ [DIAGNOSTIC COMPLETE] Self-test finished.")

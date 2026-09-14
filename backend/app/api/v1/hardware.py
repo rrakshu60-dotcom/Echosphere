@@ -397,6 +397,7 @@ def poll_pending_node_commands(
 
 @router.get("/queue")
 def fetch_speaker_queue(
+    request: Request,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
@@ -418,6 +419,7 @@ def fetch_speaker_queue(
         )
     else:
         queue_items = get_speaker_queue(db=db, status=status)
+    base_url = str(request.base_url).rstrip("/")
     result = []
     for item in queue_items:
         ann = item.announcement
@@ -425,6 +427,7 @@ def fetch_speaker_queue(
         node_name = target_node.name if target_node else "All Nodes (College-Wide)"
         node_status = target_node.status if target_node else None
         node_zone = target_node.zone if target_node else "College-Wide"
+        node_mac = target_node.mac_address if target_node else None
         result.append({
             "id": item.id,
             "announcement_id": item.announcement_id,
@@ -438,8 +441,9 @@ def fetch_speaker_queue(
             "queue_position": item.queue_position,
             "scheduled_time": item.scheduled_time.isoformat() if item.scheduled_time else None,
             "played_at": item.played_at.isoformat() if item.played_at else None,
-            "audio_url": f"/static/audio_streams/announcement_{item.announcement_id}.mp3",
+            "audio_url": f"{base_url}/api/v1/announcements/{item.announcement_id}/audio/stream",
             "speaker_node_id": item.speaker_node_id,
+            "speaker_node_mac": node_mac,
             "speaker_node_name": node_name,
             "speaker_node_status": node_status,
             "speaker_node_zone": node_zone,
