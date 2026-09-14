@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
@@ -23,6 +23,9 @@ class SpeakerQueueController extends GetxController {
   static const int broadcastGapSeconds = 15;
   final RxBool isIntermission = false.obs;
   final RxInt intermissionSecondsRemaining = 0.obs;
+
+  /// Controls whether this device plays audio aloud for the queue (default: false; campus hardware speakers handle broadcasting)
+  final RxBool enableLocalAudioPreview = false.obs;
 
   Timer? _playbackTimer;
   Timer? _pollTimer;
@@ -146,17 +149,17 @@ class SpeakerQueueController extends GetxController {
       _updateActiveNoticeMetrics();
       queueItems.refresh();
 
-      // Auto-broadcast immediately if queue was idle and a "Publish Now" notice arrived
+      // Auto-broadcast immediately if queue was idle and an eligible notice is waiting
       if (!Get.testMode && !isPlaying.value && queueItems.isNotEmpty) {
-        final firstItem = queueItems.first;
-        final schedStr = firstItem['scheduled_time']?.toString();
-        DateTime? sched;
-        if (schedStr != null) {
-          sched = DateTime.tryParse(schedStr);
-        }
-        final bool isDueNow = sched == null || sched.isBefore(DateTime.now().add(const Duration(seconds: 5)));
-        if (isDueNow) {
-          togglePlayPause(index: 0);
+        final now = DateTime.now();
+        final dueIdx = queueItems.indexWhere((q) {
+          final sStr = q['scheduled_time']?.toString();
+          if (sStr == null || sStr.isEmpty) return true;
+          final s = DateTime.tryParse(sStr);
+          return s == null || s.isBefore(now.add(const Duration(seconds: 5)));
+        });
+        if (dueIdx != -1) {
+          togglePlayPause(index: dueIdx);
         }
       }
     }
@@ -442,7 +445,7 @@ class SpeakerQueueController extends GetxController {
       });
     }
 
-    if (!Get.testMode) {
+    if (!Get.testMode && enableLocalAudioPreview.value) {
       try {
         final annId = item['announcement_id'] as int? ?? item['id'] as int?;
         if (annId != null && annId > 0) {
@@ -504,8 +507,10 @@ class SpeakerQueueController extends GetxController {
     }
 
     // 2. Notify remote backend action
+    // 2. Notify remote backend action only if no active physical hardware nodes are managing playback
+    final bool hasActiveHardwareNodes = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
     final queueId = playedItem['id'];
-    if (!Get.testMode && queueId is int) {
+    if (!Get.testMode && queueId is int && !hasActiveHardwareNodes) {
       _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
     }
 
@@ -513,7 +518,7 @@ class SpeakerQueueController extends GetxController {
     queueItems.removeAt(activeIndex.value);
     currentElapsedSeconds.value = 0;
 
-    if (!Get.testMode) {
+    if (!Get.testMode && enableLocalAudioPreview.value) {
       try {
         TtsAudioService.instance.stop();
       } catch (_) {}
@@ -548,7 +553,7 @@ class SpeakerQueueController extends GetxController {
           _apiService.queueAction(nextTargetId, 'play').catchError((_) => <String, dynamic>{});
         }
 
-        if (!Get.testMode) {
+        if (!Get.testMode && enableLocalAudioPreview.value) {
           try {
             final nextAnnId = emergencyItem['announcement_id'] as int? ?? emergencyItem['id'] as int?;
             if (nextAnnId != null && nextAnnId > 0) {
@@ -638,7 +643,7 @@ class SpeakerQueueController extends GetxController {
         _apiService.queueAction(nextTargetId, 'play').catchError((_) => <String, dynamic>{});
       }
 
-      if (!Get.testMode) {
+      if (!Get.testMode && enableLocalAudioPreview.value) {
         try {
           final nextAnnId = nextItem['announcement_id'] as int? ?? nextItem['id'] as int?;
           if (nextAnnId != null && nextAnnId > 0) {
@@ -841,7 +846,7 @@ class SpeakerQueueController extends GetxController {
       isPlaying.value = true;
       _startPlaybackTimer();
 
-      if (!Get.testMode) {
+      if (!Get.testMode && enableLocalAudioPreview.value) {
         try {
           TtsAudioService.instance.playAnnouncement(
             announcement.id,

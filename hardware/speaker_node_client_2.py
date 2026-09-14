@@ -345,6 +345,7 @@ class SpeakerNode2Client:
         self.active_announcement_id: Optional[int] = None
         self.active_queue_id: Optional[int] = None
         self.played_signatures: Set[str] = set()
+        self.pending_play_ids: Set[int] = set()
 
         self._playback_lock = threading.Lock()
         self._current_stop_event: Optional[threading.Event] = None
@@ -470,7 +471,8 @@ class SpeakerNode2Client:
                 sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
 
                 if status == "playing":
-                    if sig not in self.played_signatures and ann_id != self.active_announcement_id:
+                    if ann_id != self.active_announcement_id and ann_id not in self.pending_play_ids:
+                        self.pending_play_ids.add(ann_id)
                         title = item.get("title") or f"Notice #{ann_id}"
                         message = item.get("description") or item.get("content") or ""
                         audio_url = item.get("audio_url")
@@ -520,10 +522,9 @@ class SpeakerNode2Client:
         elif c in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
             ann_id = cmd.get("announcement_id", 0)
             queue_id = cmd.get("queue_id")
-            sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
-            if sig in self.played_signatures or ann_id == self.active_announcement_id:
-                logger.info(f"ℹ️ Notice #{ann_id} ({sig}) is already playing or completed. Skipping duplicate.")
+            if ann_id == self.active_announcement_id or ann_id in self.pending_play_ids:
                 return
+            self.pending_play_ids.add(ann_id)
             title = cmd.get("title") or "Campus Notice"
             message = cmd.get("message") or cmd.get("content") or ""
             audio_url = cmd.get("audio_url")
@@ -568,64 +569,68 @@ class SpeakerNode2Client:
         Executes announcement broadcast with chime/siren, backend neural stream, and auto-advance.
         """
         with self._playback_lock:
-            self.active_announcement_id = ann_id
-            self.active_queue_id = queue_id
-            self.current_status = "PLAYING"
-            self._is_paused = False
-            self._current_stop_event = threading.Event()
-            sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
+            try:
+                self.active_announcement_id = ann_id
+                self.active_queue_id = queue_id
+                self.current_status = "PLAYING"
+                self._is_paused = False
+                self._current_stop_event = threading.Event()
+                sig = f"{queue_id}_{ann_id}" if queue_id else f"ann_{ann_id}"
 
-            print("\n" + "─" * 60)
-            if is_emergency:
-                print(f"🚨 [EMERGENCY BROADCAST ACTIVE] {title.upper()}")
-            else:
-                print(f"📢 [BROADCASTING NOTICE #{ann_id}] {title}")
-            print(f"   Message: {message[:120]}..." if len(message) > 120 else f"   Message: {message}")
-            if audio_url:
-                print(f"   Stream:  {audio_url}")
-            print("─" * 60)
+                print("\n" + "─" * 60)
+                if is_emergency:
+                    print(f"🚨 [EMERGENCY BROADCAST ACTIVE] {title.upper()}")
+                else:
+                    print(f"📢 [BROADCASTING NOTICE #{ann_id}] {title}")
+                print(f"   Message: {message[:120]}..." if len(message) > 120 else f"   Message: {message}")
+                if audio_url:
+                    print(f"   Stream:  {audio_url}")
+                print("─" * 60)
 
-            # 1. Attention chime or emergency siren
-            if is_emergency:
-                play_emergency_siren()
-            else:
-                play_attention_chime()
+                # 1. Attention chime or emergency siren
+                if is_emergency:
+                    play_emergency_siren()
+                else:
+                    play_attention_chime()
 
-            # 2. High-Fidelity Audio Playback:
-            played = False
-            vol = 100 if is_emergency else self.volume
-            speech_text = f"{title}. {message}" if message else title
+                # 2. High-Fidelity Audio Playback:
+                played = False
+                vol = 100 if is_emergency else self.volume
+                speech_text = f"{title}. {message}" if message else title
 
-            # Priority 1: Streaming backend neural audio stream (pre-rendered Kokoro TTS + Attention Chimes)
-            if audio_url and not (self._current_stop_event and self._current_stop_event.is_set()):
-                logger.info(f"🌐 [PRIORITY 1: STREAM] Playing backend Kokoro audio stream from {audio_url}")
-                played = download_and_play_stream(self.server_url, audio_url, volume=vol, stop_event=self._current_stop_event)
+                # Priority 1: Streaming backend neural audio stream (pre-rendered Kokoro TTS + Attention Chimes)
+                if audio_url and not (self._current_stop_event and self._current_stop_event.is_set()):
+                    logger.info(f"🌐 [PRIORITY 1: STREAM] Playing backend Kokoro audio stream from {audio_url}")
+                    played = download_and_play_stream(self.server_url, audio_url, volume=vol, stop_event=self._current_stop_event)
 
-            # Priority 2: Direct Kokoro TTS synthesis on the node (offline / fallback)
-            if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
-                logger.info("🎙️ [PRIORITY 2: LOCAL KOKORO] Synthesizing speech via local Kokoro-82M ONNX...")
-                played = speak_text_kokoro(speech_text, voice="af_bella", volume=vol, stop_event=self._current_stop_event)
+                # Priority 2: Direct Kokoro TTS synthesis on the node (offline / fallback)
+                if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
+                    logger.info("🎙️ [PRIORITY 2: LOCAL KOKORO] Synthesizing speech via local Kokoro-82M ONNX...")
+                    played = speak_text_kokoro(speech_text, voice="af_bella", volume=vol, stop_event=self._current_stop_event)
 
-            # Priority 3: Fallback Edge-TTS / Windows SAPI
-            if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
-                logger.info(f"🎙️ [LOCAL TTS FALLBACK] Speaking text aloud: '{speech_text}'")
-                ok = speak_text_neural(speech_text, volume=vol, stop_event=self._current_stop_event)
-                if not ok:
-                    speak_text_sapi(speech_text, volume=vol)
+                # Priority 3: Fallback Edge-TTS / Windows SAPI
+                if not played and not (self._current_stop_event and self._current_stop_event.is_set()):
+                    logger.info(f"🎙️ [LOCAL TTS FALLBACK] Speaking text aloud: '{speech_text}'")
+                    ok = speak_text_neural(speech_text, volume=vol, stop_event=self._current_stop_event)
+                    if not ok:
+                        speak_text_sapi(speech_text, volume=vol)
 
-            logger.info(f"✅ [BROADCAST FINISHED] Completed playback for Notice #{ann_id} ('{title}')")
-            self.played_signatures.add(sig)
-            self.active_announcement_id = None
-            self.current_status = "ONLINE"
+                logger.info(f"✅ [BROADCAST FINISHED] Completed playback for Notice #{ann_id} ('{title}')")
+                self.active_announcement_id = None
+                self.current_status = "ONLINE"
 
-            # 4. Notify backend that playback completed so the queue advances immediately!
-            if queue_id:
-                try:
-                    complete_url = f"{self.server_url}/api/v1/hardware/queue/{queue_id}/action?action=complete"
-                    requests.post(complete_url, timeout=4.0)
-                    logger.info(f"⏩ [QUEUE ADVANCED] Notified backend of item #{queue_id} completion.")
-                except Exception as e:
-                    logger.debug(f"Complete notification note: {e}")
+                # 4. Notify backend that playback completed so the queue advances immediately!
+                if queue_id:
+                    try:
+                        complete_url = f"{self.server_url}/api/v1/hardware/queue/{queue_id}/action?action=complete"
+                        requests.post(complete_url, timeout=4.0)
+                        logger.info(f"⏩ [QUEUE ADVANCED] Notified backend of item #{queue_id} completion.")
+                    except Exception as e:
+                        logger.debug(f"Complete notification note: {e}")
+            finally:
+                self.pending_play_ids.discard(ann_id)
+                self.active_announcement_id = None
+                self.current_status = "ONLINE"
 
     def run_diagnostic_test(self):
         """Runs the speaker diagnostic self-test command triggered from the Nodes tab."""
