@@ -522,6 +522,7 @@ def enqueue_and_broadcast_announcement(
         setattr(active_playing, "status", "Paused")
         db.commit()
 
+    active_item = existing_item
     if not existing_item:
         max_pos = db.query(SpeakerQueue).count()
         item_status = "Playing" if should_play else ("Next in Queue" if max_pos == 0 and not is_future_scheduled else "Queued")
@@ -537,6 +538,7 @@ def enqueue_and_broadcast_announcement(
         db.add(queue_item)
         db.commit()
         db.refresh(queue_item)
+        active_item = queue_item
         queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
         current_status = str(getattr(queue_item, "status", item_status))
     else:
@@ -583,7 +585,7 @@ def enqueue_and_broadcast_announcement(
     else:
         topic = f"echosphere/dept/{department_code}/speakers/command"
 
-    q_id = getattr(queue_item, "id", None) if not existing_item else getattr(existing_item, "id", None)
+    q_id = getattr(active_item, "id", None)
     payload = {
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
         "announcement_id": announcement_id,
