@@ -1,14 +1,30 @@
-# Environment & IDE
+# =============================================================
+# EchoSphere Git Ignore Rules
+# =============================================================
+
+# Environment & Secrets (NEVER COMMIT TO VERSION CONTROL)
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env
+!*.env.example
+
+# IDE & Editor
 .vscode/
 .idea/
 *.swp
 *.tmp
+.DS_Store
+Thumbs.db
+*.log
 .pio/
 **/.pio/
 
 # Python & Virtualenv
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 **/venv/
 **/.venv/
@@ -18,58 +34,71 @@ __pycache__/
 *.db-wal
 *.db-journal
 
-# ML Models, Weights & Training Outputs
+# ML Models, Weights, Datasets & Training Outputs
+/models/
+output_gemma_model/
+**/output_gemma_model/
 output_gemma_campus_model/
 **/output_gemma_campus_model/
 output_qwen_model/
 **/output_qwen_model/
+**/output_*/
+final_adapter/
+**/final_adapter/
+checkpoint-*/
+**/checkpoint-*/
 *.safetensors
 *.bin
 *.onnx
-models/
-**/models/
 *.gguf
 *.pt
 *.pth
 *.jsonl
-checkpoint-*/
-**/checkpoint-*/
 
-# Flutter & Dart
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
+# Mobile, Desktop & Web Compiled Binaries
+*.aab
+*.apk
+*.msix
+*.exe
+*.dll
+*.so
+*.dylib
 build/
 frontend/build/
 frontend/.dart_tool/
 frontend/android/.gradle/
 frontend/android/app/build/
 frontend_backup_pre_shadcn/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
 
-# Media, Screenshots, Temp & Docs
-*.apk
-*.mp4
-*.zip
-*.pdf
-*.docx
-*.png
-*.jpg
-*.jpeg
-Screenshot*
-SC1*
-.tempmediaStorage/
+# Hardware Node Local Cache
 hardware/.node_mac
 hardware/.node_mac_2
+.tempmediaStorage/
+
+# Media, Streams & Generated Audio
 backend/app/static/audio_streams/*.mp3
 backend/app/static/audio_streams/*.wav
 !backend/app/static/audio_streams/.gitkeep
 backend/app/static/chimes/*.wav
 !backend/app/static/chimes/.gitkeep
+Screenshot*
+SC1*
+*.mp4
+*.zip
+*.pdf
+*.docx
 
-# Helper & Generator Scripts
+# Helper, Scratch & Internal Maintenance Scripts
+backend/sync_to_render.py
+backend/migrate_to_supabase.py
+monitor_training.ps1
 generate_*.py
 !backend/ml/gemma_training/generate_echosphere_dataset.py
+!backend/ml/gemma_training/generate_campus_dataset.py
 refactor_*.py
 fix_*.py
 *_progress.txt
