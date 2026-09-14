@@ -109,3 +109,17 @@ vercel.json
 backend/vercel.json
 api/index.py
 backend/api/index.py
+
+# Cloudflare Wrangler Cache
+.wrangler/
+**/.wrangler/
+
+# Wokwi & Embedded Simulator
+wokwi.toml
+**/wokwi/
+
+# Local Scripts & Windows Automation
+*.ps1
+*.bat
+!frontend/android/gradlew.bat
+
