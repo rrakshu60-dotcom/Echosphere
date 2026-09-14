@@ -473,11 +473,11 @@ def enqueue_and_broadcast_announcement(
         target_node = get_speaker_node_by_id(db, speaker_node_id)
         if not target_node:
             # Resilient fallback across database environments (Render auto-inc vs SQLite IDs)
-            if speaker_node_id in (14, 1):
+            if speaker_node_id in (14, 1, 12):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("24:0A:C4:00:01:10")).first()
-            elif speaker_node_id in (15, 2):
+            elif speaker_node_id in (15, 2, 8):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CB")).first()
-            elif speaker_node_id in (16, 21, 3):
+            elif speaker_node_id in (16, 21, 3, 9):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CC")).first()
         if target_node:
             t_mac = getattr(target_node, "mac_address", None)
@@ -562,16 +562,16 @@ def enqueue_and_broadcast_announcement(
         current_status = str(getattr(existing_item, "status", "Queued"))
 
     # 2. Generate TTS audio stream (MP3 / WAV)
-    audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.mp3"
+    # 2. Form robust streaming audio URL (always accessible directly by laptops and ESP32)
+    audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream"
     try:
-        audio_info = generate_announcement_audio_sync(
+        generate_announcement_audio_sync(
             announcement_id,
             f"{title}. {content}",
             gender=speaker_voice or "female",
         )
-        audio_full_url = f"{base_url}{audio_info['url_path']}"
     except Exception as e:
-        logger.warning(f"Audio file generation fallback: {e}")
+        logger.warning(f"Audio pre-generation note: {e}")
 
     # 3. Form payload and dispatch if ready to play
     if target_mac:
@@ -583,9 +583,13 @@ def enqueue_and_broadcast_announcement(
     else:
         topic = f"echosphere/dept/{department_code}/speakers/command"
 
+    q_id = getattr(queue_item, "id", None) if not existing_item else getattr(existing_item, "id", None)
     payload = {
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
         "announcement_id": announcement_id,
+        "queue_id": q_id,
+        "speaker_node_id": speaker_node_id,
+        "target_mac": target_mac,
         "title": title,
         "message": content,
         "audio_url": audio_full_url,
@@ -638,22 +642,24 @@ def dispatch_queue_action_to_speakers(
     action_lower = action.lower()
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
-        # Generate / verify audio stream
-        audio_full_url = f"{base_url}/static/audio_streams/announcement_{ann_id}.mp3"
+        # Direct neural audio stream URL
+        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream"
         try:
             voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
-            audio_info = generate_announcement_audio_sync(
+            generate_announcement_audio_sync(
                 ann_id,
                 f"{title}. {message}",
                 gender=voice_gender,
             )
-            audio_full_url = f"{base_url}{audio_info['url_path']}"
         except Exception as e:
-            logger.warning(f"TTS generation on queue play: {e}")
+            logger.warning(f"Audio pre-generation on queue play: {e}")
 
         payload = {
             "command": "PLAY_ANNOUNCEMENT",
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "speaker_node_id": queue_item.speaker_node_id,
+            "target_mac": target_mac,
             "title": title,
             "message": message,
             "audio_url": audio_full_url,
@@ -664,34 +670,47 @@ def dispatch_queue_action_to_speakers(
         payload = {
             "command": "PAUSE",
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
     elif action_lower in ("resume", "unpause"):
         payload = {
             "command": "RESUME",
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
     elif action_lower == "skip":
         payload = {
             "command": "SKIP",
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
     elif action_lower in ("cancel", "stop"):
         payload = {
             "command": "CANCEL",
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
     else:
         payload = {
             "command": action.upper(),
             "announcement_id": ann_id,
+            "queue_id": queue_item.id,
+            "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
 
-    topic = f"echosphere/dept/{dept_code}/speakers/command"
+    if target_mac:
+        topic = f"echosphere/node/{target_mac}/command"
+    else:
+        topic = f"echosphere/dept/{dept_code}/speakers/command"
     publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=target_mac, db=db)
 

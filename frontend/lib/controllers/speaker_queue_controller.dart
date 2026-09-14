@@ -31,7 +31,7 @@ class SpeakerQueueController extends GetxController {
   // Fallback initial speaker nodes: Canonical nodes (Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
     {
-      'id': 14,
+      'id': 12,
       'name': 'Wokwi ESP32 Speaker Node',
       'mac_address': '24:0A:C4:00:01:10',
       'ip_address': '10.0.1.15',
@@ -43,8 +43,8 @@ class SpeakerQueueController extends GetxController {
       'memory_usage': 0.0,
     },
     {
-      'id': 15,
-      'name': 'Hardware Speaker Client',
+      'id': 8,
+      'name': 'Hardware Speaker Client 1',
       'mac_address': 'D4:F3:2D:22:2A:CB',
       'ip_address': '127.0.0.1',
       'zone': 'Auditorium / Campus',
@@ -55,7 +55,7 @@ class SpeakerQueueController extends GetxController {
       'memory_usage': 0.0,
     },
     {
-      'id': 21,
+      'id': 9,
       'name': 'Hardware Speaker Client 2',
       'mac_address': 'D4:F3:2D:22:2A:CC',
       'ip_address': '127.0.0.1',
