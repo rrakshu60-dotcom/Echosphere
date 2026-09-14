@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -9,7 +9,6 @@ import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/theme.dart';
 import 'package:echosphere/controllers/echosphere_ai_controller.dart';
 import 'package:echosphere/screens/home/home_dashboard_widgets.dart';
-import 'package:echosphere/services/echosphere_api_service.dart';
 
 Widget createTestApp(Widget home) {
   return ChangeNotifierProvider(
@@ -44,88 +43,7 @@ void main() {
     Get.reset();
   });
 
-  group('Regional Language Translation Service & Client Fallback', () {
-    test('translateAnnouncement returns valid Kannada script and preserves entities', () async {
-      final api = EchosphereApiService();
-      final res = await api.translateAnnouncement(
-        id: 1,
-        targetLanguage: 'kn',
-        title: 'Examination Schedule Notice',
-        content: 'Internal assessment examination for 5th Sem AIML students in Room 302.',
-        summary: 'IA-1 exams begin next week.',
-      );
-
-      expect(res['target_language'], 'kn');
-      expect(res['language_name'], 'Kannada');
-      expect(res['native_name'], 'à²•à²¨à³à²¨à²¡');
-
-      // Check Kannada Unicode script range (\u0C80-\u0CFF)
-      expect(RegExp(r'[\u0C80-\u0CFF]').hasMatch(res['translated_content']), isTrue);
-      // Entity preservation
-      expect(res['translated_content'].contains('AIML') || res['translated_content'].contains('302'), isTrue);
-    });
-
-    test('translateAnnouncement returns valid Hindi script', () async {
-      final api = EchosphereApiService();
-      final res = await api.translateAnnouncement(
-        id: 2,
-        targetLanguage: 'hi',
-        title: 'Technical Workshop Notice',
-        content: 'Workshop for all students in the Auditorium.',
-      );
-
-      expect(res['target_language'], 'hi');
-      expect(res['language_name'], 'Hindi');
-      // Check Devanagari Unicode script range (\u0900-\u097F)
-      expect(RegExp(r'[\u0900-\u097F]').hasMatch(res['translated_content']), isTrue);
-    });
-
-    test('translateAnnouncement returns valid Telugu script', () async {
-      final api = EchosphereApiService();
-      final res = await api.translateAnnouncement(
-        id: 3,
-        targetLanguage: 'te',
-        title: 'College Holiday Notice',
-        content: 'Campus closed tomorrow, classes suspended.',
-      );
-
-      expect(res['target_language'], 'te');
-      expect(res['language_name'], 'Telugu');
-      // Check Telugu Unicode script range (\u0C00-\u0C7F)
-      expect(RegExp(r'[\u0C00-\u0C7F]').hasMatch(res['translated_content']), isTrue);
-    });
-
-    test('translateAnnouncement returns valid Tamil script', () async {
-      final api = EchosphereApiService();
-      final res = await api.translateAnnouncement(
-        id: 4,
-        targetLanguage: 'ta',
-        title: 'Campus Placement Drive Notice',
-        content: 'Placement interviews in Placement Cell.',
-      );
-
-      expect(res['target_language'], 'ta');
-      expect(res['language_name'], 'Tamil');
-      // Check Tamil Unicode script range (\u0B80-\u0BFF)
-      expect(RegExp(r'[\u0B80-\u0BFF]').hasMatch(res['translated_content']), isTrue);
-    });
-
-    test('translateAnnouncement returns English unchanged', () async {
-      final api = EchosphereApiService();
-      final res = await api.translateAnnouncement(
-        id: 5,
-        targetLanguage: 'en',
-        title: 'English Title',
-        content: 'English content text.',
-      );
-
-      expect(res['target_language'], 'en');
-      expect(res['translated_title'], 'English Title');
-      expect(res['translated_content'], 'English content text.');
-    });
-  });
-
-  group('AnnouncementFeedCard Zero Overflow on 320px', () {
+  group('AnnouncementFeedCard Zero Overflow on 320px & Translation Removal', () {
     testWidgets('renders AnnouncementFeedCard without overflow on 320px screen', (tester) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1.0;
@@ -160,11 +78,12 @@ void main() {
 
       // Verify title and description are rendered
       expect(find.text('Workshop on Artificial Intelligence'), findsOneWidget);
-      expect(find.text('Read Details â†’'), findsOneWidget);
+      expect(find.text('Read Details \u2192'), findsOneWidget);
       expect(find.text('Add to Calendar'), findsOneWidget);
 
       // Verify Translate chip is completely removed per user instruction
       expect(find.text('Translate'), findsNothing);
+      expect(find.text('Translate:'), findsNothing);
 
       // Verify card was rendered and zero overflow occurred
       expect(tester.takeException(), isNull);

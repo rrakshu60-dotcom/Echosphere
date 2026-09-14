@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -72,7 +72,7 @@ void main() {
     expect(find.text('Listen'), findsOneWidget);
 
     // Verify Read Details button exists
-    expect(find.text('Read Details â†’'), findsOneWidget);
+    expect(find.text('Read Details \u2192'), findsOneWidget);
 
     // Verify zero layout overflow error
     expect(tester.takeException(), isNull);
