@@ -124,5 +124,5 @@ uvicorn app.main:app --reload --port 8000
 ---
 
 <div align="center">
-  <sub>EchoSphere Campus Intelligence Platform • Built for SIH 2026</sub>
+  <sub>EchoSphere Campus Intelligence Platform </sub>
 </div>
