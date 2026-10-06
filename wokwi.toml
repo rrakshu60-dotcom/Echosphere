@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = 'hardware/wokwi/.pio/build/esp32-s3-devkitc-1/firmware.bin'
+elf = 'hardware/wokwi/.pio/build/esp32-s3-devkitc-1/firmware.elf'

@@ -114,9 +114,6 @@ backend/api/index.py
 .wrangler/
 **/.wrangler/
 
-# Wokwi & Embedded Simulator
-wokwi.toml
-**/wokwi/
 
 # Local Scripts & Windows Automation
 *.ps1
