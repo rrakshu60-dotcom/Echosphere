@@ -9,15 +9,25 @@
 // ============================================================================
 const char* SERVER_URL = "https://echosphere-backend-9lv8.onrender.com";
 
-// Hardware Pin Mappings (Matches original diagram.json board-esp32-s3-devkitc-1)
-#define SPEAKER_PIN    4   // Piezo Buzzer / PA Speaker (GPIO 4, bz1)
-#define LED_ONLINE_PIN 5   // Green LED: Backend Connected & Heartbeat OK (GPIO 5, led2)
-#define LED_NOTICE_PIN 6   // Magenta LED: Broadcast Announcement / Emergency (GPIO 6, led1)
+// ============================================================================
+// Wi-Fi Configuration
+// For Wokwi Simulator: Keep "Wokwi-GUEST" and ""
+// For Real Physical ESP32: Enter your 2.4GHz Wi-Fi SSID and Password
+// ============================================================================
+const char* WIFI_SSID = "Wokwi-GUEST"; // <-- Change to your Wi-Fi name
+const char* WIFI_PASS = "";            // <-- Change to your Wi-Fi password
+
+// Hardware Pin Mappings
+// Note: For ESP32-S3 DevKitC-1: GPIO 4, 5, 6
+// Note: For ESP32-WROOM-32 Dev Module: GPIO 4, 5 (or 2 for built-in LED), 18/19
+#define SPEAKER_PIN    4   // Piezo Buzzer / Speaker Module (GPIO 4)
+#define LED_ONLINE_PIN 5   // Status LED: Backend Connected & Heartbeat OK (GPIO 5)
+#define LED_NOTICE_PIN 6   // Active Chime LED: Broadcast / Emergency Siren (GPIO 6)
 
 String macAddress;
 String ipAddress;
 const String zoneName = "Block A - CSE Quad";
-const String deviceName = "Wokwi ESP32 Speaker Node";
+const String deviceName = "EchoSphere ESP32 PA Node";
 
 WiFiClientSecure secureClient;
 
@@ -238,11 +248,11 @@ void setup() {
     // Disable SSL Certificate validation for Render backend
     secureClient.setInsecure();
 
-    Serial.println("🌐 Connecting to Wokwi-GUEST Virtual Wi-Fi...");
-    WiFi.begin("Wokwi-GUEST", "");
+    Serial.printf("🌐 Connecting to Wi-Fi (%s)...\n", WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     int dots = 0;
-    while (WiFi.status() != WL_CONNECTED && dots < 20) {
+    while (WiFi.status() != WL_CONNECTED && dots < 30) {
         delay(300);
         Serial.print(".");
         // Toggle green LED while connecting
@@ -251,7 +261,8 @@ void setup() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        macAddress = "24:0A:C4:00:01:10";
+        String realMac = WiFi.macAddress();
+        macAddress = (realMac.length() > 0 && realMac != "00:00:00:00:00:00") ? realMac : "24:0A:C4:00:01:10";
         ipAddress = WiFi.localIP().toString();
         digitalWrite(LED_ONLINE_PIN, HIGH);
         Serial.println("\n✨ Wi-Fi Connected Successfully!");
