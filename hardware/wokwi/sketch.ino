@@ -2,10 +2,12 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "driver/i2s.h"
 
 // ============================================================================
 // EchoSphere ESP32 Smart PA Speaker Hardware Node
-// Target Architecture: Classic 38-Pin ESP-32 NodeMCU / ESP-WROOM-32 Dev Module
+// Target Architecture: Classic 38-Pin ESP-32 NodeMCU / ESP-WROOM-32
+// Audio Subsystem    : I2S Digital Audio (MAX98357A 3W Class-D Amplifier + 8Ω Speaker)
 // Serial Interface   : Standard Hardware UART0 (CH340 / CP2102 Bridge)
 // Target Backend     : Live Render Backend
 // ============================================================================
@@ -20,91 +22,165 @@ const char* WIFI_SSID = "Wokwi-GUEST"; // <-- Change to your 2.4GHz Wi-Fi name
 const char* WIFI_PASS = "";            // <-- Change to your 2.4GHz Wi-Fi password
 
 // ============================================================================
-// Classic 38-Pin ESP-32 NodeMCU GPIO Pin Allocations
+// MAX98357A I2S Amplifier & Peripheral Pin Mapping (Classic 38-Pin NodeMCU)
 // ============================================================================
-// 🚫 STRICTLY PROHIBITED PINS ON CLASSIC ESP-WROOM-32:
-//  - Input-Only Pins (GPI 34 to 39): Cannot drive outputs (no output driver/pull-up)
-//  - Integrated SPI Flash (GPIO 6 to 11): Toggling will crash/freeze ESP32 immediately
-//  - Strapping Pins (GPIO 0, 12, 15): Affects boot mode if pulled high/low on power-up
+// MAX98357A Digital Audio Wiring:
+//   - BCLK (Bit Clock)        --> GPIO 26
+//   - LRC / WS (Word Select)  --> GPIO 25
+//   - DIN (Data Input)        --> GPIO 22
+//   - VIN                     --> 5V (VIN / VUSB on NodeMCU for full 3W loudness)
+//   - GND                     --> GND
+//   - Speaker + and -         --> 8Ω Speaker terminals
 //
-// ✅ SAFE GENERAL-PURPOSE OUTPUT PINS USED:
-//  - GPIO 25: DAC1 / Safe General Output -> Audio output / Piezo buzzer / PAM8403
-//  - GPIO 2 : Classic NodeMCU Onboard Blue LED -> Online status & heartbeat blink
-//  - GPIO 18: Safe General Output (VSPI SCK)   -> Notice broadcast & emergency LED
+// Status Indicators:
+//   - Onboard Status LED      --> GPIO 2  (Classic NodeMCU built-in blue LED)
+//   - Notice / Siren LED      --> GPIO 18 (External indicator LED via 220Ω)
+//
+// 🚫 STRICTLY AVOIDED:
+//   - Input-Only Pins 34 to 39 (GPI 34, 35, 36, 39)
+//   - SPI Flash Pins 6 to 11 (Toggling causes immediate ESP32 freeze)
 // ============================================================================
-#define SPEAKER_PIN    25  // DAC1 (Pin 25): Piezo Buzzer / Speaker Module / PAM8403 Input
-#define LED_ONLINE_PIN 2   // Onboard LED (Pin 2): Backend Connected & Heartbeat OK
-#define LED_NOTICE_PIN 18  // GPIO 18: Broadcast Announcement / Emergency Siren Active
+#define I2S_BCLK_PIN   26  // MAX98357A BCLK
+#define I2S_LRC_PIN    25  // MAX98357A LRC (WS)
+#define I2S_DIN_PIN    22  // MAX98357A DIN
+#define LED_ONLINE_PIN 2   // Onboard Blue LED: Backend Connected & Heartbeat OK
+#define LED_NOTICE_PIN 18  // External LED: Notice / Emergency Siren Active
 
 // Compile-Time Safety Guard: Ensure no output is mapped to input-only (34-39) or SPI flash (6-11)
-static_assert(SPEAKER_PIN < 34 || SPEAKER_PIN > 39, "CRITICAL: SPEAKER_PIN cannot be assigned to input-only pins 34-39!");
-static_assert(LED_ONLINE_PIN < 34 || LED_ONLINE_PIN > 39, "CRITICAL: LED_ONLINE_PIN cannot be assigned to input-only pins 34-39!");
-static_assert(LED_NOTICE_PIN < 34 || LED_NOTICE_PIN > 39, "CRITICAL: LED_NOTICE_PIN cannot be assigned to input-only pins 34-39!");
+static_assert(I2S_BCLK_PIN < 34 || I2S_BCLK_PIN > 39, "CRITICAL: I2S_BCLK_PIN cannot use input-only pins 34-39!");
+static_assert(I2S_LRC_PIN < 34 || I2S_LRC_PIN > 39, "CRITICAL: I2S_LRC_PIN cannot use input-only pins 34-39!");
+static_assert(I2S_DIN_PIN < 34 || I2S_DIN_PIN > 39, "CRITICAL: I2S_DIN_PIN cannot use input-only pins 34-39!");
+static_assert(LED_ONLINE_PIN < 34 || LED_ONLINE_PIN > 39, "CRITICAL: LED_ONLINE_PIN cannot use input-only pins 34-39!");
+static_assert(LED_NOTICE_PIN < 34 || LED_NOTICE_PIN > 39, "CRITICAL: LED_NOTICE_PIN cannot use input-only pins 34-39!");
 
-static_assert(SPEAKER_PIN < 6 || SPEAKER_PIN > 11, "CRITICAL: SPEAKER_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
-static_assert(LED_ONLINE_PIN < 6 || LED_ONLINE_PIN > 11, "CRITICAL: LED_ONLINE_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
-static_assert(LED_NOTICE_PIN < 6 || LED_NOTICE_PIN > 11, "CRITICAL: LED_NOTICE_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
+static_assert(I2S_BCLK_PIN < 6 || I2S_BCLK_PIN > 11, "CRITICAL: I2S_BCLK_PIN cannot use SPI flash pins 6-11!");
+static_assert(I2S_LRC_PIN < 6 || I2S_LRC_PIN > 11, "CRITICAL: I2S_LRC_PIN cannot use SPI flash pins 6-11!");
+static_assert(I2S_DIN_PIN < 6 || I2S_DIN_PIN > 11, "CRITICAL: I2S_DIN_PIN cannot use SPI flash pins 6-11!");
+static_assert(LED_ONLINE_PIN < 6 || LED_ONLINE_PIN > 11, "CRITICAL: LED_ONLINE_PIN cannot use SPI flash pins 6-11!");
+static_assert(LED_NOTICE_PIN < 6 || LED_NOTICE_PIN > 11, "CRITICAL: LED_NOTICE_PIN cannot use SPI flash pins 6-11!");
 
 String macAddress;
 String ipAddress;
 const String zoneName = "Block A - CSE Quad";
-const String deviceName = "EchoSphere NodeMCU-32S Node";
+const String deviceName = "EchoSphere NodeMCU I2S Speaker";
 
 WiFiClientSecure secureClient;
 
 // ----------------------------------------------------------------------------
-// Audio Tone Synthesizers (LEDC / Hardware Timer PWM on Classic ESP32)
+// MAX98357A I2S Digital Audio Subsystem
 // ----------------------------------------------------------------------------
-void playTone(uint8_t pin, unsigned int frequency) {
-    tone(pin, frequency);
+const int I2S_SAMPLE_RATE = 16000;
+bool i2sInitialized = false;
+
+void initI2SAudio() {
+    if (i2sInitialized) return;
+
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
+        .sample_rate = I2S_SAMPLE_RATE,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 8,
+        .dma_buf_len = 64,
+        .use_apll = false,
+        .tx_desc_auto_clear = true,
+        .fixed_mclk = 0
+    };
+
+    i2s_pin_config_t pin_config = {
+        .mck_io_num = I2S_PIN_NO_CHANGE,
+        .bck_io_num = I2S_BCLK_PIN,
+        .ws_io_num = I2S_LRC_PIN,
+        .data_out_num = I2S_DIN_PIN,
+        .data_in_num = I2S_PIN_NO_CHANGE
+    };
+
+    esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    if (err == ESP_OK) {
+        i2s_set_pin(I2S_NUM_0, &pin_config);
+        i2sInitialized = true;
+        Serial.println("🔊 [I2S] MAX98357A Audio Driver Initialized (16kHz 16-bit Stereo PCM)");
+    } else {
+        Serial.printf("❌ [I2S] Driver install failed: 0x%x\n", err);
+    }
 }
 
-void stopTone(uint8_t pin) {
-    noTone(pin);
+// Synthesize high-fidelity 16-bit PCM sine waves and stream directly to MAX98357A
+void playI2STone(float frequency, int durationMs, float volume = 0.6f) {
+    if (!i2sInitialized) initI2SAudio();
+
+    int totalSamples = (I2S_SAMPLE_RATE * durationMs) / 1000;
+    int16_t buffer[128]; // 64 stereo frames (L + R)
+    size_t bytesWritten = 0;
+    float phase = 0.0f;
+    float phaseInc = (2.0f * PI * frequency) / I2S_SAMPLE_RATE;
+
+    for (int i = 0; i < totalSamples; i += 64) {
+        int chunkSize = min(64, totalSamples - i);
+        for (int j = 0; j < chunkSize; j++) {
+            int16_t sample = (int16_t)(sin(phase) * 32767.0f * volume);
+            buffer[j * 2]     = sample; // Left channel
+            buffer[j * 2 + 1] = sample; // Right channel
+            phase += phaseInc;
+            if (phase >= 2.0f * PI) phase -= 2.0f * PI;
+        }
+        i2s_write(I2S_NUM_0, buffer, chunkSize * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
+    }
 }
 
+void stopI2SAudio() {
+    if (i2sInitialized) {
+        i2s_zero_dma_buffer(I2S_NUM_0);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// PA Audio Chimes & Sirens (High-Fidelity I2S Synthesis)
+// ----------------------------------------------------------------------------
 void playEmergencySiren() {
-    Serial.println("\n🚨 [EMERGENCY OVERRIDE] Campus Emergency Siren Activated!");
+    Serial.println("\n🚨 [EMERGENCY OVERRIDE] Campus Emergency Siren via MAX98357A!");
     for (int cycle = 0; cycle < 3; cycle++) {
         digitalWrite(LED_NOTICE_PIN, HIGH);
-        for (int freq = 600; freq < 1400; freq += 50) {
-            playTone(SPEAKER_PIN, freq);
-            delay(12);
+        // Ascending whoop
+        for (float freq = 650; freq < 1350; freq += 40) {
+            playI2STone(freq, 16, 0.85f);
         }
         digitalWrite(LED_NOTICE_PIN, LOW);
-        for (int freq = 1400; freq > 600; freq -= 50) {
-            playTone(SPEAKER_PIN, freq);
-            delay(12);
+        // Descending whoop
+        for (float freq = 1350; freq > 650; freq -= 40) {
+            playI2STone(freq, 16, 0.85f);
         }
     }
-    stopTone(SPEAKER_PIN);
+    stopI2SAudio();
     digitalWrite(LED_NOTICE_PIN, LOW);
-    Serial.println("🚨 [EMERGENCY OVERRIDE] Siren Sequence Finished.");
+    Serial.println("🚨 [EMERGENCY OVERRIDE] Siren Complete.");
 }
 
 void playNoticeTone() {
-    Serial.println("\n🔊 [PA BROADCAST] Playing Announcement Chime...");
+    Serial.println("\n🔊 [PA BROADCAST] Playing Airport/Campus Chime via MAX98357A...");
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    playTone(SPEAKER_PIN, 587); // D5
-    delay(200);
-    playTone(SPEAKER_PIN, 880); // A5
-    delay(200);
-    playTone(SPEAKER_PIN, 1175); // D6
-    delay(400);
-    stopTone(SPEAKER_PIN);
+    // Professional 3-tone campus broadcast chime (D5 -> A5 -> D6)
+    playI2STone(587.33f, 220, 0.70f); // D5
+    delay(30);
+    playI2STone(880.00f, 220, 0.70f); // A5
+    delay(30);
+    playI2STone(1174.66f, 450, 0.75f); // D6
     delay(100);
+    stopI2SAudio();
     digitalWrite(LED_NOTICE_PIN, LOW);
-    Serial.println("🔊 [PA BROADCAST] Chime Finished.");
+    Serial.println("🔊 [PA BROADCAST] Chime Complete.");
 }
 
 void playTestTone() {
-    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Crisp PA Diagnostic Chime...");
+    Serial.println("\n🎛️ [DIAGNOSTIC TEST] Crisp Audio Test via MAX98357A...");
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    playTone(SPEAKER_PIN, 950);
-    delay(120);
-    playTone(SPEAKER_PIN, 1350);
-    delay(160);
-    stopTone(SPEAKER_PIN);
+    playI2STone(880.0f, 150, 0.65f);  // A5
+    delay(40);
+    playI2STone(1318.5f, 250, 0.70f); // E6
+    delay(80);
+    stopI2SAudio();
     digitalWrite(LED_NOTICE_PIN, LOW);
     Serial.println("🎛️ [DIAGNOSTIC TEST] Diagnostic Complete.");
 }
@@ -136,7 +212,7 @@ void registerNodeWithBackend() {
 
         if (httpCode == 200 || httpCode == 201 || httpCode == 400) {
             digitalWrite(LED_ONLINE_PIN, HIGH);
-            Serial.println("✅ [REGISTER] Classic ESP32 NodeMCU Registered & ONLINE!");
+            Serial.println("✅ [REGISTER] ESP32 NodeMCU + MAX98357A Registered & ONLINE!");
         } else {
             Serial.printf("⚠️ [REGISTER] Backend response (%d): Auto-registering on heartbeat.\n", httpCode);
         }
@@ -155,17 +231,17 @@ void executeCommand(const char* cmd, const char* title) {
     } else if (action == "PLAY_ANNOUNCEMENT" || action == "PLAY") {
         playNoticeTone();
     } else if (action == "PAUSE") {
-        Serial.println("⏸️ [PAUSE] Speaker playback paused.");
-        stopTone(SPEAKER_PIN);
+        Serial.println("⏸️ [PAUSE] Playback paused.");
+        stopI2SAudio();
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "RESUME") {
-        Serial.println("▶️ [RESUME] Speaker playback resumed.");
+        Serial.println("▶️ [RESUME] Playback resumed.");
         digitalWrite(LED_NOTICE_PIN, HIGH);
-        delay(100);
+        playI2STone(880.0f, 100, 0.5f);
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "STOP" || action == "CANCEL" || action == "SKIP") {
         Serial.println("⏹️ [STOP/SKIP] Playback terminated.");
-        stopTone(SPEAKER_PIN);
+        stopI2SAudio();
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "SET_VOLUME") {
         Serial.println("🔊 [VOLUME] Volume updated on speaker node.");
@@ -175,7 +251,6 @@ void executeCommand(const char* cmd, const char* title) {
         delay(400);
         digitalWrite(LED_ONLINE_PIN, HIGH);
     } else {
-        // Fallback for any unknown notice action
         playNoticeTone();
     }
 }
@@ -225,7 +300,6 @@ void sendHeartbeat() {
                 for (JsonObject cmdObj : cmds) {
                     const char* cmd = cmdObj["command"] | "";
                     const char* title = cmdObj["title"] | "Campus Broadcast";
-                    // Deduplicate test tone clicks in the same batch
                     if (String(cmd) == "TEST_SPEAKER") {
                         if (!testToneTriggered) {
                             testToneTriggered = true;
@@ -257,31 +331,34 @@ void setup() {
     // ------------------------------------------------------------------------
     // Standard Hardware UART0 Serial Initialization (CH340 / CP2102 Driver)
     // ------------------------------------------------------------------------
-    // Classic 38-Pin NodeMCU uses onboard USB-to-UART bridge (CH340G / CP2102)
-    // wired directly to GPIO 1 (TX0) and GPIO 3 (RX0).
-    // Avoid blocking loops like `while(!Serial)` which stall when no terminal is connected.
     Serial.begin(115200);
-    delay(500); // 500ms stabilization delay for CH340 / CP2102 transceiver power-up
+    delay(500); // 500ms stabilization delay for CH340 / CP2102 transceiver
     Serial.flush();
 
     Serial.println("\n========================================================");
     Serial.println("  EchoSphere Classic 38-Pin ESP-32 NodeMCU Firmware    ");
+    Serial.println("  Amplifier: MAX98357A I2S 3W Class-D + 8Ω Speaker     ");
     Serial.println("  UART: Standard Hardware UART0 (CH340 / CP210x Bridge) ");
     Serial.println("========================================================");
-    Serial.printf("Pins: Speaker=GPIO %d | Online LED=GPIO %d | Notice LED=GPIO %d\n", 
-                  SPEAKER_PIN, LED_ONLINE_PIN, LED_NOTICE_PIN);
+    Serial.printf("I2S Pins: BCLK=GPIO %d | LRC=GPIO %d | DIN=GPIO %d\n", 
+                  I2S_BCLK_PIN, I2S_LRC_PIN, I2S_DIN_PIN);
+    Serial.printf("LED Pins: Online=GPIO %d | Notice=GPIO %d\n", 
+                  LED_ONLINE_PIN, LED_NOTICE_PIN);
 
-    pinMode(SPEAKER_PIN, OUTPUT);
     pinMode(LED_ONLINE_PIN, OUTPUT);
     pinMode(LED_NOTICE_PIN, OUTPUT);
 
-    // Hardware Power-On Self-Test (POST): Chirp buzzer and flash LEDs
+    // Initialize MAX98357A I2S driver
+    initI2SAudio();
+
+    // Hardware Power-On Self-Test (POST): Play pleasant boot chime
     Serial.println("⚡ [POST] Hardware Power-On Self-Test...");
     digitalWrite(LED_ONLINE_PIN, HIGH);
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    playTone(SPEAKER_PIN, 1000);
-    delay(250);
-    stopTone(SPEAKER_PIN);
+    playI2STone(523.25f, 120, 0.5f); // C5
+    playI2STone(659.25f, 150, 0.5f); // E5
+    playI2STone(783.99f, 250, 0.6f); // G5
+    stopI2SAudio();
     digitalWrite(LED_NOTICE_PIN, LOW);
 
     // Set Render backend SSL to insecure (no local CA certificate bundle required)
