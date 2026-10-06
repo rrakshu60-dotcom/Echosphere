@@ -4,51 +4,80 @@
 #include <ArduinoJson.h>
 
 // ============================================================================
-// EchoSphere ESP32 Smart Speaker Hardware Node
-// Target Backend: Live Render Backend
+// EchoSphere ESP32 Smart PA Speaker Hardware Node
+// Target Architecture: Classic 38-Pin ESP-32 NodeMCU / ESP-WROOM-32 Dev Module
+// Serial Interface   : Standard Hardware UART0 (CH340 / CP2102 Bridge)
+// Target Backend     : Live Render Backend
 // ============================================================================
 const char* SERVER_URL = "https://echosphere-backend-9lv8.onrender.com";
 
 // ============================================================================
 // Wi-Fi Configuration
-// For Wokwi Simulator: Keep "Wokwi-GUEST" and ""
-// For Real Physical ESP32: Enter your 2.4GHz Wi-Fi SSID and Password
+// For Wokwi Simulator : Keep "Wokwi-GUEST" and ""
+// For Real ESP32      : Enter your 2.4GHz Wi-Fi SSID and Password
 // ============================================================================
-const char* WIFI_SSID = "Wokwi-GUEST"; // <-- Change to your Wi-Fi name
-const char* WIFI_PASS = "";            // <-- Change to your Wi-Fi password
+const char* WIFI_SSID = "Wokwi-GUEST"; // <-- Change to your 2.4GHz Wi-Fi name
+const char* WIFI_PASS = "";            // <-- Change to your 2.4GHz Wi-Fi password
 
-// Hardware Pin Mappings
-// Note: For ESP32-S3 DevKitC-1: GPIO 4, 5, 6
-// Note: For ESP32-WROOM-32 Dev Module: GPIO 4, 5 (or 2 for built-in LED), 18/19
-#define SPEAKER_PIN    4   // Piezo Buzzer / Speaker Module (GPIO 4)
-#define LED_ONLINE_PIN 5   // Status LED: Backend Connected & Heartbeat OK (GPIO 5)
-#define LED_NOTICE_PIN 6   // Active Chime LED: Broadcast / Emergency Siren (GPIO 6)
+// ============================================================================
+// Classic 38-Pin ESP-32 NodeMCU GPIO Pin Allocations
+// ============================================================================
+// 🚫 STRICTLY PROHIBITED PINS ON CLASSIC ESP-WROOM-32:
+//  - Input-Only Pins (GPI 34 to 39): Cannot drive outputs (no output driver/pull-up)
+//  - Integrated SPI Flash (GPIO 6 to 11): Toggling will crash/freeze ESP32 immediately
+//  - Strapping Pins (GPIO 0, 12, 15): Affects boot mode if pulled high/low on power-up
+//
+// ✅ SAFE GENERAL-PURPOSE OUTPUT PINS USED:
+//  - GPIO 25: DAC1 / Safe General Output -> Audio output / Piezo buzzer / PAM8403
+//  - GPIO 2 : Classic NodeMCU Onboard Blue LED -> Online status & heartbeat blink
+//  - GPIO 18: Safe General Output (VSPI SCK)   -> Notice broadcast & emergency LED
+// ============================================================================
+#define SPEAKER_PIN    25  // DAC1 (Pin 25): Piezo Buzzer / Speaker Module / PAM8403 Input
+#define LED_ONLINE_PIN 2   // Onboard LED (Pin 2): Backend Connected & Heartbeat OK
+#define LED_NOTICE_PIN 18  // GPIO 18: Broadcast Announcement / Emergency Siren Active
+
+// Compile-Time Safety Guard: Ensure no output is mapped to input-only (34-39) or SPI flash (6-11)
+static_assert(SPEAKER_PIN < 34 || SPEAKER_PIN > 39, "CRITICAL: SPEAKER_PIN cannot be assigned to input-only pins 34-39!");
+static_assert(LED_ONLINE_PIN < 34 || LED_ONLINE_PIN > 39, "CRITICAL: LED_ONLINE_PIN cannot be assigned to input-only pins 34-39!");
+static_assert(LED_NOTICE_PIN < 34 || LED_NOTICE_PIN > 39, "CRITICAL: LED_NOTICE_PIN cannot be assigned to input-only pins 34-39!");
+
+static_assert(SPEAKER_PIN < 6 || SPEAKER_PIN > 11, "CRITICAL: SPEAKER_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
+static_assert(LED_ONLINE_PIN < 6 || LED_ONLINE_PIN > 11, "CRITICAL: LED_ONLINE_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
+static_assert(LED_NOTICE_PIN < 6 || LED_NOTICE_PIN > 11, "CRITICAL: LED_NOTICE_PIN cannot use SPI flash pins 6-11 on classic ESP32!");
 
 String macAddress;
 String ipAddress;
 const String zoneName = "Block A - CSE Quad";
-const String deviceName = "EchoSphere ESP32 PA Node";
+const String deviceName = "EchoSphere NodeMCU-32S Node";
 
 WiFiClientSecure secureClient;
 
 // ----------------------------------------------------------------------------
-// Audio Tone Synthesizers (Simulated PA Audio Output)
+// Audio Tone Synthesizers (LEDC / Hardware Timer PWM on Classic ESP32)
 // ----------------------------------------------------------------------------
+void playTone(uint8_t pin, unsigned int frequency) {
+    tone(pin, frequency);
+}
+
+void stopTone(uint8_t pin) {
+    noTone(pin);
+}
+
 void playEmergencySiren() {
     Serial.println("\n🚨 [EMERGENCY OVERRIDE] Campus Emergency Siren Activated!");
     for (int cycle = 0; cycle < 3; cycle++) {
         digitalWrite(LED_NOTICE_PIN, HIGH);
         for (int freq = 600; freq < 1400; freq += 50) {
-            tone(SPEAKER_PIN, freq);
+            playTone(SPEAKER_PIN, freq);
             delay(12);
         }
         digitalWrite(LED_NOTICE_PIN, LOW);
         for (int freq = 1400; freq > 600; freq -= 50) {
-            tone(SPEAKER_PIN, freq);
+            playTone(SPEAKER_PIN, freq);
             delay(12);
         }
     }
-    noTone(SPEAKER_PIN);
+    stopTone(SPEAKER_PIN);
     digitalWrite(LED_NOTICE_PIN, LOW);
     Serial.println("🚨 [EMERGENCY OVERRIDE] Siren Sequence Finished.");
 }
@@ -56,13 +85,13 @@ void playEmergencySiren() {
 void playNoticeTone() {
     Serial.println("\n🔊 [PA BROADCAST] Playing Announcement Chime...");
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    tone(SPEAKER_PIN, 587); // D5
+    playTone(SPEAKER_PIN, 587); // D5
     delay(200);
-    tone(SPEAKER_PIN, 880); // A5
+    playTone(SPEAKER_PIN, 880); // A5
     delay(200);
-    tone(SPEAKER_PIN, 1175); // D6
+    playTone(SPEAKER_PIN, 1175); // D6
     delay(400);
-    noTone(SPEAKER_PIN);
+    stopTone(SPEAKER_PIN);
     delay(100);
     digitalWrite(LED_NOTICE_PIN, LOW);
     Serial.println("🔊 [PA BROADCAST] Chime Finished.");
@@ -71,11 +100,11 @@ void playNoticeTone() {
 void playTestTone() {
     Serial.println("\n🎛️ [DIAGNOSTIC TEST] Crisp PA Diagnostic Chime...");
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    tone(SPEAKER_PIN, 950);
+    playTone(SPEAKER_PIN, 950);
     delay(120);
-    tone(SPEAKER_PIN, 1350);
+    playTone(SPEAKER_PIN, 1350);
     delay(160);
-    noTone(SPEAKER_PIN);
+    stopTone(SPEAKER_PIN);
     digitalWrite(LED_NOTICE_PIN, LOW);
     Serial.println("🎛️ [DIAGNOSTIC TEST] Diagnostic Complete.");
 }
@@ -107,7 +136,7 @@ void registerNodeWithBackend() {
 
         if (httpCode == 200 || httpCode == 201 || httpCode == 400) {
             digitalWrite(LED_ONLINE_PIN, HIGH);
-            Serial.println("✅ [REGISTER] ESP32 Speaker Node Registered & ONLINE!");
+            Serial.println("✅ [REGISTER] Classic ESP32 NodeMCU Registered & ONLINE!");
         } else {
             Serial.printf("⚠️ [REGISTER] Backend response (%d): Auto-registering on heartbeat.\n", httpCode);
         }
@@ -127,7 +156,7 @@ void executeCommand(const char* cmd, const char* title) {
         playNoticeTone();
     } else if (action == "PAUSE") {
         Serial.println("⏸️ [PAUSE] Speaker playback paused.");
-        noTone(SPEAKER_PIN);
+        stopTone(SPEAKER_PIN);
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "RESUME") {
         Serial.println("▶️ [RESUME] Speaker playback resumed.");
@@ -136,7 +165,7 @@ void executeCommand(const char* cmd, const char* title) {
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "STOP" || action == "CANCEL" || action == "SKIP") {
         Serial.println("⏹️ [STOP/SKIP] Playback terminated.");
-        noTone(SPEAKER_PIN);
+        stopTone(SPEAKER_PIN);
         digitalWrite(LED_NOTICE_PIN, LOW);
     } else if (action == "SET_VOLUME") {
         Serial.println("🔊 [VOLUME] Volume updated on speaker node.");
@@ -216,7 +245,7 @@ void sendHeartbeat() {
             httpInitialized = false;
         }
     } else {
-        // Blink Green LED if searching Wi-Fi
+        // Blink Onboard Blue LED if Wi-Fi searching / connecting
         digitalWrite(LED_ONLINE_PIN, !digitalRead(LED_ONLINE_PIN));
     }
 }
@@ -225,56 +254,68 @@ void sendHeartbeat() {
 // Arduino Setup & Main Loop
 // ----------------------------------------------------------------------------
 void setup() {
+    // ------------------------------------------------------------------------
+    // Standard Hardware UART0 Serial Initialization (CH340 / CP2102 Driver)
+    // ------------------------------------------------------------------------
+    // Classic 38-Pin NodeMCU uses onboard USB-to-UART bridge (CH340G / CP2102)
+    // wired directly to GPIO 1 (TX0) and GPIO 3 (RX0).
+    // Avoid blocking loops like `while(!Serial)` which stall when no terminal is connected.
     Serial.begin(115200);
-    delay(300);
+    delay(500); // 500ms stabilization delay for CH340 / CP2102 transceiver power-up
+    Serial.flush();
 
-    Serial.println("\n==================================================");
-    Serial.println("  EchoSphere ESP32 Smart PA Speaker Node Firmware ");
-    Serial.println("==================================================");
+    Serial.println("\n========================================================");
+    Serial.println("  EchoSphere Classic 38-Pin ESP-32 NodeMCU Firmware    ");
+    Serial.println("  UART: Standard Hardware UART0 (CH340 / CP210x Bridge) ");
+    Serial.println("========================================================");
+    Serial.printf("Pins: Speaker=GPIO %d | Online LED=GPIO %d | Notice LED=GPIO %d\n", 
+                  SPEAKER_PIN, LED_ONLINE_PIN, LED_NOTICE_PIN);
 
     pinMode(SPEAKER_PIN, OUTPUT);
     pinMode(LED_ONLINE_PIN, OUTPUT);
     pinMode(LED_NOTICE_PIN, OUTPUT);
 
-    // Hardware Self-Test: Flash LEDs and Chirp Buzzer on Boot
+    // Hardware Power-On Self-Test (POST): Chirp buzzer and flash LEDs
     Serial.println("⚡ [POST] Hardware Power-On Self-Test...");
     digitalWrite(LED_ONLINE_PIN, HIGH);
     digitalWrite(LED_NOTICE_PIN, HIGH);
-    tone(SPEAKER_PIN, 1000);
+    playTone(SPEAKER_PIN, 1000);
     delay(250);
-    noTone(SPEAKER_PIN);
+    stopTone(SPEAKER_PIN);
     digitalWrite(LED_NOTICE_PIN, LOW);
 
-    // Disable SSL Certificate validation for Render backend
+    // Set Render backend SSL to insecure (no local CA certificate bundle required)
     secureClient.setInsecure();
 
-    Serial.printf("🌐 Connecting to Wi-Fi (%s)...\n", WIFI_SSID);
+    Serial.printf("🌐 Connecting to 2.4GHz Wi-Fi: %s...\n", WIFI_SSID);
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     int dots = 0;
     while (WiFi.status() != WL_CONNECTED && dots < 30) {
         delay(300);
         Serial.print(".");
-        // Toggle green LED while connecting
+        // Toggle onboard blue LED while searching for Wi-Fi
         digitalWrite(LED_ONLINE_PIN, dots % 2 == 0 ? HIGH : LOW);
         dots++;
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+        // Read true chip factory MAC address from eFuse
         String realMac = WiFi.macAddress();
         macAddress = (realMac.length() > 0 && realMac != "00:00:00:00:00:00") ? realMac : "24:0A:C4:00:01:10";
         ipAddress = WiFi.localIP().toString();
         digitalWrite(LED_ONLINE_PIN, HIGH);
         Serial.println("\n✨ Wi-Fi Connected Successfully!");
         Serial.printf(" - Node IP Address  : %s\n", ipAddress.c_str());
-        Serial.printf(" - Node MAC Address : %s\n", macAddress.c_str());
+        Serial.printf(" - Hardware MAC     : %s\n", macAddress.c_str());
         Serial.printf(" - Target Server    : %s\n", SERVER_URL);
-        Serial.println("--------------------------------------------------");
+        Serial.println("--------------------------------------------------------");
 
         registerNodeWithBackend();
         sendHeartbeat();
     } else {
-        Serial.println("\n⚠️ Running in Standalone Simulation Mode");
+        Serial.println("\n⚠️ Running in Standalone Simulation Mode (Offline)");
         macAddress = "24:0A:C4:00:01:10";
         ipAddress = "10.0.1.15";
         digitalWrite(LED_ONLINE_PIN, HIGH);
@@ -285,7 +326,7 @@ void setup() {
 unsigned long lastCycle = 0;
 
 void loop() {
-    // 3-second heartbeat cycle keeps node alive and checks for commands
+    // 3-second heartbeat cycle keeps node alive and polls backend for pending broadcasts
     if (millis() - lastCycle >= 3000) {
         if (WiFi.status() != WL_CONNECTED) {
             WiFi.reconnect();
