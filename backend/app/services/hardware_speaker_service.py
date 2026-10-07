@@ -473,11 +473,15 @@ def enqueue_and_broadcast_announcement(
         target_node = get_speaker_node_by_id(db, speaker_node_id)
         if not target_node:
             # Resilient fallback across database environments (Render auto-inc vs SQLite IDs)
-            if speaker_node_id in (14, 1, 12):
+            if speaker_node_id in (10, 13, 14):
+                target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CD")).first()
+                if not target_node:
+                    target_node = db.query(SpeakerNode).filter(SpeakerNode.name.ilike("%ESP32%")).first()
+            elif speaker_node_id in (12, 1):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("24:0A:C4:00:01:10")).first()
-            elif speaker_node_id in (15, 2, 8):
+            elif speaker_node_id in (8, 2, 15):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CB")).first()
-            elif speaker_node_id in (16, 21, 3, 9):
+            elif speaker_node_id in (9, 3, 16, 21):
                 target_node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike("D4:F3:2D:22:2A:CC")).first()
         if target_node:
             t_mac = getattr(target_node, "mac_address", None)
@@ -494,12 +498,12 @@ def enqueue_and_broadcast_announcement(
     dur_secs = max(10, int(words / 2.5))
     now = utc_now()
 
-    # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap
+    # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap (or missing played_at)
     stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
     for sp in stale_playing:
         sp_played_at = getattr(sp, "played_at", None)
         sp_dur = getattr(sp, "duration_seconds", 15) or 15
-        if sp_played_at and (now - sp_played_at).total_seconds() > (sp_dur + 30):
+        if sp_played_at is None or (now - sp_played_at).total_seconds() > (sp_dur + 30):
             setattr(sp, "status", "Completed")
             db.commit()
 
@@ -833,6 +837,9 @@ def auto_advance_speaker_queue(
 
     setattr(next_item, "status", "Playing")
     setattr(next_item, "played_at", utc_now())
+    if next_item.announcement and str(getattr(next_item.announcement, "status", "")).upper() in ("SCHEDULED", "APPROVED", "SUBMITTED"):
+        from app.core.enums.announcement import AnnouncementStatus
+        setattr(next_item.announcement, "status", AnnouncementStatus.PUBLISHED)
     if not getattr(next_item, "duration_seconds", None):
         ann = getattr(next_item, "announcement", None)
         words = len(((getattr(ann, "title", "") or '') + ' ' + (getattr(ann, "description", "") or '')).split())

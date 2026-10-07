@@ -489,7 +489,9 @@ class AnnouncementController extends GetxController {
               a.title.contains('Open Elective') ||
               a.title.contains('NBA') ||
               a.title.contains('Mock Interview') ||
-              a.title.contains('Welcome to EchoSphere'));
+              a.title.contains('Welcome to EchoSphere') ||
+              a.title.toLowerCase().contains('automated speaker notice') ||
+              a.title.toLowerCase().contains('sample notice'));
           if (cachedList.isNotEmpty) {
             _rawAnnouncements.value = cachedList;
             _rawAnnouncements.refresh();
@@ -828,6 +830,17 @@ class AnnouncementController extends GetxController {
           update();
           // Update relevance scores asynchronously in background without blocking UI
           updateAllRelevanceScores();
+          return;
+        } else {
+          // If server successfully returned 0 notices, clean up stale local cache
+          _rawAnnouncements.value = [];
+          _savePersistentCache([]);
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('echosphere_cached_announcements');
+          } catch (_) {}
+          isLoading.value = false;
+          update();
           return;
         }
       } catch (e) {

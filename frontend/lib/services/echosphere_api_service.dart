@@ -1140,6 +1140,18 @@ class EchosphereApiService {
 
     return [
       {
+        'id': 14,
+        'name': 'ESP32 Smart Speaker & Live Display',
+        'mac_address': 'D4:F3:2D:22:2A:CD',
+        'ip_address': '192.168.1.100',
+        'zone': 'Campus Main Corridor',
+        'department': 'College-Wide',
+        'status': 'OFFLINE',
+        'volume': 90,
+        'cpu_usage': 0.0,
+        'memory_usage': 0.0,
+      },
+      {
         'id': 12,
         'name': 'Wokwi ESP32 Speaker Node',
         'mac_address': '24:0A:C4:00:01:10',
