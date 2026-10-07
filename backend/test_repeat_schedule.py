@@ -415,6 +415,136 @@ def test_repeat_schedule_suite():
     assert res_realtime["dispatched_count"] >= 1, f"Expected custom schedule to dispatch in real-time, got {res_realtime}"
     print(f"  ✓ Real-time custom window ({cur_hhmm}) successfully matched and dispatched without simulated_date!")
 
+    # -------------------------------------------------------------
+    # TEST 9: Priority-Ordered Repetition Counts (Emergency -> High 3x -> Medium 2x -> Low 1x)
+    # -------------------------------------------------------------
+    print("\n🔍 [TEST 9] Testing Priority-Ordered Multi-Repeat Execution (Emergency, High, Medium, Low)...")
+
+    # Deactivate prior schedules to isolate TEST 9
+    for s in db.query(AnnouncementRepeatSchedule).all():
+        s.is_active = False
+    db.commit()
+
+    # Clean existing queue
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    # Create 4 notices: Emergency (earthquake), High (3x), Medium/Normal (2x), Low (1x)
+    ann_em = Announcement(
+        title="EARTHQUAKE ALERT: Evacuate Building",
+        description="Major tremor detected. All students must evacuate to the sports ground immediately.",
+        emergency_level="EMERGENCY",
+        priority="HIGH",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    ann_high = Announcement(
+        title="Mid-Semester Exam Rescheduled",
+        description="CS601 exam has been moved from tomorrow to Friday 10:00 AM.",
+        priority="HIGH",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    ann_med = Announcement(
+        title="AI Club Workshop at 2:00 PM",
+        description="Hands-on workshop on generative AI in Seminar Hall 1.",
+        priority="NORMAL",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    ann_low = Announcement(
+        title="Lost Blue Water Bottle",
+        description="Found in library 2nd floor, collect from reception.",
+        priority="LOW",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    db.add_all([ann_em, ann_high, ann_med, ann_low])
+    db.commit()
+
+    for a in [ann_em, ann_high, ann_med, ann_low]:
+        db.add(AnnouncementDelivery(announcement_id=a.id, delivery_type_id=deliv_speaker.id))
+        sched_cfg = RepeatScheduleCreate(
+            selected_slots=["SHORT_BREAK"],
+            target_scope="COLLEGE_WIDE",
+            event_datetime=now + timedelta(hours=24),
+            start_date=now - timedelta(hours=1),
+            end_date=now + timedelta(hours=36),
+            force_enable_speaker=True,
+        )
+        configure_repeat_schedule(db=db, announcement_id=a.id, data=sched_cfg, current_user=user)
+    db.commit()
+
+    # Wave 1: 11:02 AM (All 4 notices should dispatch in strict priority order!)
+    print("  -> Wave 1: Dispatching at 11:02 AM (Short Break)...")
+    res_w1 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:02",
+        simulated_date_str="2026-09-20",
+    )
+    assert res_w1["dispatched_count"] == 4, f"Expected all 4 notices in Wave 1, got {res_w1['dispatched_count']}"
+    w1_ids = [d["announcement_id"] for d in res_w1["dispatched"]]
+    assert w1_ids == [ann_em.id, ann_high.id, ann_med.id, ann_low.id], f"Dispatched order mismatch! Got: {w1_ids}"
+    assert res_w1["dispatched"][0]["priority"] == "EMERGENCY"
+    assert res_w1["dispatched"][1]["priority"] == "HIGH"
+    assert res_w1["dispatched"][2]["priority"] == "MEDIUM"
+    assert res_w1["dispatched"][3]["priority"] == "LOW"
+    print("  ✓ Wave 1 dispatched all 4 in strict priority order: Emergency -> High -> Medium -> Low!")
+
+    # Complete Wave 1 queue items to simulate audio playback completion
+    for q in db.query(SpeakerQueue).all():
+        q.status = "Completed"
+    db.commit()
+
+    # Wave 2: 11:05 AM (Emergency, High, and Medium should repeat; Low is capped at 1x)
+    print("  -> Wave 2: Dispatching at 11:05 AM...")
+    res_w2 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:05",
+        simulated_date_str="2026-09-20",
+    )
+    assert res_w2["dispatched_count"] == 3, f"Expected 3 notices in Wave 2 (Low capped), got {res_w2['dispatched_count']}"
+    w2_ids = [d["announcement_id"] for d in res_w2["dispatched"]]
+    assert w2_ids == [ann_em.id, ann_high.id, ann_med.id], f"Wave 2 order mismatch: {w2_ids}"
+    print("  ✓ Wave 2 dispatched Emergency, High, Medium. Low priority (1x cap) correctly finished!")
+
+    # Complete Wave 2 queue items
+    for q in db.query(SpeakerQueue).all():
+        q.status = "Completed"
+    db.commit()
+
+    # Wave 3: 11:08 AM (Emergency and High should repeat; Medium is capped at 2x)
+    print("  -> Wave 3: Dispatching at 11:08 AM...")
+    res_w3 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:08",
+        simulated_date_str="2026-09-20",
+    )
+    assert res_w3["dispatched_count"] == 2, f"Expected 2 notices in Wave 3 (Medium capped), got {res_w3['dispatched_count']}"
+    w3_ids = [d["announcement_id"] for d in res_w3["dispatched"]]
+    assert w3_ids == [ann_em.id, ann_high.id], f"Wave 3 order mismatch: {w3_ids}"
+    print("  ✓ Wave 3 dispatched Emergency, High. Medium priority (2x cap) correctly finished!")
+
+    # Complete Wave 3 queue items
+    for q in db.query(SpeakerQueue).all():
+        q.status = "Completed"
+    db.commit()
+
+    # Wave 4: 11:11 AM (Emergency repeats whole break; High is capped at 3x)
+    print("  -> Wave 4: Dispatching at 11:11 AM...")
+    res_w4 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:11",
+        simulated_date_str="2026-09-20",
+    )
+    assert res_w4["dispatched_count"] == 1, f"Expected 1 notice in Wave 4 (Emergency whole break), got {res_w4['dispatched_count']}"
+    assert res_w4["dispatched"][0]["announcement_id"] == ann_em.id
+    print("  ✓ Wave 4 dispatched Emergency continuously. High priority (3x cap) correctly finished!")
+
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
     print("=======================================================\n")
