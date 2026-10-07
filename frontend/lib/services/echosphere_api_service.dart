@@ -1134,10 +1134,6 @@ class EchosphereApiService {
       final response = await _dio.get(
         '/hardware/speakers',
         queryParameters: queryParams,
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
       );
       final list = response.data as List<dynamic>;
       if (list.isNotEmpty) return list;
@@ -1147,7 +1143,7 @@ class EchosphereApiService {
 
     return [
       {
-        'id': 14,
+        'id': 13,
         'name': 'ESP32 Smart Speaker & Live Display',
         'mac_address': 'D4:F3:2D:22:2A:CD',
         'ip_address': '192.168.1.100',
@@ -1321,10 +1317,6 @@ class EchosphereApiService {
       final response = await _dio.get(
         '/hardware/queue',
         queryParameters: queryParams,
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
       );
       return response.data as List<dynamic>;
     } on DioException catch (e) {

@@ -104,7 +104,7 @@ public:
     tft.setTextColor(COLOR_TEXT_WHITE, COLOR_HEADER_BLUE);
     tft.setTextSize(1);
     tft.setCursor(18, 6);
-    tft.print(F("ECHOSPHERE SMART NODE"));
+    tft.print(F("ECHOSPHERE"));
 
     tft.setTextColor(COLOR_TEXT_CYAN, COLOR_BG);
     tft.setCursor(15, 48);

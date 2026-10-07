@@ -206,6 +206,15 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         .all()
     )
 
+    if not published_notices:
+        published_notices = (
+            db.query(Announcement)
+            .filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+            .order_by(Announcement.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
     def priority_sort_key(a: Announcement) -> int:
         p_str = (a.priority.value if hasattr(a.priority, "value") else str(a.priority)).upper()
         if "EMERGENCY" in p_str:
@@ -579,9 +588,10 @@ def enqueue_speaker_announcement(
 
     if not ann:
         # Resilient fallback: ensure announcement exists in DB so it can play on hardware
-        from app.models.announcement_category import AnnouncementCategory
-        cat = db.query(AnnouncementCategory).first()
-        cat_id = cat.id if cat else 1
+        cat = db.query(AnnouncementCategory).filter(AnnouncementCategory.name == "General").first()
+        if not cat:
+            cat = db.query(AnnouncementCategory).filter(AnnouncementCategory.id != 1).first()
+        cat_id = cat.id if cat else 12
         creator_id = current_user.id if (current_user and hasattr(current_user, 'id') and current_user.id) else 1
         if not db.query(User).filter(User.id == creator_id).first():
             u = db.query(User).first()
