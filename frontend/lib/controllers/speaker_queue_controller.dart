@@ -27,6 +27,12 @@ class SpeakerQueueController extends GetxController {
   /// Controls whether this device plays audio aloud for the queue (default: false to prioritize physical hardware speaker)
   final RxBool enableLocalAudioPreview = false.obs;
 
+  /// Tracks user explicit pause or stop so background pollers never force-play
+  final RxBool userPausedOrStopped = false.obs;
+
+  /// Set of announcement IDs explicitly dismissed or removed by the user in this session
+  final Set<int> dismissedAnnouncementIds = <int>{};
+
   Timer? _playbackTimer;
   Timer? _pollTimer;
   Timer? _intermissionTimer;
@@ -128,14 +134,15 @@ class SpeakerQueueController extends GetxController {
       final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
       final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
           !a.title.toLowerCase().contains('sample notice');
-      return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker;
+      return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker && !dismissedAnnouncementIds.contains(a.id);
     }).toList();
 
     bool changed = false;
     for (var notice in speakerNotices) {
+      if (dismissedAnnouncementIds.contains(notice.id)) continue;
       final exists = queueItems.any((q) =>
           (q['announcement_id'] == notice.id || q['id'] == notice.id) &&
-          q['status'] != 'Completed');
+          q['status'] != 'Completed' && q['status'] != 'Cancelled');
       if (!exists) {
         final nodeName = _getNodeName(notice.speakerNodeId);
         queueItems.add({
@@ -147,7 +154,7 @@ class SpeakerQueueController extends GetxController {
           'priority': notice.priority,
           'category': notice.category,
           'type': 'AI Speech',
-          'status': queueItems.isEmpty ? 'Playing' : 'Queued',
+          'status': 'Queued',
           'queue_position': queueItems.length + 1,
           'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
           'speaker_node_id': notice.speakerNodeId,
@@ -162,20 +169,6 @@ class SpeakerQueueController extends GetxController {
     if (changed) {
       _updateActiveNoticeMetrics();
       queueItems.refresh();
-
-      // Auto-broadcast immediately if queue was idle and an eligible notice is waiting
-      if (!Get.testMode && !isPlaying.value && queueItems.isNotEmpty) {
-        final now = DateTime.now();
-        final dueIdx = queueItems.indexWhere((q) {
-          final sStr = q['scheduled_time']?.toString();
-          if (sStr == null || sStr.isEmpty) return true;
-          final s = DateTime.tryParse(sStr);
-          return s == null || s.isBefore(now.add(const Duration(seconds: 5)));
-        });
-        if (dueIdx != -1) {
-          togglePlayPause(index: dueIdx);
-        }
-      }
     }
   }
 
@@ -256,7 +249,13 @@ class SpeakerQueueController extends GetxController {
         remoteActiveItems = rawQueue
             .whereType<Map>()
             .map((q) => Map<String, dynamic>.from(q))
-            .where((q) => q['status'] != 'Completed' && q['status'] != 'Cancelled')
+            .where((q) {
+              final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+              return q['status'] != 'Completed' &&
+                  q['status'] != 'Cancelled' &&
+                  q['status'] != 'Skipped' &&
+                  !dismissedAnnouncementIds.contains(annId);
+            })
             .toList();
       } catch (e) {
         debugPrint('Parallel speaker refresh note: $e');
@@ -292,11 +291,11 @@ class SpeakerQueueController extends GetxController {
           final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
           final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
               !a.title.toLowerCase().contains('sample notice');
-          return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker;
+          return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker && !dismissedAnnouncementIds.contains(a.id);
         }).toList();
 
         for (var notice in speakerNotices) {
-          if (!seenAnnouncementIds.contains(notice.id)) {
+          if (!seenAnnouncementIds.contains(notice.id) && !dismissedAnnouncementIds.contains(notice.id)) {
             seenAnnouncementIds.add(notice.id);
             combined.add({
               'id': notice.id,
@@ -307,7 +306,7 @@ class SpeakerQueueController extends GetxController {
               'priority': notice.priority,
               'category': notice.category,
               'type': 'AI Speech',
-              'status': combined.isEmpty ? 'Playing' : 'Queued',
+              'status': 'Queued',
               'queue_position': combined.length + 1,
               'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
               'speaker_node_id': notice.speakerNodeId,
@@ -326,29 +325,18 @@ class SpeakerQueueController extends GetxController {
         return t.contains('automated speaker notice') || t.contains('sample notice');
       });
 
-      // Autoplay & Scheduled Broadcast Engine
+      // Synchronize remote Playing state without overriding user's pause/stop command
       final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
       if (playingIdx != -1) {
-        activeIndex.value = playingIdx;
-        combined[playingIdx]['status'] = 'Playing';
-        if (!isPlaying.value) {
-          isPlaying.value = true;
-          _startPlaybackTimer();
-        }
-      } else if (!isPlaying.value && combined.isNotEmpty) {
-        // Auto-play when queue is idle and an eligible notice is due
-        final now = DateTime.now();
-        final dueIdx = combined.indexWhere((q) {
-          final sStr = q['scheduled_time']?.toString();
-          if (sStr == null || sStr.isEmpty) return true;
-          final s = DateTime.tryParse(sStr);
-          return s == null || s.isBefore(now.add(const Duration(seconds: 2)));
-        });
-        if (dueIdx != -1) {
-          queueItems.assignAll(combined);
-          _updateActiveNoticeMetrics();
-          togglePlayPause(index: dueIdx);
-          return;
+        if (!userPausedOrStopped.value) {
+          activeIndex.value = playingIdx;
+          combined[playingIdx]['status'] = 'Playing';
+          if (!isPlaying.value) {
+            isPlaying.value = true;
+            _startPlaybackTimer();
+          }
+        } else {
+          combined[playingIdx]['status'] = 'Paused';
         }
       } else if (isPlaying.value && queueItems.isNotEmpty && activeIndex.value < queueItems.length) {
         final currentlyPlayingId = queueItems[activeIndex.value]['announcement_id'];
@@ -433,6 +421,7 @@ class SpeakerQueueController extends GetxController {
     if (isPlaying.value && (index == null || index == activeIndex.value)) {
       // Pause
       isPlaying.value = false;
+      userPausedOrStopped.value = true;
       _playbackTimer?.cancel();
       queueItems[activeIndex.value]['status'] = 'Paused';
       queueItems.refresh();
@@ -455,6 +444,7 @@ class SpeakerQueueController extends GetxController {
     activeIndex.value = targetIdx;
     currentElapsedSeconds.value = 0;
     _updateActiveNoticeMetrics();
+    userPausedOrStopped.value = false;
 
     // Mark active item as Playing and others as Queued
     for (int i = 0; i < queueItems.length; i++) {
@@ -720,6 +710,7 @@ class SpeakerQueueController extends GetxController {
     if (queueItems.isEmpty) return;
     _playbackTimer?.cancel();
     isPlaying.value = false;
+    userPausedOrStopped.value = true;
     currentElapsedSeconds.value = 0;
 
     if (!Get.testMode) {
@@ -729,11 +720,11 @@ class SpeakerQueueController extends GetxController {
     }
 
     if (activeIndex.value >= 0 && activeIndex.value < queueItems.length) {
-      queueItems[activeIndex.value]['status'] = 'Queued';
+      queueItems[activeIndex.value]['status'] = 'Paused';
       final item = queueItems[activeIndex.value];
       final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
       if (!Get.testMode && targetId != null) {
-        _apiService.queueAction(targetId, 'cancel').catchError((_) => <String, dynamic>{});
+        _apiService.queueAction(targetId, 'stop').catchError((_) => <String, dynamic>{});
       }
     }
     queueItems.refresh();
@@ -748,36 +739,31 @@ class SpeakerQueueController extends GetxController {
     final isCurrent = (index == activeIndex.value);
     final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
 
-    if (!Get.testMode && targetId != null) {
-      _apiService.queueAction(targetId, 'remove').catchError((_) => <String, dynamic>{});
+    if (targetId != null && targetId > 0) {
+      dismissedAnnouncementIds.add(targetId);
+      if (Get.isRegistered<AnnouncementController>()) {
+        Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(targetId);
+      }
+      if (!Get.testMode) {
+        _apiService.queueAction(targetId, 'remove').catchError((_) => <String, dynamic>{});
+      }
     }
 
-    if (isCurrent && isPlaying.value) {
+    if (isCurrent) {
       _playbackTimer?.cancel();
-      queueItems.removeAt(index);
+      isPlaying.value = false;
+      userPausedOrStopped.value = true;
       currentElapsedSeconds.value = 0;
-
-      if (queueItems.isNotEmpty) {
-        if (activeIndex.value >= queueItems.length) {
-          activeIndex.value = 0;
-        }
-        queueItems[activeIndex.value]['status'] = 'Playing';
-        _updateActiveNoticeMetrics();
-        queueItems.refresh();
-        isPlaying.value = true;
-        _startPlaybackTimer();
-      } else {
-        activeIndex.value = 0;
-        isPlaying.value = false;
-        queueItems.refresh();
-      }
-    } else {
-      queueItems.removeAt(index);
-      if (index < activeIndex.value) {
-        activeIndex.value--;
-      }
-      queueItems.refresh();
     }
+
+    queueItems.removeAt(index);
+    if (index < activeIndex.value) {
+      activeIndex.value--;
+    } else if (activeIndex.value >= queueItems.length) {
+      activeIndex.value = (queueItems.isEmpty ? 0 : queueItems.length - 1);
+    }
+    _updateActiveNoticeMetrics();
+    queueItems.refresh();
 
     snackBar('Notice removed from speaker queue.');
   }

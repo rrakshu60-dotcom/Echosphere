@@ -701,7 +701,7 @@ def dispatch_queue_action_to_speakers(
             "target_mac": target_mac,
             "timestamp": utc_now().isoformat(),
         }
-    elif action_lower in ("cancel", "stop"):
+    elif action_lower in ("cancel", "stop", "remove"):
         payload = {
             "command": "CANCEL",
             "announcement_id": ann_id,
@@ -790,18 +790,41 @@ def auto_advance_speaker_queue(
             db.refresh(current_playing)
             logger.info(f"Speaker queue item #{current_playing.id} completed playback after duration + {gap}s gap.")
     else:
-        # Check if there are queued items waiting to start (due for scheduled_time or immediate)
-        waiting_item = (
-            db.query(SpeakerQueue)
-            .filter(
-                SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-                or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
-            )
-            .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
-            .first()
-        )
-        if waiting_item:
+        if force_advance:
             should_advance = True
+        else:
+            # When idle/stopped, only advance for emergency preemption or scheduled announcements whose scheduled_time just arrived
+            from datetime import timedelta
+            from app.core.enums.announcement import EmergencyLevel
+            from app.models.announcement import Announcement
+
+            emergency_waiting = (
+                db.query(SpeakerQueue)
+                .join(SpeakerQueue.announcement)
+                .filter(
+                    SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
+                    or_(
+                        Announcement.emergency_level == EmergencyLevel.EMERGENCY,
+                        Announcement.title.ilike("%emergency%"),
+                    ),
+                )
+                .first()
+            )
+            if emergency_waiting:
+                should_advance = True
+            else:
+                scheduled_due = (
+                    db.query(SpeakerQueue)
+                    .filter(
+                        SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
+                        SpeakerQueue.scheduled_time != None,
+                        SpeakerQueue.scheduled_time <= now,
+                        SpeakerQueue.scheduled_time >= now - timedelta(minutes=5),
+                    )
+                    .first()
+                )
+                if scheduled_due:
+                    should_advance = True
 
     if not should_advance:
         return None

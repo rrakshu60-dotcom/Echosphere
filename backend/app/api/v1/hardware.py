@@ -711,9 +711,9 @@ def update_queue_action(
         base_url=base_url,
     )
 
-    # Auto-advance to next queued item if current was skipped, cancelled, or completed
+    # Auto-advance to next queued item only if current was skipped or naturally completed
     advance_res = None
-    if action.lower() in ("skip", "cancel", "stop", "complete", "remove"):
+    if action.lower() in ("skip", "complete"):
         from app.services.hardware_speaker_service import auto_advance_speaker_queue
         try:
             advance_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
