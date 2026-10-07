@@ -227,6 +227,7 @@ public:
 
   int getDailyNoticesCount() const { return dailyNoticesCount; }
   bool isBroadcasting() const { return isNoticeActive; }
+  bool isRendered() const { return isScreenRendered; }
   DisplayState getState() const { return currentState; }
 
   // --------------------------------------------------------------------------

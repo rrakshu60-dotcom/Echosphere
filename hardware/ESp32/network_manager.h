@@ -284,7 +284,7 @@ public:
           int newCount = displayMgr.getDailyNoticesCount();
           int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
           if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
-            if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isScreenRendered()) {
+            if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
               lastTopNoticeId = currentTopId;
               displayMgr.refreshScreen();
             }
