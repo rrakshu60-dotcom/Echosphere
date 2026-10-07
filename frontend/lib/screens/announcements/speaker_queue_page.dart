@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -463,6 +463,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: context.colors.surface,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              actionsOverflowDirection: VerticalDirection.down,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const EchoSphereText(
                 text: 'Register Hardware Speaker Node',
@@ -474,7 +476,67 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Icon(Icons.bolt_rounded, size: 14, color: context.colors.primary),
+                        const SizedBox(width: 4),
+                        EchoSphereText(
+                          text: 'Quick Setup Presets',
+                          size: 11,
+                          variant: TextVariant.bold,
+                          color: context.colors.primary,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        ActionChip(
+                          avatar: const Icon(Icons.podcasts_rounded, size: 13),
+                          label: const Text('Corridor Speaker', style: TextStyle(fontSize: 10)),
+                          onPressed: () {
+                            setDialogState(() {
+                              nameCtrl.text = 'Campus Smart Speaker';
+                              macCtrl.text = 'D4:F3:2D:22:2A:CD';
+                              ipCtrl.text = '192.168.1.100';
+                              selectedZone = 'Campus Main Corridor';
+                              selectedDept = 'College-Wide';
+                            });
+                          },
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.campaign_rounded, size: 13),
+                          label: const Text('Client 1', style: TextStyle(fontSize: 10)),
+                          onPressed: () {
+                            setDialogState(() {
+                              nameCtrl.text = 'Hardware Speaker Client 1';
+                              macCtrl.text = 'D4:F3:2D:22:2A:CB';
+                              ipCtrl.text = '127.0.0.1';
+                              selectedZone = 'Auditorium / Campus';
+                              selectedDept = 'College-Wide';
+                            });
+                          },
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.memory_rounded, size: 13),
+                          label: const Text('Client 2', style: TextStyle(fontSize: 10)),
+                          onPressed: () {
+                            setDialogState(() {
+                              nameCtrl.text = 'Hardware Speaker Client 2';
+                              macCtrl.text = 'D4:F3:2D:22:2A:CC';
+                              ipCtrl.text = '127.0.0.1';
+                              selectedZone = 'Block B - AI Lab';
+                              selectedDept = 'AIML';
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: nameCtrl,
                       style: TextStyle(color: context.colors.onSurface),
@@ -722,6 +784,238 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   },
                   child: const EchoSphereText(
                     text: 'Save Changes',
+                    size: 12,
+                    variant: TextVariant.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showDirectBroadcastDialog(BuildContext context, int nodeId, String nodeName) {
+    final annCtrl = Get.isRegistered<AnnouncementController>() ? Get.find<AnnouncementController>() : null;
+    final announcements = annCtrl?.allAnnouncements.where((a) => a.status == 'PUBLISHED' || a.status == 'APPROVED').toList() ?? [];
+
+    int? selectedAnnouncementId = announcements.isNotEmpty ? announcements.first.id : null;
+    final quickTitleCtrl = TextEditingController();
+    final quickContentCtrl = TextEditingController();
+    bool isQuickMode = announcements.isEmpty;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: context.colors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.campaign_rounded, color: context.colors.primary, size: 22),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: EchoSphereText(
+                      text: 'Broadcast to Node',
+                      size: 16,
+                      variant: TextVariant.bold,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: context.colors.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: context.colors.primary.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.podcasts_rounded, size: 16, color: context.colors.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                EchoSphereText(
+                                  text: nodeName,
+                                  size: 12,
+                                  variant: TextVariant.bold,
+                                  color: context.colors.onSurface,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                EchoSphereText(
+                                  text: 'Speaker Node #$nodeId \u2022 Live Audio & Display',
+                                  size: 10,
+                                  color: context.colors.onSurface.opaque(0.7),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Toggle: Select Existing or Quick Dispatch
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Center(
+                              child: Text('Existing Notice', style: TextStyle(fontSize: 11)),
+                            ),
+                            selected: !isQuickMode,
+                            onSelected: (val) {
+                              if (val && announcements.isNotEmpty) {
+                                setDialogState(() => isQuickMode = false);
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Center(
+                              child: Text('Quick Notice', style: TextStyle(fontSize: 11)),
+                            ),
+                            selected: isQuickMode,
+                            onSelected: (val) {
+                              if (val) setDialogState(() => isQuickMode = true);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (!isQuickMode && announcements.isNotEmpty) ...[
+                      EchoSphereText(
+                        text: 'Select Notice to Broadcast:',
+                        size: 11,
+                        variant: TextVariant.bold,
+                        color: context.colors.onSurface.opaque(0.8),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: selectedAnnouncementId,
+                        isExpanded: true,
+                        dropdownColor: context.colors.surface,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        items: announcements.map((a) {
+                          return DropdownMenuItem<int>(
+                            value: a.id,
+                            child: Text(
+                              '[#${a.id}] ${a.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, color: context.colors.onSurface),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() => selectedAnnouncementId = val);
+                          }
+                        },
+                      ),
+                    ] else ...[
+                      TextField(
+                        controller: quickTitleCtrl,
+                        style: TextStyle(color: context.colors.onSurface),
+                        decoration: InputDecoration(
+                          labelText: 'Notice Title',
+                          hintText: 'e.g. Lab Session Rescheduled',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: quickContentCtrl,
+                        maxLines: 3,
+                        style: TextStyle(color: context.colors.onSurface),
+                        decoration: InputDecoration(
+                          labelText: 'Message Body',
+                          hintText: 'e.g. All CSE 3rd sem students please report to Lab 3.',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: EchoSphereText(
+                    text: 'Cancel',
+                    color: context.colors.onSurface.opaque(0.7),
+                  ),
+                ),
+                EchoSphereButton(
+                  color: context.colors.primary,
+                  radius: 12,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (!isQuickMode && selectedAnnouncementId != null) {
+                      await _queueCtrl.enqueueNotice(
+                        announcementId: selectedAnnouncementId!,
+                        speakerNodeId: nodeId,
+                      );
+                      snackBar('Notice broadcast queued for $nodeName!');
+                    } else if (isQuickMode) {
+                      final title = quickTitleCtrl.text.trim();
+                      final content = quickContentCtrl.text.trim();
+                      if (title.isEmpty) {
+                        snackBar('Please enter a notice title.');
+                        return;
+                      }
+                      if (annCtrl != null) {
+                        final auth = Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
+                        final user = auth?.currentUser.value;
+                        final ok = await annCtrl.createAnnouncement(
+                          title: title,
+                          description: content.isNotEmpty ? content : title,
+                          category: 'Academic',
+                          priority: 'HIGH',
+                          creatorRole: user?.role ?? 'Teacher',
+                          creatorName: user?.fullName ?? 'Faculty',
+                          department: user?.department ?? 'College-Wide',
+                          targetAudience: 'All College',
+                          deliverSpeaker: true,
+                          deliverInApp: true,
+                          speakerNodeId: nodeId,
+                        );
+                        if (ok) {
+                          _queueCtrl.refreshQueue();
+                          snackBar('Quick notice broadcast to $nodeName!');
+                        }
+                      }
+                    }
+                  },
+                  child: const EchoSphereText(
+                    text: 'Broadcast to Node',
                     size: 12,
                     variant: TextVariant.bold,
                     color: Colors.white,
@@ -1671,17 +1965,36 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 ),
                                 const SizedBox(height: 8),
 
-                                // Metrics & Control Row
-                                Row(
+                                // Metrics
+                                EchoSphereText(
+                                  text: 'CPU: $cpuStr | RAM: $ramStr | Vol: $volStr',
+                                  size: 10,
+                                  color: context.colors.onSurface.opaque(0.6),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+
+                                // Controls Wrap (Guarantees Zero Overflow on all screen sizes down to 320px)
+                                Wrap(
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Expanded(
-                                      child: EchoSphereText(
-                                        text: 'CPU: $cpuStr | RAM: $ramStr | Vol: $volStr',
-                                        size: 10,
-                                        color: context.colors.onSurface.opaque(0.6),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                    IconButton(
+                                      icon: Icon(Icons.campaign_rounded,
+                                          size: 16, color: context.colors.primary),
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                      padding: EdgeInsets.zero,
+                                      tooltip: 'Broadcast Notice to Node',
+                                      onPressed: () {
+                                        final nodeId = node['id'];
+                                        if (nodeId == null || nodeId is! int) {
+                                          snackBar('Invalid node id.');
+                                          return;
+                                        }
+                                        _showDirectBroadcastDialog(context, nodeId, nameStr);
+                                      },
                                     ),
                                     IconButton(
                                       icon: Icon(Icons.equalizer_rounded,

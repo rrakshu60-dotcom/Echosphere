@@ -139,6 +139,99 @@ def register_speaker_node(
     return create_speaker_node(db=db, node_in=node_in)
 
 
+def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dict:
+    """
+    Constructs live display payload for ESP32 OLED/LED screens:
+    1. active_notice: currently playing announcement through the speaker queue.
+    2. daily_notices: important active published notices of the day from the app when idle.
+    """
+    # 1. Active playing announcement in speaker queue
+    active_playing = (
+        db.query(SpeakerQueue)
+        .filter(SpeakerQueue.status == "Playing")
+        .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
+        .first()
+    )
+    active_dict = None
+    if active_playing and active_playing.announcement:
+        ann = active_playing.announcement
+        target_mac = active_playing.speaker_node.mac_address if active_playing.speaker_node else "ALL"
+        is_targeted = (
+            not mac_address
+            or target_mac in ("ALL", None)
+            or (active_playing.speaker_node and str(active_playing.speaker_node.mac_address).upper() == mac_address.upper())
+        )
+        if is_targeted:
+            dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
+            p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
+            active_dict = {
+                "is_playing": True,
+                "id": ann.id,
+                "queue_id": active_playing.id,
+                "title": ann.title,
+                "content": ann.description or "",
+                "priority": p_val,
+                "department": dept_name,
+                "duration_seconds": active_playing.duration_seconds or 15,
+                "target_node_mac": target_mac,
+                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream",
+            }
+
+    # 2. Daily important published announcements for idle display ticker
+    published_notices = (
+        db.query(Announcement)
+        .filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+        .order_by(Announcement.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    def priority_sort_key(a: Announcement) -> int:
+        p_str = (a.priority.value if hasattr(a.priority, "value") else str(a.priority)).upper()
+        if "EMERGENCY" in p_str:
+            return 0
+        if "URGENT" in p_str:
+            return 1
+        if "HIGH" in p_str:
+            return 2
+        return 3
+
+    sorted_notices = sorted(published_notices, key=priority_sort_key)
+    daily_list = []
+    for n in sorted_notices:
+        dept_name = n.creator.department.name if (n.creator and n.creator.department) else "College-Wide"
+        p_str = n.priority.value if hasattr(n.priority, "value") else str(n.priority)
+        cat_name = n.category.name if n.category else "Notice"
+        daily_list.append({
+            "id": n.id,
+            "title": n.title,
+            "summary": (n.ai_summary or n.description or "")[:120],
+            "priority": p_str,
+            "department": dept_name,
+            "category": cat_name,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        })
+
+    # Return authentic published announcements (empty list when none are published)
+    return {
+        "status": "success",
+        "active_notice": active_dict,
+        "daily_notices": daily_list,
+    }
+
+
+@router.get("/speakers/display-feed", summary="Get Live Display Feed for ESP32 Screens & LEDs")
+def get_speaker_display_feed(
+    mac_address: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns active playing notice (when speaker is broadcasting) and important daily notices (when idle)
+    for connected ESP32 OLED/LED displays and campus ticker boards.
+    """
+    return get_display_feed_data(db, mac_address)
+
+
 @router.get("/speakers/{id}", response_model=SpeakerNodeResponse)
 def get_speaker_node_details(
     id: int,
@@ -354,7 +447,6 @@ def send_control_command(
         announcement_id=control_in.announcement_id,
     )
 
-
 @router.post("/speakers/heartbeat")
 def receive_node_heartbeat(
     heartbeat_in: SpeakerNodeHeartbeat,
@@ -367,11 +459,14 @@ def receive_node_heartbeat(
     except Exception:
         pass
     cmds = get_pending_commands_for_mac(str(node.mac_address), db=db)
+    feed = get_display_feed_data(db, str(node.mac_address))
     return {
         "status": "success",
         "node_id": node.id,
         "mac_address": node.mac_address,
         "pending_commands": cmds,
+        "active_notice": feed.get("active_notice"),
+        "daily_notices": feed.get("daily_notices", []),
     }
 
 

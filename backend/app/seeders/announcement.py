@@ -13,10 +13,10 @@ from app.models.user import User
 
 def seed_announcements(db: Session):
     """
-    Seeds essential campus announcements across diverse categories if none exist.
+    Disabled to ensure no rigid placeholder announcements are seeded.
+    Only authentic user-created announcements are displayed.
     """
-    if db.query(Announcement).count() > 0:
-        return
+    return
 
     admin_user = db.query(User).filter(User.username == "ESDev01").first()
     if not admin_user:

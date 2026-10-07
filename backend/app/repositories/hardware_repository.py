@@ -274,12 +274,12 @@ def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
     """
     canonical_specs = [
         {
-            "name": "Wokwi ESP32 Speaker Node",
-            "mac_address": "24:0A:C4:00:01:10",
-            "ip_address": "10.0.1.15",
-            "zone": "Block A - CSE Quad",
+            "name": "ESP32 Smart Speaker & Live Display",
+            "mac_address": "D4:F3:2D:22:2A:CD",
+            "ip_address": "192.168.1.100",
+            "zone": "Campus Main Corridor",
             "volume": 90,
-            "disk_space": 72.5,
+            "disk_space": 80.0,
         },
         {
             "name": "Hardware Speaker Client",
@@ -296,6 +296,14 @@ def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
             "zone": "Block B - AI Lab",
             "volume": 85,
             "disk_space": 65.0,
+        },
+        {
+            "name": "Wokwi ESP32 Speaker Node",
+            "mac_address": "24:0A:C4:00:01:10",
+            "ip_address": "10.0.1.15",
+            "zone": "Block A - CSE Quad",
+            "volume": 90,
+            "disk_space": 72.5,
         },
     ]
 
