@@ -1587,6 +1587,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
 
   Widget _buildRepeatScheduleCard(ThemeData theme) {
     final hasSchedule = _repeatSchedule != null;
+    final isStudent = (Get.isRegistered<AuthController>() ? Get.find<AuthController>().currentUser.value?.role ?? 'Student' : 'Student').toLowerCase() == 'student';
     final selectedSlots = hasSchedule ? (_repeatSchedule!['selected_slots'] as List? ?? []) : [];
     final logs = hasSchedule ? (_repeatSchedule!['execution_logs'] as List? ?? []) : [];
     final scope = hasSchedule ? (_repeatSchedule!['target_scope'] ?? 'DEPARTMENT') : '';
@@ -1698,56 +1699,62 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                 );
               }),
             ],
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _showConfigureRepeatScheduleDialog(),
-                  icon: const Icon(Icons.edit_calendar_rounded, size: 13),
-                  label: const Text('Edit Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            if (!isStudent) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _showConfigureRepeatScheduleDialog(),
+                    icon: const Icon(Icons.edit_calendar_rounded, size: 13),
+                    label: const Text('Edit Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _triggerRepeatSlotCheck(),
-                  icon: const Icon(Icons.play_circle_outline_rounded, size: 13),
-                  label: const Text('Test Slot Check', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  OutlinedButton.icon(
+                    onPressed: () => _triggerRepeatSlotCheck(),
+                    icon: const Icon(Icons.play_circle_outline_rounded, size: 13),
+                    label: const Text('Test Slot Check', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _deleteRepeatSchedule(),
-                  icon: Icon(Icons.delete_outline_rounded, size: 13, color: theme.colorScheme.error),
-                  label: Text('Remove Schedule', style: TextStyle(fontSize: 11, color: theme.colorScheme.error)),
-                ),
-              ],
-            ),
+                  TextButton.icon(
+                    onPressed: () => _deleteRepeatSchedule(),
+                    icon: Icon(Icons.delete_outline_rounded, size: 13, color: theme.colorScheme.error),
+                    label: Text('Remove Schedule', style: TextStyle(fontSize: 11, color: theme.colorScheme.error)),
+                  ),
+                ],
+              ),
+            ],
           ] else ...[
             Text(
-              'No automated repeat broadcast schedule configured for this notice. Configure to periodically rebroadcast during short break, lunch break, or dismissal.',
+              isStudent
+                  ? 'No automated repeat broadcast schedule configured for this notice.'
+                  : 'No automated repeat broadcast schedule configured for this notice. Configure to periodically rebroadcast during short break, lunch break, or dismissal.',
               style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurface.withOpacity(0.65)),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => _showConfigureRepeatScheduleDialog(),
-              icon: const Icon(Icons.add_alarm_rounded, size: 14),
-              label: const Text('Configure Repeat Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 0,
+            if (!isStudent) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => _showConfigureRepeatScheduleDialog(),
+                icon: const Icon(Icons.add_alarm_rounded, size: 14),
+                label: const Text('Configure Repeat Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
               ),
-            ),
+            ],
           ],
         ],
       ),

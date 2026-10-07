@@ -94,6 +94,10 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   }
 
   void _openRepeatScheduleForQueueItem(Map<String, dynamic> item) {
+    if (_isStudent) {
+      snackBar('Only faculty and administrators can configure repeat broadcast schedules.');
+      return;
+    }
     final annId = item['announcement_id'] as int? ?? item['id'] as int?;
     if (annId != null) {
       RepeatScheduleDialog.show(
@@ -1485,13 +1489,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           padding: EdgeInsets.zero,
                           onPressed: hasItems ? _previewAudio : null,
                         ),
-                        IconButton(
-                          icon: Icon(Icons.repeat_rounded, size: 20, color: context.colors.primary),
-                          tooltip: 'Repeat Broadcast Schedule',
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          padding: EdgeInsets.zero,
-                          onPressed: (hasItems && activeItem != null) ? () => _openRepeatScheduleForQueueItem(activeItem) : null,
-                        ),
+                        if (!_isStudent)
+                          IconButton(
+                            icon: Icon(Icons.repeat_rounded, size: 20, color: context.colors.primary),
+                            tooltip: 'Repeat Broadcast Schedule',
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
+                            onPressed: (hasItems && activeItem != null) ? () => _openRepeatScheduleForQueueItem(activeItem) : null,
+                          ),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -1799,14 +1804,15 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       ? null
                                       : () => _queueCtrl.reorderQueue(i, i + 1),
                                 ),
-                                IconButton(
-                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                                  padding: EdgeInsets.zero,
-                                  icon: Icon(Icons.repeat_rounded,
-                                      size: 16, color: context.colors.primary),
-                                  tooltip: 'Repeat Broadcast Schedule',
-                                  onPressed: () => _openRepeatScheduleForQueueItem(item),
-                                ),
+                                if (!_isStudent)
+                                  IconButton(
+                                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(Icons.repeat_rounded,
+                                        size: 16, color: context.colors.primary),
+                                    tooltip: 'Repeat Broadcast Schedule',
+                                    onPressed: () => _openRepeatScheduleForQueueItem(item),
+                                  ),
                                 IconButton(
                                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                   padding: EdgeInsets.zero,
