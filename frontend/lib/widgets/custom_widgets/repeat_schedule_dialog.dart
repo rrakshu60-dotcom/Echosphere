@@ -163,11 +163,33 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     }
 
     if (_selectedSlots.contains('CUSTOM_WINDOW')) {
-      final start = _customStartCtrl.text.trim();
-      final end = _customEndCtrl.text.trim();
+      String start = _customStartCtrl.text.trim();
+      String end = _customEndCtrl.text.trim();
+
+      if (RegExp(r'^\d:[0-5]\d$').hasMatch(start)) {
+        start = '0$start';
+        _customStartCtrl.text = start;
+      }
+      if (RegExp(r'^\d:[0-5]\d$').hasMatch(end)) {
+        end = '0$end';
+        _customEndCtrl.text = end;
+      }
+
       final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
-      if (!timeRegex.hasMatch(start) || !timeRegex.hasMatch(end)) {
-        errorSnackBar('Please enter valid 24-hr times in HH:MM format (e.g. 10:30).');
+      if (!timeRegex.hasMatch(start)) {
+        errorSnackBar('Please enter valid 24-hr time in HH:MM format for start time (e.g. 10:30).');
+        return;
+      }
+      if (end.isEmpty) {
+        final parts = start.split(':');
+        final sh = int.parse(parts[0]);
+        final sm = int.parse(parts[1]);
+        final em = (sm + 30) % 60;
+        final eh = (sh + ((sm + 30) ~/ 60)) % 24;
+        end = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
+        _customEndCtrl.text = end;
+      } else if (!timeRegex.hasMatch(end)) {
+        errorSnackBar('Please enter valid 24-hr time in HH:MM format for end time (e.g. 11:00).');
         return;
       }
       if (start.compareTo(end) >= 0) {
@@ -180,9 +202,9 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     final payload = <String, dynamic>{
       'selected_slots': _selectedSlots.toList(),
       'target_scope': _selectedScope,
-      'event_datetime': now.add(const Duration(hours: 24)).toIso8601String(),
-      'start_date': now.toIso8601String(),
-      'end_date': now.add(const Duration(hours: 48)).toIso8601String(),
+      'event_datetime': now.add(const Duration(hours: 24)).toUtc().toIso8601String(),
+      'start_date': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
+      'end_date': now.add(const Duration(hours: 48)).toUtc().toIso8601String(),
       'force_enable_speaker': true,
       if (_selectedSlots.contains('CUSTOM_WINDOW')) ...{
         'custom_start_time': _customStartCtrl.text.trim(),

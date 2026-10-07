@@ -284,6 +284,7 @@ def evaluate_and_dispatch_repeat_slots(
     3. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
     """
     ist_now = get_current_ist_datetime()
+    ist_now_naive = ist_now.replace(tzinfo=None)
     utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
     time_str = simulated_time_str or ist_now.strftime("%H:%M")
     date_str = simulated_date_str or ist_now.strftime("%Y-%m-%d")
@@ -298,9 +299,20 @@ def evaluate_and_dispatch_repeat_slots(
         AnnouncementRepeatSchedule.is_active == True,
     )
     if not simulated_date_str:
+        from sqlalchemy import and_, or_
         query = query.filter(
-            AnnouncementRepeatSchedule.start_date <= utc_now,
-            AnnouncementRepeatSchedule.end_date >= utc_now,
+            or_(
+                # Valid under UTC timestamps
+                and_(
+                    AnnouncementRepeatSchedule.start_date <= (utc_now + timedelta(minutes=5)),
+                    AnnouncementRepeatSchedule.end_date >= (utc_now - timedelta(minutes=5)),
+                ),
+                # Valid under local IST timestamps
+                and_(
+                    AnnouncementRepeatSchedule.start_date <= (ist_now_naive + timedelta(minutes=5)),
+                    AnnouncementRepeatSchedule.end_date >= (ist_now_naive - timedelta(minutes=5)),
+                ),
+            )
         )
     schedules = query.all()
 
@@ -326,12 +338,25 @@ def evaluate_and_dispatch_repeat_slots(
                 if sched.custom_start_time and sched.custom_end_time:
                     if sched.custom_start_time <= time_str <= sched.custom_end_time:
                         matched_slots.append("CUSTOM_WINDOW")
+                elif sched.custom_start_time:
+                    try:
+                        sh, sm = map(int, sched.custom_start_time.split(":"))
+                        end_minutes = (sh * 60 + sm + 30) % (24 * 60)
+                        eh, em = end_minutes // 60, end_minutes % 60
+                        calc_end = f"{eh:02d}:{em:02d}"
+                        if sched.custom_start_time <= time_str <= calc_end:
+                            matched_slots.append("CUSTOM_WINDOW")
+                    except Exception:
+                        if sched.custom_start_time == time_str:
+                            matched_slots.append("CUSTOM_WINDOW")
 
         if not matched_slots:
             continue
 
         for slot_name in matched_slots:
             slot_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
+            if slot_name == "CUSTOM_WINDOW":
+                slot_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
 
             # Slot Idempotency Check: Has this specific slot already played today?
             existing_log = (
@@ -419,35 +444,45 @@ def evaluate_and_dispatch_repeat_slots(
 
         sched_time = getattr(item, "scheduled_time", None)
         if sched_time:
+            # Gather potential candidates for scheduled time in HH:MM (raw and IST-converted)
+            sched_time_candidates = [sched_time.strftime("%H:%M")]
             try:
-                # Convert scheduled_time to IST time string if naive UTC
                 sched_ist = sched_time + timedelta(hours=5, minutes=30)
-                sched_time_str = sched_ist.strftime("%H:%M")
+                sched_time_candidates.append(sched_ist.strftime("%H:%M"))
             except Exception:
-                sched_time_str = sched_time.strftime("%H:%M")
+                pass
 
             expired = False
             # Short Break Cutoff: 11:15 sharp
-            if (SHORT_BREAK_START <= sched_time_str <= SHORT_BREAK_END) and (time_str > SHORT_BREAK_END):
+            if any(SHORT_BREAK_START <= st <= SHORT_BREAK_END for st in sched_time_candidates) and (time_str > SHORT_BREAK_END):
                 expired = True
                 logger.info(f"⏸️ Speaker Queue #{item.id} expired: Short Break ended at {SHORT_BREAK_END}. Classroom silence protected.")
             # Lunch Break Cutoff: 14:00 sharp
-            elif (LUNCH_BREAK_START <= sched_time_str <= LUNCH_BREAK_END) and (time_str > LUNCH_BREAK_END):
+            elif any(LUNCH_BREAK_START <= st <= LUNCH_BREAK_END for st in sched_time_candidates) and (time_str > LUNCH_BREAK_END):
                 expired = True
                 logger.info(f"⏸️ Speaker Queue #{item.id} expired: Lunch Break ended at {LUNCH_BREAK_END}. Classroom silence protected.")
             # Evening Break Cutoff: 17:30 sharp
-            elif (EVENING_BREAK_START <= sched_time_str <= EVENING_BREAK_END) and (time_str > EVENING_BREAK_END):
+            elif any(EVENING_BREAK_START <= st <= EVENING_BREAK_END for st in sched_time_candidates) and (time_str > EVENING_BREAK_END):
                 expired = True
                 logger.info(f"⏸️ Speaker Queue #{item.id} expired: Evening Break ended at {EVENING_BREAK_END}. Campus quiet hours protected.")
             # Hostel Window Cutoff: 21:00 sharp
-            elif (HOSTEL_WINDOW_START <= sched_time_str <= HOSTEL_WINDOW_END) and (time_str > HOSTEL_WINDOW_END):
+            elif any(HOSTEL_WINDOW_START <= st <= HOSTEL_WINDOW_END for st in sched_time_candidates) and (time_str > HOSTEL_WINDOW_END):
                 expired = True
                 logger.info(f"⏸️ Speaker Queue #{item.id} expired: Hostel Window ended at {HOSTEL_WINDOW_END}. Night quiet hours protected.")
             # Custom Window Cutoff: custom_end_time
-            elif sched.custom_start_time and sched.custom_end_time:
-                if (sched.custom_start_time <= sched_time_str <= sched.custom_end_time) and (time_str > sched.custom_end_time):
+            elif sched.custom_start_time:
+                c_start = sched.custom_start_time
+                c_end = sched.custom_end_time
+                if not c_end:
+                    try:
+                        sh, sm = map(int, c_start.split(":"))
+                        end_minutes = (sh * 60 + sm + 30) % (24 * 60)
+                        c_end = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
+                    except Exception:
+                        c_end = c_start
+                if any(c_start <= st <= c_end for st in sched_time_candidates) and (time_str > c_end):
                     expired = True
-                    logger.info(f"⏸️ Speaker Queue #{item.id} expired: Custom Window ended at {sched.custom_end_time}. Quiet hours protected.")
+                    logger.info(f"⏸️ Speaker Queue #{item.id} expired: Custom Window ended at {c_end}. Quiet hours protected.")
 
             if expired:
                 item.status = "Expired_Slot_Ended"

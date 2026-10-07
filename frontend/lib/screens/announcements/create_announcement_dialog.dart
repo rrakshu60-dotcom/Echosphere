@@ -91,6 +91,31 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     }
   }
 
+  Future<void> _pickRepeatTime({required bool isStart}) async {
+    final now = TimeOfDay.now();
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: now,
+    );
+    if (picked != null) {
+      final hh = picked.hour.toString().padLeft(2, '0');
+      final mm = picked.minute.toString().padLeft(2, '0');
+      final timeStr = '$hh:$mm';
+      setState(() {
+        if (isStart) {
+          repeatStartCtrl.text = timeStr;
+          if (repeatEndCtrl.text.isEmpty || repeatEndCtrl.text == '11:00') {
+            final endMinute = (picked.minute + 30) % 60;
+            final endHour = (picked.hour + ((picked.minute + 30) ~/ 60)) % 24;
+            repeatEndCtrl.text = '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}';
+          }
+        } else {
+          repeatEndCtrl.text = timeStr;
+        }
+      });
+    }
+  }
+
   Future<void> _pickAttachmentFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -1135,11 +1160,17 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           Expanded(
                             child: TextField(
                               controller: repeatStartCtrl,
-                              decoration: const InputDecoration(
+                              readOnly: false,
+                              decoration: InputDecoration(
                                 labelText: 'Start (HH:MM)',
                                 hintText: '10:00',
                                 isDense: true,
-                                border: OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.schedule_rounded, size: 16),
+                                  tooltip: 'Pick Start Time',
+                                  onPressed: () => _pickRepeatTime(isStart: true),
+                                ),
+                                border: const OutlineInputBorder(),
                               ),
                               style: const TextStyle(fontSize: 11),
                             ),
@@ -1148,11 +1179,17 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           Expanded(
                             child: TextField(
                               controller: repeatEndCtrl,
-                              decoration: const InputDecoration(
+                              readOnly: false,
+                              decoration: InputDecoration(
                                 labelText: 'End (HH:MM)',
-                                hintText: '11:00',
+                                hintText: '10:30',
                                 isDense: true,
-                                border: OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.schedule_rounded, size: 16),
+                                  tooltip: 'Pick End Time',
+                                  onPressed: () => _pickRepeatTime(isStart: false),
+                                ),
+                                border: const OutlineInputBorder(),
                               ),
                               style: const TextStyle(fontSize: 11),
                             ),
@@ -1221,11 +1258,33 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             return;
           }
           if (repeatSlots.contains('CUSTOM_WINDOW')) {
-            final start = repeatStartCtrl.text.trim();
-            final end = repeatEndCtrl.text.trim();
+            String start = repeatStartCtrl.text.trim();
+            String end = repeatEndCtrl.text.trim();
+
+            if (RegExp(r'^\d:[0-5]\d$').hasMatch(start)) {
+              start = '0$start';
+              repeatStartCtrl.text = start;
+            }
+            if (RegExp(r'^\d:[0-5]\d$').hasMatch(end)) {
+              end = '0$end';
+              repeatEndCtrl.text = end;
+            }
+
             final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
-            if (!timeRegex.hasMatch(start) || !timeRegex.hasMatch(end)) {
-              errorSnackBar('Please enter valid 24-hr times in HH:MM format for Custom Window (e.g. 10:30).');
+            if (!timeRegex.hasMatch(start)) {
+              errorSnackBar('Please enter or pick valid 24-hr time in HH:MM format for Custom Window (e.g. 10:30).');
+              return;
+            }
+            if (end.isEmpty) {
+              final parts = start.split(':');
+              final sh = int.parse(parts[0]);
+              final sm = int.parse(parts[1]);
+              final em = (sm + 30) % 60;
+              final eh = (sh + ((sm + 30) ~/ 60)) % 24;
+              end = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
+              repeatEndCtrl.text = end;
+            } else if (!timeRegex.hasMatch(end)) {
+              errorSnackBar('Please enter valid 24-hr time in HH:MM format for End Time (e.g. 11:00).');
               return;
             }
             if (start.compareTo(end) >= 0) {
@@ -1237,9 +1296,9 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           repeatData = {
             'selected_slots': repeatSlots.toList(),
             'target_scope': repeatScope,
-            'event_datetime': now.add(const Duration(hours: 24)).toIso8601String(),
-            'start_date': now.toIso8601String(),
-            'end_date': now.add(const Duration(hours: 48)).toIso8601String(),
+            'event_datetime': now.add(const Duration(hours: 24)).toUtc().toIso8601String(),
+            'start_date': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
+            'end_date': now.add(const Duration(hours: 48)).toUtc().toIso8601String(),
             'force_enable_speaker': true,
             if (repeatSlots.contains('CUSTOM_WINDOW')) ...{
               'custom_start_time': repeatStartCtrl.text.trim(),

@@ -355,7 +355,50 @@ def test_repeat_schedule_suite():
     )
     db.refresh(sched2)
     assert sched2.is_active is False, "Repeat schedule should be deactivated when parent notice is archived"
-    print("  ✓ Archived parent notice immediately deactivated repeat schedule.")
+      # -------------------------------------------------------------
+    # TEST 8: Real-Time Custom Window Dispatch without simulated_date
+    # -------------------------------------------------------------
+    print("\n🔍 [TEST 8] Testing Real-Time Custom Window Dispatch (simulated_date_str=None)...")
+    from app.services.repeat_schedule_service import get_current_ist_datetime
+    ist_current = get_current_ist_datetime()
+    cur_hhmm = ist_current.strftime("%H:%M")
+
+    # Announcement created right now in IST
+    ann_custom = Announcement(
+        title="Hostel Night Roll Call",
+        description="All hostellers assemble at ground floor.",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    db.add(ann_custom)
+    db.commit()
+
+    # Create speaker delivery
+    db.add(AnnouncementDelivery(announcement_id=ann_custom.id, delivery_type_id=deliv_speaker.id))
+    db.commit()
+
+    # Schedule created with naive IST timestamp (as sent by local device)
+    sched_custom_data = RepeatScheduleCreate(
+        selected_slots=["CUSTOM_WINDOW"],
+        custom_start_time=cur_hhmm,
+        target_scope="COLLEGE_WIDE",
+        event_datetime=datetime.now() + timedelta(hours=24),
+        start_date=datetime.now() - timedelta(minutes=2),
+        end_date=datetime.now() + timedelta(hours=48),
+        force_enable_speaker=True,
+    )
+    sched_custom = configure_repeat_schedule(db=db, announcement_id=ann_custom.id, data=sched_custom_data, current_user=user)
+    assert sched_custom.custom_end_time is not None, "custom_end_time should auto-populate"
+
+    # Evaluate at current time with simulated_date_str=None (REAL RUNTIME PATH)
+    res_realtime = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str=cur_hhmm,
+        simulated_date_str=None, # Verifies lines 300-315 date query!
+    )
+    assert res_realtime["dispatched_count"] >= 1, f"Expected custom schedule to dispatch in real-time, got {res_realtime}"
+    print(f"  ✓ Real-time custom window ({cur_hhmm}) successfully matched and dispatched without simulated_date!")
 
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
