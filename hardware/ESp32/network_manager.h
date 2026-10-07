@@ -43,10 +43,20 @@ public:
     nodeDept = String(NODE_DEPARTMENT);
   }
 
+  int lastTopNoticeId = 0;
+
   void begin() {
+    // Initialize WiFi in STA mode first so radio hardware MAC is valid
+    WiFi.mode(WIFI_STA);
+
     // Determine MAC address
-    if (nodeMac.length() == 0) {
-      nodeMac = WiFi.macAddress();
+    if (nodeMac.length() == 0 || nodeMac.equalsIgnoreCase("00:00:00:00:00:00")) {
+      String hwMac = WiFi.macAddress();
+      if (hwMac.length() > 0 && !hwMac.equalsIgnoreCase("00:00:00:00:00:00")) {
+        nodeMac = hwMac;
+      } else {
+        nodeMac = "D4:F3:2D:22:2A:CD";
+      }
     }
 
     printBanner();
@@ -270,9 +280,12 @@ public:
             n.category = c ? String(c) : "Notice";
             displayMgr.addDailyNotice(n);
           }
-          // Refresh screen only if notice count actually changed
+          // Refresh screen if notice count changed, top notice changed, or screen is not rendered
+          int newCount = displayMgr.getDailyNoticesCount();
+          int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
           if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
-            if (oldCount != displayMgr.getDailyNoticesCount()) {
+            if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isScreenRendered()) {
+              lastTopNoticeId = currentTopId;
               displayMgr.refreshScreen();
             }
           }

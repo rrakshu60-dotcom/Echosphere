@@ -24,8 +24,8 @@ class SpeakerQueueController extends GetxController {
   final RxBool isIntermission = false.obs;
   final RxInt intermissionSecondsRemaining = 0.obs;
 
-  /// Controls whether this device plays audio aloud for the queue (default: false; campus hardware speakers handle broadcasting)
-  final RxBool enableLocalAudioPreview = false.obs;
+  /// Controls whether this device plays audio aloud for the queue (default: true for preview)
+  final RxBool enableLocalAudioPreview = true.obs;
 
   Timer? _playbackTimer;
   Timer? _pollTimer;
@@ -126,7 +126,9 @@ class SpeakerQueueController extends GetxController {
     final speakerNotices = annCtrl.allAnnouncements.where((a) {
       final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED' || a.status == 'ACTIVE' || a.status == 'SCHEDULED';
       final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
-      return isApproved && isSpeaker && !a.playedOnSpeaker;
+      final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
+          !a.title.toLowerCase().contains('sample notice');
+      return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker;
     }).toList();
 
     bool changed = false;
@@ -181,10 +183,10 @@ class SpeakerQueueController extends GetxController {
     if (nodeId == null) return 'All Nodes (College-Wide)';
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
-        (nodeId == 10 && (n['name'] ?? '').toString().contains('ESP32')) ||
-        ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
-        (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
-        (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
+        ((nodeId == 10 || nodeId == 13 || nodeId == 14) && ((n['name'] ?? '').toString().contains('ESP32') || (n['mac_address'] ?? '').toString().contains('2A:CD'))) ||
+        ((nodeId == 21 || nodeId == 16 || nodeId == 9) && (n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 15 || nodeId == 8) && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 14 || nodeId == 12) && (n['name'] ?? '').toString().contains('Wokwi')));
     if (match != null) return match['name'] ?? 'Speaker #$nodeId';
     return 'Speaker Node #$nodeId';
   }
@@ -198,10 +200,10 @@ class SpeakerQueueController extends GetxController {
     }
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
-        (nodeId == 10 && (n['name'] ?? '').toString().contains('ESP32')) ||
-        ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
-        (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
-        (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
+        ((nodeId == 10 || nodeId == 13 || nodeId == 14) && ((n['name'] ?? '').toString().contains('ESP32') || (n['mac_address'] ?? '').toString().contains('2A:CD'))) ||
+        ((nodeId == 21 || nodeId == 16 || nodeId == 9) && (n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 15 || nodeId == 8) && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
+        ((nodeId == 14 || nodeId == 12) && (n['name'] ?? '').toString().contains('Wokwi')));
     return (match?['status'] ?? 'OFFLINE').toString().toUpperCase();
   }
 
@@ -288,7 +290,9 @@ class SpeakerQueueController extends GetxController {
         final speakerNotices = annCtrl.allAnnouncements.where((a) {
           final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
           final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
-          return isApproved && isSpeaker && !a.playedOnSpeaker;
+          final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
+              !a.title.toLowerCase().contains('sample notice');
+          return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker;
         }).toList();
 
         for (var notice in speakerNotices) {
@@ -316,20 +320,42 @@ class SpeakerQueueController extends GetxController {
         }
       }
 
-      // Preserve playing state if already playing
-      if (isPlaying.value && queueItems.isNotEmpty && activeIndex.value < queueItems.length) {
+      // Filter out any legacy dummy/automated notices from combined list
+      combined.removeWhere((item) {
+        final t = (item['title'] ?? '').toString().toLowerCase();
+        return t.contains('automated speaker notice') || t.contains('sample notice');
+      });
+
+      // Autoplay & Scheduled Broadcast Engine
+      final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
+      if (playingIdx != -1) {
+        activeIndex.value = playingIdx;
+        combined[playingIdx]['status'] = 'Playing';
+        if (!isPlaying.value) {
+          isPlaying.value = true;
+          _startPlaybackTimer();
+        }
+      } else if (!isPlaying.value && combined.isNotEmpty) {
+        // Auto-play when queue is idle and an eligible notice is due
+        final now = DateTime.now();
+        final dueIdx = combined.indexWhere((q) {
+          final sStr = q['scheduled_time']?.toString();
+          if (sStr == null || sStr.isEmpty) return true;
+          final s = DateTime.tryParse(sStr);
+          return s == null || s.isBefore(now.add(const Duration(seconds: 2)));
+        });
+        if (dueIdx != -1) {
+          queueItems.assignAll(combined);
+          _updateActiveNoticeMetrics();
+          togglePlayPause(index: dueIdx);
+          return;
+        }
+      } else if (isPlaying.value && queueItems.isNotEmpty && activeIndex.value < queueItems.length) {
         final currentlyPlayingId = queueItems[activeIndex.value]['announcement_id'];
         final matchIdx = combined.indexWhere((c) => c['announcement_id'] == currentlyPlayingId);
         if (matchIdx != -1) {
           activeIndex.value = matchIdx;
           combined[matchIdx]['status'] = 'Playing';
-        }
-      } else {
-        final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
-        if (playingIdx != -1) {
-          activeIndex.value = playingIdx;
-        } else if (activeIndex.value >= combined.length) {
-          activeIndex.value = combined.isNotEmpty ? combined.length - 1 : 0;
         }
       }
 

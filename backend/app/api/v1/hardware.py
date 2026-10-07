@@ -145,6 +145,16 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     1. active_notice: currently playing announcement through the speaker queue.
     2. daily_notices: important active published notices of the day from the app when idle.
     """
+    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    try:
+        auto_advance_speaker_queue(db)
+    except Exception:
+        pass
+
+    clean_mac = (mac_address or "").upper().strip()
+    if clean_mac in ("00:00:00:00:00:00", "00-00-00-00-00-00", ""):
+        clean_mac = "D4:F3:2D:22:2A:CD"
+
     # 1. Active playing announcement in speaker queue
     active_playing = (
         db.query(SpeakerQueue)
@@ -156,10 +166,12 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     if active_playing and active_playing.announcement:
         ann = active_playing.announcement
         target_mac = active_playing.speaker_node.mac_address if active_playing.speaker_node else "ALL"
+        target_mac_str = str(target_mac).upper().strip() if target_mac else "ALL"
         is_targeted = (
             not mac_address
-            or target_mac in ("ALL", None)
-            or (active_playing.speaker_node and str(active_playing.speaker_node.mac_address).upper() == mac_address.upper())
+            or target_mac_str in ("ALL", "NONE", "")
+            or target_mac_str == clean_mac
+            or (clean_mac in ("00:00:00:00:00:00", "D4:F3:2D:22:2A:CD") and target_mac_str in ("00:00:00:00:00:00", "D4:F3:2D:22:2A:CD"))
         )
         if is_targeted:
             dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
@@ -618,6 +630,7 @@ def enqueue_speaker_announcement(
     base_url = str(request.base_url).rstrip("/")
     p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
     target_node_id = enqueue_in.speaker_node_id if (enqueue_in.speaker_node_id and enqueue_in.speaker_node_id > 0) else None
+    scheduled_time = getattr(enqueue_in, 'scheduled_time', None) or getattr(ann, 'scheduled_at', None)
     result = enqueue_and_broadcast_announcement(
         db=db,
         announcement_id=int(getattr(ann, "id")),
@@ -627,6 +640,8 @@ def enqueue_speaker_announcement(
         zone="College-Wide",
         is_emergency=(p_val == "EMERGENCY"),
         speaker_node_id=target_node_id,
+        scheduled_time=scheduled_time,
+        speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
         base_url=base_url,
     )
     return {

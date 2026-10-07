@@ -62,8 +62,13 @@ def refresh_node_online_statuses(db: Session, nodes: List[SpeakerNode]) -> List[
 
 
 def get_speaker_node_by_mac(db: Session, mac_address: str) -> Optional[SpeakerNode]:
-    clean_mac = mac_address.strip()
-    return db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(clean_mac)).first()
+    clean_mac = (mac_address or "").strip()
+    if clean_mac in ("00:00:00:00:00:00", "00-00-00-00-00-00", ""):
+        clean_mac = "D4:F3:2D:22:2A:CD"
+    node = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(clean_mac)).first()
+    if not node and clean_mac.upper() in ("D4:F3:2D:22:2A:CD", "00:00:00:00:00:00"):
+        node = db.query(SpeakerNode).filter(SpeakerNode.name.ilike("%ESP32%")).first()
+    return node
 
 
 def get_all_speaker_nodes(
@@ -72,7 +77,7 @@ def get_all_speaker_nodes(
     zone: Optional[str] = None,
     status: Optional[str] = None,
 ) -> List[SpeakerNode]:
-    # Ensure canonical 2-node inventory exists
+    # Ensure canonical node inventory exists
     sync_canonical_speaker_nodes(db)
 
     query = db.query(SpeakerNode).filter(SpeakerNode.is_active == True)
@@ -99,21 +104,38 @@ def update_speaker_node(db: Session, node: SpeakerNode, update_data: SpeakerNode
 
 
 def update_speaker_node_heartbeat(db: Session, heartbeat: SpeakerNodeHeartbeat) -> SpeakerNode:
-    node = get_speaker_node_by_mac(db, heartbeat.mac_address)
+    clean_mac = (heartbeat.mac_address or "").strip()
+    is_esp32_zero_mac = clean_mac in ("00:00:00:00:00:00", "00-00-00-00-00-00", "")
+    target_mac = "D4:F3:2D:22:2A:CD" if is_esp32_zero_mac else clean_mac
+
+    node = get_speaker_node_by_mac(db, target_mac)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     incoming_status = (heartbeat.status or "ONLINE").upper()
 
     if not node:
+        # Check if there is already an ESP32 node by name
+        if is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD":
+            node = db.query(SpeakerNode).filter(SpeakerNode.name.ilike("%ESP32%")).first()
+
+    if not node:
+        node_name = "ESP32 Smart Speaker & Live Display" if (is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD") else f"Node {clean_mac[-5:]}"
         node = SpeakerNode(
-            name=f"Node {heartbeat.mac_address[-5:]}",
-            mac_address=heartbeat.mac_address,
+            name=node_name,
+            mac_address=target_mac,
             ip_address=heartbeat.ip_address,
-            zone="College-Wide",
+            zone="Campus Main Corridor" if (is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD") else "College-Wide",
+            volume=90 if (is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD") else 80,
             status=incoming_status,
             last_heartbeat=now if incoming_status == "ONLINE" else None,
         )
         db.add(node)
     else:
+        # Canonicalize ESP32 node metadata
+        if is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD":
+            node.name = "ESP32 Smart Speaker & Live Display"
+            node.mac_address = "D4:F3:2D:22:2A:CD"
+            node.zone = "Campus Main Corridor"
+
         node.ip_address = heartbeat.ip_address or node.ip_address
         node.status = incoming_status
         if heartbeat.cpu_usage is not None:
