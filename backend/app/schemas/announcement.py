@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.core.enums.announcement import (
     AnnouncementPriority,
     AnnouncementStatus,
     EmergencyLevel,
 )
+from app.schemas.repeat_schedule import RepeatScheduleResponse
 
 
 class AnnouncementCreate(BaseModel):
@@ -25,12 +26,27 @@ class AnnouncementCreate(BaseModel):
     speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = "female"
 
+    @model_validator(mode="before")
+    @classmethod
+    def handle_emergency_cross_field(cls, data):
+        if isinstance(data, dict):
+            prio = str(data.get("priority", "")).strip().lower()
+            em = str(data.get("emergency_level", "")).strip().lower()
+            if prio in ("emergency", "critical") or em in ("emergency", "critical"):
+                data["emergency_level"] = "Emergency"
+                if prio in ("emergency", "critical"):
+                    data["priority"] = "High"
+        return data
+
     @field_validator("priority", mode="before")
     @classmethod
     def normalize_priority(cls, v):
         if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("emergency", "critical", "urgent"):
+                return AnnouncementPriority.HIGH
             for p in AnnouncementPriority:
-                if p.value.lower() == v.lower() or p.name.lower() == v.lower():
+                if p.value.lower() == v_clean or p.name.lower() == v_clean:
                     return p
         return v
 
@@ -38,8 +54,11 @@ class AnnouncementCreate(BaseModel):
     @classmethod
     def normalize_emergency_level(cls, v):
         if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("emergency", "critical", "urgent"):
+                return EmergencyLevel.EMERGENCY
             for e in EmergencyLevel:
-                if e.value.lower() == v.lower() or e.name.lower() == v.lower():
+                if e.value.lower() == v_clean or e.name.lower() == v_clean:
                     return e
         return v
 
@@ -60,12 +79,27 @@ class AnnouncementUpdate(BaseModel):
     speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def handle_emergency_cross_field(cls, data):
+        if isinstance(data, dict):
+            prio = str(data.get("priority", "")).strip().lower()
+            em = str(data.get("emergency_level", "")).strip().lower()
+            if prio in ("emergency", "critical") or em in ("emergency", "critical"):
+                data["emergency_level"] = "Emergency"
+                if prio in ("emergency", "critical"):
+                    data["priority"] = "High"
+        return data
+
     @field_validator("priority", mode="before")
     @classmethod
     def normalize_priority(cls, v):
         if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("emergency", "critical", "urgent"):
+                return AnnouncementPriority.HIGH
             for p in AnnouncementPriority:
-                if p.value.lower() == v.lower() or p.name.lower() == v.lower():
+                if p.value.lower() == v_clean or p.name.lower() == v_clean:
                     return p
         return v
 
@@ -73,8 +107,11 @@ class AnnouncementUpdate(BaseModel):
     @classmethod
     def normalize_emergency_level(cls, v):
         if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("emergency", "critical", "urgent"):
+                return EmergencyLevel.EMERGENCY
             for e in EmergencyLevel:
-                if e.value.lower() == v.lower() or e.name.lower() == v.lower():
+                if e.value.lower() == v_clean or e.name.lower() == v_clean:
                     return e
         return v
 
@@ -109,7 +146,7 @@ class AnnouncementResponse(BaseModel):
     deliver_in_app: bool = True
     deliver_push: bool = True
     speaker_voice: Optional[str] = "female"
-    repeat_schedule: Optional[Any] = None
+    repeat_schedule: Optional[RepeatScheduleResponse] = None
 
 
 class AnnouncementApprovalRequest(BaseModel):

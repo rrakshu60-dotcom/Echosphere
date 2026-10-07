@@ -123,35 +123,113 @@ class SpeakerQueueController extends GetxController {
     super.onClose();
   }
 
+  bool isScheduleActiveNow(Map<String, dynamic> sched) {
+    if (sched['is_active'] == false) return false;
+    final now = DateTime.now();
+    final curMinutes = now.hour * 60 + now.minute;
+
+    final slots = (sched['selected_slots'] as List? ?? []).map((e) => e.toString().toUpperCase()).toList();
+
+    // Standard break slots in minutes:
+    // SHORT_BREAK: 11:00 - 11:15 (660 - 675)
+    // LUNCH_BREAK: 13:15 - 14:00 (795 - 840)
+    // EVENING_BREAK: 16:30 - 17:00 (990 - 1020)
+    // HOSTEL_WINDOW: 19:30 - 20:30 (1170 - 1230)
+    if (slots.contains('SHORT_BREAK') && curMinutes >= 660 && curMinutes <= 675) return true;
+    if (slots.contains('LUNCH_BREAK') && curMinutes >= 795 && curMinutes <= 840) return true;
+    if (slots.contains('EVENING_BREAK') && curMinutes >= 990 && curMinutes <= 1020) return true;
+    if (slots.contains('HOSTEL_WINDOW') && curMinutes >= 1170 && curMinutes <= 1230) return true;
+
+    if (slots.contains('CUSTOM_WINDOW')) {
+      final startStr = (sched['custom_start_time'] ?? '').toString().trim();
+      final endStr = (sched['custom_end_time'] ?? '').toString().trim();
+      if (startStr.isNotEmpty) {
+        int parseMinutes(String s) {
+          final m12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$').firstMatch(s);
+          if (m12 != null) {
+            var h = int.parse(m12.group(1)!);
+            final m = int.parse(m12.group(2)!);
+            final mer = m12.group(3)!.toUpperCase();
+            if (mer == 'PM' && h != 12) h += 12;
+            if (mer == 'AM' && h == 12) h = 0;
+            return h * 60 + m;
+          }
+          final parts = s.split(':');
+          if (parts.length >= 2) {
+            final h = int.tryParse(parts[0]) ?? 0;
+            final m = int.tryParse(parts[1].substring(0, 2)) ?? 0;
+            return h * 60 + m;
+          }
+          return 0;
+        }
+
+        final startM = parseMinutes(startStr);
+        final endM = endStr.isNotEmpty ? parseMinutes(endStr) : (startM + 30);
+        if (curMinutes >= startM && curMinutes <= endM) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /// Syncs speaker notices directly from AnnouncementController
   void _syncWithLocalAnnouncements() {
     if (!Get.isRegistered<AnnouncementController>()) return;
     final annCtrl = Get.find<AnnouncementController>();
 
-    // All published announcements marked for speaker broadcast that haven't completed playback
-    final speakerNotices = annCtrl.allAnnouncements.where((a) {
+    // All published announcements marked for speaker broadcast or repeat schedule
+    final eligibleNotices = annCtrl.allAnnouncements.where((a) {
       final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED' || a.status == 'ACTIVE' || a.status == 'SCHEDULED';
-      final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
+      final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY' || a.repeatSchedule != null;
       final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
           !a.title.toLowerCase().contains('sample notice');
-      return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker && !dismissedAnnouncementIds.contains(a.id);
+      final hasActiveRepeat = a.repeatSchedule != null && isScheduleActiveNow(a.repeatSchedule!);
+      return isApproved && isSpeaker && isNotAutomated && (!a.playedOnSpeaker || hasActiveRepeat) && !dismissedAnnouncementIds.contains(a.id);
     }).toList();
 
+    // Emergency Override Check: If ANY emergency notice is active (e.g. Earthquake Alert)
+    final emergencyNotices = eligibleNotices.where((a) {
+      final prio = a.priority.toUpperCase();
+      final title = a.title.toLowerCase();
+      return prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('earthquake') || title.contains('emergency') || title.contains('evacuat');
+    }).toList();
+
+    if (emergencyNotices.isNotEmpty) {
+      // Pause non-emergency notices currently playing to enforce lockdown
+      for (var q in queueItems) {
+        final qPrio = (q['priority'] ?? '').toString().toUpperCase();
+        final qTitle = (q['title'] ?? '').toString().toLowerCase();
+        final isEm = qPrio == 'EMERGENCY' || qPrio == 'CRITICAL' || qTitle.contains('earthquake') || qTitle.contains('emergency');
+        if (!isEm && q['status'] == 'Playing') {
+          q['status'] = 'Paused';
+        }
+      }
+    }
+
+    final List<AnnouncementModel> finalCandidates = emergencyNotices.isNotEmpty
+        ? emergencyNotices
+        : eligibleNotices;
+
     bool changed = false;
-    for (var notice in speakerNotices) {
+    for (var notice in finalCandidates) {
       if (dismissedAnnouncementIds.contains(notice.id)) continue;
       final exists = queueItems.any((q) =>
           (q['announcement_id'] == notice.id || q['id'] == notice.id) &&
           q['status'] != 'Completed' && q['status'] != 'Cancelled');
       if (!exists) {
+        final isEm = notice.priority.toUpperCase() == 'EMERGENCY' ||
+            notice.title.toLowerCase().contains('earthquake') ||
+            notice.title.toLowerCase().contains('emergency') ||
+            notice.title.toLowerCase().contains('evacuat');
         final nodeName = _getNodeName(notice.speakerNodeId);
-        queueItems.add({
+        final itemMap = {
           'id': notice.id,
           'announcement_id': notice.id,
-          'title': notice.title,
+          'title': isEm && notice.repeatSchedule != null ? '[EMERGENCY REPEAT] ${notice.title}' : notice.title,
           'description': notice.description,
           'department': notice.department,
-          'priority': notice.priority,
+          'priority': isEm ? 'EMERGENCY' : notice.priority,
           'category': notice.category,
           'type': 'AI Speech',
           'status': 'Queued',
@@ -161,7 +239,13 @@ class SpeakerQueueController extends GetxController {
           'node_name': nodeName,
           'duration_seconds': notice.durationSeconds,
           'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
-        });
+        };
+
+        if (isEm) {
+          queueItems.insert(0, itemMap);
+        } else {
+          queueItems.add(itemMap);
+        }
         changed = true;
       }
     }
@@ -169,6 +253,9 @@ class SpeakerQueueController extends GetxController {
     if (changed) {
       _updateActiveNoticeMetrics();
       queueItems.refresh();
+      if (!isPlaying.value && !userPausedOrStopped.value && queueItems.isNotEmpty) {
+        togglePlayPause(index: 0);
+      }
     }
   }
 
@@ -544,7 +631,24 @@ class SpeakerQueueController extends GetxController {
       _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
     }
 
-    // 3. Remove notice from queue (requirement: "play them once and then remove them once they are played")
+    // 3. Check for Emergency Continuous Loop (Emergency repeats throughout the whole break window)
+    final prio = (playedItem['priority'] ?? '').toString().toUpperCase();
+    final title = (playedItem['title'] ?? '').toString().toLowerCase();
+    final bool isEmergencyNotice = prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('emergency') || title.contains('earthquake');
+
+    if (isEmergencyNotice) {
+      // Loop emergency announcement continuously throughout the emergency/break window
+      currentElapsedSeconds.value = 0;
+      queueItems[activeIndex.value]['status'] = 'Playing';
+      _updateActiveNoticeMetrics();
+      queueItems.refresh();
+      isPlaying.value = true;
+      _startPlaybackTimer();
+      snackBar('Repeating Emergency Broadcast: "$playedTitle"', title: 'Emergency Broadcast Continuous Loop');
+      return;
+    }
+
+    // 4. Remove standard notice from queue once played
     queueItems.removeAt(activeIndex.value);
     currentElapsedSeconds.value = 0;
 

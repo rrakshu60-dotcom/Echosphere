@@ -114,6 +114,31 @@ class EchosphereApiService {
               debugPrint('Token auto-renewal failed: $rErr');
             }
           }
+          // Automatic local fallback if remote Render is offline or throws 500
+          if ((error.type == DioExceptionType.connectionError ||
+               error.type == DioExceptionType.connectionTimeout ||
+               error.response?.statusCode == 500) &&
+              !_baseUrl.contains('127.0.0.1') &&
+              !_baseUrl.contains('localhost')) {
+            try {
+              const localUrl = 'http://127.0.0.1:8000/api/v1';
+              debugPrint('[EchosphereApiService] Remote failure, attempting local backend fallback: $localUrl');
+              final localOpts = error.requestOptions.copyWith(
+                baseUrl: localUrl,
+              );
+              final localDio = Dio(BaseOptions(
+                baseUrl: localUrl,
+                connectTimeout: const Duration(seconds: 4),
+                receiveTimeout: const Duration(seconds: 4),
+                headers: localOpts.headers,
+              ));
+              final retryRes = await localDio.fetch(localOpts);
+              setBaseUrl(localUrl);
+              return handler.resolve(retryRes);
+            } catch (fallbackErr) {
+              debugPrint('[EchosphereApiService] Local fallback note: $fallbackErr');
+            }
+          }
           return handler.next(error);
         },
       ),
