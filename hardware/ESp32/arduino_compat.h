@@ -99,6 +99,23 @@
       return substr(from, to - from);
     }
 
+    int lastIndexOf(char ch, int fromIndex = -1) const {
+      if (empty()) return -1;
+      size_t pos = (fromIndex < 0 || fromIndex >= (int)length()) ? length() - 1 : fromIndex;
+      size_t found = rfind(ch, pos);
+      return (found == std::string::npos) ? -1 : (int)found;
+    }
+
+    char charAt(unsigned int index) const {
+      if (index >= length()) return 0;
+      return (*this)[index];
+    }
+
+    void trim() {
+      while (!empty() && isspace((unsigned char)front())) erase(begin());
+      while (!empty() && isspace((unsigned char)back())) pop_back();
+    }
+
     String& operator+=(const String& o) { append(o); return *this; }
     String& operator+=(const char* s) { if (s) append(s); return *this; }
     String& operator+=(int i) { append(std::to_string(i)); return *this; }
@@ -144,6 +161,7 @@
   class Adafruit_GFX {
   public:
     void setTextSize(uint8_t) {}
+    void setTextWrap(bool) {}
     void setTextColor(uint16_t) {}
     void setTextColor(uint16_t, uint16_t) {}
     void setCursor(int16_t, int16_t) {}

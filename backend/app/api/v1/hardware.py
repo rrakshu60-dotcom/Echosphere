@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
@@ -177,10 +177,18 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream",
             }
 
-    # 2. Daily important published announcements for idle display ticker
+    # 2. Daily important published announcements for idle display ticker (only from today)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_ist = now_utc + timedelta(hours=5, minutes=30)
+    start_of_today_ist = datetime(now_ist.year, now_ist.month, now_ist.day)
+    start_of_today_utc = start_of_today_ist - timedelta(hours=5, minutes=30)
+
     published_notices = (
         db.query(Announcement)
-        .filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+        .filter(
+            Announcement.status == AnnouncementStatus.PUBLISHED,
+            Announcement.created_at >= start_of_today_utc,
+        )
         .order_by(Announcement.created_at.desc())
         .limit(10)
         .all()
