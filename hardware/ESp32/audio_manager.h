@@ -5,6 +5,7 @@
 #include "arduino_compat.h"
 
 #include <math.h>
+#include <functional>
 
 // ============================================================================
 // MAX98357A I2S 3W Class-D Audio Subsystem
@@ -168,7 +169,7 @@ public:
   // --------------------------------------------------------------------------
   // Stream Lossless 16-Bit PCM WAV Audio Directly to MAX98357A I2S
   // --------------------------------------------------------------------------
-  bool streamWavAudio(WiFiClient& client, void (*visualizerCallback)() = nullptr) {
+  bool streamWavAudio(WiFiClient& client, std::function<void()> visualizerCallback = nullptr) {
     if (!isInitialized) return false;
 
     isPlaying = true;
