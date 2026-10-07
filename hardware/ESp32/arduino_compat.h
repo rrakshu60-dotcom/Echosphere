@@ -167,6 +167,7 @@
     void setCursor(int16_t, int16_t) {}
     void print(const String&) {}
     void print(const char*) {}
+    void print(char) {}
     void print(int) {}
     void println(const String&) {}
     void println(const char*) {}
