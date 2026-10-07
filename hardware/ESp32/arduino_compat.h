@@ -99,6 +99,22 @@
       return substr(from, to - from);
     }
 
+    int indexOf(char ch, unsigned int fromIndex = 0) const {
+      size_t found = find(ch, fromIndex);
+      return (found == std::string::npos) ? -1 : (int)found;
+    }
+
+    int indexOf(const String& val, unsigned int fromIndex = 0) const {
+      size_t found = find(val, fromIndex);
+      return (found == std::string::npos) ? -1 : (int)found;
+    }
+
+    int indexOf(const char* val, unsigned int fromIndex = 0) const {
+      if (!val) return -1;
+      size_t found = find(val, fromIndex);
+      return (found == std::string::npos) ? -1 : (int)found;
+    }
+
     int lastIndexOf(char ch, int fromIndex = -1) const {
       if (empty()) return -1;
       size_t pos = (fromIndex < 0 || fromIndex >= (int)length()) ? length() - 1 : fromIndex;
@@ -118,12 +134,14 @@
 
     String& operator+=(const String& o) { append(o); return *this; }
     String& operator+=(const char* s) { if (s) append(s); return *this; }
+    String& operator+=(char c) { push_back(c); return *this; }
     String& operator+=(int i) { append(std::to_string(i)); return *this; }
   };
 
   inline String operator+(const String& lhs, const String& rhs) { String r = lhs; r += rhs; return r; }
   inline String operator+(const String& lhs, const char* rhs) { String r = lhs; r += rhs; return r; }
   inline String operator+(const char* lhs, const String& rhs) { String r(lhs); r += rhs; return r; }
+  inline String operator+(const String& lhs, char rhs) { String r = lhs; r += rhs; return r; }
   inline String operator+(const String& lhs, int rhs) { String r = lhs; r += rhs; return r; }
 
   // --- Wi-Fi IP Address Shim ---
@@ -137,15 +155,16 @@
   class HardwareSerial {
   public:
     void begin(unsigned long) {}
+    template <typename T>
+    void print(const T& val) { std::cout << val; }
     void print(const String& s) { std::cout << s; }
     void print(const char* s) { if (s) std::cout << s; }
-    void print(int i) { std::cout << i; }
-    void print(float f) { std::cout << f; }
     void print(const IPAddress& ip) { std::cout << ip.toString(); }
+
+    template <typename T>
+    void println(const T& val) { std::cout << val << std::endl; }
     void println(const String& s) { std::cout << s << std::endl; }
     void println(const char* s) { if (s) std::cout << s << std::endl; else std::cout << std::endl; }
-    void println(int i) { std::cout << i << std::endl; }
-    void println(float f) { std::cout << f << std::endl; }
     void println(const IPAddress& ip) { std::cout << ip.toString() << std::endl; }
     void println() { std::cout << std::endl; }
   };

@@ -408,6 +408,39 @@ public:
     }
   }
 
+  // --------------------------------------------------------------------------
+  // Differential Equalizer Graphic (Flicker-Free Bar-by-Bar Animation)
+  // Only updates the vertical difference of each 5px column, zero text flicker!
+  // --------------------------------------------------------------------------
+  void renderEqualizerGraphic() {
+    if (!isTftReady) return;
+
+    int eqBottom = 111;
+    int eqMaxHeight = 16;
+    int waveHeights[16] = {3, 8, 14, 16, 11, 5, 13, 15, 9, 12, 6, 14, 10, 4, 16, 7};
+
+    for (int i = 0; i < 16; i++) {
+      int newH = waveHeights[(i + animFrame) % 16];
+      int oldH = prevBarHeights[i];
+      int barX = 8 + (i * 9);
+      int barW = 5;
+
+      if (newH != oldH) {
+        uint16_t barColor = newH > 13 ? COLOR_EMERGENCY : (newH > 8 ? COLOR_URGENT : COLOR_NORMAL);
+
+        if (newH > oldH) {
+          // Grow bar upward
+          tft.fillRect(barX, eqBottom - newH, barW, newH - oldH, barColor);
+        } else {
+          // Shrink bar downward (erase top part with background)
+          tft.fillRect(barX, eqBottom - oldH, barW, oldH - newH, COLOR_BG);
+        }
+        prevBarHeights[i] = newH;
+      }
+    }
+    animFrame = (animFrame + 1) % 16;
+  }
+
 private:
   uint16_t getPriorityColor(const String& priority) {
     if (priority.equalsIgnoreCase("EMERGENCY")) return COLOR_EMERGENCY;
@@ -545,40 +578,6 @@ private:
     String summaryText = notice.summary.length() > 0 ? notice.summary : notice.title;
     drawWrappedText(summaryText, 8, 66, 24, 4, COLOR_TEXT_CYAN, COLOR_BG);
 
-    isScreenRendered = true;
-  }
-
-  // --------------------------------------------------------------------------
-  // Differential Equalizer Graphic (Flicker-Free Bar-by-Bar Animation)
-  // Only updates the vertical difference of each 5px column, zero text flicker!
-  // --------------------------------------------------------------------------
-  void renderEqualizerGraphic() {
-    if (!isTftReady) return;
-
-    int eqBottom = 111;
-    int eqMaxHeight = 16;
-    int waveHeights[16] = {3, 8, 14, 16, 11, 5, 13, 15, 9, 12, 6, 14, 10, 4, 16, 7};
-
-    for (int i = 0; i < 16; i++) {
-      int newH = waveHeights[(i + animFrame) % 16];
-      int oldH = prevBarHeights[i];
-      int barX = 8 + (i * 9);
-      int barW = 5;
-
-      if (newH != oldH) {
-        uint16_t barColor = newH > 13 ? COLOR_EMERGENCY : (newH > 8 ? COLOR_URGENT : COLOR_NORMAL);
-
-        if (newH > oldH) {
-          // Grow bar upward
-          tft.fillRect(barX, eqBottom - newH, barW, newH - oldH, barColor);
-        } else {
-          // Shrink bar downward (erase top part with background)
-          tft.fillRect(barX, eqBottom - oldH, barW, oldH - newH, COLOR_BG);
-        }
-        prevBarHeights[i] = newH;
-      }
-    }
-    animFrame = (animFrame + 1) % 16;
   }
 
   void printAsciiPlayingBanner(const DisplayNotice& n) {

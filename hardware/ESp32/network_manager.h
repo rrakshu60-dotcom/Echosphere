@@ -415,7 +415,7 @@ public:
         Serial.println(F("🔊 [I2S STREAM] HTTP 200 OK received! Streaming 16-bit PCM WAV to MAX98357A..."));
         WiFiClient* streamClient = httpAudio.getStreamPtr();
         if (streamClient) {
-          streamPlayed = audioMgr.streamWavAudio(*streamClient, []() {
+          streamPlayed = audioMgr.streamWavAudio(*streamClient, [this]() {
             displayMgr.renderEqualizerGraphic();
           });
           Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
