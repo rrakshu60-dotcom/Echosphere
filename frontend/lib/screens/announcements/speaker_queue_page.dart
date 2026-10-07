@@ -1650,6 +1650,50 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                           EchoSphereBadge.secondary(
                                             label: typeStr,
                                           ),
+                                          if (titleStr.startsWith('[Repeat]'))
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.teal.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: Colors.teal.withOpacity(0.35), width: 0.8),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.repeat_rounded, size: 10, color: Colors.teal),
+                                                  SizedBox(width: 3),
+                                                  EchoSphereText(
+                                                    text: 'REPEAT',
+                                                    size: 9,
+                                                    variant: TextVariant.bold,
+                                                    color: Colors.teal,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          if (statusStr.toLowerCase().contains('expired') || statusStr == 'Expired_Slot_Ended')
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: Colors.amber.withOpacity(0.35), width: 0.8),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.timer_off_rounded, size: 10, color: Colors.amber),
+                                                  SizedBox(width: 3),
+                                                  EchoSphereText(
+                                                    text: 'SLOT ENDED',
+                                                    size: 9,
+                                                    variant: TextVariant.bold,
+                                                    color: Colors.amber,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           EchoSphereText(
                                             text: deptStr,
                                             size: 10,

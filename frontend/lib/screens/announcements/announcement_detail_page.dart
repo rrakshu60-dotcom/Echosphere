@@ -215,8 +215,13 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
 
   Future<void> _triggerRepeatSlotCheck() async {
     try {
-      final res = await EchosphereApiService().triggerRepeatCheck();
-      snackBar('Slot check evaluated: ${res['status'] ?? 'completed'}');
+      final res = await EchosphereApiService().evaluateAndDispatchRepeatSchedules();
+      final resultInfo = res['result'];
+      final dispatched = resultInfo is Map ? (resultInfo['dispatched_count'] ?? 0) : 0;
+      final expired = resultInfo is Map ? (resultInfo['expired_ttl_count'] ?? 0) : 0;
+      final active = resultInfo is Map ? (resultInfo['active_slots'] as List? ?? []) : [];
+      final activeStr = active.isNotEmpty ? active.join(', ') : 'Outside Acoustic Windows';
+      snackBar('Slot check evaluated! Active: $activeStr \u2022 Dispatched: $dispatched \u2022 Expired (TTL): $expired');
       _fetchRepeatSchedule();
     } catch (e) {
       errorSnackBar('Slot check failed: $e');
@@ -1644,15 +1649,59 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           const SizedBox(height: 12),
           if (hasSchedule) ...[
             Text(
-              'Configured to rebroadcast across $scope nodes at campus transition windows.',
+              'Configured to rebroadcast across $scope nodes at campus acoustic break windows.',
               style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.amber.withOpacity(0.25)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.volume_off_rounded, size: 12, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Classroom Silence Protected: Notices expire at slot end (TTL) \u2022 Dispatched: ${_repeatSchedule?['total_played_count'] ?? 0} time(s)',
+                      style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: selectedSlots.map<Widget>((s) {
-                final label = s.toString().replaceAll('_', ' ');
+                final slotKey = s.toString().toUpperCase();
+                IconData slotIcon = Icons.schedule_rounded;
+                String label = slotKey.replaceAll('_', ' ');
+                if (slotKey == 'SHORT_BREAK') {
+                  slotIcon = Icons.coffee_rounded;
+                  label = 'Short Break (11:00 AM)';
+                } else if (slotKey == 'LUNCH_BREAK') {
+                  slotIcon = Icons.restaurant_rounded;
+                  label = 'Lunch Break (1:15 PM)';
+                } else if (slotKey == 'EVENING_BREAK') {
+                  slotIcon = Icons.wb_twilight_rounded;
+                  label = 'Evening Break (4:30 PM)';
+                } else if (slotKey == 'HOSTEL_WINDOW') {
+                  slotIcon = Icons.night_shelter_rounded;
+                  label = 'Hostel Window (7:30 PM)';
+                } else if (slotKey == 'CUSTOM_WINDOW') {
+                  slotIcon = Icons.access_time_rounded;
+                  final cStart = _repeatSchedule?['custom_start_time'] ?? '';
+                  final cEnd = _repeatSchedule?['custom_end_time'] ?? '';
+                  label = cStart.isNotEmpty ? 'Custom ($cStart - $cEnd)' : 'Custom Window';
+                }
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -1663,7 +1712,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.schedule_rounded, size: 12, color: theme.colorScheme.primary),
+                      Icon(slotIcon, size: 12, color: theme.colorScheme.primary),
                       const SizedBox(width: 4),
                       Text(
                         label,
@@ -1674,6 +1723,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                 );
               }).toList(),
             ),
+
             if (logs.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(

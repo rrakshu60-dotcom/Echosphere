@@ -1761,6 +1761,23 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> evaluateAndDispatchRepeatSchedules({String? simulatedTime, String? simulatedDate}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (simulatedTime != null) queryParams['simulated_time'] = simulatedTime;
+      if (simulatedDate != null) queryParams['simulated_date'] = simulatedDate;
+
+      final response = await _dio.post(
+        '/repeat-schedules/evaluate-dispatch',
+        queryParameters: queryParams,
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to evaluate repeat schedules.');
+    }
+  }
+
+
   // --- VIP Dignitary Protocol Endpoints ---
   Future<Map<String, dynamic>?> getVipProtocol(int announcementId) async {
     try {

@@ -245,19 +245,21 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     if (_isStudent) return;
     setState(() => _isTestingSlot = true);
     try {
-      final res = await EchosphereApiService().triggerRepeatCheck();
+      final res = await EchosphereApiService().evaluateAndDispatchRepeatSchedules();
       if (mounted) {
         setState(() => _isTestingSlot = false);
         final resultInfo = res['result'];
-        final enqueuedCount = resultInfo is Map ? (resultInfo['enqueued_count'] ?? 0) : 0;
-        final currentSlot = resultInfo is Map ? (resultInfo['current_slot'] ?? 'None') : 'None';
-        snackBar('Evaluation complete! Current Slot: $currentSlot \u2022 Dispatched: $enqueuedCount notice(s)');
+        final enqueuedCount = resultInfo is Map ? (resultInfo['dispatched_count'] ?? 0) : 0;
+        final expiredCount = resultInfo is Map ? (resultInfo['expired_ttl_count'] ?? 0) : 0;
+        final activeSlots = resultInfo is Map ? (resultInfo['active_slots'] as List? ?? []) : [];
+        final slotLabel = activeSlots.isNotEmpty ? activeSlots.join(', ') : 'Outside Acoustic Windows';
+        snackBar('Evaluation complete! Slot: $slotLabel \u2022 Dispatched: $enqueuedCount \u2022 Expired (TTL): $expiredCount');
         _fetchSchedule();
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isTestingSlot = false);
-        errorSnackBar('Test check failed: $e');
+        errorSnackBar('Test evaluation failed: $e');
       }
     }
   }
@@ -378,7 +380,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                           ? 'View-Only Mode: You are viewing this schedule as a student. Broadcast timing updates require faculty or administrative privileges.'
                                           : hasExistingSchedule
                                               ? (isActive
-                                                  ? 'Active: Automatically rebroadcasts notice during designated campus break windows.'
+                                                  ? 'Active: Rebroadcasts during designated campus break windows. Total Dispatched: ${_loadedSchedule?['total_played_count'] ?? 0} time(s).'
                                                   : 'Inactive: Schedule is currently paused.')
                                               : 'Select campus break windows to automatically repeat this voice broadcast.',
                                       size: 11,
@@ -388,11 +390,33 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                 ],
                               ),
                             ),
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.volume_off_rounded, size: 14, color: Colors.amber),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: EchoSphereText(
+                                      text: 'Lecture Silence Protected: Unplayed repeat notices automatically expire at slot cutoff (TTL) to prevent academic interruption.',
+                                      size: 10,
+                                      color: context.colors.onSurface.opaque(0.8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                             const SizedBox(height: 16),
 
                             // Slot Selection
                             const EchoSphereText(
-                              text: 'Campus Broadcast Windows',
+                              text: 'Campus Acoustic Windows (Lecture Silence Protected)',
                               size: 12,
                               variant: TextVariant.bold,
                             ),
@@ -430,6 +454,34 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                   },
                                 ),
                                 FilterChip(
+                                  avatar: const Icon(Icons.wb_twilight_rounded, size: 14),
+                                  label: const Text('Evening Break (4:30 PM)', style: TextStyle(fontSize: 11)),
+                                  selected: _selectedSlots.contains('EVENING_BREAK'),
+                                  onSelected: (val) {
+                                    setState(() {
+                                      if (val) {
+                                        _selectedSlots.add('EVENING_BREAK');
+                                      } else {
+                                        _selectedSlots.remove('EVENING_BREAK');
+                                      }
+                                    });
+                                  },
+                                ),
+                                FilterChip(
+                                  avatar: const Icon(Icons.night_shelter_rounded, size: 14),
+                                  label: const Text('Hostel Window (7:30 PM)', style: TextStyle(fontSize: 11)),
+                                  selected: _selectedSlots.contains('HOSTEL_WINDOW'),
+                                  onSelected: (val) {
+                                    setState(() {
+                                      if (val) {
+                                        _selectedSlots.add('HOSTEL_WINDOW');
+                                      } else {
+                                        _selectedSlots.remove('HOSTEL_WINDOW');
+                                      }
+                                    });
+                                  },
+                                ),
+                                FilterChip(
                                   avatar: const Icon(Icons.access_time_rounded, size: 14),
                                   label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
                                   selected: _selectedSlots.contains('CUSTOM_WINDOW'),
@@ -445,6 +497,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                 ),
                               ],
                             ),
+
 
                             // Custom Window Time Fields
                             if (_selectedSlots.contains('CUSTOM_WINDOW')) ...[
