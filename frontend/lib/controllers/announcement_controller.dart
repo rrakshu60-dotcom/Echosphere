@@ -277,6 +277,7 @@ class AnnouncementController extends GetxController {
   final RxMap<int, CalendarEventData> calendarEvents = <int, CalendarEventData>{}.obs;
   final RxMap<int, Map<String, dynamic>> relevanceScores = <int, Map<String, dynamic>>{}.obs;
   static int _idCounter = 0;
+  int? lastCreatedAnnouncementId;
 
   bool isBookmarked(int id) => bookmarkedNoticeIds.contains(id);
 
@@ -1036,6 +1037,7 @@ class AnnouncementController extends GetxController {
     String speakerVoice = 'female',
     int? speakerNodeId,
     List<String> attachments = const [],
+    Map<String, dynamic>? repeatSchedule,
   }) async {
     isLoading.value = true;
 
@@ -1150,6 +1152,7 @@ class AnnouncementController extends GetxController {
         );
         final rawBackendId = res['id'];
         backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');
+        lastCreatedAnnouncementId = backendId;
         if (backendId != null) {
           final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
           if (idx != -1) {
@@ -1157,6 +1160,14 @@ class AnnouncementController extends GetxController {
             _rawAnnouncements[idx] = old.copyWith(id: backendId);
             _rawAnnouncements.refresh();
             update();
+          }
+
+          if (repeatSchedule != null) {
+            try {
+              await EchosphereApiService().setRepeatSchedule(backendId, repeatSchedule);
+            } catch (re) {
+              debugPrint('Error attaching repeat schedule to announcement #$backendId: $re');
+            }
           }
         }
         if (backendId != null && deliverSpeaker) {

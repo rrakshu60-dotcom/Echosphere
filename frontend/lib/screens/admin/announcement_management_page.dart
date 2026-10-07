@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
@@ -9,6 +9,7 @@ import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -371,6 +372,21 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                     label: const Text('Speaker Notice', style: TextStyle(fontSize: 12)),
                     selected: deliverSpeakerVal,
                     onSelected: (val) => setDlgState(() => deliverSpeakerVal = val),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.repeat_rounded, size: 15),
+                    label: const Text('Repeat Schedule', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      RepeatScheduleDialog.show(
+                        context,
+                        announcementId: item.id,
+                        announcementTitle: item.title,
+                      );
+                    },
                   ),
                 ],
               ),

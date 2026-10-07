@@ -13,6 +13,7 @@ import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
+import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -223,152 +224,17 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   }
 
   void _showConfigureRepeatScheduleDialog() {
-    final selectedSlots = <String>{
-      if (_repeatSchedule != null)
-        ...((_repeatSchedule!['selected_slots'] as List?)?.map((e) => e.toString()) ?? [])
-      else
-        'SHORT_BREAK',
-    };
-    String selectedScope = _repeatSchedule?['target_scope'] ?? 'DEPARTMENT';
-    final customStartCtrl = TextEditingController(text: _repeatSchedule?['custom_start_time'] ?? '10:00');
-    final customEndCtrl = TextEditingController(text: _repeatSchedule?['custom_end_time'] ?? '11:00');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.repeat_rounded, size: 20),
-                SizedBox(width: 8),
-                Text('Configure Repeat Schedule', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Select Repeat Broadcast Slots:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      FilterChip(
-                        label: const Text('Short Break (11:00 AM)', style: TextStyle(fontSize: 11)),
-                        selected: selectedSlots.contains('SHORT_BREAK'),
-                        onSelected: (val) {
-                          setDlgState(() {
-                            val ? selectedSlots.add('SHORT_BREAK') : selectedSlots.remove('SHORT_BREAK');
-                          });
-                        },
-                      ),
-                      FilterChip(
-                        label: const Text('Lunch Break (1:15 PM)', style: TextStyle(fontSize: 11)),
-                        selected: selectedSlots.contains('LUNCH_BREAK'),
-                        onSelected: (val) {
-                          setDlgState(() {
-                            val ? selectedSlots.add('LUNCH_BREAK') : selectedSlots.remove('LUNCH_BREAK');
-                          });
-                        },
-                      ),
-                      FilterChip(
-                        label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
-                        selected: selectedSlots.contains('CUSTOM_WINDOW'),
-                        onSelected: (val) {
-                          setDlgState(() {
-                            val ? selectedSlots.add('CUSTOM_WINDOW') : selectedSlots.remove('CUSTOM_WINDOW');
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                  if (selectedSlots.contains('CUSTOM_WINDOW')) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: customStartCtrl,
-                            decoration: const InputDecoration(labelText: 'Start (HH:MM)', border: OutlineInputBorder()),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: customEndCtrl,
-                            decoration: const InputDecoration(labelText: 'End (HH:MM)', border: OutlineInputBorder()),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  const Text('Target Scope:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
-                    value: selectedScope,
-                    items: const [
-                      DropdownMenuItem(value: 'DEPARTMENT', child: Text('Department Nodes Only', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'COLLEGE_WIDE', child: Text('College-Wide All Nodes', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'HOSTEL', child: Text('Hostel & Common Areas', style: TextStyle(fontSize: 12))),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setDlgState(() => selectedScope = val);
-                    },
-                    decoration: const InputDecoration(border: OutlineInputBorder()),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSaving ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: isSaving
-                    ? null
-                    : () async {
-                        if (selectedSlots.isEmpty) {
-                          errorSnackBar('Please select at least one repeat slot.');
-                          return;
-                        }
-                        setDlgState(() => isSaving = true);
-                        try {
-                          final now = DateTime.now();
-                          final data = {
-                            'selected_slots': selectedSlots.toList(),
-                            'target_scope': selectedScope,
-                            'event_datetime': now.add(const Duration(hours: 24)).toIso8601String(),
-                            'start_date': now.toIso8601String(),
-                            'end_date': now.add(const Duration(hours: 48)).toIso8601String(),
-                            'force_enable_speaker': true,
-                            if (selectedSlots.contains('CUSTOM_WINDOW')) ...{
-                              'custom_start_time': customStartCtrl.text.trim(),
-                              'custom_end_time': customEndCtrl.text.trim(),
-                            },
-                          };
-                          final res = await EchosphereApiService().setRepeatSchedule(widget.announcement.id, data);
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          if (mounted) setState(() => _repeatSchedule = res);
-                          snackBar('Repeat broadcast schedule saved.');
-                        } catch (e) {
-                          setDlgState(() => isSaving = false);
-                          errorSnackBar('Save failed: ${e.toString().replaceAll("Exception: ", "")}');
-                        }
-                      },
-                child: isSaving
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Save Schedule'),
-              ),
-            ],
-          );
-        },
-      ),
+    RepeatScheduleDialog.show(
+      context,
+      announcementId: widget.announcement.id,
+      announcementTitle: widget.announcement.title,
+      initialSchedule: _repeatSchedule,
+      onScheduleSaved: (saved) {
+        if (mounted) setState(() => _repeatSchedule = saved);
+      },
+      onScheduleDeleted: () {
+        if (mounted) setState(() => _repeatSchedule = null);
+      },
     );
   }
 
@@ -1526,6 +1392,28 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                     label: const Text('Speaker Notice', style: TextStyle(fontSize: 12)),
                     selected: deliverSpeakerVal,
                     onSelected: (val) => setDlgState(() => deliverSpeakerVal = val),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.repeat_rounded, size: 15),
+                    label: const Text('Repeat Schedule', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      RepeatScheduleDialog.show(
+                        context,
+                        announcementId: announcement.id,
+                        announcementTitle: announcement.title,
+                        initialSchedule: _repeatSchedule,
+                        onScheduleSaved: (s) {
+                          if (mounted) setState(() => _repeatSchedule = s);
+                        },
+                        onScheduleDeleted: () {
+                          if (mounted) setState(() => _repeatSchedule = null);
+                        },
+                      );
+                    },
                   ),
                 ],
               ),
