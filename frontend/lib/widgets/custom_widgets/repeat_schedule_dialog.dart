@@ -1,8 +1,10 @@
+import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/utils/theme_extensions.dart';
 import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 /// Interactive dialog to configure, modify, view logs, test, and remove
@@ -59,6 +61,11 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
   bool _isDeleting = false;
   bool _isTestingSlot = false;
   Map<String, dynamic>? _loadedSchedule;
+
+  bool get _isStudent {
+    final auth = Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
+    return (auth?.currentUser.value?.role ?? 'Student').toLowerCase() == 'student';
+  }
 
   @override
   void initState() {
@@ -146,6 +153,10 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
   }
 
   Future<void> _handleSave() async {
+    if (_isStudent) {
+      errorSnackBar('Permission Denied: Students cannot configure or modify repeat schedules.');
+      return;
+    }
     if (_selectedSlots.isEmpty) {
       errorSnackBar('Please select at least one repeat broadcast slot.');
       return;
@@ -205,6 +216,10 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
   }
 
   Future<void> _handleDelete() async {
+    if (_isStudent) {
+      errorSnackBar('Permission Denied: Students cannot remove repeat schedules.');
+      return;
+    }
     if (widget.announcementId == null) return;
     setState(() => _isDeleting = true);
     try {
@@ -227,6 +242,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
   }
 
   Future<void> _handleTestTrigger() async {
+    if (_isStudent) return;
     setState(() => _isTestingSlot = true);
     try {
       final res = await EchosphereApiService().triggerRepeatCheck();
@@ -326,35 +342,45 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: hasExistingSchedule
-                                    ? (isActive ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1))
-                                    : context.colors.primary.opaque(0.08),
+                                color: _isStudent
+                                    ? Colors.blue.withOpacity(0.08)
+                                    : hasExistingSchedule
+                                        ? (isActive ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1))
+                                        : context.colors.primary.opaque(0.08),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: hasExistingSchedule
-                                      ? (isActive ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3))
-                                      : context.colors.primary.opaque(0.2),
+                                  color: _isStudent
+                                      ? Colors.blue.withOpacity(0.3)
+                                      : hasExistingSchedule
+                                          ? (isActive ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3))
+                                          : context.colors.primary.opaque(0.2),
                                 ),
                               ),
                               child: Row(
                                 children: [
                                   Icon(
-                                    hasExistingSchedule
-                                        ? (isActive ? Icons.check_circle_rounded : Icons.pause_circle_rounded)
-                                        : Icons.info_outline_rounded,
+                                    _isStudent
+                                        ? Icons.info_outline_rounded
+                                        : hasExistingSchedule
+                                            ? (isActive ? Icons.check_circle_rounded : Icons.pause_circle_rounded)
+                                            : Icons.info_outline_rounded,
                                     size: 16,
-                                    color: hasExistingSchedule
-                                        ? (isActive ? Colors.green : Colors.orange)
-                                        : context.colors.primary,
+                                    color: _isStudent
+                                        ? Colors.blue
+                                        : hasExistingSchedule
+                                            ? (isActive ? Colors.green : Colors.orange)
+                                            : context.colors.primary,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: EchoSphereText(
-                                      text: hasExistingSchedule
-                                          ? (isActive
-                                              ? 'Active: Automatically rebroadcasts notice during designated campus break windows.'
-                                              : 'Inactive: Schedule is currently paused.')
-                                          : 'Select campus break windows to automatically repeat this voice broadcast.',
+                                      text: _isStudent
+                                          ? 'View-Only Mode: You are viewing this schedule as a student. Broadcast timing updates require faculty or administrative privileges.'
+                                          : hasExistingSchedule
+                                              ? (isActive
+                                                  ? 'Active: Automatically rebroadcasts notice during designated campus break windows.'
+                                                  : 'Inactive: Schedule is currently paused.')
+                                              : 'Select campus break windows to automatically repeat this voice broadcast.',
                                       size: 11,
                                       color: context.colors.onSurface.opaque(0.85),
                                     ),
@@ -585,7 +611,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                             ],
 
                             // Test Trigger Action (Testing & Validation)
-                            if (widget.announcementId != null) ...[
+                            if (!_isStudent && widget.announcementId != null) ...[
                               const SizedBox(height: 14),
                               OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
@@ -618,37 +644,44 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (hasExistingSchedule && widget.announcementId != null) ...[
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  if (_isStudent) ...[
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close', style: TextStyle(fontSize: 12)),
+                    ),
+                  ] else ...[
+                    if (hasExistingSchedule && widget.announcementId != null) ...[
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                        onPressed: (_isDeleting || _isSaving) ? null : _handleDelete,
+                        icon: _isDeleting
+                            ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                            : const Icon(Icons.delete_outline_rounded, size: 15),
+                        label: const Text('Remove', style: TextStyle(fontSize: 12)),
                       ),
-                      onPressed: (_isDeleting || _isSaving) ? null : _handleDelete,
-                      icon: _isDeleting
-                          ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
-                          : const Icon(Icons.delete_outline_rounded, size: 15),
-                      label: const Text('Remove', style: TextStyle(fontSize: 12)),
+                      const Spacer(),
+                    ],
+                    TextButton(
+                      onPressed: (_isSaving || _isDeleting) ? null : () => Navigator.of(context).pop(),
+                      child: const Text('Cancel', style: TextStyle(fontSize: 12)),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: context.colors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                      onPressed: (_isSaving || _isDeleting) ? null : _handleSave,
+                      child: _isSaving
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Text('Save Schedule', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
                   ],
-                  TextButton(
-                    onPressed: (_isSaving || _isDeleting) ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(fontSize: 12)),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.colors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
-                    onPressed: (_isSaving || _isDeleting) ? null : _handleSave,
-                    child: _isSaving
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Save Schedule', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
                 ],
               ),
             ],

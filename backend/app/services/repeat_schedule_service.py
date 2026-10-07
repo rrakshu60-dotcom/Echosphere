@@ -56,7 +56,9 @@ def configure_repeat_schedule(
     # 2. Check permissions: creator, admin, or department authority
     user_role = getattr(current_user.role, "name", "").upper() if current_user and current_user.role else ""
     is_creator = current_user and current_user.id == announcement.created_by
-    is_admin_or_lead = user_role in ("ADMIN", "SUPERADMIN", "HOD", "DEAN", "FACULTY", "COORDINATOR")
+    is_admin_or_lead = any(
+        kw in user_role for kw in ("ADMIN", "SUPERADMIN", "HOD", "DEAN", "FACULTY", "COORDINATOR", "PRINCIPAL", "DEVELOPER", "TEACHER")
+    )
     if not is_creator and not is_admin_or_lead:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -221,6 +223,18 @@ def delete_repeat_schedule(
     )
     if not schedule:
         return False
+
+    announcement = db.query(Announcement).filter(Announcement.id == announcement_id).first()
+    user_role = getattr(current_user.role, "name", "").upper() if current_user and current_user.role else ""
+    is_creator = current_user and announcement and current_user.id == announcement.created_by
+    is_admin_or_lead = any(
+        kw in user_role for kw in ("ADMIN", "SUPERADMIN", "HOD", "DEAN", "FACULTY", "COORDINATOR", "PRINCIPAL", "DEVELOPER", "TEACHER")
+    )
+    if not is_creator and not is_admin_or_lead:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete repeat broadcasts for this notice.",
+        )
 
     db.delete(schedule)
     db.commit()
