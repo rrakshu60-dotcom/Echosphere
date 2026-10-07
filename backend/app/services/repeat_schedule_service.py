@@ -481,14 +481,53 @@ def evaluate_and_dispatch_repeat_slots(
                 "created_at": getattr(ann, "created_at", None) or datetime.min,
             })
 
-    # 3. Phase 2: Sort Candidates by Priority (Emergency 1000 > High 300 > Medium 200 > Low 100) and Recency
-    candidates.sort(
-        key=lambda c: (
-            c["weight"],
-            c["created_at"],
-        ),
-        reverse=True,
-    )
+    # 3. Phase 2: Emergency Override Lock
+    # If ANY emergency notice (e.g. Earthquake, Evacuation, Fire Alert) is scheduled for this break,
+    # it completely supersedes and suppresses ALL other announcements.
+    # ONLY the emergency notice broadcasts, repeating continuously for the entire break!
+    emergency_candidates = [c for c in candidates if c["is_emergency"]]
+    if emergency_candidates:
+        non_emergency_candidates = [c for c in candidates if not c["is_emergency"]]
+        for nec in non_emergency_candidates:
+            skipped.append({
+                "announcement_id": nec["sched"].announcement_id,
+                "slot": nec["slot_name"],
+                "reason": "Suppressed by active Emergency Broadcast Override (e.g. Earthquake/Evacuation alert active)",
+            })
+
+        # Pause any non-emergency notices currently in the speaker queue
+        active_non_em = (
+            db.query(SpeakerQueue)
+            .filter(SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]))
+            .all()
+        )
+        for item in active_non_em:
+            ann_prio = getattr(item.announcement, "priority", None)
+            ann_em = getattr(item.announcement, "emergency_level", None)
+            is_item_em = (
+                ann_em == EmergencyLevel.EMERGENCY
+                or str(ann_em).upper() == "EMERGENCY"
+                or str(ann_prio).upper() == "EMERGENCY"
+            )
+            if not is_item_em:
+                item.status = "Paused"
+        db.commit()
+
+        candidates = emergency_candidates
+        logger.warning(
+            f"🚨 [EMERGENCY LOCKDOWN] Active emergency notice detected. "
+            f"Ignoring all {len(non_emergency_candidates)} other notices. "
+            f"Broadcasting Announcement #{candidates[0]['sched'].announcement_id} continuously for the whole break!"
+        )
+    else:
+        # If no emergency, sort standard candidates by Priority (High 300 > Medium 200 > Low 100) and Recency
+        candidates.sort(
+            key=lambda c: (
+                c["weight"],
+                c["created_at"],
+            ),
+            reverse=True,
+        )
 
     # 4. Phase 3: Enqueue and Broadcast in Ranked Priority Order
     for cand in candidates:

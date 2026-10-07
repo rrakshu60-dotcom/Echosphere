@@ -479,71 +479,109 @@ def test_repeat_schedule_suite():
         configure_repeat_schedule(db=db, announcement_id=a.id, data=sched_cfg, current_user=user)
     db.commit()
 
-    # Wave 1: 11:02 AM (All 4 notices should dispatch in strict priority order!)
-    print("  -> Wave 1: Dispatching at 11:02 AM (Short Break)...")
-    res_w1 = evaluate_and_dispatch_repeat_slots(
+    # -------------------------------------------------------------
+    # TEST 9A: Emergency Lockdown Override (Earthquake Ignores All Other Notices)
+    # -------------------------------------------------------------
+    print("  -> TEST 9A: Testing Emergency Broadcast Lock (Earthquake alert active)...")
+    res_em_lock = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:02",
         simulated_date_str="2026-09-20",
     )
-    assert res_w1["dispatched_count"] == 4, f"Expected all 4 notices in Wave 1, got {res_w1['dispatched_count']}"
-    w1_ids = [d["announcement_id"] for d in res_w1["dispatched"]]
-    assert w1_ids == [ann_em.id, ann_high.id, ann_med.id, ann_low.id], f"Dispatched order mismatch! Got: {w1_ids}"
-    assert res_w1["dispatched"][0]["priority"] == "EMERGENCY"
-    assert res_w1["dispatched"][1]["priority"] == "HIGH"
-    assert res_w1["dispatched"][2]["priority"] == "MEDIUM"
-    assert res_w1["dispatched"][3]["priority"] == "LOW"
-    print("  ✓ Wave 1 dispatched all 4 in strict priority order: Emergency -> High -> Medium -> Low!")
+    # ONLY the Earthquake notice must be dispatched! High, Medium, Low MUST be ignored!
+    assert res_em_lock["dispatched_count"] == 1, f"Expected ONLY emergency notice, got {res_em_lock['dispatched_count']}"
+    assert res_em_lock["dispatched"][0]["announcement_id"] == ann_em.id
+    assert res_em_lock["dispatched"][0]["priority"] == "EMERGENCY"
+    # Verify non-emergency notices were ignored with suppression reason
+    skipped_reasons = [s["reason"] for s in res_em_lock["skipped"]]
+    assert any("Emergency Broadcast Override" in r for r in skipped_reasons)
+    print("  ✓ Emergency Lockdown verified: Earthquake alert ignored all 3 other notices!")
 
-    # Complete Wave 1 queue items to simulate audio playback completion
+    # Complete emergency playback and verify it repeats for the whole break
     for q in db.query(SpeakerQueue).all():
         q.status = "Completed"
     db.commit()
 
-    # Wave 2: 11:05 AM (Emergency, High, and Medium should repeat; Low is capped at 1x)
-    print("  -> Wave 2: Dispatching at 11:05 AM...")
-    res_w2 = evaluate_and_dispatch_repeat_slots(
+    print("  -> Testing Emergency continuous repeat in next wave (11:05 AM)...")
+    res_em_w2 = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:05",
         simulated_date_str="2026-09-20",
     )
-    assert res_w2["dispatched_count"] == 3, f"Expected 3 notices in Wave 2 (Low capped), got {res_w2['dispatched_count']}"
-    w2_ids = [d["announcement_id"] for d in res_w2["dispatched"]]
-    assert w2_ids == [ann_em.id, ann_high.id, ann_med.id], f"Wave 2 order mismatch: {w2_ids}"
-    print("  ✓ Wave 2 dispatched Emergency, High, Medium. Low priority (1x cap) correctly finished!")
+    assert res_em_w2["dispatched_count"] == 1
+    assert res_em_w2["dispatched"][0]["announcement_id"] == ann_em.id
+    print("  ✓ Earthquake alert continues repeating alone for the whole break!")
+
+    # -------------------------------------------------------------
+    # TEST 9B: Standard Operations (No Emergency) - High 3x, Medium 2x, Low 1x
+    # -------------------------------------------------------------
+    print("\n  -> TEST 9B: Testing Standard Priority Repeats (Emergency cleared)...")
+    # Deactivate emergency schedule to test normal operations
+    sched_em = db.query(AnnouncementRepeatSchedule).filter(AnnouncementRepeatSchedule.announcement_id == ann_em.id).first()
+    sched_em.is_active = False
+    db.commit()
+
+    # Clear queue
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    # Wave 1: 11:02 AM on a new day (High, Medium, Low play in priority order)
+    res_w1 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:02",
+        simulated_date_str="2026-09-21",
+    )
+    assert res_w1["dispatched_count"] == 3, f"Expected 3 notices in Wave 1, got {res_w1['dispatched_count']}"
+    w1_ids = [d["announcement_id"] for d in res_w1["dispatched"]]
+    assert w1_ids == [ann_high.id, ann_med.id, ann_low.id], f"Dispatched order mismatch! Got: {w1_ids}"
+    assert res_w1["dispatched"][0]["priority"] == "HIGH"
+    assert res_w1["dispatched"][1]["priority"] == "MEDIUM"
+    assert res_w1["dispatched"][2]["priority"] == "LOW"
+    print("  ✓ Wave 1 dispatched remaining notices in strict priority order: High -> Medium -> Low!")
+
+    # Complete Wave 1 queue items
+    for q in db.query(SpeakerQueue).all():
+        q.status = "Completed"
+    db.commit()
+
+    # Wave 2: 11:05 AM (High and Medium repeat; Low capped at 1x)
+    res_w2 = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str="11:05",
+        simulated_date_str="2026-09-21",
+    )
+    assert res_w2["dispatched_count"] == 2, f"Expected 2 notices in Wave 2, got {res_w2['dispatched_count']}"
+    assert [d["announcement_id"] for d in res_w2["dispatched"]] == [ann_high.id, ann_med.id]
+    print("  ✓ Wave 2 dispatched High and Medium. Low (1x cap) finished!")
 
     # Complete Wave 2 queue items
     for q in db.query(SpeakerQueue).all():
         q.status = "Completed"
     db.commit()
 
-    # Wave 3: 11:08 AM (Emergency and High should repeat; Medium is capped at 2x)
-    print("  -> Wave 3: Dispatching at 11:08 AM...")
+    # Wave 3: 11:08 AM (High repeats; Medium capped at 2x)
     res_w3 = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:08",
-        simulated_date_str="2026-09-20",
+        simulated_date_str="2026-09-21",
     )
-    assert res_w3["dispatched_count"] == 2, f"Expected 2 notices in Wave 3 (Medium capped), got {res_w3['dispatched_count']}"
-    w3_ids = [d["announcement_id"] for d in res_w3["dispatched"]]
-    assert w3_ids == [ann_em.id, ann_high.id], f"Wave 3 order mismatch: {w3_ids}"
-    print("  ✓ Wave 3 dispatched Emergency, High. Medium priority (2x cap) correctly finished!")
+    assert res_w3["dispatched_count"] == 1, f"Expected 1 notice in Wave 3, got {res_w3['dispatched_count']}"
+    assert res_w3["dispatched"][0]["announcement_id"] == ann_high.id
+    print("  ✓ Wave 3 dispatched High. Medium (2x cap) finished!")
 
     # Complete Wave 3 queue items
     for q in db.query(SpeakerQueue).all():
         q.status = "Completed"
     db.commit()
 
-    # Wave 4: 11:11 AM (Emergency repeats whole break; High is capped at 3x)
-    print("  -> Wave 4: Dispatching at 11:11 AM...")
+    # Wave 4: 11:11 AM (High capped at 3x, all notices complete)
     res_w4 = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:11",
-        simulated_date_str="2026-09-20",
+        simulated_date_str="2026-09-21",
     )
-    assert res_w4["dispatched_count"] == 1, f"Expected 1 notice in Wave 4 (Emergency whole break), got {res_w4['dispatched_count']}"
-    assert res_w4["dispatched"][0]["announcement_id"] == ann_em.id
-    print("  ✓ Wave 4 dispatched Emergency continuously. High priority (3x cap) correctly finished!")
+    assert res_w4["dispatched_count"] == 0, f"Expected 0 notices in Wave 4, got {res_w4['dispatched_count']}"
+    print("  ✓ Wave 4: All notices reached repeat caps (High 3x, Medium 2x, Low 1x). Speakers quiet!")
 
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
