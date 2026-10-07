@@ -31,15 +31,15 @@ class SpeakerQueueController extends GetxController {
   Timer? _pollTimer;
   Timer? _intermissionTimer;
 
-  // Fallback initial speaker nodes: Canonical nodes (Wokwi + Hardware Clients 1 & 2)
+  // Fallback initial speaker nodes: Canonical nodes (ESP32 Live Node + Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
     {
-      'id': 12,
-      'name': 'Wokwi ESP32 Speaker Node',
-      'mac_address': '24:0A:C4:00:01:10',
-      'ip_address': '10.0.1.15',
-      'zone': 'Block A - CSE Quad',
-      'department': 'CSE',
+      'id': 10,
+      'name': 'ESP32 Smart Speaker & Live Display',
+      'mac_address': 'D4:F3:2D:22:2A:CD',
+      'ip_address': '192.168.1.100',
+      'zone': 'Campus Main Corridor',
+      'department': 'College-Wide',
       'status': 'OFFLINE',
       'volume': 90,
       'cpu_usage': 0.0,
@@ -66,6 +66,18 @@ class SpeakerQueueController extends GetxController {
       'department': 'AIML',
       'status': 'OFFLINE',
       'volume': 85,
+      'cpu_usage': 0.0,
+      'memory_usage': 0.0,
+    },
+    {
+      'id': 12,
+      'name': 'Wokwi ESP32 Speaker Node',
+      'mac_address': '24:0A:C4:00:01:10',
+      'ip_address': '10.0.1.15',
+      'zone': 'Block A - CSE Quad',
+      'department': 'CSE',
+      'status': 'OFFLINE',
+      'volume': 90,
       'cpu_usage': 0.0,
       'memory_usage': 0.0,
     },
@@ -169,6 +181,7 @@ class SpeakerQueueController extends GetxController {
     if (nodeId == null) return 'All Nodes (College-Wide)';
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
+        (nodeId == 10 && (n['name'] ?? '').toString().contains('ESP32')) ||
         ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));
@@ -185,6 +198,7 @@ class SpeakerQueueController extends GetxController {
     }
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
+        (nodeId == 10 && (n['name'] ?? '').toString().contains('ESP32')) ||
         ((nodeId == 21 || nodeId == 16) && (n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 15 && (n['name'] ?? '').toString().contains('Client') && !(n['name'] ?? '').toString().contains('Client 2')) ||
         (nodeId == 14 && (n['name'] ?? '').toString().contains('Wokwi')));

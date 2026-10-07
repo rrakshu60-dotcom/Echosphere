@@ -20,6 +20,10 @@ Thumbs.db
 *.log
 .pio/
 **/.pio/
+.clangd
+.clangd/
+.env_backups/
+.agents/node_modules/
 
 # Python & Virtualenv
 __pycache__/

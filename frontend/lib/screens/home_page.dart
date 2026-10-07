@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:echosphere/ai/echosphere_ai.dart';
 import 'package:echosphere/constants/themes.dart';
@@ -611,6 +611,17 @@ class _HomePageState extends State<HomePage> {
                 icon: Icons.manage_accounts_rounded,
                 color: theme.colorScheme.primary,
                 onTap: () => Get.toNamed('/user-management'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildWorkspaceActionTile(
+                theme: theme,
+                title: 'Smart Speakers',
+                subtitle: 'Hardware PA & nodes',
+                icon: Icons.podcasts_rounded,
+                color: theme.colorScheme.primary,
+                onTap: () => Get.toNamed('/speaker-queue'),
               ),
             ),
           ],

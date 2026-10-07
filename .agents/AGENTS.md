@@ -41,7 +41,7 @@ All components of EchoSphere are deployed and permanently orchestrated as follow
 | **Database** | **Supabase PostgreSQL** | `aws-0-ap-south-1.pooler.supabase.com:6543/postgres` (Project `wvugkkwykdnyzcmaoxgj`, Mumbai) | Permanent source of truth for all announcements, user credentials, approval queues, notifications, audit logs. Secured with Row-Level Security (RLS). |
 | **Backend API** | **Render Web Service** | `https://echosphere-backend-9lv8.onrender.com` (Service `srv-dabdp2rtqb8s73fjp000`) | FastAPI + Uvicorn server handling auth, announcements, AI summarization, audio generation, and WebSockets. Connected via private `DATABASE_URL` environment variable to Supabase. |
 | **Web Frontend** | **Cloudflare Pages / GitHub Pages** | Deployed via `.github/workflows/deploy-web.yml` | Hosted Flutter Web application. Communicates with Render backend over HTTPS & WebSockets. |
-| **Keep-Alive Daemon** | **UptimeRobot** | Monitors `https://echosphere-backend-9lv8.onrender.com/docs` | Pings the server periodically to prevent Render free-tier containers from idling/sleeping (zero cold starts) and keeps Supabase permanently active. |
+| **Keep-Alive Daemon** | **GitHub Actions Cron** | `.github/workflows/backend-keepalive.yml` | Pings the backend every 10 min during campus hours (7:30 AM - 11:30 PM IST), keeping the backend awake with zero cold starts during active hours while conserving free tier hours at night (consuming only ~496 of 750 monthly hours). |
 | **Version Control** | **GitHub Repository** | `rrakshu60-dotcom/Echosphere` (`main` branch) | Auto-triggers Render backend rebuilds and GitHub Actions CI/CD workflows upon push. |
 
 ## Protocol for Future Updates & Modifications

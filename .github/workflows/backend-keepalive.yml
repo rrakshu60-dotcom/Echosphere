@@ -1,0 +1,33 @@
+name: Backend Smart Keep-Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes between 02:00 UTC and 17:59 UTC (7:30 AM - 11:29 PM IST)
+    # Keeps Render awake during active campus hours while sleeping at night to save free tier hours.
+    - cron: '*/10 2-17 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping-backend:
+    name: Keep Render Backend Active
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping EchoSphere Production Backend
+        run: |
+          echo "Pinging EchoSphere Render Backend..."
+          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" -m 30 "https://echosphere-backend-9lv8.onrender.com/")
+          echo "HTTP Response Code: $HTTP_STATUS"
+          cat response.txt
+          echo ""
+
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "Backend is hot and healthy!"
+          else
+            echo "Backend responded with non-200 code ($HTTP_STATUS). Waking up..."
+          fi

@@ -27,11 +27,15 @@ void main() {
     Get.reset();
   });
 
-  test('Canonical speaker nodes inventory has all 3 nodes defaulting to OFFLINE', () {
+  test('Canonical speaker nodes inventory has all 4 nodes defaulting to OFFLINE', () {
     final ctrl = Get.put(SpeakerQueueController());
 
-    // 1. Must contain all 3 nodes (Wokwi + Hardware Client 1 + Hardware Client 2)
-    expect(ctrl.speakerNodes.length, equals(3));
+    // 1. Must contain all 4 nodes (ESP32 Live Node + Wokwi + Hardware Client 1 + Hardware Client 2)
+    expect(ctrl.speakerNodes.length, equals(4));
+
+    final espNode = ctrl.speakerNodes.firstWhere((n) => n['mac_address'] == 'D4:F3:2D:22:2A:CD');
+    expect(espNode['name'], equals('ESP32 Smart Speaker & Live Display'));
+    expect(espNode['status'], equals('OFFLINE'), reason: 'Node must not show fake ONLINE status');
 
     final wokwiNode = ctrl.speakerNodes.firstWhere((n) => n['mac_address'] == '24:0A:C4:00:01:10');
     expect(wokwiNode['name'], equals('Wokwi ESP32 Speaker Node'));
@@ -126,19 +130,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Switch to the Devices Tab (Tab 2: Nodes (3))
-    final nodesTab = find.textContaining('Nodes (3)');
+    // Switch to the Devices Tab (Tab 2: Nodes (4))
+    final nodesTab = find.textContaining('Nodes (4)');
     expect(nodesTab, findsOneWidget);
     await tester.tap(nodesTab);
     await tester.pumpAndSettle();
 
-    // All canonical nodes must be rendered
-    expect(find.text('Wokwi ESP32 Speaker Node'), findsOneWidget);
+    // Canonical nodes rendered
+    expect(find.text('ESP32 Smart Speaker & Live Display'), findsOneWidget);
     expect(find.textContaining('Hardware Speaker Client 1'), findsOneWidget);
-    expect(find.text('Hardware Speaker Client 2'), findsOneWidget);
 
-    // Initial status badges must be OFFLINE (no fake ONLINE)
-    expect(find.text('OFFLINE'), findsNWidgets(3));
+    // Scroll down to view all nodes in the scrollable ListView
+    await tester.drag(find.byType(ListView), const Offset(0, -350));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hardware Speaker Client 2'), findsOneWidget);
+    expect(find.text('Wokwi ESP32 Speaker Node'), findsOneWidget);
+    expect(find.text('OFFLINE'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

@@ -15,11 +15,9 @@ canonical_db_path = os.path.join(backend_dir, "echosphere.db")
 if not DATABASE_URL:
     DATABASE_URL = f"sqlite:///{canonical_db_path}"
 elif DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-elif DATABASE_URL.startswith("sqlite:///") and (":memory:" not in DATABASE_URL):
-    raw_path = DATABASE_URL.replace("sqlite:///", "")
-    if not os.path.isabs(raw_path):
-        DATABASE_URL = f"sqlite:///{canonical_db_path}"
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 if DATABASE_URL.startswith("sqlite"):
     if ":memory:" in DATABASE_URL:
