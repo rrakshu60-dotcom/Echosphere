@@ -35,6 +35,7 @@ class AnnouncementModel {
   final bool playedOnSpeaker;
   final int durationSeconds;
   final String speakerVoice; // 'female' | 'male'
+  final Map<String, dynamic>? repeatSchedule;
 
   static String sanitizeText(String input) {
     if (input.isEmpty) return input;
@@ -80,6 +81,7 @@ class AnnouncementModel {
     this.playedOnSpeaker = false,
     this.durationSeconds = 15,
     this.speakerVoice = 'female',
+    this.repeatSchedule,
   })  : title = sanitizeText(title),
         description = sanitizeText(description),
         creatorName = sanitizeText(creatorName),
@@ -115,6 +117,7 @@ class AnnouncementModel {
     bool? playedOnSpeaker,
     int? durationSeconds,
     String? speakerVoice,
+    Map<String, dynamic>? repeatSchedule,
   }) {
     return AnnouncementModel(
       id: id ?? this.id,
@@ -143,6 +146,7 @@ class AnnouncementModel {
       playedOnSpeaker: playedOnSpeaker ?? this.playedOnSpeaker,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       speakerVoice: speakerVoice ?? this.speakerVoice,
+      repeatSchedule: repeatSchedule ?? this.repeatSchedule,
     );
   }
 
@@ -227,6 +231,11 @@ class AnnouncementModel {
       playedOnSpeaker: json['played_on_speaker'] == true || json['playedOnSpeaker'] == true,
       durationSeconds: json['duration_seconds'] ?? json['durationSeconds'] ?? 15,
       speakerVoice: (json['speaker_voice'] ?? json['speakerVoice'] ?? 'female').toString().toLowerCase() == 'male' ? 'male' : 'female',
+      repeatSchedule: json['repeat_schedule'] != null && json['repeat_schedule'] is Map
+          ? Map<String, dynamic>.from(json['repeat_schedule'] as Map)
+          : (json['repeatSchedule'] != null && json['repeatSchedule'] is Map
+              ? Map<String, dynamic>.from(json['repeatSchedule'] as Map)
+              : null),
     );
   }
 
@@ -258,6 +267,7 @@ class AnnouncementModel {
       'played_on_speaker': playedOnSpeaker,
       'duration_seconds': durationSeconds,
       'speaker_voice': speakerVoice,
+      'repeat_schedule': repeatSchedule,
     };
   }
 }
@@ -1101,6 +1111,7 @@ class AnnouncementController extends GetxController {
     final words = ('$title $description').split(' ').length;
     final durSecs = (words / 2.5).round().clamp(10, 60);
 
+    final effectiveDeliverSpeaker = deliverSpeaker || repeatSchedule != null;
     final newNotice = AnnouncementModel(
       id: newId,
       title: title,
@@ -1116,12 +1127,13 @@ class AnnouncementController extends GetxController {
       scheduledAt: isScheduleLater ? scheduledDateTime : null,
       aiSummary: 'Summary: $title',
       attachments: attachments,
-      deliverSpeaker: deliverSpeaker,
+      deliverSpeaker: effectiveDeliverSpeaker,
       speakerNodeId: speakerNodeId,
-      speakerStatus: deliverSpeaker ? 'Queued' : null,
+      speakerStatus: effectiveDeliverSpeaker ? 'Queued' : null,
       playedOnSpeaker: false,
       durationSeconds: durSecs,
       speakerVoice: speakerVoice,
+      repeatSchedule: repeatSchedule,
     );
 
     // 0ms Instant Local Insertion for snappy responsiveness
@@ -1138,12 +1150,12 @@ class AnnouncementController extends GetxController {
           title: title,
           description: description,
           categoryId: catId,
-          priority: priority,
-          emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
+          priority: priority == 'EMERGENCY' ? 'High' : priority,
+          emergencyLevel: priority == 'EMERGENCY' ? 'Emergency' : 'Normal',
           scheduledAt: isScheduleLater && scheduledDateTime != null
               ? scheduledDateTime.toIso8601String()
               : null,
-          deliverSpeaker: deliverSpeaker,
+          deliverSpeaker: effectiveDeliverSpeaker,
           deliverInApp: deliverInApp,
           deliverPush: deliverPush,
           speakerVoice: speakerVoice,
@@ -1157,20 +1169,24 @@ class AnnouncementController extends GetxController {
           final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
           if (idx != -1) {
             final old = _rawAnnouncements[idx];
-            _rawAnnouncements[idx] = old.copyWith(id: backendId);
+            _rawAnnouncements[idx] = old.copyWith(
+              id: backendId,
+              repeatSchedule: repeatSchedule,
+            );
             _rawAnnouncements.refresh();
             update();
           }
 
           if (repeatSchedule != null) {
             try {
-              await EchosphereApiService().setRepeatSchedule(backendId, repeatSchedule);
+              final schedRes = await EchosphereApiService().setRepeatSchedule(backendId, repeatSchedule);
+              debugPrint('Repeat schedule successfully saved on backend for announcement #$backendId: $schedRes');
             } catch (re) {
               debugPrint('Error attaching repeat schedule to announcement #$backendId: $re');
             }
           }
         }
-        if (backendId != null && deliverSpeaker) {
+        if (backendId != null && effectiveDeliverSpeaker) {
           try {
             await EchosphereApiService().enqueueAnnouncement(
               announcementId: backendId,

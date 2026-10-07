@@ -364,6 +364,7 @@ def evaluate_and_dispatch_repeat_slots(
 
     # 2. Phase 1: Collect & validate candidates matching active acoustic window
     candidates = []
+    has_active_emergency_scheduled = False
 
     for sched in schedules:
         ann = sched.announcement
@@ -403,6 +404,8 @@ def evaluate_and_dispatch_repeat_slots(
             continue
 
         prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann)
+        if prio_tier == "EMERGENCY":
+            has_active_emergency_scheduled = True
 
         for slot_name in matched_slots:
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
@@ -486,7 +489,7 @@ def evaluate_and_dispatch_repeat_slots(
     # it completely supersedes and suppresses ALL other announcements.
     # ONLY the emergency notice broadcasts, repeating continuously for the entire break!
     emergency_candidates = [c for c in candidates if c["is_emergency"]]
-    if emergency_candidates:
+    if emergency_candidates or has_active_emergency_scheduled:
         non_emergency_candidates = [c for c in candidates if not c["is_emergency"]]
         for nec in non_emergency_candidates:
             skipped.append({
@@ -514,11 +517,12 @@ def evaluate_and_dispatch_repeat_slots(
         db.commit()
 
         candidates = emergency_candidates
-        logger.warning(
-            f"🚨 [EMERGENCY LOCKDOWN] Active emergency notice detected. "
-            f"Ignoring all {len(non_emergency_candidates)} other notices. "
-            f"Broadcasting Announcement #{candidates[0]['sched'].announcement_id} continuously for the whole break!"
-        )
+        if candidates:
+            logger.warning(
+                f"🚨 [EMERGENCY LOCKDOWN] Active emergency notice detected. "
+                f"Ignoring all {len(non_emergency_candidates)} other notices. "
+                f"Broadcasting Announcement #{candidates[0]['sched'].announcement_id} continuously for the whole break!"
+            )
     else:
         # If no emergency, sort standard candidates by Priority (High 300 > Medium 200 > Low 100) and Recency
         candidates.sort(

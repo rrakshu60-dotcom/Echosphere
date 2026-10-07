@@ -113,8 +113,8 @@ def _speaker_and_repeat_daemon():
                 # 1. Real-time speaker queue progression & scheduled time triggers (every 3s)
                 auto_advance_speaker_queue(db_session)
 
-                # 2. Campus acoustic window repeat schedules (every ~45s = 15 ticks)
-                if tick_count % 15 == 0:
+                # 2. Campus acoustic window repeat schedules (evaluated every ~9s = 3 ticks)
+                if tick_count % 3 == 0:
                     evaluate_and_dispatch_repeat_slots(db_session)
         except Exception:
             time.sleep(1)
