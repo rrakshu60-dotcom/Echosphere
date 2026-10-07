@@ -5,7 +5,11 @@ from typing import Dict, List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.enums.announcement import AnnouncementStatus
+from app.core.enums.announcement import (
+    AnnouncementPriority,
+    AnnouncementStatus,
+    EmergencyLevel,
+)
 from app.models.announcement import Announcement
 from app.models.announcement_delivery import AnnouncementDelivery
 from app.models.announcement_repeat_schedule import (
@@ -271,6 +275,43 @@ def get_active_break_slots(time_str: str) -> List[str]:
     return active
 
 
+def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
+    """
+    Evaluates announcement priority and emergency posture.
+    Returns: (priority_weight, max_repeats_in_slot, priority_tier)
+
+    Tiers:
+      - EMERGENCY: weight=1000, max_repeats=999999 (repeats continuously whole break)
+      - HIGH: weight=300, max_repeats=3 (repeats 3 times)
+      - MEDIUM / NORMAL: weight=200, max_repeats=2 (repeats 2 times)
+      - LOW: weight=100, max_repeats=1 (repeats 1 time)
+    """
+    em_level = getattr(ann, "emergency_level", None)
+    prio = getattr(ann, "priority", None)
+
+    is_emergency = (
+        em_level == EmergencyLevel.EMERGENCY
+        or str(em_level).upper() == "EMERGENCY"
+        or prio == "EMERGENCY"
+        or str(prio).upper() == "EMERGENCY"
+    )
+    if not is_emergency:
+        title_desc = f"{getattr(ann, 'title', '')} {getattr(ann, 'description', '')}".lower()
+        if any(w in title_desc for w in ("earthquake", "evacuate", "evacuation", "fire alert", "immediate evacuation", "siren")):
+            is_emergency = True
+
+    if is_emergency:
+        return 1000, 999999, "EMERGENCY"
+
+    prio_str = str(getattr(prio, "value", prio) or "NORMAL").upper()
+    if "HIGH" in prio_str or "URGENT" in prio_str:
+        return 300, 3, "HIGH"
+    elif "LOW" in prio_str:
+        return 100, 1, "LOW"
+    else:  # NORMAL or MEDIUM
+        return 200, 2, "MEDIUM"
+
+
 def evaluate_and_dispatch_repeat_slots(
     db: Session,
     simulated_time_str: Optional[str] = None,
@@ -280,8 +321,13 @@ def evaluate_and_dispatch_repeat_slots(
     """
     Evaluates current time against configured repeat schedules:
     1. Determines active campus break or custom window in Indian Standard Time (IST).
-    2. Enqueues eligible repeat broadcasts with '[Repeat] ' title prefix and deduplication ledger.
-    3. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
+    2. Ranks eligible notices by AI-assigned priority (Emergency -> High -> Medium -> Low).
+    3. Repeats according to priority tier:
+       - Emergency: Repeats throughout the whole break
+       - High: Repeats up to 3 times
+       - Medium / Normal: Repeats up to 2 times
+       - Low: Repeats 1 time
+    4. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
     """
     ist_now = get_current_ist_datetime()
     ist_now_naive = ist_now.replace(tzinfo=None)
@@ -315,6 +361,9 @@ def evaluate_and_dispatch_repeat_slots(
             )
         )
     schedules = query.all()
+
+    # 2. Phase 1: Collect & validate candidates matching active acoustic window
+    candidates = []
 
     for sched in schedules:
         ann = sched.announcement
@@ -353,72 +402,157 @@ def evaluate_and_dispatch_repeat_slots(
         if not matched_slots:
             continue
 
-        for slot_name in matched_slots:
-            slot_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-            if slot_name == "CUSTOM_WINDOW":
-                slot_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann)
 
-            # Slot Idempotency Check: Has this specific slot already played today?
-            existing_log = (
+        for slot_name in matched_slots:
+            prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
+            if slot_name == "CUSTOM_WINDOW":
+                prefix_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+
+            # Query existing execution logs for this slot today
+            slot_logs = (
                 db.query(RepeatSlotExecutionLog)
-                .filter(RepeatSlotExecutionLog.slot_key == slot_key)
-                .first()
+                .filter(
+                    RepeatSlotExecutionLog.schedule_id == sched.id,
+                    RepeatSlotExecutionLog.slot_name == slot_name,
+                )
+                .all()
             )
-            if existing_log:
+            times_played_today = sum(
+                1 for log in slot_logs
+                if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")
+            )
+
+            # Check if repeat cap reached
+            if times_played_today >= max_repeats:
                 skipped.append({
                     "announcement_id": sched.announcement_id,
                     "slot": slot_name,
-                    "reason": "Already played in this slot today",
+                    "reason": f"Max repeats ({times_played_today}/{max_repeats}) reached for {prio_tier} priority in this slot today",
                 })
                 continue
 
-            # 2. Determine target nodes and audience scope
-            dept_code = "ALL"
-            target_zone = "College-Wide"
-            target_node_id = sched.target_node_id
-
-            if sched.target_scope == "DEPARTMENT":
-                if ann.creator and ann.creator.department:
-                    dept_code = ann.creator.department.code or "ALL"
-                target_zone = "Departmental"
-            elif sched.target_scope == "HOSTEL":
-                target_zone = "Hostel"
-                dept_code = "ALL"
-
-            # 3. Re-activate / Enqueue in Speaker Queue following all queue rules
-            enqueue_result = enqueue_and_broadcast_announcement(
-                db=db,
-                announcement_id=sched.announcement_id,
-                title=f"[Repeat] {ann.title}",
-                content=ann.description,
-                department_code=dept_code,
-                zone=target_zone,
-                is_emergency=False,
-                speaker_node_id=target_node_id,
-                speaker_voice=ann.speaker_voice or "female",
-                base_url=base_url,
+            # Check if notice is currently active in the speaker queue for this slot
+            active_q = (
+                db.query(SpeakerQueue)
+                .filter(
+                    SpeakerQueue.announcement_id == sched.announcement_id,
+                    SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+                )
+                .first()
             )
+            if active_q:
+                if times_played_today > 0:
+                    skipped.append({
+                        "announcement_id": sched.announcement_id,
+                        "slot": slot_name,
+                        "reason": f"Already active in speaker queue (status: {active_q.status})",
+                    })
+                    continue
+                else:
+                    # Item was left from an earlier slot/broadcast; mark completed so new slot begins fresh
+                    active_q.status = "Completed"
+                    db.commit()
 
-            # 4. Record execution log for independent replay tracking
-            exec_log = RepeatSlotExecutionLog(
-                schedule_id=sched.id,
-                slot_key=slot_key,
-                slot_name=slot_name,
-                played_at=utc_now,
-            )
-            db.add(exec_log)
-            sched.total_played_count += 1
-            db.commit()
+            # Cooldown check between repeat rounds for non-emergency notices
+            if prio_tier != "EMERGENCY" and times_played_today > 0 and not simulated_date_str:
+                matching_logs = [log for log in slot_logs if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")]
+                if matching_logs:
+                    last_played = max(log.played_at for log in matching_logs)
+                    elapsed = (utc_now - last_played).total_seconds()
+                    if elapsed < 60:
+                        skipped.append({
+                            "announcement_id": sched.announcement_id,
+                            "slot": slot_name,
+                            "reason": f"Repeat cooldown active ({int(60 - elapsed)}s remaining)",
+                        })
+                        continue
 
-            dispatched.append({
-                "announcement_id": sched.announcement_id,
-                "title": ann.title,
-                "slot": slot_name,
-                "scope": sched.target_scope,
-                "queue_status": enqueue_result.get("queue_status"),
-                "queue_position": enqueue_result.get("queue_position"),
+            candidates.append({
+                "sched": sched,
+                "ann": ann,
+                "slot_name": slot_name,
+                "prefix_key": prefix_key,
+                "weight": prio_weight,
+                "max_repeats": max_repeats,
+                "tier": prio_tier,
+                "times_played_today": times_played_today,
+                "is_emergency": (prio_tier == "EMERGENCY"),
+                "created_at": getattr(ann, "created_at", None) or datetime.min,
             })
-            logger.info(f"📢 [REPEAT BROADCAST DISPATCHED] Announcement #{sched.announcement_id} in {slot_name} slot ({sched.target_scope})")
+
+    # 3. Phase 2: Sort Candidates by Priority (Emergency 1000 > High 300 > Medium 200 > Low 100) and Recency
+    candidates.sort(
+        key=lambda c: (
+            c["weight"],
+            c["created_at"],
+        ),
+        reverse=True,
+    )
+
+    # 4. Phase 3: Enqueue and Broadcast in Ranked Priority Order
+    for cand in candidates:
+        sched = cand["sched"]
+        ann = cand["ann"]
+        slot_name = cand["slot_name"]
+        tier = cand["tier"]
+        is_em = cand["is_emergency"]
+        next_repeat_num = cand["times_played_today"] + 1
+
+        slot_key = f"{cand['prefix_key']}:{next_repeat_num}"
+
+        # Resolve audience scope
+        dept_code = "ALL"
+        target_zone = "College-Wide"
+        target_node_id = sched.target_node_id
+
+        if sched.target_scope == "DEPARTMENT":
+            if ann.creator and ann.creator.department:
+                dept_code = ann.creator.department.code or "ALL"
+            target_zone = "Departmental"
+        elif sched.target_scope == "HOSTEL":
+            target_zone = "Hostel"
+            dept_code = "ALL"
+
+        repeat_title = f"[EMERGENCY REPEAT] {ann.title}" if is_em else f"[Repeat - {tier}] {ann.title}"
+
+        enqueue_result = enqueue_and_broadcast_announcement(
+            db=db,
+            announcement_id=sched.announcement_id,
+            title=repeat_title,
+            content=ann.description,
+            department_code=dept_code,
+            zone=target_zone,
+            is_emergency=is_em,
+            speaker_node_id=target_node_id,
+            speaker_voice=ann.speaker_voice or "female",
+            base_url=base_url,
+        )
+
+        exec_log = RepeatSlotExecutionLog(
+            schedule_id=sched.id,
+            slot_key=slot_key,
+            slot_name=slot_name,
+            played_at=utc_now,
+        )
+        db.add(exec_log)
+        sched.total_played_count += 1
+        db.commit()
+
+        dispatched.append({
+            "announcement_id": sched.announcement_id,
+            "title": ann.title,
+            "slot": slot_name,
+            "priority": tier,
+            "repeat_round": next_repeat_num,
+            "max_repeats": "WHOLE_BREAK" if is_em else cand["max_repeats"],
+            "scope": sched.target_scope,
+            "queue_status": enqueue_result.get("queue_status"),
+            "queue_position": enqueue_result.get("queue_position"),
+        })
+        logger.info(
+            f"📢 [REPEAT BROADCAST DISPATCHED] Announcement #{sched.announcement_id} [{tier} Round {next_repeat_num}] in {slot_name} slot ({sched.target_scope})"
+        )
 
     # 5. Class Lecture Protection (TTL Expiration):
     # Hard cutoff TTLs expire unplayed repeat notices when a break window concludes
