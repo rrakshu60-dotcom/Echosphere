@@ -1162,8 +1162,8 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                               controller: repeatStartCtrl,
                               readOnly: false,
                               decoration: InputDecoration(
-                                labelText: 'Start (HH:MM)',
-                                hintText: '10:00',
+                                labelText: 'Start (12 or 24-hr)',
+                                hintText: '10:00 AM or 10:00',
                                 isDense: true,
                                 suffixIcon: IconButton(
                                   icon: const Icon(Icons.schedule_rounded, size: 16),
@@ -1181,8 +1181,8 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                               controller: repeatEndCtrl,
                               readOnly: false,
                               decoration: InputDecoration(
-                                labelText: 'End (HH:MM)',
-                                hintText: '10:30',
+                                labelText: 'End (12 or 24-hr)',
+                                hintText: '10:30 AM or 10:30',
                                 isDense: true,
                                 suffixIcon: IconButton(
                                   icon: const Icon(Icons.schedule_rounded, size: 16),
@@ -1258,21 +1258,33 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             return;
           }
           if (repeatSlots.contains('CUSTOM_WINDOW')) {
-            String start = repeatStartCtrl.text.trim();
-            String end = repeatEndCtrl.text.trim();
+            String normalizeTime(String raw) {
+              var s = raw.trim();
+              final m12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$').firstMatch(s);
+              if (m12 != null) {
+                var h = int.parse(m12.group(1)!);
+                final m = int.parse(m12.group(2)!);
+                final mer = m12.group(3)!.toUpperCase();
+                if (h >= 1 && h <= 12) {
+                  if (mer == 'PM' && h != 12) h += 12;
+                  if (mer == 'AM' && h == 12) h = 0;
+                  return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+                }
+              }
+              if (RegExp(r'^\d:[0-5]\d$').hasMatch(s)) {
+                return '0$s';
+              }
+              return s;
+            }
 
-            if (RegExp(r'^\d:[0-5]\d$').hasMatch(start)) {
-              start = '0$start';
-              repeatStartCtrl.text = start;
-            }
-            if (RegExp(r'^\d:[0-5]\d$').hasMatch(end)) {
-              end = '0$end';
-              repeatEndCtrl.text = end;
-            }
+            String start = normalizeTime(repeatStartCtrl.text);
+            String end = normalizeTime(repeatEndCtrl.text);
+            repeatStartCtrl.text = start;
+            repeatEndCtrl.text = end;
 
             final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
             if (!timeRegex.hasMatch(start)) {
-              errorSnackBar('Please enter or pick valid 24-hr time in HH:MM format for Custom Window (e.g. 10:30).');
+              errorSnackBar('Please enter or pick valid time (e.g. 10:30 or 10:30 AM).');
               return;
             }
             if (end.isEmpty) {
@@ -1284,7 +1296,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               end = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
               repeatEndCtrl.text = end;
             } else if (!timeRegex.hasMatch(end)) {
-              errorSnackBar('Please enter valid 24-hr time in HH:MM format for End Time (e.g. 11:00).');
+              errorSnackBar('Please enter valid time (e.g. 11:00 or 11:00 AM) for End Time.');
               return;
             }
             if (start.compareTo(end) >= 0) {

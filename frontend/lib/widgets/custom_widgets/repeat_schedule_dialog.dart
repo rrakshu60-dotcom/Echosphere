@@ -163,21 +163,33 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     }
 
     if (_selectedSlots.contains('CUSTOM_WINDOW')) {
-      String start = _customStartCtrl.text.trim();
-      String end = _customEndCtrl.text.trim();
+      String normalizeTime(String raw) {
+        var s = raw.trim();
+        final m12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$').firstMatch(s);
+        if (m12 != null) {
+          var h = int.parse(m12.group(1)!);
+          final m = int.parse(m12.group(2)!);
+          final mer = m12.group(3)!.toUpperCase();
+          if (h >= 1 && h <= 12) {
+            if (mer == 'PM' && h != 12) h += 12;
+            if (mer == 'AM' && h == 12) h = 0;
+            return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+          }
+        }
+        if (RegExp(r'^\d:[0-5]\d$').hasMatch(s)) {
+          return '0$s';
+        }
+        return s;
+      }
 
-      if (RegExp(r'^\d:[0-5]\d$').hasMatch(start)) {
-        start = '0$start';
-        _customStartCtrl.text = start;
-      }
-      if (RegExp(r'^\d:[0-5]\d$').hasMatch(end)) {
-        end = '0$end';
-        _customEndCtrl.text = end;
-      }
+      String start = normalizeTime(_customStartCtrl.text);
+      String end = normalizeTime(_customEndCtrl.text);
+      _customStartCtrl.text = start;
+      _customEndCtrl.text = end;
 
       final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
       if (!timeRegex.hasMatch(start)) {
-        errorSnackBar('Please enter valid 24-hr time in HH:MM format for start time (e.g. 10:30).');
+        errorSnackBar('Please enter or pick valid time (e.g. 10:30 or 10:30 AM).');
         return;
       }
       if (end.isEmpty) {
@@ -189,7 +201,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
         end = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
         _customEndCtrl.text = end;
       } else if (!timeRegex.hasMatch(end)) {
-        errorSnackBar('Please enter valid 24-hr time in HH:MM format for end time (e.g. 11:00).');
+        errorSnackBar('Please enter valid time (e.g. 11:00 or 11:00 AM) for end time.');
         return;
       }
       if (start.compareTo(end) >= 0) {
