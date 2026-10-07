@@ -234,47 +234,63 @@ public:
   // Uses tft.setTextColor(color, bgColor) to draw glyph and clear background
   // in a single operation without calling fillRect!
   // --------------------------------------------------------------------------
-  void drawWrappedText(const String& text, int startX, int startY, int maxCharsPerLine, int maxLines, uint16_t color, uint16_t bgColor) {
+  void drawWrappedText(const String& str, int startX, int startY, int maxCharsPerLine, int maxLines, uint16_t color, uint16_t bgColor) {
     tft.setTextColor(color, bgColor);
     tft.setTextSize(1);
     tft.setTextWrap(false);
 
+    const char* text = str.c_str();
+    int len = 0;
+    while (text[len] != '\0') len++;
+
     int line = 0;
     int currentPos = 0;
-    int textLen = text.length();
 
-    while (currentPos < textLen && line < maxLines) {
+    while (currentPos < len && line < maxLines) {
       int endPos = currentPos + maxCharsPerLine;
-      if (endPos >= textLen) {
-        endPos = textLen;
+      if (endPos >= len) {
+        endPos = len;
       } else {
-        int lastSpace = text.lastIndexOf(' ', endPos);
+        // Find last space before endPos to avoid cutting words
+        int lastSpace = -1;
+        for (int i = endPos; i > currentPos; i--) {
+          if (text[i] == ' ') {
+            lastSpace = i;
+            break;
+          }
+        }
         if (lastSpace > currentPos) {
           endPos = lastSpace;
         }
       }
 
-      String lineStr = text.substring(currentPos, endPos);
-      lineStr.trim();
+      // Skip leading spaces for the line
+      while (currentPos < endPos && text[currentPos] == ' ') {
+        currentPos++;
+      }
 
-      // Clear any trailing characters on this line with background
+      // Measure printed characters
+      int printedChars = 0;
       tft.setCursor(startX, startY + (line * 10));
-      tft.print(lineStr);
+      for (int i = currentPos; i < endPos; i++) {
+        tft.print(text[i]);
+        printedChars++;
+      }
 
-      // Pad remaining line width with spaces to clear old text if any
-      int remainingChars = maxCharsPerLine - lineStr.length();
-      for (int s = 0; s < remainingChars; s++) {
+      // Pad remaining space on line with blanks to cleanly overwrite old content
+      for (int s = printedChars; s < maxCharsPerLine; s++) {
         tft.print(' ');
       }
 
       currentPos = endPos;
-      while (currentPos < textLen && text.charAt(currentPos) == ' ') {
+      // Skip spaces after word break
+      while (currentPos < len && text[currentPos] == ' ') {
         currentPos++;
       }
       line++;
     }
 
-    // Clear any unused remaining lines in the allocated slot
+    // Clear any unused remaining lines
     while (line < maxLines) {
       tft.setCursor(startX, startY + (line * 10));
       for (int s = 0; s < maxCharsPerLine; s++) {
