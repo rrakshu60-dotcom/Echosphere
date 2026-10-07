@@ -578,6 +578,7 @@ private:
         prevBarHeights[i] = newH;
       }
     }
+    animFrame = (animFrame + 1) % 16;
   }
 
   void printAsciiPlayingBanner(const DisplayNotice& n) {

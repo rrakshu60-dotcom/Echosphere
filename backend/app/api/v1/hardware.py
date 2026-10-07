@@ -187,7 +187,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
                 "target_node_mac": target_mac,
-                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream",
+                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav",
             }
 
     # 2. Daily important published announcements for idle display ticker (only from today)

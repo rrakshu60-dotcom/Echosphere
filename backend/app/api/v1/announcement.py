@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, Depends, Request, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -464,11 +464,12 @@ def stream_announcement_audio_endpoint(
     include_chime: bool = True,
     chime: str | None = None,
     lang: str = "en",
+    audio_format: str = Query("wav", description="Audio format: 'wav' (lossless PCM for ESP32/speakers) or 'mp3'"),
     db: Session = Depends(get_db),
 ):
     """
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
-    Supports regional language playback (Kannada, Hindi, Telugu, Tamil).
+    Supports 16-bit PCM WAV for ESP32 I2S hardware streaming and regional languages.
     """
     from app.repositories.announcement_repository import get_announcement_by_id
     from app.services.tts_service import generate_announcement_audio_sync
@@ -483,6 +484,25 @@ def stream_announcement_audio_endpoint(
         tag += f"_{clean_lang}"
 
     fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
+    
+    # If WAV is requested for ESP32 I2S playback, ensure WAV file format
+    if audio_format.lower() == "wav" and fpath and fpath.endswith(".mp3"):
+        wav_path = fpath[:-4] + ".wav"
+        if not os.path.exists(wav_path):
+            try:
+                import miniaudio
+                decoded = miniaudio.mp3_read_file_s16(fpath)
+                miniaudio.wav_write_file(wav_path, decoded)
+                fpath = wav_path
+                fname = os.path.basename(wav_path)
+                mtype = "audio/wav"
+            except Exception as me:
+                pass
+        else:
+            fpath = wav_path
+            fname = os.path.basename(wav_path)
+            mtype = "audio/wav"
+
     if fname and fpath:
         return FileResponse(fpath, media_type=mtype, filename=fname)
 
@@ -531,7 +551,26 @@ def stream_announcement_audio_endpoint(
     )
     file_path = res["file_path"]
     media_type = "audio/wav" if res.get("type") == "wav" else "audio/mpeg"
-    return FileResponse(file_path, media_type=media_type, filename=res["file_name"])
+    file_name = res["file_name"]
+
+    if audio_format.lower() == "wav" and file_path.endswith(".mp3"):
+        wav_path = file_path[:-4] + ".wav"
+        if not os.path.exists(wav_path):
+            try:
+                import miniaudio
+                decoded = miniaudio.mp3_read_file_s16(file_path)
+                miniaudio.wav_write_file(wav_path, decoded)
+                file_path = wav_path
+                file_name = os.path.basename(wav_path)
+                media_type = "audio/wav"
+            except Exception as me:
+                pass
+        else:
+            file_path = wav_path
+            file_name = os.path.basename(wav_path)
+            media_type = "audio/wav"
+
+    return FileResponse(file_path, media_type=media_type, filename=file_name)
 
 
 @router.get("/{announcement_id}/chime")
