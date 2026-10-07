@@ -1106,52 +1106,53 @@ class AnnouncementController extends GetxController {
     isLoading.value = false;
     update();
 
-    // Background Async Backend Sync & AI Summarization (non-blocking)
+    // Synchronously ensure backend creation and get official backend ID
     if (!Get.testMode) {
-      Future.microtask(() async {
-        int? backendId;
-        try {
-          final res = await EchosphereApiService().createAnnouncement(
-            title: title,
-            description: description,
-            categoryId: catId,
-            priority: priority,
-            emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
-            scheduledAt: isScheduleLater && scheduledDateTime != null
-                ? scheduledDateTime.toIso8601String()
-                : null,
-            deliverSpeaker: deliverSpeaker,
-            deliverInApp: deliverInApp,
-            deliverPush: deliverPush,
-            speakerVoice: speakerVoice,
-            targetAudience: targetAudience,
-            speakerNodeId: speakerNodeId,
-          );
-          final rawBackendId = res['id'];
-          backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');
-          if (backendId != null) {
-            final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
-            if (idx != -1) {
-              final old = _rawAnnouncements[idx];
-              _rawAnnouncements[idx] = old.copyWith(id: backendId);
-              _rawAnnouncements.refresh();
-              update();
-            }
+      int? backendId;
+      try {
+        final res = await EchosphereApiService().createAnnouncement(
+          title: title,
+          description: description,
+          categoryId: catId,
+          priority: priority,
+          emergencyLevel: priority == 'EMERGENCY' ? 'CRITICAL' : 'NORMAL',
+          scheduledAt: isScheduleLater && scheduledDateTime != null
+              ? scheduledDateTime.toIso8601String()
+              : null,
+          deliverSpeaker: deliverSpeaker,
+          deliverInApp: deliverInApp,
+          deliverPush: deliverPush,
+          speakerVoice: speakerVoice,
+          targetAudience: targetAudience,
+          speakerNodeId: speakerNodeId,
+        );
+        final rawBackendId = res['id'];
+        backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');
+        if (backendId != null) {
+          final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
+          if (idx != -1) {
+            final old = _rawAnnouncements[idx];
+            _rawAnnouncements[idx] = old.copyWith(id: backendId);
+            _rawAnnouncements.refresh();
+            update();
           }
-          if (backendId != null && deliverSpeaker) {
-            try {
-              await EchosphereApiService().enqueueAnnouncement(
-                announcementId: backendId,
-                speakerNodeId: speakerNodeId,
-              );
-            } catch (_) {
-              // Already automatically enqueued by backend service
-            }
-          }
-        } catch (e) {
-          debugPrint('Async backend create announcement log: $e');
         }
+        if (backendId != null && deliverSpeaker) {
+          try {
+            await EchosphereApiService().enqueueAnnouncement(
+              announcementId: backendId,
+              speakerNodeId: speakerNodeId,
+            );
+          } catch (_) {
+            // Already automatically enqueued by backend service
+          }
+        }
+      } catch (e) {
+        debugPrint('Backend create announcement error: $e');
+      }
 
+      // Background AI Summarization (non-blocking)
+      Future.microtask(() async {
         try {
           final summary = await EchosphereApiService().summarizeContent(description);
           final idx = _rawAnnouncements.indexWhere((a) => a.id == newId || (backendId != null && a.id == backendId));

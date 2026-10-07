@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/echosphere_ai_controller.dart';

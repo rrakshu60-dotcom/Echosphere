@@ -376,15 +376,19 @@ public:
     // 4. Smooth Rotation of Daily Notices (Every 6 seconds)
     // When idle and multiple notices exist, transitions cleanly once every 6s.
     if (!isNoticeActive && currentState == STATE_IDLE_DAILY_NOTICES) {
-      if (dailyNoticesCount > 1) {
+      if (!isScreenRendered) {
+        if (dailyNoticesCount > 0) {
+          renderDailyNoticesScreen();
+        } else {
+          renderStandbyScreen();
+        }
+      } else if (dailyNoticesCount > 1) {
         if (now - lastDailyRotateTime >= DAILY_NOTICE_ROTATE_INTERVAL_MS) {
           lastDailyRotateTime = now;
           currentDailyNoticeIndex = (currentDailyNoticeIndex + 1) % dailyNoticesCount;
           printAsciiDailyNotice(dailyNotices[currentDailyNoticeIndex], currentDailyNoticeIndex + 1, dailyNoticesCount);
           renderDailyNoticeCard();
         }
-      } else if (dailyNoticesCount == 0 && !isScreenRendered) {
-        renderStandbyScreen();
       }
     }
   }
