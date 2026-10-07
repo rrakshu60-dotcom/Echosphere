@@ -1097,6 +1097,26 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           },
                         ),
                         FilterChip(
+                          avatar: const Icon(Icons.wb_twilight_rounded, size: 13),
+                          label: const Text('Evening Break (4:30 PM)', style: TextStyle(fontSize: 11)),
+                          selected: repeatSlots.contains('EVENING_BREAK'),
+                          onSelected: (val) {
+                            setState(() {
+                              val ? repeatSlots.add('EVENING_BREAK') : repeatSlots.remove('EVENING_BREAK');
+                            });
+                          },
+                        ),
+                        FilterChip(
+                          avatar: const Icon(Icons.night_shelter_rounded, size: 13),
+                          label: const Text('Hostel Window (7:30 PM)', style: TextStyle(fontSize: 11)),
+                          selected: repeatSlots.contains('HOSTEL_WINDOW'),
+                          onSelected: (val) {
+                            setState(() {
+                              val ? repeatSlots.add('HOSTEL_WINDOW') : repeatSlots.remove('HOSTEL_WINDOW');
+                            });
+                          },
+                        ),
+                        FilterChip(
                           avatar: const Icon(Icons.access_time_rounded, size: 13),
                           label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
                           selected: repeatSlots.contains('CUSTOM_WINDOW'),

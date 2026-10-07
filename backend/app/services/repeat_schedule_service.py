@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException, status
@@ -28,11 +28,26 @@ from app.services.tts_service import generate_announcement_audio_sync
 
 logger = logging.getLogger("echosphere.repeat_schedule")
 
-# Standard Break Window Timings
+# Standard Campus Acoustic Break Window Timings (IST)
 SHORT_BREAK_START = "11:00"
 SHORT_BREAK_END = "11:15"
 LUNCH_BREAK_START = "13:15"
 LUNCH_BREAK_END = "14:00"
+EVENING_BREAK_START = "16:30"
+EVENING_BREAK_END = "17:30"
+HOSTEL_WINDOW_START = "19:30"
+HOSTEL_WINDOW_END = "21:00"
+
+
+def get_current_ist_datetime() -> datetime:
+    """Returns the current datetime in Indian Standard Time (IST, UTC+05:30)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Kolkata"))
+    except Exception:
+        from datetime import timedelta
+        return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+
 
 
 def configure_repeat_schedule(
@@ -243,12 +258,16 @@ def delete_repeat_schedule(
 
 
 def get_active_break_slots(time_str: str) -> List[str]:
-    """Identifies which standard campus break slot is currently active."""
+    """Identifies which standard campus acoustic break slot is currently active in IST."""
     active = []
     if SHORT_BREAK_START <= time_str <= SHORT_BREAK_END:
         active.append("SHORT_BREAK")
     if LUNCH_BREAK_START <= time_str <= LUNCH_BREAK_END:
         active.append("LUNCH_BREAK")
+    if EVENING_BREAK_START <= time_str <= EVENING_BREAK_END:
+        active.append("EVENING_BREAK")
+    if HOSTEL_WINDOW_START <= time_str <= HOSTEL_WINDOW_END:
+        active.append("HOSTEL_WINDOW")
     return active
 
 
@@ -260,13 +279,14 @@ def evaluate_and_dispatch_repeat_slots(
 ) -> Dict[str, any]:
     """
     Evaluates current time against configured repeat schedules:
-    1. Determines active campus break or custom window.
-    2. Enqueues eligible repeat broadcasts with independent execution signatures.
-    3. Protects class lecture hours with slot end cutoff TTLs.
+    1. Determines active campus break or custom window in Indian Standard Time (IST).
+    2. Enqueues eligible repeat broadcasts with '[Repeat] ' title prefix and deduplication ledger.
+    3. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
     """
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    time_str = simulated_time_str or now.strftime("%H:%M")
-    date_str = simulated_date_str or now.strftime("%Y-%m-%d")
+    ist_now = get_current_ist_datetime()
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    time_str = simulated_time_str or ist_now.strftime("%H:%M")
+    date_str = simulated_date_str or ist_now.strftime("%Y-%m-%d")
 
     active_standard_slots = get_active_break_slots(time_str)
 
@@ -276,13 +296,19 @@ def evaluate_and_dispatch_repeat_slots(
     # 1. Fetch all active repeat schedules within valid date window
     query = db.query(AnnouncementRepeatSchedule).filter(
         AnnouncementRepeatSchedule.is_active == True,
-        AnnouncementRepeatSchedule.start_date <= now,
-        AnnouncementRepeatSchedule.end_date >= now,
     )
+    if not simulated_date_str:
+        query = query.filter(
+            AnnouncementRepeatSchedule.start_date <= utc_now,
+            AnnouncementRepeatSchedule.end_date >= utc_now,
+        )
     schedules = query.all()
 
     for sched in schedules:
         ann = sched.announcement
+        if not ann:
+            continue
+
         # Cascade guard: If parent announcement was archived, cancelled, or rejected, disable repeat
         ann_status = getattr(ann, "status", "")
         status_val = ann_status.value if hasattr(ann_status, "value") else str(ann_status)
@@ -293,7 +319,7 @@ def evaluate_and_dispatch_repeat_slots(
 
         # Check which of the schedule's chosen slots match current time
         matched_slots: List[str] = []
-        for slot in sched.selected_slots:
+        for slot in (sched.selected_slots or []):
             if slot in active_standard_slots:
                 matched_slots.append(slot)
             elif slot == "CUSTOM_WINDOW":
@@ -314,7 +340,11 @@ def evaluate_and_dispatch_repeat_slots(
                 .first()
             )
             if existing_log:
-                skipped.append({"announcement_id": sched.announcement_id, "slot": slot_name, "reason": "Already played in this slot today"})
+                skipped.append({
+                    "announcement_id": sched.announcement_id,
+                    "slot": slot_name,
+                    "reason": "Already played in this slot today",
+                })
                 continue
 
             # 2. Determine target nodes and audience scope
@@ -349,7 +379,7 @@ def evaluate_and_dispatch_repeat_slots(
                 schedule_id=sched.id,
                 slot_key=slot_key,
                 slot_name=slot_name,
-                played_at=now,
+                played_at=utc_now,
             )
             db.add(exec_log)
             sched.total_played_count += 1
@@ -366,38 +396,76 @@ def evaluate_and_dispatch_repeat_slots(
             logger.info(f"📢 [REPEAT BROADCAST DISPATCHED] Announcement #{sched.announcement_id} in {slot_name} slot ({sched.target_scope})")
 
     # 5. Class Lecture Protection (TTL Expiration):
-    # If we are currently outside of all break slots and custom windows,
-    # inspect any queued repeats and mark unplayed items as 'Expired_Slot_Ended'
-    # so they never blare inside classrooms when lectures are in session.
-    is_in_any_standard_break = bool(active_standard_slots)
-    if not is_in_any_standard_break:
-        # Check if there are unplayed queue items whose scheduled_time was during a break that has now elapsed
-        unplayed_repeat_items = (
-            db.query(SpeakerQueue)
-            .filter(
-                SpeakerQueue.status.in_(["Queued", "Next in Queue"]),
-            )
-            .all()
+    # Hard cutoff TTLs expire unplayed repeat notices when a break window concludes
+    # to safeguard classroom tranquility and prevent blaring during academic lectures.
+    expired_count = 0
+    unplayed_items = (
+        db.query(SpeakerQueue)
+        .filter(
+            SpeakerQueue.status.in_(["Queued", "Next in Queue"]),
         )
-        for item in unplayed_repeat_items:
-            sched_time = getattr(item, "scheduled_time", None)
-            if sched_time:
+        .all()
+    )
+
+    for item in unplayed_items:
+        # Check if item has repeat schedule
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(AnnouncementRepeatSchedule.announcement_id == item.announcement_id)
+            .first()
+        )
+        if not sched:
+            continue
+
+        sched_time = getattr(item, "scheduled_time", None)
+        if sched_time:
+            try:
+                # Convert scheduled_time to IST time string if naive UTC
+                sched_ist = sched_time + timedelta(hours=5, minutes=30)
+                sched_time_str = sched_ist.strftime("%H:%M")
+            except Exception:
                 sched_time_str = sched_time.strftime("%H:%M")
-                # If item was scheduled during short break but now past 11:15
-                if (SHORT_BREAK_START <= sched_time_str <= SHORT_BREAK_END) and (time_str > SHORT_BREAK_END):
-                    item.status = "Expired_Slot_Ended"
-                    db.commit()
-                    logger.info(f"⏸️ Speaker Queue Item #{item.id} expired: Short Break ended, protected lecture hours.")
-                # If item was scheduled during lunch break but now past 14:00
-                elif (LUNCH_BREAK_START <= sched_time_str <= LUNCH_BREAK_END) and (time_str > LUNCH_BREAK_END):
-                    item.status = "Expired_Slot_Ended"
-                    db.commit()
-                    logger.info(f"⏸️ Speaker Queue Item #{item.id} expired: Lunch Break ended, protected lecture hours.")
+
+            expired = False
+            # Short Break Cutoff: 11:15 sharp
+            if (SHORT_BREAK_START <= sched_time_str <= SHORT_BREAK_END) and (time_str > SHORT_BREAK_END):
+                expired = True
+                logger.info(f"⏸️ Speaker Queue #{item.id} expired: Short Break ended at {SHORT_BREAK_END}. Classroom silence protected.")
+            # Lunch Break Cutoff: 14:00 sharp
+            elif (LUNCH_BREAK_START <= sched_time_str <= LUNCH_BREAK_END) and (time_str > LUNCH_BREAK_END):
+                expired = True
+                logger.info(f"⏸️ Speaker Queue #{item.id} expired: Lunch Break ended at {LUNCH_BREAK_END}. Classroom silence protected.")
+            # Evening Break Cutoff: 17:30 sharp
+            elif (EVENING_BREAK_START <= sched_time_str <= EVENING_BREAK_END) and (time_str > EVENING_BREAK_END):
+                expired = True
+                logger.info(f"⏸️ Speaker Queue #{item.id} expired: Evening Break ended at {EVENING_BREAK_END}. Campus quiet hours protected.")
+            # Hostel Window Cutoff: 21:00 sharp
+            elif (HOSTEL_WINDOW_START <= sched_time_str <= HOSTEL_WINDOW_END) and (time_str > HOSTEL_WINDOW_END):
+                expired = True
+                logger.info(f"⏸️ Speaker Queue #{item.id} expired: Hostel Window ended at {HOSTEL_WINDOW_END}. Night quiet hours protected.")
+            # Custom Window Cutoff: custom_end_time
+            elif sched.custom_start_time and sched.custom_end_time:
+                if (sched.custom_start_time <= sched_time_str <= sched.custom_end_time) and (time_str > sched.custom_end_time):
+                    expired = True
+                    logger.info(f"⏸️ Speaker Queue #{item.id} expired: Custom Window ended at {sched.custom_end_time}. Quiet hours protected.")
+
+            if expired:
+                item.status = "Expired_Slot_Ended"
+                db.commit()
+                expired_count += 1
+
+    if expired_count > 0:
+        try:
+            auto_advance_speaker_queue(db, base_url=base_url)
+        except Exception as ae:
+            logger.debug(f"Queue auto-advance note after TTL expiry: {ae}")
 
     return {
         "active_slots": active_standard_slots,
-        "current_time": time_str,
+        "current_time_ist": time_str,
+        "current_date": date_str,
         "dispatched_count": len(dispatched),
+        "expired_ttl_count": expired_count,
         "dispatched": dispatched,
         "skipped": skipped,
     }

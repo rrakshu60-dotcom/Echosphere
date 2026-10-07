@@ -116,6 +116,94 @@ def remove_announcement_repeat_schedule(
 
 
 @router.post(
+    "/repeat-schedules/evaluate-dispatch",
+    summary="Evaluate and Dispatch Repeat Broadcasts (PDF Spec)",
+    status_code=status.HTTP_200_OK,
+)
+def evaluate_dispatch_repeat_schedules(
+    simulated_time: Optional[str] = Query(None, description="Simulate specific time in HH:MM format (e.g. 11:05, 13:20, 16:45, 19:40)"),
+    simulated_date: Optional[str] = Query(None, description="Simulate specific date in YYYY-MM-DD format"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Evaluates active repeat schedules against the current timestamp in IST,
+    enqueuing repeat notices into the speaker queue with strict lecture protection TTL.
+    """
+    result = evaluate_and_dispatch_repeat_slots(
+        db=db,
+        simulated_time_str=simulated_time,
+        simulated_date_str=simulated_date,
+    )
+    return {
+        "status": "success",
+        "result": result,
+    }
+
+
+@router.post(
+    "/repeat-schedules/{announcement_id}",
+    response_model=RepeatScheduleResponse,
+    summary="Set or Update Repeat Schedule (PDF Spec)",
+    status_code=status.HTTP_200_OK,
+)
+def set_repeat_schedule_by_id(
+    announcement_id: int,
+    data: RepeatScheduleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sets or updates the repeat schedule for announcement {id} (PDF Endpoint)."""
+    return configure_repeat_schedule(
+        db=db,
+        announcement_id=announcement_id,
+        data=data,
+        current_user=current_user,
+    )
+
+
+@router.get(
+    "/repeat-schedules/{announcement_id}",
+    response_model=RepeatScheduleResponse,
+    summary="Get Repeat Schedule (PDF Spec)",
+    status_code=status.HTTP_200_OK,
+)
+def get_repeat_schedule_by_id(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """Fetches current repeat schedule configuration and execution logs for announcement {id}."""
+    schedule = get_repeat_schedule_by_announcement(db=db, announcement_id=announcement_id)
+    if not schedule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No repeat schedule found for Announcement #{announcement_id}.",
+        )
+    return schedule
+
+
+@router.delete(
+    "/repeat-schedules/{announcement_id}",
+    summary="Delete Repeat Schedule (PDF Spec)",
+    status_code=status.HTTP_200_OK,
+)
+def delete_repeat_schedule_by_id(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deletes repeat schedule for announcement {id}."""
+    deleted = delete_repeat_schedule(db=db, announcement_id=announcement_id, current_user=current_user)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No repeat schedule found for Announcement #{announcement_id}.",
+        )
+    return {"status": "success", "message": f"Repeat schedule for Announcement #{announcement_id} removed."}
+
+
+@router.post(
     "/repeat-schedule/trigger-check",
     summary="Trigger Slot Evaluation Cycle (Daemon / Testing)",
     status_code=status.HTTP_200_OK,
@@ -139,3 +227,4 @@ def trigger_slot_check(
         "status": "success",
         "result": result,
     }
+

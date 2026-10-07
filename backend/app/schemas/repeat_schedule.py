@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-ALLOWED_SLOTS = ["SHORT_BREAK", "LUNCH_BREAK", "CUSTOM_WINDOW"]
+ALLOWED_SLOTS = ["SHORT_BREAK", "LUNCH_BREAK", "EVENING_BREAK", "HOSTEL_WINDOW", "CUSTOM_WINDOW"]
 ALLOWED_SCOPES = ["DEPARTMENT", "COLLEGE_WIDE", "HOSTEL"]
 TIME_REGEX = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
