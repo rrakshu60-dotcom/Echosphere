@@ -38,18 +38,48 @@ class RepeatScheduleBase(BaseModel):
             raise ValueError(f"Invalid target scope '{v}'. Allowed scopes: {ALLOWED_SCOPES}")
         return normalized
 
+    @field_validator("start_date", "end_date", "event_datetime", mode="before")
+    @classmethod
+    def normalize_datetimes(cls, v):
+        if isinstance(v, str):
+            try:
+                dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                if dt.tzinfo is not None:
+                    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+            except Exception:
+                pass
+        elif isinstance(v, datetime) and v.tzinfo is not None:
+            return v.astimezone(timezone.utc).replace(tzinfo=None)
+        return v
+
     @model_validator(mode="after")
     def validate_rules(self):
-        # 1. Custom time validation
+        # 1. Custom time validation & auto-completion
         if "CUSTOM_WINDOW" in self.selected_slots:
-            if not self.custom_start_time or not self.custom_end_time:
-                raise ValueError("Both custom_start_time and custom_end_time (HH:MM) are required when CUSTOM_WINDOW is selected.")
+            if not self.custom_start_time:
+                raise ValueError("custom_start_time (HH:MM) is required when CUSTOM_WINDOW is selected.")
+            st = self.custom_start_time.strip()
+            if re.match(r"^\d:[0-5]\d$", st):
+                st = "0" + st
+                self.custom_start_time = st
             if not TIME_REGEX.match(self.custom_start_time):
                 raise ValueError(f"custom_start_time '{self.custom_start_time}' must be in 24-hour HH:MM format.")
-            if not TIME_REGEX.match(self.custom_end_time):
-                raise ValueError(f"custom_end_time '{self.custom_end_time}' must be in 24-hour HH:MM format.")
-            if self.custom_start_time >= self.custom_end_time:
-                raise ValueError("custom_start_time must be earlier than custom_end_time.")
+
+            if not self.custom_end_time:
+                # Default end time to +30 minutes if omitted
+                sh, sm = map(int, self.custom_start_time.split(":"))
+                end_m = (sh * 60 + sm + 30) % (24 * 60)
+                self.custom_end_time = f"{end_m // 60:02d}:{end_m % 60:02d}"
+            else:
+                et = self.custom_end_time.strip()
+                if re.match(r"^\d:[0-5]\d$", et):
+                    et = "0" + et
+                    self.custom_end_time = et
+                if not TIME_REGEX.match(self.custom_end_time):
+                    raise ValueError(f"custom_end_time '{self.custom_end_time}' must be in 24-hour HH:MM format.")
+                if self.custom_start_time >= self.custom_end_time:
+                    raise ValueError("custom_start_time must be earlier than custom_end_time.")
 
         # 2. Date order
         if self.end_date < self.start_date:

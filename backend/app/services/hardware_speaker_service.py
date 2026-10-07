@@ -374,11 +374,23 @@ async def broadcast_announcement_to_speaker(
             db.refresh(queue_item)
             queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
         else:
+            active_count = db.query(SpeakerQueue).filter(
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"])
+            ).count()
             if should_play:
                 setattr(existing_item, "status", "Playing")
                 setattr(existing_item, "played_at", utc_now())
+                setattr(existing_item, "queue_position", 1)
+            else:
+                setattr(existing_item, "status", "Next in Queue" if active_count == 0 else "Queued")
+                setattr(existing_item, "played_at", None)
+                setattr(existing_item, "queue_position", active_count + 1)
+            setattr(existing_item, "scheduled_time", utc_now())
             setattr(existing_item, "duration_seconds", dur_secs)
+            setattr(existing_item, "failure_reason", None)
+            setattr(existing_item, "error_count", 0)
             db.commit()
+            db.refresh(existing_item)
             queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
 
     # 3. Publish MQTT dispatch
@@ -817,9 +829,10 @@ def auto_advance_speaker_queue(
                     db.query(SpeakerQueue)
                     .filter(
                         SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-                        SpeakerQueue.scheduled_time != None,
-                        SpeakerQueue.scheduled_time <= now,
-                        SpeakerQueue.scheduled_time >= now - timedelta(minutes=5),
+                        or_(
+                            SpeakerQueue.scheduled_time == None,
+                            SpeakerQueue.scheduled_time <= (now + timedelta(seconds=15)),
+                        ),
                     )
                     .first()
                 )
