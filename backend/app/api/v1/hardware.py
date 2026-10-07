@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.announcement import Announcement
 from app.models.speaker_node import SpeakerNode
 from app.models.speaker_queue import SpeakerQueue
+from app.models.announcement_category import AnnouncementCategory
 from app.core.enums.announcement import AnnouncementPriority, AnnouncementStatus, EmergencyLevel
 from app.repositories.hardware_repository import (
     add_to_speaker_queue,
