@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -74,6 +75,12 @@ class EchosphereApiService {
                 type: DioExceptionType.cancel,
               ),
             );
+          }
+          if ((_authToken == null || _authToken!.isEmpty) && Get.isRegistered<AuthController>()) {
+            final authCtrl = Get.find<AuthController>();
+            if (authCtrl.token.value.isNotEmpty) {
+              _authToken = authCtrl.token.value;
+            }
           }
           if (_authToken != null && _authToken!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_authToken';
