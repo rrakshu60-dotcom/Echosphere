@@ -72,6 +72,11 @@ public:
     // Explicitly lock hardware clock PLL dividers for 44.1kHz stereo audio
     i2s_set_clk(I2S_PORT_NUM, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 
+    #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
+      pinMode(PIN_I2S_SD, OUTPUT);
+      digitalWrite(PIN_I2S_SD, HIGH); // Drive SD pin HIGH to wake MAX98357A from shutdown mode
+    #endif
+
     i2s_zero_dma_buffer(I2S_PORT_NUM);
     isInitialized = true;
     Serial.println(F("✅ [I2S AUDIO] MAX98357A 3W Class-D I2S Amplifier ready for 8Ω Speaker!"));
@@ -159,6 +164,197 @@ public:
     silence(20);
     isPlaying = false;
   }
+
+  // --------------------------------------------------------------------------
+  // Stream Lossless 16-Bit PCM WAV Audio Directly to MAX98357A I2S
+  // --------------------------------------------------------------------------
+  bool streamWavAudio(WiFiClient& client, void (*visualizerCallback)() = nullptr) {
+    if (!isInitialized) return false;
+
+    isPlaying = true;
+    Serial.println(F("🎧 [I2S AUDIO] Starting 16-bit PCM WAV stream playback..."));
+
+    // 1. Read RIFF/WAVE header (first 12 bytes)
+    uint8_t riffHeader[12];
+    size_t headerBytesRead = 0;
+    unsigned long startWait = millis();
+
+    while (headerBytesRead < 12 && client.connected() && (millis() - startWait < 6000)) {
+      if (client.available()) {
+        riffHeader[headerBytesRead++] = (uint8_t)client.read();
+      } else {
+        delay(2);
+      }
+    }
+
+    if (headerBytesRead < 12) {
+      Serial.println(F("❌ [I2S AUDIO] Timeout reading WAV RIFF header"));
+      isPlaying = false;
+      return false;
+    }
+
+    // Verify RIFF & WAVE signature
+    if (riffHeader[0] != 'R' || riffHeader[1] != 'I' || riffHeader[2] != 'F' || riffHeader[3] != 'F' ||
+        riffHeader[8] != 'W' || riffHeader[9] != 'A' || riffHeader[10] != 'V' || riffHeader[11] != 'E') {
+      Serial.println(F("❌ [I2S AUDIO] Invalid WAV file signature"));
+      isPlaying = false;
+      return false;
+    }
+
+    // 2. Scan chunks to extract "fmt " parameters and locate "data" chunk
+    uint32_t sampleRate = 24000;
+    uint16_t channels = 1;
+    uint16_t bitsPerSample = 16;
+    bool foundData = false;
+
+    startWait = millis();
+    while (client.connected() && !foundData && (millis() - startWait < 8000)) {
+      uint8_t chunkHeader[8];
+      size_t chRead = 0;
+      while (chRead < 8 && client.connected()) {
+        if (client.available()) {
+          chunkHeader[chRead++] = (uint8_t)client.read();
+        } else {
+          delay(1);
+        }
+      }
+      if (chRead < 8) break;
+
+      uint32_t chunkSize = (uint32_t)chunkHeader[4] |
+                           ((uint32_t)chunkHeader[5] << 8) |
+                           ((uint32_t)chunkHeader[6] << 16) |
+                           ((uint32_t)chunkHeader[7] << 24);
+
+      // Check for "fmt " chunk
+      if (chunkHeader[0] == 'f' && chunkHeader[1] == 'm' && chunkHeader[2] == 't' && chunkHeader[3] == ' ') {
+        uint8_t fmtData[16];
+        size_t fmtRead = 0;
+        while (fmtRead < 16 && client.connected()) {
+          if (client.available()) {
+            fmtData[fmtRead++] = (uint8_t)client.read();
+          } else {
+            delay(1);
+          }
+        }
+        channels = (uint16_t)fmtData[2] | ((uint16_t)fmtData[3] << 8);
+        sampleRate = (uint32_t)fmtData[4] | ((uint32_t)fmtData[5] << 8) |
+                     ((uint32_t)fmtData[6] << 16) | ((uint32_t)fmtData[7] << 24);
+        bitsPerSample = (uint16_t)fmtData[14] | ((uint16_t)fmtData[15] << 8);
+
+        // Skip extra header bytes if chunk > 16
+        if (chunkSize > 16) {
+          for (uint32_t k = 0; k < chunkSize - 16; k++) {
+            while (!client.available() && client.connected()) delay(1);
+            if (client.available()) client.read();
+          }
+        }
+      }
+      // Check for "data" chunk
+      else if (chunkHeader[0] == 'd' && chunkHeader[1] == 'a' && chunkHeader[2] == 't' && chunkHeader[3] == 'a') {
+        foundData = true;
+        break;
+      }
+      else {
+        // Skip unknown chunk
+        for (uint32_t k = 0; k < chunkSize; k++) {
+          while (!client.available() && client.connected()) delay(1);
+          if (client.available()) client.read();
+        }
+      }
+    }
+
+    if (!foundData) {
+      Serial.println(F("❌ [I2S AUDIO] Could not locate 'data' chunk in WAV stream"));
+      isPlaying = false;
+      return false;
+    }
+
+    if (sampleRate < 8000 || sampleRate > 96000) sampleRate = 24000;
+    Serial.print(F("✅ [I2S AUDIO] Stream Format: "));
+    Serial.print(sampleRate);
+    Serial.print(F("Hz, "));
+    Serial.print(channels);
+    Serial.print(F("ch, "));
+    Serial.print(bitsPerSample);
+    Serial.println(F("bit PCM. Locking hardware I2S clock..."));
+
+    // Dynamically lock hardware clock PLL dividers to match audio sample rate
+    i2s_set_clk(I2S_PORT_NUM, sampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+
+    // 3. Audio Streaming Loop
+    const int CHUNK_SAMPLES = 128;
+    int16_t rawChunk[CHUNK_SAMPLES * 2];
+    int16_t stereoChunk[CHUNK_SAMPLES * 2];
+
+    unsigned long lastIdleTime = millis();
+    unsigned long lastVizTime = millis();
+    unsigned long totalBytesStreamed = 0;
+
+    while (client.connected() || client.available()) {
+      int avail = client.available();
+      if (avail <= 0) {
+        if (millis() - lastIdleTime > 3000) {
+          break; // Stream completed
+        }
+        delay(2);
+        yield();
+        continue;
+      }
+
+      lastIdleTime = millis();
+
+      int bytesToRead = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
+      if (avail < bytesToRead) bytesToRead = avail;
+      if (bytesToRead % 2 != 0) bytesToRead--;
+
+      if (bytesToRead <= 0) {
+        delay(1);
+        continue;
+      }
+
+      size_t bytesRead = client.read((uint8_t*)rawChunk, bytesToRead);
+      if (bytesRead == 0) continue;
+
+      totalBytesStreamed += bytesRead;
+      int samplesRead = bytesRead / 2;
+
+      // Scale volume and duplicate mono into stereo channels
+      if (channels == 1) {
+        for (int i = 0; i < samplesRead; i++) {
+          int16_t s = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
+          stereoChunk[i * 2]     = s;
+          stereoChunk[i * 2 + 1] = s;
+        }
+        size_t written = 0;
+        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
+      } else {
+        for (int i = 0; i < samplesRead; i++) {
+          stereoChunk[i] = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
+        }
+        size_t written = 0;
+        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
+      }
+
+      // Animate visualizer periodically
+      if (visualizerCallback && (millis() - lastVizTime >= 65)) {
+        lastVizTime = millis();
+        visualizerCallback();
+      }
+
+      yield();
+    }
+
+    Serial.print(F("✅ [I2S AUDIO] Voice stream playback completed ("));
+    Serial.print(totalBytesStreamed);
+    Serial.println(F(" bytes delivered to 8Ω speaker)"));
+
+    silence(25);
+    // Restore default 44.1kHz rate for standard chimes
+    i2s_set_clk(I2S_PORT_NUM, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+    isPlaying = false;
+    return true;
+  }
+
 
   // --------------------------------------------------------------------------
   // Attention Chime (Matches speaker_node_client.py: 587Hz -> 880Hz)

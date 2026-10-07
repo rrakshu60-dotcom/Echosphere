@@ -439,6 +439,22 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.repeat_rounded, size: 16),
+                        label: const Text('Configure Repeat Schedule', style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          RepeatScheduleDialog.show(
+                            context,
+                            announcementId: item.id,
+                            announcementTitle: item.title,
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),

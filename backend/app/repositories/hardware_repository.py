@@ -211,35 +211,16 @@ def update_queue_item_status(
         # Fallback 1: match by announcement_id
         item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == queue_id).first()
     if not item:
-        # Fallback 2: if announcement exists with this ID, create the queue item dynamically
-        from app.models.announcement import Announcement
-        ann = db.query(Announcement).filter(Announcement.id == queue_id).first()
-        if ann:
-            max_pos = db.query(SpeakerQueue).count()
-            words = len(((ann.title or "") + " " + (ann.description or "")).split())
-            dur_secs = max(10, int(words / 2.5))
-            item = SpeakerQueue(
-                announcement_id=ann.id,
-                queue_position=max_pos + 1,
-                status=status,
-                scheduled_time=datetime.utcnow(),
-                played_at=datetime.utcnow() if status == "Playing" else None,
-                duration_seconds=dur_secs,
-            )
-            db.add(item)
-            db.commit()
-            db.refresh(item)
-            return item
+        return None
 
-    if item:
-        item.status = status
-        if status == "Playing":
-            item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        if failure_reason:
-            item.failure_reason = failure_reason
-            item.error_count += 1
-        db.commit()
-        db.refresh(item)
+    item.status = status
+    if status == "Playing":
+        item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    if failure_reason:
+        item.failure_reason = failure_reason
+        item.error_count += 1
+    db.commit()
+    db.refresh(item)
     return item
 
 

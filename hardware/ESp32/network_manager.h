@@ -256,7 +256,9 @@ public:
             const char* rawD = activeNotice["department"];
             String dept = rawD ? String(rawD) : "College-Wide";
             int duration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
-            triggerNoticeBroadcast(annId, qId, title, content, priority, dept, duration);
+            const char* rawA = activeNotice["audio_url"];
+            String audioUrl = rawA ? String(rawA) : "";
+            triggerNoticeBroadcast(annId, qId, title, content, priority, dept, duration, audioUrl);
           }
         }
 
@@ -333,13 +335,16 @@ public:
       const char* rawPri = cmd["priority"];
       String priority = command.equalsIgnoreCase("PLAY_EMERGENCY") ? "EMERGENCY" : (rawPri ? String(rawPri) : "NORMAL");
       const char* rawDept = cmd["department"];
+      String dept = rawDept ? String(rawDept) : "College-Wide";
       int duration = 15;
       if (!cmd["duration"].isNull()) {
         duration = cmd["duration"].as<int>();
       } else if (!cmd["duration_seconds"].isNull()) {
         duration = cmd["duration_seconds"].as<int>();
       }
-      triggerNoticeBroadcast(annId, qId, title, message, priority, dept, duration);
+      const char* rawA = cmd["audio_url"];
+      String audioUrl = rawA ? String(rawA) : "";
+      triggerNoticeBroadcast(annId, qId, title, message, priority, dept, duration, audioUrl);
     } else if (command.equalsIgnoreCase("STOP") || command.equalsIgnoreCase("CANCEL") || command.equalsIgnoreCase("SKIP")) {
       stopActiveBroadcast();
     } else if (command.equalsIgnoreCase("RESTART")) {
@@ -350,7 +355,7 @@ public:
   // --------------------------------------------------------------------------
   // Notice Playback Flow
   // --------------------------------------------------------------------------
-  void triggerNoticeBroadcast(int annId, int qId, const String& title, const String& content, const String& priority, const String& dept, int durationSec) {
+  void triggerNoticeBroadcast(int annId, int qId, const String& title, const String& content, const String& priority, const String& dept, int durationSec, const String& customAudioUrl = "") {
     activeAnnouncementId = annId;
     activeQueueId = qId;
     isBroadcasting = true;
@@ -364,7 +369,7 @@ public:
     notice.department = dept;
     notice.category = "Notice";
 
-    // 1. Immediately update OLED & LED status
+    // 1. Immediately update OLED/TFT & LED status
     displayMgr.setActiveNotice(notice, durationSec);
 
     // 2. Play attention chime or emergency siren through speaker
@@ -372,7 +377,75 @@ public:
       audioMgr.playEmergencySiren();
     } else {
       audioMgr.playAttentionChime();
+    }
+
+    // 3. Lossless 16-Bit PCM WAV Audio Stream over HTTP to MAX98357A I2S
+    String streamUrl = customAudioUrl;
+    if (streamUrl.length() == 0 && annId > 0) {
+      streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=wav";
+    } else if (streamUrl.length() > 0 && !streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
+      streamUrl = serverUrl + streamUrl;
+    }
+
+    if (streamUrl.length() > 0 && streamUrl.indexOf("audio_format=") < 0) {
+      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=wav" : "?audio_format=wav");
+    }
+
+    bool streamPlayed = false;
+    if (streamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
+      Serial.print(F("🎙️ [AUDIO STREAM] Connecting to audio source: "));
+      Serial.println(streamUrl);
+
+      HTTPClient httpAudio;
+      WiFiClientSecure secureAudioClient;
+      WiFiClient plainAudioClient;
+
+      if (streamUrl.startsWith("https://")) {
+        secureAudioClient.setInsecure();
+        httpAudio.begin(secureAudioClient, streamUrl);
+      } else {
+        httpAudio.begin(plainAudioClient, streamUrl);
+      }
+
+      httpAudio.setTimeout(12000);
+      httpAudio.addHeader("Accept", "audio/wav, audio/*");
+      int httpCode = httpAudio.GET();
+
+      if (httpCode == 200) {
+        Serial.println(F("🔊 [I2S STREAM] HTTP 200 OK received! Streaming 16-bit PCM WAV to MAX98357A..."));
+        WiFiClient* streamClient = httpAudio.getStreamPtr();
+        if (streamClient) {
+          streamPlayed = audioMgr.streamWavAudio(*streamClient, []() {
+            displayMgr.renderEqualizerGraphic();
+          });
+          Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
+        } else {
+          Serial.println(F("❌ [I2S STREAM] Failed to acquire HTTP stream pointer."));
+        }
+      } else {
+        Serial.print(F("⚠️ [AUDIO STREAM] HTTP error: "));
+        Serial.println(httpCode);
+      }
+      httpAudio.end();
+    }
+
+    // 4. Fallback melody if streaming wasn't available
+    if (!streamPlayed && !priority.equalsIgnoreCase("EMERGENCY")) {
       audioMgr.playAnnouncementMelody();
+    }
+
+    // 5. Play completion chime after speech concludes
+    audioMgr.playCompletionChime();
+
+    // 6. Complete active notice and auto-advance speaker queue
+    isBroadcasting = false;
+    displayMgr.clearActiveNotice();
+    int finishedQueueId = activeQueueId;
+    activeAnnouncementId = 0;
+    activeQueueId = 0;
+
+    if (finishedQueueId > 0) {
+      notifyPlaybackCompleted(finishedQueueId);
     }
   }
 

@@ -246,11 +246,13 @@
 
   inline esp_err_t i2s_driver_install(i2s_port_t, const i2s_config_t*, int, void*) { return ESP_OK; }
   inline esp_err_t i2s_set_pin(i2s_port_t, const i2s_pin_config_t*) { return ESP_OK; }
+  inline esp_err_t i2s_set_clk(i2s_port_t, uint32_t, i2s_bits_per_sample_t, i2s_channel_t) { return ESP_OK; }
   inline void i2s_zero_dma_buffer(i2s_port_t) {}
   inline esp_err_t i2s_write(i2s_port_t, const void*, size_t, size_t* bytes_written, uint32_t) {
     if (bytes_written) *bytes_written = 0;
     return ESP_OK;
   }
+  inline void yield() {}
 
   // --- Wi-Fi & HTTP Client Types ---
   #define WL_CONNECTED 3
@@ -270,7 +272,15 @@
   };
   static WiFiClass WiFi;
 
-  class WiFiClient { public: WiFiClient() {} };
+  class WiFiClient {
+  public:
+    WiFiClient() {}
+    int available() { return 0; }
+    int read() { return -1; }
+    size_t read(uint8_t*, size_t) { return 0; }
+    bool connected() { return false; }
+    void stop() {}
+  };
   class WiFiClientSecure : public WiFiClient { public: void setInsecure() {} };
 
   class HTTPClient {
@@ -279,7 +289,11 @@
     void addHeader(const String&, const String&) {}
     void setTimeout(uint16_t) {}
     int POST(const String&) { return 200; }
+    int GET() { return 200; }
     String getString() { return String("{}"); }
+    WiFiClient* getStreamPtr() { static WiFiClient c; return &c; }
+    WiFiClient& getStream() { static WiFiClient c; return c; }
+    int getSize() { return 0; }
     void end() {}
   };
 

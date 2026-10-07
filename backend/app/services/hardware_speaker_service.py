@@ -207,7 +207,7 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     ann = getattr(p_item, "announcement", None)
                     title = getattr(ann, "title", "Announcement") if ann else "Announcement"
                     message = getattr(ann, "description", "") if ann else ""
-                    audio_url = f"https://echosphere-backend-9lv8.onrender.com/static/audio_streams/announcement_{p_item.announcement_id}.mp3"
+                    audio_url = f"https://echosphere-backend-9lv8.onrender.com/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav"
                     cmds.append({
                         "command": "PLAY_ANNOUNCEMENT",
                         "command_id": b_id,
@@ -663,8 +663,8 @@ def dispatch_queue_action_to_speakers(
     action_lower = action.lower()
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
-        # Direct neural audio stream URL
-        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream"
+        # Direct neural audio stream URL (16-bit PCM WAV for ESP32 I2S)
+        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav"
         try:
             voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
             generate_announcement_audio_sync(
