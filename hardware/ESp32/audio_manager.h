@@ -12,7 +12,7 @@
 // Standard I2S Pins: BCLK=GPIO 26, LRC=GPIO 25, DIN=GPIO 27 (All < 32 Safe)
 // ============================================================================
 
-#define I2S_SAMPLE_RATE     22050
+#define I2S_SAMPLE_RATE     44100
 #define I2S_PORT_NUM        I2S_NUM_0
 #define BUFFER_SAMPLES_COUNT  256
 
@@ -28,16 +28,18 @@ public:
   void begin() {
     Serial.println(F("🔊 [I2S AUDIO] Initializing MAX98357A I2S driver..."));
 
+    #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
+      pinMode(PIN_I2S_SD, OUTPUT);
+      digitalWrite(PIN_I2S_SD, HIGH); // Un-mute amplifier IC
+      delay(10);
+    #endif
+
     i2s_config_t i2s_config = {
       .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
       .sample_rate = I2S_SAMPLE_RATE,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
       .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-      #if ESP_IDF_VERSION_MAJOR >= 4
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-      #else
-        .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
-      #endif
+      .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
       .dma_buf_count = 8,
       .dma_buf_len = 128,
@@ -66,6 +68,9 @@ public:
       Serial.println(err);
       return;
     }
+
+    // Explicitly lock hardware clock PLL dividers for 44.1kHz stereo audio
+    i2s_set_clk(I2S_PORT_NUM, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 
     i2s_zero_dma_buffer(I2S_PORT_NUM);
     isInitialized = true;
@@ -143,6 +148,7 @@ public:
     if (!isInitialized) return;
     int16_t zeroBuffer[64 * 2] = {0};
     unsigned long totalChunks = (I2S_SAMPLE_RATE * durationMs) / (1000UL * 64);
+    if (totalChunks == 0) totalChunks = 1;
     size_t written = 0;
     for (unsigned long i = 0; i < totalChunks; i++) {
       i2s_write(I2S_PORT_NUM, zeroBuffer, sizeof(zeroBuffer), &written, portMAX_DELAY);

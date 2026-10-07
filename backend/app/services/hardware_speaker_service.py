@@ -216,6 +216,7 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                         "message": str(message),
                         "audio_url": audio_url,
                         "volume": 85,
+                        "duration": int(getattr(p_item, "duration_seconds", 15) or 15),
                         "duration_seconds": int(getattr(p_item, "duration_seconds", 15) or 15),
                         "timestamp": (p_played_at or now).isoformat(),
                     })
@@ -672,6 +673,8 @@ def dispatch_queue_action_to_speakers(
             "message": message,
             "audio_url": audio_full_url,
             "volume": 85,
+            "duration": getattr(queue_item, "duration_seconds", 15) or 15,
+            "duration_seconds": getattr(queue_item, "duration_seconds", 15) or 15,
             "timestamp": utc_now().isoformat(),
         }
     elif action_lower == "pause":

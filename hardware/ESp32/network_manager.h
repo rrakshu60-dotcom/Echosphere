@@ -333,8 +333,12 @@ public:
       const char* rawPri = cmd["priority"];
       String priority = command.equalsIgnoreCase("PLAY_EMERGENCY") ? "EMERGENCY" : (rawPri ? String(rawPri) : "NORMAL");
       const char* rawDept = cmd["department"];
-      String dept = rawDept ? String(rawDept) : "College-Wide";
-      int duration = cmd["duration"].isNull() ? 15 : cmd["duration"].as<int>();
+      int duration = 15;
+      if (!cmd["duration"].isNull()) {
+        duration = cmd["duration"].as<int>();
+      } else if (!cmd["duration_seconds"].isNull()) {
+        duration = cmd["duration_seconds"].as<int>();
+      }
       triggerNoticeBroadcast(annId, qId, title, message, priority, dept, duration);
     } else if (command.equalsIgnoreCase("STOP") || command.equalsIgnoreCase("CANCEL") || command.equalsIgnoreCase("SKIP")) {
       stopActiveBroadcast();

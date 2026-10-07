@@ -24,8 +24,8 @@ class SpeakerQueueController extends GetxController {
   final RxBool isIntermission = false.obs;
   final RxInt intermissionSecondsRemaining = 0.obs;
 
-  /// Controls whether this device plays audio aloud for the queue (default: true for preview)
-  final RxBool enableLocalAudioPreview = true.obs;
+  /// Controls whether this device plays audio aloud for the queue (default: false to prioritize physical hardware speaker)
+  final RxBool enableLocalAudioPreview = false.obs;
 
   Timer? _playbackTimer;
   Timer? _pollTimer;

@@ -68,6 +68,7 @@
 #define PIN_I2S_BCLK 26 // I2S Bit Clock (BCLK)
 #define PIN_I2S_LRC 25  // I2S Left/Right Clock / Word Select (LRC / WS)
 #define PIN_I2S_DIN 27  // I2S Serial Data In (DIN)
+#define PIN_I2S_SD  19  // Optional SD_MODE (Shutdown): Driven HIGH to enable amp (or wire SD to 3.3V)
 
 // --- B. 1.8" TFT LCD Screen 128x160 SPI ST7735 Pins (Outputs < 32) ---
 #define PIN_TFT_MOSI 23 // SPI Master Out Slave In / SDA
@@ -96,6 +97,8 @@ static_assert(PIN_I2S_LRC < 32,
               "CRITICAL: PIN_I2S_LRC cannot be in pins 32-39!");
 static_assert(PIN_I2S_DIN < 32,
               "CRITICAL: PIN_I2S_DIN cannot be in pins 32-39!");
+static_assert(PIN_I2S_SD < 32,
+              "CRITICAL: PIN_I2S_SD cannot be in pins 32-39!");
 static_assert(PIN_TFT_MOSI < 32,
               "CRITICAL: PIN_TFT_MOSI cannot be in pins 32-39!");
 static_assert(PIN_TFT_SCLK < 32,
