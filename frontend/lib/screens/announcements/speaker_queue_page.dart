@@ -14,6 +14,7 @@ import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/widgets/custom_widgets/audio_waveform_visualizer.dart';
+import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
@@ -89,6 +90,19 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
       snackBar('Playing voice broadcast: "$title"');
     } else {
       snackBar('Synthesizing and previewing voice announcement: "$title"');
+    }
+  }
+
+  void _openRepeatScheduleForQueueItem(Map<String, dynamic> item) {
+    final annId = item['announcement_id'] as int? ?? item['id'] as int?;
+    if (annId != null) {
+      RepeatScheduleDialog.show(
+        context,
+        announcementId: annId,
+        announcementTitle: (item['title'] ?? 'Notice #$annId').toString(),
+      );
+    } else {
+      snackBar('No associated announcement found for this queue item.');
     }
   }
 
@@ -404,6 +418,25 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                         onChanged: (val) {
                           if (val != null) setDialogState(() => selectedAudioType = val);
                         },
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.repeat_rounded, size: 16),
+                        label: const Text('Configure Repeat Schedule', style: TextStyle(fontSize: 12)),
+                        onPressed: selectedAnnouncementId == null
+                            ? null
+                            : () {
+                                final selAnn = eligibleAnnouncements.firstWhereOrNull((a) => a['id'] == selectedAnnouncementId);
+                                RepeatScheduleDialog.show(
+                                  context,
+                                  announcementId: selectedAnnouncementId,
+                                  announcementTitle: (selAnn?['title'] ?? 'Notice #$selectedAnnouncementId').toString(),
+                                );
+                              },
                       ),
                     ],
                   ],
@@ -1236,6 +1269,9 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
         final isPlaying = _queueCtrl.isPlaying.value;
         final hasItems = _queueCtrl.queueItems.isNotEmpty;
         final activeIdx = _queueCtrl.activeIndex.value;
+        final activeItem = (hasItems && activeIdx >= 0 && activeIdx < _queueCtrl.queueItems.length)
+            ? _queueCtrl.queueItems[activeIdx]
+            : (hasItems ? _queueCtrl.queueItems.first : null);
 
         return Column(
           children: [
@@ -1448,6 +1484,13 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           padding: EdgeInsets.zero,
                           onPressed: hasItems ? _previewAudio : null,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.repeat_rounded, size: 20, color: context.colors.primary),
+                          tooltip: 'Repeat Broadcast Schedule',
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          padding: EdgeInsets.zero,
+                          onPressed: (hasItems && activeItem != null) ? () => _openRepeatScheduleForQueueItem(activeItem) : null,
                         ),
                       ],
                     ),
@@ -1755,6 +1798,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                   onPressed: i == _queueCtrl.queueItems.length - 1
                                       ? null
                                       : () => _queueCtrl.reorderQueue(i, i + 1),
+                                ),
+                                IconButton(
+                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                  padding: EdgeInsets.zero,
+                                  icon: Icon(Icons.repeat_rounded,
+                                      size: 16, color: context.colors.primary),
+                                  tooltip: 'Repeat Broadcast Schedule',
+                                  onPressed: () => _openRepeatScheduleForQueueItem(item),
                                 ),
                                 IconButton(
                                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),

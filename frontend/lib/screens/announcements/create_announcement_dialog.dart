@@ -48,6 +48,12 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool isScheduleLater = false;
   DateTime scheduledDateTime = DateTime.now().add(const Duration(hours: 1));
 
+  bool enableRepeatSchedule = false;
+  final Set<String> repeatSlots = {'SHORT_BREAK'};
+  String repeatScope = 'DEPARTMENT';
+  final repeatStartCtrl = TextEditingController(text: '10:00');
+  final repeatEndCtrl = TextEditingController(text: '11:00');
+
   bool isAiExpanding = false;
   bool isAiPolishing = false;
   bool isAiDrafting = false;
@@ -285,6 +291,8 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     descController.removeListener(_autoDetectAndValidate);
     titleController.dispose();
     descController.dispose();
+    repeatStartCtrl.dispose();
+    repeatEndCtrl.dispose();
     super.dispose();
   }
 
@@ -1007,6 +1015,154 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                 ),
               ),
             ],
+            const SizedBox(height: 14),
+
+            // Repeat Announcement Schedule Section
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: enableRepeatSchedule
+                    ? theme.colorScheme.primary.withOpacity(0.06)
+                    : theme.colorScheme.surfaceContainer.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: enableRepeatSchedule
+                      ? theme.colorScheme.primary.withOpacity(0.35)
+                      : theme.dividerColor.withOpacity(0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.repeat_rounded, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Repeat Broadcast Schedule',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              'Automatically rebroadcast notice during campus breaks over next 48h',
+                              style: TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: enableRepeatSchedule,
+                        onChanged: (val) {
+                          setState(() {
+                            enableRepeatSchedule = val;
+                            if (val) {
+                              deliverSpeaker = true;
+                            }
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (enableRepeatSchedule) ...[
+                    const SizedBox(height: 10),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
+                    const Text('Broadcast Transition Windows:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        FilterChip(
+                          avatar: const Icon(Icons.coffee_rounded, size: 13),
+                          label: const Text('Short Break (11:00 AM)', style: TextStyle(fontSize: 11)),
+                          selected: repeatSlots.contains('SHORT_BREAK'),
+                          onSelected: (val) {
+                            setState(() {
+                              val ? repeatSlots.add('SHORT_BREAK') : repeatSlots.remove('SHORT_BREAK');
+                            });
+                          },
+                        ),
+                        FilterChip(
+                          avatar: const Icon(Icons.restaurant_rounded, size: 13),
+                          label: const Text('Lunch Break (1:15 PM)', style: TextStyle(fontSize: 11)),
+                          selected: repeatSlots.contains('LUNCH_BREAK'),
+                          onSelected: (val) {
+                            setState(() {
+                              val ? repeatSlots.add('LUNCH_BREAK') : repeatSlots.remove('LUNCH_BREAK');
+                            });
+                          },
+                        ),
+                        FilterChip(
+                          avatar: const Icon(Icons.access_time_rounded, size: 13),
+                          label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
+                          selected: repeatSlots.contains('CUSTOM_WINDOW'),
+                          onSelected: (val) {
+                            setState(() {
+                              val ? repeatSlots.add('CUSTOM_WINDOW') : repeatSlots.remove('CUSTOM_WINDOW');
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    if (repeatSlots.contains('CUSTOM_WINDOW')) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: repeatStartCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Start (HH:MM)',
+                                hintText: '10:00',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: repeatEndCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'End (HH:MM)',
+                                hintText: '11:00',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    const Text('Target Speaker Scope:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: repeatScope,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'DEPARTMENT', child: Text('Department Nodes Only', style: TextStyle(fontSize: 11))),
+                        DropdownMenuItem(value: 'COLLEGE_WIDE', child: Text('College-Wide (All Nodes)', style: TextStyle(fontSize: 11))),
+                        DropdownMenuItem(value: 'HOSTEL', child: Text('Hostel & Common Areas', style: TextStyle(fontSize: 11))),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => repeatScope = val);
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1036,6 +1192,40 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
             errorSnackBar('Scheduling Policy: Scheduled broadcast time must be at least 5 minutes in the future.');
             return;
           }
+        }
+
+        Map<String, dynamic>? repeatData;
+        if (enableRepeatSchedule) {
+          if (repeatSlots.isEmpty) {
+            errorSnackBar('Please select at least one repeat broadcast slot.');
+            return;
+          }
+          if (repeatSlots.contains('CUSTOM_WINDOW')) {
+            final start = repeatStartCtrl.text.trim();
+            final end = repeatEndCtrl.text.trim();
+            final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+            if (!timeRegex.hasMatch(start) || !timeRegex.hasMatch(end)) {
+              errorSnackBar('Please enter valid 24-hr times in HH:MM format for Custom Window (e.g. 10:30).');
+              return;
+            }
+            if (start.compareTo(end) >= 0) {
+              errorSnackBar('Custom Window start time must be before end time.');
+              return;
+            }
+          }
+          final now = DateTime.now();
+          repeatData = {
+            'selected_slots': repeatSlots.toList(),
+            'target_scope': repeatScope,
+            'event_datetime': now.add(const Duration(hours: 24)).toIso8601String(),
+            'start_date': now.toIso8601String(),
+            'end_date': now.add(const Duration(hours: 48)).toIso8601String(),
+            'force_enable_speaker': true,
+            if (repeatSlots.contains('CUSTOM_WINDOW')) ...{
+              'custom_start_time': repeatStartCtrl.text.trim(),
+              'custom_end_time': repeatEndCtrl.text.trim(),
+            },
+          };
         }
 
         final isTeacher = user.role == 'Teacher';
@@ -1078,6 +1268,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           speakerVoice: speakerVoice,
           speakerNodeId: selectedSpeakerNodeId,
           attachments: attachedFiles.map((f) => f.name).toList(),
+          repeatSchedule: repeatData,
         );
 
         if (ok) {
