@@ -270,9 +270,9 @@ public:
             n.category = c ? String(c) : "Notice";
             displayMgr.addDailyNotice(n);
           }
-          // Refresh screen if idle and notice state changed
+          // Refresh screen only if notice count actually changed
           if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
-            if (oldCount != displayMgr.getDailyNoticesCount() || displayMgr.getDailyNoticesCount() > 0) {
+            if (oldCount != displayMgr.getDailyNoticesCount()) {
               displayMgr.refreshScreen();
             }
           }
