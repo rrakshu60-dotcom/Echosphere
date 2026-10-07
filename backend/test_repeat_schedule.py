@@ -198,7 +198,7 @@ def test_repeat_schedule_suite():
     except ValueError as ve:
         print(f"  ✓ Invalid custom time format correctly rejected: {ve}")
 
-    # Valid custom window
+    # Valid custom window (24-hour)
     custom_config = RepeatScheduleCreate(
         selected_slots=["CUSTOM_WINDOW", "SHORT_BREAK"],
         custom_start_time="18:30",
@@ -209,7 +209,22 @@ def test_repeat_schedule_suite():
         end_date=now + timedelta(hours=20),
     )
     assert "CUSTOM_WINDOW" in custom_config.selected_slots
-    print("  ✓ Valid custom window configuration accepted.")
+    assert custom_config.custom_start_time == "18:30"
+    print("  ✓ Valid 24-hr custom window configuration accepted.")
+
+    # Valid custom window (12-hour AM/PM auto-normalization)
+    config_12hr = RepeatScheduleCreate(
+        selected_slots=["CUSTOM_WINDOW"],
+        custom_start_time="6:30 PM",
+        custom_end_time="7:15 PM",
+        target_scope="HOSTEL",
+        event_datetime=now + timedelta(hours=20),
+        start_date=now,
+        end_date=now + timedelta(hours=20),
+    )
+    assert config_12hr.custom_start_time == "18:30", f"Expected 18:30, got {config_12hr.custom_start_time}"
+    assert config_12hr.custom_end_time == "19:15", f"Expected 19:15, got {config_12hr.custom_end_time}"
+    print("  ✓ 12-hour AM/PM format (6:30 PM -> 18:30) correctly normalized.")
 
     # Deactivate sched1 so Test 4 isolates ann2 multi-slot execution
     sched1.is_active = False

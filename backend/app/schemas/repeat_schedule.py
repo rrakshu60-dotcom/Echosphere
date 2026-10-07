@@ -55,16 +55,32 @@ class RepeatScheduleBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_rules(self):
+        def _normalize_time_str(val: Optional[str]) -> Optional[str]:
+            if not val:
+                return val
+            val = val.strip()
+            # Match 12-hour format e.g. "9:30 PM", "9:30pm", "02:15 AM", "12:00 PM"
+            m = re.match(r"^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$", val)
+            if m:
+                h, mn, meridian = int(m.group(1)), int(m.group(2)), m.group(3).upper()
+                if 1 <= h <= 12 and 0 <= mn <= 59:
+                    if meridian == "PM" and h != 12:
+                        h += 12
+                    elif meridian == "AM" and h == 12:
+                        h = 0
+                    return f"{h:02d}:{mn:02d}"
+            # Match single-digit 24-hour hour like "9:00" -> "09:00"
+            if re.match(r"^\d:[0-5]\d$", val):
+                return "0" + val
+            return val
+
         # 1. Custom time validation & auto-completion
         if "CUSTOM_WINDOW" in self.selected_slots:
             if not self.custom_start_time:
-                raise ValueError("custom_start_time (HH:MM) is required when CUSTOM_WINDOW is selected.")
-            st = self.custom_start_time.strip()
-            if re.match(r"^\d:[0-5]\d$", st):
-                st = "0" + st
-                self.custom_start_time = st
+                raise ValueError("custom_start_time (HH:MM or HH:MM AM/PM) is required when CUSTOM_WINDOW is selected.")
+            self.custom_start_time = _normalize_time_str(self.custom_start_time)
             if not TIME_REGEX.match(self.custom_start_time):
-                raise ValueError(f"custom_start_time '{self.custom_start_time}' must be in 24-hour HH:MM format.")
+                raise ValueError(f"custom_start_time '{self.custom_start_time}' must be in 24-hour HH:MM format or 12-hour format with AM/PM.")
 
             if not self.custom_end_time:
                 # Default end time to +30 minutes if omitted
@@ -72,12 +88,9 @@ class RepeatScheduleBase(BaseModel):
                 end_m = (sh * 60 + sm + 30) % (24 * 60)
                 self.custom_end_time = f"{end_m // 60:02d}:{end_m % 60:02d}"
             else:
-                et = self.custom_end_time.strip()
-                if re.match(r"^\d:[0-5]\d$", et):
-                    et = "0" + et
-                    self.custom_end_time = et
+                self.custom_end_time = _normalize_time_str(self.custom_end_time)
                 if not TIME_REGEX.match(self.custom_end_time):
-                    raise ValueError(f"custom_end_time '{self.custom_end_time}' must be in 24-hour HH:MM format.")
+                    raise ValueError(f"custom_end_time '{self.custom_end_time}' must be in 24-hour HH:MM format or 12-hour format with AM/PM.")
                 if self.custom_start_time >= self.custom_end_time:
                     raise ValueError("custom_start_time must be earlier than custom_end_time.")
 
