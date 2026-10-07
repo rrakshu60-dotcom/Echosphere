@@ -1039,13 +1039,35 @@ class AnnouncementController extends GetxController {
   }) async {
     isLoading.value = true;
 
-    int catId = 1;
+    int catId = 12; // Default to 'General' (ID 12)
     final catLower = category.toLowerCase();
-    if (catLower.contains('exam')) catId = 2;
-    if (catLower.contains('event')) catId = 3;
-    if (catLower.contains('sport')) catId = 4;
-    if (catLower.contains('placement')) catId = 5;
-    if (catLower.contains('emergency')) catId = 6;
+    if (catLower.contains('emerg')) {
+      catId = 1;
+    } else if (catLower.contains('acad')) {
+      catId = 2;
+    } else if (catLower.contains('exam')) {
+      catId = 3;
+    } else if (catLower.contains('place')) {
+      catId = 4;
+    } else if (catLower.contains('event')) {
+      catId = 5;
+    } else if (catLower.contains('work')) {
+      catId = 6;
+    } else if (catLower.contains('sem')) {
+      catId = 7;
+    } else if (catLower.contains('holi')) {
+      catId = 8;
+    } else if (catLower.contains('sport')) {
+      catId = 9;
+    } else if (catLower.contains('cult')) {
+      catId = 10;
+    } else if (catLower.contains('club')) {
+      catId = 11;
+    } else if (catLower.contains('circ')) {
+      catId = 13;
+    } else if (catLower.contains('fee')) {
+      catId = 14;
+    }
 
     // RBAC Approval Matrix: Evaluate approval requirements first!
     bool requiresApproval = false;

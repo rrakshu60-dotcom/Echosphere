@@ -34,7 +34,7 @@ class SpeakerQueueController extends GetxController {
   // Fallback initial speaker nodes: Canonical nodes (ESP32 Live Node + Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
     {
-      'id': 10,
+      'id': 13,
       'name': 'ESP32 Smart Speaker & Live Display',
       'mac_address': 'D4:F3:2D:22:2A:CD',
       'ip_address': '192.168.1.100',

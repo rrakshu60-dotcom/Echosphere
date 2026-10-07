@@ -31,7 +31,7 @@ def get_speaker_node_by_id(db: Session, node_id: int) -> Optional[SpeakerNode]:
     return node
 
 
-HEARTBEAT_TIMEOUT_SECONDS = 15
+HEARTBEAT_TIMEOUT_SECONDS = 30
 
 
 def refresh_node_online_statuses(db: Session, nodes: List[SpeakerNode]) -> List[SpeakerNode]:
