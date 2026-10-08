@@ -435,7 +435,6 @@ public:
 
       if (streamUrl.startsWith("https://")) {
         secureAudioClient.setInsecure();
-        secureAudioClient.setBufferSizes(4096, 1024);
         httpAudio.begin(secureAudioClient, streamUrl);
       } else {
         httpAudio.begin(plainAudioClient, streamUrl);
