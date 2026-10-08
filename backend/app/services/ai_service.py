@@ -561,7 +561,16 @@ class AIService:
         if expanded and len(expanded.strip()) >= 30:
             return sanitize_ai_markdown(expanded.strip())
 
-        # Tier 4: Structured Institutional Fallback Template
+        # Tier 4: Campus ML Engine Circular Expander
+        try:
+            from app.services.echosphere_ml_engine import CampusMLEngine
+            expanded_campus = CampusMLEngine.get_instance().expand_announcement(clean, category=category)
+            if expanded_campus and len(expanded_campus.strip()) >= 30:
+                return sanitize_ai_markdown(expanded_campus)
+        except Exception as ce:
+            logger.debug(f"[Campus ML expand attempt]: {ce}")
+
+        # Tier 5: Structured Institutional Fallback Template
         fallback_text = (
             f"Official Announcement Circular ({category.upper()}):\n\n"
             f"This is to formally notify all concerned students and faculty members regarding: {clean}.\n\n"
@@ -625,7 +634,14 @@ class AIService:
             except Exception as e:
                 logger.debug(f"Failed parsing LLM grammar JSON: {e}")
 
-        # Tier 4: Rule-based fallback
+        # Tier 4: Campus ML Engine Grammar & Tone Polisher
+        try:
+            from app.services.echosphere_ml_engine import CampusMLEngine
+            return CampusMLEngine.get_instance().polish_grammar_and_tone(clean)
+        except Exception as ce:
+            logger.debug(f"[Campus ML grammar attempt]: {ce}")
+
+        # Tier 5: Rule-based fallback
         corrected = clean[0].upper() + clean[1:]
         if not corrected.endswith(('.', '!', '?')):
             corrected += '.'
@@ -835,7 +851,18 @@ class AIService:
             if len(clean_sum.split()) <= 30:
                 return clean_sum
 
-        # Tier 4: Precision Qwen Campus Distillation Fallback (guaranteed concise 1-sentence)
+        # Tier 4: Campus ML Engine Semantic Summarizer
+        try:
+            from app.services.echosphere_ml_engine import CampusMLEngine
+            campus_summary = CampusMLEngine.get_instance().summarize_announcement(clean)
+            if campus_summary and len(campus_summary.strip()) >= 10:
+                clean_sum = sanitize_ai_markdown(campus_summary.strip())
+                clean_sum = re.sub(r'^(summary|executive summary|in summary)\s*[:\-–]\s*', '', clean_sum, flags=re.IGNORECASE).strip(' "\'')
+                return clean_sum
+        except Exception as ce:
+            logger.debug(f"[Campus ML summarize attempt]: {ce}")
+
+        # Tier 5: Precision Campus Distillation Fallback (guaranteed concise 1-sentence)
         return sanitize_ai_markdown(AIService.distill_qwen_campus_summary(clean))
 
     summarize_content = summarize

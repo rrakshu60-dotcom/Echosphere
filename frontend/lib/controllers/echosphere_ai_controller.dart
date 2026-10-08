@@ -281,12 +281,15 @@ class EchosphereAiController extends GetxController {
   }
 
   String summarizeText(String content) {
-    if (content.length < 60) return content;
-    final sentences = content.split(RegExp(r'(?<=[.!?])\s+'));
+    final clean = content.trim();
+    if (clean.length < 60) return clean;
+    final sentences = clean.split(RegExp(r'(?<=[.!?])\s+'));
     if (sentences.isNotEmpty) {
-      return 'Summary: ${sentences.first}';
+      final first = sentences.first.trim();
+      return first.toLowerCase().startsWith('summary:') ? first.substring(8).trim() : first;
     }
-    return 'Summary: ${content.substring(0, 80)}...';
+    final sub = clean.substring(0, 80).trim();
+    return sub.toLowerCase().startsWith('summary:') ? sub.substring(8).trim() : '$sub...';
   }
 
   Map<String, String> recommendPriorityAndCategory(String title, String description, {String? userRole}) {

@@ -1136,7 +1136,9 @@ class AnnouncementController extends GetxController {
       category: category,
       createdAt: DateTime.now(),
       scheduledAt: isScheduleLater ? scheduledDateTime : null,
-      aiSummary: 'Summary: $title',
+      aiSummary: description.trim().isNotEmpty
+          ? (description.split(RegExp(r'(?<=[.!?])\s+')).first.trim())
+          : title,
       attachments: attachments,
       deliverSpeaker: effectiveDeliverSpeaker,
       speakerNodeId: speakerNodeId,
@@ -1180,9 +1182,13 @@ class AnnouncementController extends GetxController {
           final idx = _rawAnnouncements.indexWhere((a) => a.id == newId);
           if (idx != -1) {
             final old = _rawAnnouncements[idx];
+            final backendSummary = res['ai_summary'] as String?;
             _rawAnnouncements[idx] = old.copyWith(
               id: backendId,
               repeatSchedule: repeatSchedule,
+              aiSummary: (backendSummary != null && backendSummary.trim().isNotEmpty)
+                  ? backendSummary.trim()
+                  : old.aiSummary,
             );
             _rawAnnouncements.refresh();
             update();
@@ -1217,9 +1223,13 @@ class AnnouncementController extends GetxController {
           final summary = await EchosphereApiService().summarizeContent(description);
           final idx = _rawAnnouncements.indexWhere((a) => a.id == newId || (backendId != null && a.id == backendId));
           if (idx != -1 && summary.isNotEmpty) {
+            final cleanSummary = summary.toLowerCase().startsWith('summary:')
+                ? summary.substring(8).trim()
+                : summary.trim();
             final old = _rawAnnouncements[idx];
-            _rawAnnouncements[idx] = old.copyWith(aiSummary: summary);
+            _rawAnnouncements[idx] = old.copyWith(aiSummary: cleanSummary);
             _rawAnnouncements.refresh();
+            update();
           }
         } catch (_) {}
       });

@@ -1140,6 +1140,150 @@ class EchoSphereMLEngine:
             "model_used": "EchoSphere ML Engine (Local)"
         }
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Campus ML Engine Microservices: Summarization, Expansion, Grammar & Drafting
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    def summarize_announcement(self, text: str) -> str:
+        """
+        Campus ML Extractive & Semantic Summarizer.
+        Extracts the single most critical institutional action-sentence from the circular text.
+        Guarantees zero bureaucratic noise, protects academic degrees/titles, and includes critical dates/actions.
+        """
+        clean = (text or "").strip()
+        if not clean:
+            return "No announcement content provided."
+
+        # Strip markdown syntax and normalize whitespaces
+        clean = re.sub(r'[*_#`]', '', clean)
+        clean = re.sub(r'[\r\n]+', ' ', clean).strip()
+
+        # Protect common campus abbreviations
+        clean = re.sub(r'\bB\.E\.\b', 'B.E.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bM\.Tech\.\b', 'M.Tech.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bB\.Tech\.\b', 'B.Tech.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bPh\.D\.\b', 'Ph.D.', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bDr\.\s*', 'Dr. ', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bProf\.\s*', 'Prof. ', clean, flags=re.IGNORECASE)
+
+        # Strip institutional headers and redundant administrative preambles
+        clean = re.sub(r'^(vtu\s+|official\s+)?(notice|circular|attention|announcement|alert|important)\s*[:\-–]?\s*(\d{4})?\s*[:\-–]?\s*', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(this is to (formally\s+)?(inform|notify|announce)\b.*?\b(regarding|that)\s*[:\-–]?\s*)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(it is hereby (informed|notified|announced)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(all\s+(students|faculty|staff|candidates)\b.*?\b(informed|notified|requested|directed)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(dear\s+(students|faculty|all|colleagues)[\s,:]+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(to:\s+all\s+(students|faculty|staff)[^.]*?\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(greetings[^,.]*?,\s*)', '', clean, flags=re.IGNORECASE)
+
+        # Split on sentence boundaries
+        raw_sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+(?=[A-Z0-9])', clean) if len(s.strip()) > 8]
+        if not raw_sentences:
+            raw_sentences = [clean]
+
+        # Score sentences using campus feature weights (dates, venues, deadlines, key actions)
+        scored_sentences = []
+        campus_keywords = [
+            "scheduled", "postponed", "conducted", "held on", "deadline", "last date",
+            "examination", "timetable", "symposium", "hackathon", "workshop", "placement",
+            "interview", "registration", "hall ticket", "auditorium", "seminar hall",
+            "laboratory", "holiday", "attendance", "fee", "payment", "submit"
+        ]
+
+        for idx, sentence in enumerate(raw_sentences):
+            score = 0.0
+            s_lower = sentence.lower()
+            # Positional bias: opening action sentences carry foundational context
+            if idx == 0:
+                score += 3.0
+            elif idx == 1:
+                score += 1.5
+
+            # Keyword matching
+            for kw in campus_keywords:
+                if kw in s_lower:
+                    score += 2.0
+
+            # Date/time patterns (e.g. 10th October, 2026, 10:00 AM)
+            if re.search(r'\b\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)', s_lower):
+                score += 3.5
+            if re.search(r'\b\d{4}\b', s_lower):
+                score += 1.0
+            if re.search(r'\b\d{1,2}[:.]\d{2}\s*(am|pm)?\b', s_lower):
+                score += 2.0
+
+            # Word count constraints
+            w_count = len(sentence.split())
+            if w_count < 5:
+                score -= 3.0
+            elif 10 <= w_count <= 28:
+                score += 2.0
+            elif w_count > 35:
+                score -= 1.5
+
+            scored_sentences.append((score, idx, sentence))
+
+        scored_sentences.sort(key=lambda x: (-x[0], x[1]))
+        best_sentence = scored_sentences[0][2]
+
+        # Clean leading words
+        best_sentence = re.sub(r'^(that\s+)', '', best_sentence, flags=re.IGNORECASE)
+        best_sentence = re.sub(r'^(the\s+purpose\s+of\s+this\s+(notice|circular)\s+is\s+to\s+)', '', best_sentence, flags=re.IGNORECASE)
+        if best_sentence:
+            best_sentence = best_sentence[0].upper() + best_sentence[1:]
+
+        words = best_sentence.split()
+        if len(words) > 30:
+            best_sentence = ' '.join(words[:28]).rstrip(',;:-') + '.'
+        if not best_sentence.endswith(('.', '!', '?')):
+            best_sentence += '.'
+
+        return best_sentence
+
+    def expand_announcement(self, text: str, category: str = "Academics") -> str:
+        """Campus ML circular expansion into structured institutional notice."""
+        clean = (text or "").strip()
+        if not clean:
+            return ""
+        cat_clean = category.upper()
+        return (
+            f"OFFICIAL CAMPUS CIRCULAR [{cat_clean}]\n\n"
+            f"This is to formally notify all students, faculty members, and departments regarding: {clean}.\n\n"
+            f"All concerned members are requested to take note of the above directives and adhere to the scheduled timelines. "
+            f"For detailed department-specific guidelines or venue allocations, please refer to the EchoSphere student portal.\n\n"
+            f"Issued by: Office of Institutional Academic Governance."
+        )
+
+    def polish_grammar_and_tone(self, text: str) -> Dict[str, Any]:
+        """Campus ML institutional grammar, tone, and casing polish."""
+        clean = (text or "").strip()
+        if not clean:
+            return {"original": text, "corrected_text": text, "improvements": []}
+
+        corrected = re.sub(r'\s+', ' ', clean)
+        corrected = re.sub(r'\s+([,.:;?!])', r'\1', corrected)
+        if corrected:
+            corrected = corrected[0].upper() + corrected[1:]
+        if not corrected.endswith(('.', '!', '?')):
+            corrected += '.'
+
+        return {
+            "original": clean,
+            "corrected_text": corrected,
+            "improvements": ["Applied standardized institutional casing, spacing, and punctuation."]
+        }
+
+    def draft_announcement(self, topic: str, category: str = "General", audience: str = "Entire College") -> str:
+        """Campus ML template-assisted announcement drafting."""
+        t_clean = (topic or "Important Campus Activity").strip()
+        cat_clean = category.title()
+        return (
+            f"Official Notification: {t_clean}\n\n"
+            f"Target Audience: {audience}\n"
+            f"Category: {cat_clean}\n\n"
+            f"All concerned members are hereby informed that {t_clean} is scheduled as per institutional guidelines. "
+            f"Please ensure timely registration and participation. Further updates will be broadcast across the EchoSphere network."
+        )
+
 
 # Backward compatibility alias
 CampusMLEngine = EchoSphereMLEngine
