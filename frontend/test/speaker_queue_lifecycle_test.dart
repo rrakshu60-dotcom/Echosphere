@@ -438,11 +438,11 @@ void main() {
 
           debugPrint("=== OVERFLOWING RENDERFLEX FOUND ===");
 
-          debugPrint("RO: " + ro.toStringShort());
+          debugPrint("RO: ${ro.toStringShort()}");
 
-          debugPrint("CREATOR: " + ro.debugCreator.toString());
+          debugPrint("CREATOR: ${ro.debugCreator}");
 
-          debugPrint("SIZE: " + ro.size.toString() + " CONSTRAINTS: " + ro.constraints.toString());
+          debugPrint("SIZE: ${ro.size} CONSTRAINTS: ${ro.constraints}");
 
         }
 
