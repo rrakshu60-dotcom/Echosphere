@@ -601,6 +601,16 @@ class SpeakerQueueController extends GetxController {
     _updateActiveNoticeMetrics();
     userPausedOrStopped.value = false;
 
+    final item = queueItems[activeIndex.value];
+    final annId = item['announcement_id'] as int? ?? item['id'] as int?;
+    if (annId != null && annId > 0) {
+      completedSinglePlayAnnouncementIds.remove(annId);
+      dismissedAnnouncementIds.remove(annId);
+      if (Get.isRegistered<AnnouncementController>()) {
+        Get.find<AnnouncementController>().playedSpeakerNoticeIds.remove(annId);
+      }
+    }
+
     // Mark active item as Playing and others as Queued
     for (int i = 0; i < queueItems.length; i++) {
       queueItems[i]['status'] = (i == activeIndex.value) ? 'Playing' : 'Queued';
@@ -610,7 +620,6 @@ class SpeakerQueueController extends GetxController {
     isPlaying.value = true;
     _startPlaybackTimer();
 
-    final item = queueItems[activeIndex.value];
     final targetId = item['announcement_id'] as int? ?? item['id'] as int?;
     if (!Get.testMode && targetId != null) {
       final queueId = item['id'] as int? ?? targetId;
@@ -776,6 +785,7 @@ class SpeakerQueueController extends GetxController {
       if (!Get.testMode) {
         await Future.delayed(const Duration(milliseconds: 1500));
       }
+      if (userPausedOrStopped.value || queueItems.isEmpty) return;
       // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
       final emergencyIdx = queueItems.indexWhere((q) => _isItemEmergency(q));
 
@@ -986,8 +996,11 @@ class SpeakerQueueController extends GetxController {
     final nodeName = _getNodeName(targetNodeId);
 
     // 1. Mark in AnnouncementController so local list recognizes it as speaker notice
+    completedSinglePlayAnnouncementIds.remove(announcement.id);
+    dismissedAnnouncementIds.remove(announcement.id);
     if (Get.isRegistered<AnnouncementController>()) {
       final annCtrl = Get.find<AnnouncementController>();
+      annCtrl.playedSpeakerNoticeIds.remove(announcement.id);
       final idx = annCtrl.rxAnnouncements.indexWhere((a) => a.id == announcement.id);
       if (idx != -1) {
         final old = annCtrl.rxAnnouncements[idx];
