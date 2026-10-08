@@ -15,6 +15,11 @@ if sys.platform == "win32":
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.enums.announcement import (
+    AnnouncementPriority,
+    AnnouncementStatus,
+    EmergencyLevel,
+)
 from app.db.database import Base
 from app.models.announcement import Announcement
 from app.models.announcement_category import AnnouncementCategory
@@ -633,7 +638,96 @@ def test_repeat_schedule_suite():
     db.refresh(q_hi)
     assert q_em.status == "Completed"
     assert q_hi.status == "Playing"
-    print("  ✓ After emergency window ends: Emergency completed and High notice resumed playing!")
+    # ----------------------------------------------------
+    # TEST 11: Single Play Notice Published Without Rescheduling Plays Once & Never Repeats
+    # ----------------------------------------------------
+    print("\n🔍 [TEST 11] Testing Single-Play Notice (No Rescheduling Configured)...")
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    ann_single = Announcement(
+        title="Single Play Meeting Notice",
+        description="Meeting in Conference Room A at 3 PM today.",
+        priority="NORMAL",
+        emergency_level="NORMAL",
+        created_by=user.id,
+        category_id=cat.id,
+        status="PUBLISHED",
+    )
+    db.add(ann_single)
+    db.commit()
+    db.add(AnnouncementDelivery(announcement_id=ann_single.id, delivery_type_id=deliv_speaker.id))
+    db.commit()
+
+    from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+    enq_res = enqueue_and_broadcast_announcement(
+        db=db,
+        announcement_id=ann_single.id,
+        title=ann_single.title,
+        content=ann_single.description,
+        is_emergency=False,
+    )
+    q_single = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_single.id).first()
+    assert q_single is not None
+    q_single.status = "Playing"
+    q_single.played_at = now
+    db.commit()
+
+    # Advance queue -> completed playback
+    auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_single)
+    assert q_single.status == "Completed", f"Expected Single-Play notice to be Completed, got {q_single.status}"
+    print("  ✓ Notice without rescheduling marked 'Completed' after single playback!")
+
+    # Attempt re-enqueue -> Must NOT revive completed notice
+    enq_again = enqueue_and_broadcast_announcement(
+        db=db,
+        announcement_id=ann_single.id,
+        title=ann_single.title,
+        content=ann_single.description,
+        is_emergency=False,
+    )
+    db.refresh(q_single)
+    assert q_single.status == "Completed", "Completed single-play notice must never be revived into Playing or Queued!"
+    print("  ✓ Duplicate enqueue blocked: Notice remains 'Completed' permanently and never repeats!")
+
+    # ----------------------------------------------------
+    # TEST 12: Emergency Notice Published Without Rescheduling Does NOT Loop Infinitely
+    # ----------------------------------------------------
+    print("\n🔍 [TEST 12] Testing Emergency Notice Without Rescheduling (Plays Once & Completes)...")
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    ann_em_single = Announcement(
+        title="URGENT: Flash Flood Warning Near North Gate",
+        description="Avoid north gate parking area due to sudden flash flooding.",
+        priority=AnnouncementPriority.HIGH,
+        emergency_level=EmergencyLevel.EMERGENCY,
+        created_by=user.id,
+        category_id=cat.id,
+        status=AnnouncementStatus.PUBLISHED,
+    )
+    db.add(ann_em_single)
+    db.commit()
+    db.add(AnnouncementDelivery(announcement_id=ann_em_single.id, delivery_type_id=deliv_speaker.id))
+    db.commit()
+
+    enq_em_res = enqueue_and_broadcast_announcement(
+        db=db,
+        announcement_id=ann_em_single.id,
+        title=ann_em_single.title,
+        content=ann_em_single.description,
+        is_emergency=True,
+    )
+    q_em_single = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_em_single.id).first()
+    assert q_em_single is not None
+    assert q_em_single.status == "Playing"
+
+    # Advance queue -> Since no repeat schedule configured, emergency notice completes!
+    auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_em_single)
+    assert q_em_single.status == "Completed", f"Emergency notice without repeat schedule must complete, got {q_em_single.status}"
+    print("  ✓ Emergency notice without repeat schedule completes after single broadcast without infinite loop!")
 
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")

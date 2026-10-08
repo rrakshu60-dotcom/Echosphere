@@ -732,7 +732,8 @@ def update_queue_action(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
+    from sqlalchemy import or_
+    item = db.query(SpeakerQueue).filter(or_(SpeakerQueue.id == id, SpeakerQueue.announcement_id == id)).order_by(SpeakerQueue.id.desc()).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
@@ -742,14 +743,7 @@ def update_queue_action(
     if act_clean == "complete":
         ann = item.announcement
         is_emerg = is_emergency_announcement(ann)
-        if is_emerg:
-            # Emergency notices loop continuously
-            item.status = "Playing"
-            item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            db.commit()
-            return {"status": "success", "queue_id": id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
         from app.services.repeat_schedule_service import (
             get_current_ist_datetime,
             get_active_break_slots,
@@ -760,10 +754,6 @@ def update_queue_action(
             RepeatSlotExecutionLog,
         )
 
-        ist_now = get_current_ist_datetime()
-        time_str = ist_now.strftime("%H:%M")
-        active_slots = get_active_break_slots(time_str)
-
         sched = (
             db.query(AnnouncementRepeatSchedule)
             .filter(
@@ -773,19 +763,30 @@ def update_queue_action(
             .first()
         ) if item.announcement_id else None
 
-        is_slot_active = False
-        if sched:
-            matched = is_slot_active_at_time(sched, time_str, active_slots)
-            if matched:
-                is_slot_active = True
+        ist_now = get_current_ist_datetime()
+        time_str = ist_now.strftime("%H:%M")
+        active_slots = get_active_break_slots(time_str)
+        matched = is_slot_active_at_time(sched, time_str, active_slots) if sched else []
+        is_slot_active = bool(matched)
 
-        if is_slot_active:
+        if is_emerg and is_slot_active and sched:
+            # Emergency notices loop continuously ONLY if repeat schedule is configured and slot is active
+            item.status = "Playing"
+            item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            return {"status": "success", "queue_id": item.id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
+
+        if is_slot_active and sched:
             # Re-queue at the back of queue so all notices in this slot rotate repeatedly!
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             sched.total_played_count += 1
+            slot_name = matched[0] if matched else "REPEAT_SLOT"
+            date_str = ist_now.strftime("%Y-%m-%d")
+            prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
             exec_log = RepeatSlotExecutionLog(
                 schedule_id=sched.id,
-                slot_key=f"{sched.announcement_id}:SLOT:{sched.total_played_count}",
-                slot_name="REPEAT_SLOT",
+                slot_key=f"{prefix_key}:{sched.total_played_count}",
+                slot_name=slot_name,
                 played_at=now,
             )
             db.add(exec_log)
@@ -795,6 +796,7 @@ def update_queue_action(
             item.played_at = None
             new_status = "Queued"
         else:
+            # No repeat schedule or slot ended -> mark completed!
             item.status = "Completed"
             new_status = "Completed"
 
@@ -810,7 +812,7 @@ def update_queue_action(
 
         return {
             "status": "success",
-            "queue_id": id,
+            "queue_id": item.id,
             "action": action,
             "new_status": new_status,
             "auto_advance": adv_res,
