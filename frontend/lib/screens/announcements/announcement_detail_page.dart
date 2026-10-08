@@ -46,6 +46,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   }
   String? _aiSummary;
   bool _isSummarizing = false;
+  bool _showAiSummary = false; // Closed by default - user explicitly taps to view
   bool _isBroadcasting = false;
   CalendarEventData? _calendarEvent;
   Map<String, dynamic>? _repeatSchedule;
@@ -69,22 +70,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       content: widget.announcement.description,
       summary: widget.announcement.aiSummary,
     );
-    // If notice summary is not yet present, pre-generate with Qwen in background
-    if (_aiSummary == null || _aiSummary!.isEmpty) {
-      EchosphereApiService().summarizeContent(widget.announcement.description).then((sum) {
-        if (mounted && sum.isNotEmpty) {
-          setState(() {
-            _aiSummary = sum;
-          });
-          TtsAudioService.instance.prewarmAnnouncement(
-            widget.announcement.id,
-            title: widget.announcement.title,
-            content: widget.announcement.description,
-            summary: sum,
-          );
-        }
-      }).catchError((_) {});
-    }
   }
 
   Future<void> _fetchCalendarEvent() async {
@@ -357,6 +342,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       if (mounted) {
         setState(() {
           _aiSummary = summary;
+          _showAiSummary = true;
           _isSummarizing = false;
         });
         if (Get.isRegistered<AnnouncementController>()) {
@@ -550,8 +536,63 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                         ),
                         const SizedBox(height: 16),
 
-                        // AI Summary Box (With On-Demand AI Summarizer powered by trained model)
-                        if (_aiSummary != null && _aiSummary!.isNotEmpty)
+                        // AI Summary Box (Opt-in & Closed by default - never forced upon user)
+                        if (!_showAiSummary)
+                          EchoSphereContainer(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.auto_awesome, color: EchoSpherePalette.lightPrimary, size: 20),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    (_aiSummary != null && _aiSummary!.isNotEmpty)
+                                        ? 'AI Summary available'
+                                        : 'AI Summary (Optional)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    if (_aiSummary != null && _aiSummary!.isNotEmpty) {
+                                      setState(() => _showAiSummary = true);
+                                    } else {
+                                      _generateAiSummary();
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: _isSummarizing
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : const Icon(Icons.visibility_outlined, size: 14),
+                                  label: Text(
+                                    _isSummarizing
+                                        ? 'Generating...'
+                                        : ((_aiSummary != null && _aiSummary!.isNotEmpty)
+                                            ? 'View AI Summary'
+                                            : 'Generate AI Summary'),
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          // Expanded AI Summary Box with [Hide] option
                           EchoSphereContainer(
                             padding: const EdgeInsets.all(16.0),
                             child: Row(
@@ -586,13 +627,17 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                                 final isPlayingSummary = audio.isAnnouncementPlaying(announcement.id) && audio.readMode.value == 'summary';
                                                 return InkWell(
                                                   onTap: () {
-                                                    audio.playAnnouncement(
-                                                      announcement.id,
-                                                      title: announcement.title,
-                                                      content: announcement.description,
-                                                      summary: _aiSummary,
-                                                      forceMode: 'summary',
-                                                    );
+                                                    if (isPlayingSummary) {
+                                                      audio.stop();
+                                                    } else {
+                                                      audio.playAnnouncement(
+                                                        announcement.id,
+                                                        title: announcement.title,
+                                                        content: announcement.description,
+                                                        summary: _aiSummary,
+                                                        forceMode: 'summary',
+                                                      );
+                                                    }
                                                   },
                                                   borderRadius: BorderRadius.circular(4),
                                                   child: Padding(
@@ -601,17 +646,17 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                                       mainAxisSize: MainAxisSize.min,
                                                       children: [
                                                         Icon(
-                                                          isPlayingSummary ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
+                                                          isPlayingSummary ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
                                                           size: 14,
-                                                          color: theme.colorScheme.primary,
+                                                          color: isPlayingSummary ? Colors.redAccent : theme.colorScheme.primary,
                                                         ),
                                                         const SizedBox(width: 3),
                                                         Text(
-                                                          isPlayingSummary ? 'Playing' : 'Listen',
+                                                          isPlayingSummary ? 'Stop' : 'Listen',
                                                           style: TextStyle(
                                                             fontSize: 11,
                                                             fontWeight: FontWeight.bold,
-                                                            color: theme.colorScheme.primary,
+                                                            color: isPlayingSummary ? Colors.redAccent : theme.colorScheme.primary,
                                                           ),
                                                         ),
                                                       ],
@@ -656,13 +701,39 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                                   ],
                                                 ),
                                               ),
+                                              InkWell(
+                                                onTap: () => setState(() => _showAiSummary = false),
+                                                borderRadius: BorderRadius.circular(4),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.expand_less_rounded,
+                                                        size: 14,
+                                                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        'Hide',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        _aiSummary!,
+                                        _aiSummary ?? '',
                                         style: TextStyle(
                                           fontSize: 13,
                                           height: 1.4,
@@ -670,45 +741,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                         ),
                                       ),
                                     ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          EchoSphereContainer(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.auto_awesome, color: EchoSpherePalette.lightPrimary, size: 24),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Need a fast overview? Generate an AI summary in seconds.',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: theme.colorScheme.onSurface.withOpacity(0.7),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(
-                                  onPressed: _isSummarizing ? null : _generateAiSummary,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: theme.colorScheme.primary,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  ),
-                                  icon: _isSummarizing
-                                      ? const SizedBox(
-                                          width: 14,
-                                          height: 14,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                        )
-                                      : const Icon(Icons.auto_awesome, size: 14),
-                                  label: Text(
-                                    _isSummarizing ? 'Summarizing...' : 'Summarize',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ],

@@ -61,12 +61,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Verify AI Summary banner is initially shown
-    expect(find.text('AI Summary'), findsOneWidget);
-    expect(find.text('Elective registration and lab fee payments must be completed by Friday evening.'), findsOneWidget);
-
-    // Verify "Hide Summary" button exists
-    expect(find.text('Hide Summary'), findsOneWidget);
+    // Verify AI Summary banner is initially CLOSED by default (opt-in AI)
+    expect(find.text('AI Summary'), findsNothing);
+    expect(find.text('View AI Summary'), findsOneWidget);
 
     // Verify Kokoro TTS "Listen" button exists side-by-side
     expect(find.text('Listen'), findsOneWidget);
@@ -77,20 +74,21 @@ void main() {
     // Verify zero layout overflow error
     expect(tester.takeException(), isNull);
 
-    // Tap "Hide Summary" to toggle off
-    await tester.tap(find.text('Hide Summary'));
+    // Tap "View AI Summary" to toggle on
+    await tester.tap(find.text('View AI Summary'));
     await tester.pumpAndSettle();
 
-    // Banner should be hidden and button text should be "View Summary"
-    expect(find.text('AI Summary'), findsNothing);
-    expect(find.text('View Summary'), findsOneWidget);
-
-    // Tap "View Summary" to toggle on
-    await tester.tap(find.text('View Summary'));
-    await tester.pumpAndSettle();
-
+    // Banner should now be displayed with "Hide AI Summary"
     expect(find.text('AI Summary'), findsOneWidget);
-    expect(find.text('Hide Summary'), findsOneWidget);
+    expect(find.text('Elective registration and lab fee payments must be completed by Friday evening.'), findsOneWidget);
+    expect(find.text('Hide AI Summary'), findsOneWidget);
+
+    // Tap "Hide AI Summary" to toggle off
+    await tester.tap(find.text('Hide AI Summary'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI Summary'), findsNothing);
+    expect(find.text('View AI Summary'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -170,9 +168,23 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Verify AI Summary title
+    // Verify AI Summary is initially closed by default (opt-in AI)
+    expect(find.text('AI Summary'), findsNothing);
+    expect(find.text('View AI Summary'), findsOneWidget);
+
+    // Tap "View AI Summary" to view
+    await tester.tap(find.text('View AI Summary'));
+    await tester.pumpAndSettle();
+
+    // Now AI Summary is visible
     expect(find.text('AI Summary'), findsOneWidget);
     expect(find.text('GPU cluster lab is closed this Saturday for maintenance.'), findsOneWidget);
+
+    // Tap "Hide" to collapse back
+    await tester.tap(find.text('Hide'));
+    await tester.pumpAndSettle();
+    expect(find.text('AI Summary'), findsNothing);
+    expect(find.text('View AI Summary'), findsOneWidget);
 
     // Verify audio player bar is also mounted separately
     expect(find.text('Listen to Notice'), findsOneWidget);

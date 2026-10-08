@@ -12,6 +12,7 @@ import 'package:echosphere/screens/notifications/notifications_page.dart';
 import 'package:echosphere/screens/profile/profile_page.dart';
 import 'package:echosphere/widgets/common/glow.dart';
 import 'package:echosphere/widgets/common/navbar.dart';
+import 'package:echosphere/widgets/home_mini_tts_player_bar.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
@@ -152,19 +153,24 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
 
-      // Mobile Bottom Navigation Bar (Uniform DevAdmin Glassmorphic Design)
+      // Mobile Bottom Navigation Bar with docked Mini TTS Player Bar
       bottomNavigationBar: Obx(() {
         final _ = authController.currentUser.value;
         final navItems = _buildNavItems(context);
         final safeIndex = _selectedNavIndex >= navItems.length ? 0 : _selectedNavIndex;
 
-        return isDesktop
-            ? const SizedBox.shrink()
-            : ResponsiveNavBar(
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const HomeMiniTtsPlayerBar(),
+            if (!isDesktop)
+              ResponsiveNavBar(
                 isDesktop: false,
                 currentIndex: safeIndex,
                 items: navItems,
-              );
+              ),
+          ],
+        );
       }),
 
       // Floating Creation Button for authorized users (Non-Student)

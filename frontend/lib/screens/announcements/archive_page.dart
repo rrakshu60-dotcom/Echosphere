@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/widgets/common/glow.dart';
 import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
@@ -227,28 +227,9 @@ class _ArchivePageState extends State<ArchivePage> {
                               ),
                               const SizedBox(height: 10),
 
-                              // AI Summary
+                              // AI Summary (Closed by default - user explicitly taps to view)
                               if (item.aiSummary != null && item.aiSummary!.isNotEmpty) ...[
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 18),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'AI Summary: ${item.aiSummary}',
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                _ArchiveSummaryToggle(summary: item.aiSummary!),
                                 const SizedBox(height: 10),
                               ],
 
@@ -327,6 +308,120 @@ class _ArchivePageState extends State<ArchivePage> {
         ),
       ),
     ),
+    );
+  }
+}
+
+class _ArchiveSummaryToggle extends StatefulWidget {
+  final String summary;
+  const _ArchiveSummaryToggle({required this.summary});
+
+  @override
+  State<_ArchiveSummaryToggle> createState() => _ArchiveSummaryToggleState();
+}
+
+class _ArchiveSummaryToggleState extends State<_ArchiveSummaryToggle> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (!_expanded) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          onTap: () => setState(() => _expanded = true),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.25),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_outlined, size: 13, color: theme.colorScheme.primary),
+                const SizedBox(width: 5),
+                Text(
+                  'View AI Summary',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'AI Summary',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () => setState(() => _expanded = false),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.expand_less_rounded, size: 14, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Hide',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.summary,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
     );
   }
 }

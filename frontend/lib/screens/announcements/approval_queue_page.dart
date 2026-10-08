@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
@@ -906,33 +906,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                             ),
                             if (item.aiSummary != null && item.aiSummary!.isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withOpacity(0.06),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        item.aiSummary!,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: theme.colorScheme.onSurface.withOpacity(0.85),
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              _QueueSummaryToggle(summary: item.aiSummary!),
                             ],
                             const SizedBox(height: 10),
                             Text(
@@ -1093,3 +1067,122 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     });
   }
 }
+
+class _QueueSummaryToggle extends StatefulWidget {
+  final String summary;
+  const _QueueSummaryToggle({required this.summary});
+
+  @override
+  State<_QueueSummaryToggle> createState() => _QueueSummaryToggleState();
+}
+
+class _QueueSummaryToggleState extends State<_QueueSummaryToggle> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (!_expanded) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          onTap: () => setState(() => _expanded = true),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.25),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_outlined, size: 12, color: theme.colorScheme.primary),
+                const SizedBox(width: 4),
+                Text(
+                  'View AI Summary',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, size: 13, color: theme.colorScheme.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'AI Summary',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () => setState(() => _expanded = false),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.expand_less_rounded, size: 13, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Hide',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            widget.summary,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: theme.colorScheme.onSurface.withOpacity(0.85),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

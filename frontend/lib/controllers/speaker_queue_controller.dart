@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
@@ -35,6 +36,47 @@ class SpeakerQueueController extends GetxController {
 
   /// Set of announcement IDs that have finished single broadcast and should never repeat
   final Set<int> completedSinglePlayAnnouncementIds = <int>{};
+
+  Future<void> _loadPersistedCompletedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('echosphere_completed_speaker_queue_ids') ?? [];
+      completedSinglePlayAnnouncementIds.addAll(list.map((e) => int.tryParse(e)).whereType<int>());
+    } catch (_) {}
+  }
+
+  Future<void> _savePersistedCompletedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'echosphere_completed_speaker_queue_ids',
+        completedSinglePlayAnnouncementIds.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Replaces a temporary local announcement ID with the real backend-assigned ID in-place
+  void replaceTemporaryId(int oldId, int newId) {
+    bool changed = false;
+    for (var item in queueItems) {
+      if (item['id'] == oldId || item['announcement_id'] == oldId) {
+        item['id'] = newId;
+        item['announcement_id'] = newId;
+        item['audio_url'] = '/static/audio_streams/announcement_$newId.mp3';
+        changed = true;
+      }
+    }
+    if (dismissedAnnouncementIds.remove(oldId)) {
+      dismissedAnnouncementIds.add(newId);
+    }
+    if (completedSinglePlayAnnouncementIds.remove(oldId)) {
+      completedSinglePlayAnnouncementIds.add(newId);
+      _savePersistedCompletedIds();
+    }
+    if (changed) {
+      queueItems.refresh();
+    }
+  }
 
   Timer? _playbackTimer;
   Timer? _pollTimer;
@@ -95,6 +137,7 @@ class SpeakerQueueController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _loadPersistedCompletedIds();
     speakerNodes.assignAll(defaultSpeakerNodes);
     refreshQueue();
 
@@ -254,45 +297,63 @@ class SpeakerQueueController extends GetxController {
 
     bool changed = false;
     for (var notice in finalCandidates) {
-      if (dismissedAnnouncementIds.contains(notice.id)) continue;
-      final exists = queueItems.any((q) =>
-          (q['announcement_id'] == notice.id || q['id'] == notice.id) &&
-          q['status'] != 'Completed' && q['status'] != 'Cancelled');
-      if (!exists) {
-        final isEm = notice.priority.toUpperCase() == 'EMERGENCY' ||
-            notice.title.toLowerCase().contains('earthquake') ||
-            notice.title.toLowerCase().contains('emergency') ||
-            notice.title.toLowerCase().contains('evacuat');
-        final nodeName = _getNodeName(notice.speakerNodeId);
-        final itemMap = {
-          'id': notice.id,
-          'announcement_id': notice.id,
-          'title': isEm && notice.repeatSchedule != null ? '[EMERGENCY REPEAT] ${notice.title}' : notice.title,
-          'description': notice.description,
-          'department': notice.department,
-          'priority': isEm ? 'EMERGENCY' : notice.priority,
-          'category': notice.category,
-          'type': 'AI Speech',
-          'status': 'Queued',
-          'queue_position': queueItems.length + 1,
-          'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
-          'speaker_node_id': notice.speakerNodeId,
-          'node_name': nodeName,
-          'duration_seconds': notice.durationSeconds,
-          'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
-          'repeat_schedule': notice.repeatSchedule,
-          'has_repeat': notice.repeatSchedule != null,
-          'repeat_round': 1,
-          'played_count': 0,
-        };
-
-        if (isEm) {
-          queueItems.insert(0, itemMap);
-        } else {
-          queueItems.add(itemMap);
-        }
-        changed = true;
+      if (dismissedAnnouncementIds.contains(notice.id) ||
+          completedSinglePlayAnnouncementIds.contains(notice.id)) {
+        continue;
       }
+
+      // Check if already in queue by id or by matching title and department
+      final matchIdx = queueItems.indexWhere((q) =>
+          q['announcement_id'] == notice.id ||
+          q['id'] == notice.id ||
+          ((q['title'] ?? '').toString().trim().toLowerCase() == notice.title.trim().toLowerCase() &&
+           (q['department'] ?? '').toString() == notice.department));
+
+      if (matchIdx != -1) {
+        // Already in queue! Reconcile temporary ID if needed and never duplicate
+        final existingItem = queueItems[matchIdx];
+        if (existingItem['id'] != notice.id || existingItem['announcement_id'] != notice.id) {
+          existingItem['id'] = notice.id;
+          existingItem['announcement_id'] = notice.id;
+          existingItem['audio_url'] = '/static/audio_streams/announcement_${notice.id}.mp3';
+          changed = true;
+        }
+        continue;
+      }
+
+      final isEm = notice.priority.toUpperCase() == 'EMERGENCY' ||
+          notice.title.toLowerCase().contains('earthquake') ||
+          notice.title.toLowerCase().contains('emergency') ||
+          notice.title.toLowerCase().contains('evacuat');
+      final nodeName = _getNodeName(notice.speakerNodeId);
+      final itemMap = {
+        'id': notice.id,
+        'announcement_id': notice.id,
+        'title': isEm && notice.repeatSchedule != null ? '[EMERGENCY REPEAT] ${notice.title}' : notice.title,
+        'description': notice.description,
+        'department': notice.department,
+        'priority': isEm ? 'EMERGENCY' : notice.priority,
+        'category': notice.category,
+        'type': 'AI Speech',
+        'status': 'Queued',
+        'queue_position': queueItems.length + 1,
+        'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
+        'speaker_node_id': notice.speakerNodeId,
+        'node_name': nodeName,
+        'duration_seconds': notice.durationSeconds,
+        'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
+        'repeat_schedule': notice.repeatSchedule,
+        'has_repeat': notice.repeatSchedule != null,
+        'repeat_round': 1,
+        'played_count': 0,
+      };
+
+      if (isEm) {
+        queueItems.insert(0, itemMap);
+      } else {
+        queueItems.add(itemMap);
+      }
+      changed = true;
     }
 
     if (changed) {
@@ -448,7 +509,13 @@ class SpeakerQueueController extends GetxController {
         }).toList();
 
         for (var notice in speakerNotices) {
-          if (!seenAnnouncementIds.contains(notice.id) && !dismissedAnnouncementIds.contains(notice.id)) {
+          final alreadyInCombined = combined.any((c) =>
+              c['announcement_id'] == notice.id ||
+              c['id'] == notice.id ||
+              ((c['title'] ?? '').toString().trim().toLowerCase() == notice.title.trim().toLowerCase() &&
+               (c['department'] ?? '').toString() == notice.department));
+
+          if (!alreadyInCombined && !seenAnnouncementIds.contains(notice.id) && !dismissedAnnouncementIds.contains(notice.id)) {
             seenAnnouncementIds.add(notice.id);
             final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == notice.id || item['id'] == notice.id));
             final existingPlayedCount = existing?['played_count'] as int? ?? 0;
@@ -766,11 +833,19 @@ class SpeakerQueueController extends GetxController {
       // All repeats completed (or single play notice, or repeat slot ended)
       dismissedAnnouncementIds.add(annId);
       completedSinglePlayAnnouncementIds.add(annId);
+      _savePersistedCompletedIds();
       if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
         Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
       }
 
       queueItems.removeAt(activeIndex.value);
+      // Purge any duplicate records of this notice with no repeat schedule
+      queueItems.removeWhere((q) =>
+          (q['announcement_id'] == annId ||
+           q['id'] == annId ||
+           (q['title'] ?? '').toString().trim().toLowerCase() == playedTitle.trim().toLowerCase()) &&
+          q['has_repeat'] != true &&
+          q['repeat_schedule'] == null);
       currentElapsedSeconds.value = 0;
 
       final finishMsg = hasRepeat
@@ -847,6 +922,16 @@ class SpeakerQueueController extends GetxController {
   /// Advances to the next eligible queued notice on a First Come First Serve (FCFS) basis,
   /// respecting scheduled times (only playing notices whose scheduled_time <= now).
   void _advanceToNextEligibleNotice() {
+    // Purge any completed single-play notices before advancing
+    queueItems.removeWhere((q) {
+      final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+      final hasRepeat = q['has_repeat'] == true || q['repeat_schedule'] != null;
+      return !hasRepeat &&
+          (completedSinglePlayAnnouncementIds.contains(annId) ||
+           dismissedAnnouncementIds.contains(annId) ||
+           (Get.isRegistered<AnnouncementController>() && Get.find<AnnouncementController>().playedSpeakerNoticeIds.contains(annId)));
+    });
+
     if (queueItems.isEmpty) {
       isPlaying.value = false;
       return;

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -16,13 +16,16 @@ class TtsAudioService extends GetxService {
   final EchosphereApiService _api = EchosphereApiService();
 
   final Rx<int?> currentAnnouncementId = Rx<int?>(null);
+  final RxString activeAnnouncementTitle = ''.obs;
   final RxBool isPlaying = false.obs;
   final RxBool isBuffering = false.obs;
   final Rx<Duration> position = Duration.zero.obs;
   final Rx<Duration> duration = Duration.zero.obs;
-  final RxString engine = 'Kokoro-82M'.obs;
+  final RxString engine = 'AI Voice'.obs;
   final RxString voiceName = 'American Female'.obs;
   final RxString statusMessage = ''.obs;
+
+  bool get isAnyPlaying => isPlaying.value || isBuffering.value;
 
   // Voice Customization Controls
   final RxString selectedGender = 'female'.obs; // 'female' | 'male'
@@ -70,6 +73,7 @@ class TtsAudioService extends GetxService {
       isPlaying.value = false;
       position.value = Duration.zero;
       isBuffering.value = false;
+      activeAnnouncementTitle.value = '';
       _lastPlayedGender = null;
       _lastPlayedAccent = null;
       _lastPlayedMode = null;
@@ -320,6 +324,7 @@ class TtsAudioService extends GetxService {
       // Stop previous track before switching voice / announcement
       await stop();
       currentAnnouncementId.value = id;
+      activeAnnouncementTitle.value = title ?? _activeTitle ?? 'Notice #$id';
       isBuffering.value = true;
       position.value = Duration.zero;
       duration.value = Duration.zero;
@@ -496,6 +501,7 @@ class TtsAudioService extends GetxService {
     try {
       await _player.stop();
       currentAnnouncementId.value = null;
+      activeAnnouncementTitle.value = '';
       isPlaying.value = false;
       isBuffering.value = false;
       position.value = Duration.zero;
