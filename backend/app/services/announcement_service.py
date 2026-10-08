@@ -169,14 +169,19 @@ def create_announcement_service(
     try:
         from app.services.ai_service import AIService
         desc_text = (request.description or "").strip()
-        if len(desc_text) > 10:
-            generated_summary = AIService.summarize(desc_text)
+        text_to_summarize = desc_text if len(desc_text) > 10 else f"{request.title}. {desc_text}".strip()
+        generated_summary = AIService.summarize(text_to_summarize)
     except Exception as e:
         logger.warning(f"AI summarization attempt failed on creation: {e}")
 
     if not generated_summary or len(generated_summary.strip()) < 10:
         from app.services.ai_service import AIService
-        generated_summary = AIService.distill_qwen_campus_summary(request.description or request.title)
+        fallback_text = (request.description or "").strip() or request.title
+        generated_summary = AIService.distill_qwen_campus_summary(fallback_text)
+
+    # Clean any lingering "Summary:" or quotes from final summary
+    if generated_summary:
+        generated_summary = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', generated_summary, flags=re.IGNORECASE).strip(' "\'')
 
     announcement = Announcement(
         title=request.title,

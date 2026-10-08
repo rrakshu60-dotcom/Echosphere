@@ -179,10 +179,11 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
             p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
             active_content = (ann.ai_summary or ann.description or "").strip()
-            for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+            for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:", "SUMMARY:"):
                 if active_content.upper().startswith(prefix):
                     active_content = active_content[len(prefix):].strip()
             active_content = re.sub(r'[*_#`]', '', active_content).strip()
+            active_content = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', active_content, flags=re.IGNORECASE).strip()
             active_content = re.sub(r'\s+', ' ', active_content)[:240]
             active_dict = {
                 "is_playing": True,
@@ -277,10 +278,11 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         if not summary_raw:
             summary_raw = (n.description or n.title or "").strip()
 
-        for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+        for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:", "SUMMARY:"):
             if summary_raw.upper().startswith(prefix):
                 summary_raw = summary_raw[len(prefix):].strip()
         summary_clean = re.sub(r'[*_#`]', '', summary_raw).strip()
+        summary_clean = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', summary_clean, flags=re.IGNORECASE).strip()
         summary_clean = re.sub(r'\s+', ' ', summary_clean)[:240]
         daily_list.append({
             "id": n.id,
