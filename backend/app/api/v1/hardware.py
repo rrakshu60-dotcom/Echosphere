@@ -197,16 +197,27 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav",
             }
 
-    # 2. Daily important published announcements for idle display ticker (only from today)
+    # 2. Daily important announcements for idle display ticker (today's notices prioritized)
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     now_ist = now_utc + timedelta(hours=5, minutes=30)
     start_of_today_ist = datetime(now_ist.year, now_ist.month, now_ist.day)
     start_of_today_utc = start_of_today_ist - timedelta(hours=5, minutes=30)
 
+    active_statuses = [
+        AnnouncementStatus.PUBLISHED,
+        AnnouncementStatus.SCHEDULED,
+        "Published",
+        "PUBLISHED",
+        "Approved",
+        "APPROVED",
+        "Scheduled",
+        "SCHEDULED",
+    ]
+
     published_notices = (
         db.query(Announcement)
         .filter(
-            Announcement.status == AnnouncementStatus.PUBLISHED,
+            Announcement.status.in_(active_statuses),
             Announcement.created_at >= start_of_today_utc,
         )
         .order_by(Announcement.created_at.desc())
@@ -217,7 +228,29 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     if not published_notices:
         published_notices = (
             db.query(Announcement)
-            .filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+            .filter(Announcement.status.in_(active_statuses))
+            .order_by(Announcement.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
+    # Fallback to any recent non-archived/non-rejected notice if none are formally published yet
+    if not published_notices:
+        published_notices = (
+            db.query(Announcement)
+            .filter(
+                Announcement.status.notin_([
+                    AnnouncementStatus.ARCHIVED,
+                    AnnouncementStatus.REJECTED,
+                    AnnouncementStatus.DRAFT,
+                    "Archived",
+                    "ARCHIVED",
+                    "Rejected",
+                    "REJECTED",
+                    "Draft",
+                    "DRAFT",
+                ])
+            )
             .order_by(Announcement.created_at.desc())
             .limit(10)
             .all()
