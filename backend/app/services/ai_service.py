@@ -756,7 +756,9 @@ class AIService:
         Distills campus notices down to a single crisp, institutional action-sentence.
         Strips bureaucratic preamble, protects academic abbreviations, and removes repetitive body text.
         """
-        clean = re.sub(r'[\r\n]+', ' ', text).strip()
+        # Remove bold, italics, markdown symbols first
+        clean = re.sub(r'[*_#`]', '', text)
+        clean = re.sub(r'[\r\n]+', ' ', clean).strip()
 
         # Protect common campus abbreviations with internal periods
         clean = re.sub(r'\bB\.E\.\b', 'B.E.', clean, flags=re.IGNORECASE)
@@ -766,11 +768,12 @@ class AIService:
         clean = re.sub(r'\bDr\.\s*', 'Dr. ', clean, flags=re.IGNORECASE)
         clean = re.sub(r'\bProf\.\s*', 'Prof. ', clean, flags=re.IGNORECASE)
 
-        clean = re.sub(r'^(vtu\s+)?(notice|circular|attention|announcement|alert|important)\s*[:\-–]?\s*(\d{4})?\s*[:\-–]?\s*', '', clean, flags=re.IGNORECASE)
-        clean = re.sub(r'^(this is to (inform|notify|announce)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(vtu\s+|official\s+)?(notice|circular|attention|announcement|alert|important)\s*[:\-–]?\s*(\d{4})?\s*[:\-–]?\s*', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(this is to (formally\s+)?(inform|notify|announce)\b.*?\b(regarding|that)\s*[:\-–]?\s*)', '', clean, flags=re.IGNORECASE)
         clean = re.sub(r'^(it is hereby (informed|notified|announced)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
         clean = re.sub(r'^(all\s+(students|faculty|staff|candidates)\b.*?\b(informed|notified|requested|directed)\b.*?\bthat\s+)', '', clean, flags=re.IGNORECASE)
         clean = re.sub(r'^(dear\s+(students|faculty|all|colleagues)[\s,:]+)', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'^(to:\s+all\s+(students|faculty|staff)[^.]*?\s+)', '', clean, flags=re.IGNORECASE)
         clean = re.sub(r'^(greetings[^,.]*?,\s*)', '', clean, flags=re.IGNORECASE)
         
         # Split on sentence boundary (ignoring internal periods of abbreviations)

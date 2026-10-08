@@ -254,7 +254,29 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         dept_name = n.creator.department.name if (n.creator and n.creator.department) else "College-Wide"
         p_str = n.priority.value if hasattr(n.priority, "value") else str(n.priority)
         cat_name = n.category.name if n.category else "Notice"
-        summary_raw = (n.ai_summary or n.description or "").strip()
+        summary_raw = (n.ai_summary or "").strip()
+        title_lower = (n.title or "").strip().lower()
+        # Detect placeholder title-echoes e.g. "Summary: Hackathon" or missing summaries
+        is_placeholder = (
+            not summary_raw
+            or len(summary_raw) < 15
+            or summary_raw.lower() in (f"summary: {title_lower}", title_lower, f"notice: {title_lower}")
+            or (summary_raw.lower().startswith("summary:") and len(summary_raw.split()) <= 6)
+        )
+        if is_placeholder and n.description and len(n.description.strip()) > 10:
+            try:
+                from app.services.ai_service import AIService
+                real_sum = AIService.summarize(n.description)
+                if real_sum and len(real_sum.strip()) > 10:
+                    summary_raw = real_sum.strip()
+                    n.ai_summary = summary_raw
+                    db.commit()
+            except Exception:
+                db.rollback()
+
+        if not summary_raw:
+            summary_raw = (n.description or n.title or "").strip()
+
         for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
             if summary_raw.upper().startswith(prefix):
                 summary_raw = summary_raw[len(prefix):].strip()

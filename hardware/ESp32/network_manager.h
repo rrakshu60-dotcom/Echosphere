@@ -29,6 +29,18 @@ private:
   unsigned long lastHeartbeatTime = 0;
   unsigned long lastQueueCheckTime = 0;
 
+  // Asynchronous broadcast scheduling (allows heartbeat TLS memory to release before audio stream)
+  bool pendingBroadcastScheduled = false;
+  int pendingTargetAnnId = 0;
+  int pendingTargetQId = 0;
+  String pendingTargetTitle = "";
+  String pendingTargetContent = "";
+  String pendingTargetPriority = "NORMAL";
+  String pendingTargetDept = "College-Wide";
+  int pendingTargetDuration = 15;
+  String pendingTargetAudioUrl = "";
+  String lastExecutedCommandId = "";
+
 public:
   EchoNetworkManager(DisplayManager& disp, AudioManager& audio)
     : displayMgr(disp), audioMgr(audio) {
@@ -279,15 +291,29 @@ public:
             if (tMac.length() > 0 && !tMac.equalsIgnoreCase("ALL") && !tMac.equalsIgnoreCase(nodeMac)) {
               continue; // not for this node
             }
+
+            // Deduplicate commands by unique ID to prevent repeated replay loops
+            String cmdId = "";
+            if (!cmd["command_id"].isNull()) {
+              cmdId = String(cmd["command_id"].as<const char*>());
+            } else if (!cmd["id"].isNull()) {
+              cmdId = String(cmd["id"].as<int>());
+            }
+            if (cmdId.length() > 0 && cmdId == lastExecutedCommandId) {
+              continue; // already executed this command
+            }
+
             const char* rawC = cmd["command"];
             String c = rawC ? String(rawC) : "";
-            if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP")) {
+            if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP") || c.equalsIgnoreCase("PAUSE")) {
               hasControlCommand = true;
               pendingCommand = c;
+              if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
             } else if (c.equalsIgnoreCase("SET_VOLUME")) {
               hasControlCommand = true;
               pendingCommand = c;
               cmdVol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
+              if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
               if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
@@ -305,6 +331,7 @@ public:
                 targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
                 const char* rA = cmd["audio_url"];
                 targetAudioUrl = rA ? String(rA) : "";
+                if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
               }
             }
           }
@@ -391,18 +418,25 @@ public:
         audioMgr.playDiagnosticTest();
       } else if (pendingCommand.equalsIgnoreCase("SET_VOLUME")) {
         if (cmdVol >= 0) audioMgr.setVolume(cmdVol);
-      } else if (pendingCommand.equalsIgnoreCase("STOP") || pendingCommand.equalsIgnoreCase("CANCEL") || pendingCommand.equalsIgnoreCase("SKIP")) {
+      } else if (pendingCommand.equalsIgnoreCase("STOP") || pendingCommand.equalsIgnoreCase("CANCEL") || pendingCommand.equalsIgnoreCase("SKIP") || pendingCommand.equalsIgnoreCase("PAUSE")) {
         stopActiveBroadcast();
       } else if (pendingCommand.equalsIgnoreCase("RESTART")) {
         registerNode();
       }
     }
 
-    // Now trigger audio broadcast if scheduled
+    // Asynchronously schedule audio broadcast so sendHeartbeat() exits completely
+    // and secureClient destructs, releasing ~45KB TLS heap memory before audio streaming begins!
     if (shouldTriggerBroadcast) {
-      Serial.print(F("🧠 [HEAP] Free heap before audio stream: "));
-      Serial.println(ESP.getFreeHeap());
-      triggerNoticeBroadcast(targetAnnId, targetQId, targetTitle, targetContent, targetPriority, targetDept, targetDuration, targetAudioUrl);
+      pendingBroadcastScheduled = true;
+      pendingTargetAnnId = targetAnnId;
+      pendingTargetQId = targetQId;
+      pendingTargetTitle = targetTitle;
+      pendingTargetContent = targetContent;
+      pendingTargetPriority = targetPriority;
+      pendingTargetDept = targetDept;
+      pendingTargetDuration = targetDuration;
+      pendingTargetAudioUrl = targetAudioUrl;
     }
   }
 
@@ -509,16 +543,14 @@ public:
       notifyPlaybackCompleted(finishedQueueId);
     }
 
-    // Notice remains on the TFT screen until activePlaybackEndTime in update()
-    if (millis() >= activePlaybackEndTime) {
-      isBroadcasting = false;
-      displayMgr.clearActiveNotice();
-      activeAnnouncementId = 0;
-    }
+    // After speech concludes, give user 2.5s (or 4s on fallback) to see the card,
+    // then update() will automatically call clearActiveNotice() and return LCD to idle today's notices!
+    activePlaybackEndTime = millis() + (streamPlayed ? 2500UL : 4000UL);
   }
 
   void stopActiveBroadcast() {
-    if (isBroadcasting) {
+    if (isBroadcasting || pendingBroadcastScheduled) {
+      pendingBroadcastScheduled = false;
       isBroadcasting = false;
       audioMgr.stopTone();
       displayMgr.clearActiveNotice();
@@ -569,6 +601,15 @@ public:
       displayMgr.clearActiveNotice();
       activeAnnouncementId = 0;
       activeQueueId = 0;
+    }
+
+    // 2b. Execute pending broadcast outside of sendHeartbeat() call stack
+    // (This guarantees the heartbeat WiFiClientSecure is destroyed and its ~45KB TLS buffer freed before audio streaming starts!)
+    if (pendingBroadcastScheduled && !isBroadcasting) {
+      pendingBroadcastScheduled = false;
+      Serial.print(F("🧠 [HEAP] Free heap before audio stream: "));
+      Serial.println(ESP.getFreeHeap());
+      triggerNoticeBroadcast(pendingTargetAnnId, pendingTargetQId, pendingTargetTitle, pendingTargetContent, pendingTargetPriority, pendingTargetDept, pendingTargetDuration, pendingTargetAudioUrl);
     }
 
     // 3. Periodic 3-second heartbeat & display feed telemetry

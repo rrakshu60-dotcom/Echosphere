@@ -163,6 +163,21 @@ def create_announcement_service(
         initial_status = AnnouncementStatus.PENDING_APPROVAL
 
     speaker_voice = getattr(request, 'speaker_voice', 'female') or 'female'
+
+    # Generate real institutional AI summary from content
+    generated_summary: Optional[str] = None
+    try:
+        from app.services.ai_service import AIService
+        desc_text = (request.description or "").strip()
+        if len(desc_text) > 10:
+            generated_summary = AIService.summarize(desc_text)
+    except Exception as e:
+        logger.warning(f"AI summarization attempt failed on creation: {e}")
+
+    if not generated_summary or len(generated_summary.strip()) < 10:
+        from app.services.ai_service import AIService
+        generated_summary = AIService.distill_qwen_campus_summary(request.description or request.title)
+
     announcement = Announcement(
         title=request.title,
         description=request.description,
@@ -171,7 +186,7 @@ def create_announcement_service(
         emergency_level=request.emergency_level,
         scheduled_at=request.scheduled_at,
         target_audience=request.target_audience or "Entire College",
-        ai_summary=f"Summary: {request.title}",
+        ai_summary=generated_summary,
         status=initial_status,
         created_by=current_user.id,
         speaker_voice=speaker_voice,
