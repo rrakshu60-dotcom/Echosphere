@@ -167,10 +167,8 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                             cmds.append(p_data)
                             seen_command_ids.add(cid)
                         delivered_list.append(mac_key)
-                        setattr(d_cmd, "delivered_macs", ",".join(delivered_list))
-                        t_mac = getattr(d_cmd, "target_mac", None)
-                        if t_mac and t_mac != "ALL":
-                            setattr(d_cmd, "status", "COMPLETED")
+                        # Mark command COMPLETED once delivered to prevent duplicate replay loops
+                        setattr(d_cmd, "status", "COMPLETED")
                         db.commit()
                     except Exception as pe:
                         logger.debug(f"Parse payload_json note: {pe}")

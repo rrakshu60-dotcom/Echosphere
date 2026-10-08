@@ -627,6 +627,13 @@ def get_announcement_summary_endpoint(
     notice_desc = str(getattr(notice, "description", "") or "")
     notice_title = str(getattr(notice, "title", "") or "")
     summary = AIService.summarize(notice_desc)
+    if summary and summary != getattr(notice, "ai_summary", None):
+        notice.ai_summary = summary
+        try:
+            db.commit()
+            db.refresh(notice)
+        except Exception:
+            db.rollback()
     return {
         "status": "ready",
         "announcement_id": announcement_id,
