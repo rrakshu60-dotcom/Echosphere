@@ -57,6 +57,8 @@ public:
 
   int lastTopNoticeId = 0;
   uint32_t lastDailyNoticesHash = 0;
+  int lastCompletedAnnouncementId = 0;
+  unsigned long lastCompletedAnnouncementTime = 0;
 
   void begin() {
     // Initialize WiFi in STA mode first so radio hardware MAC is valid
@@ -316,7 +318,8 @@ public:
               if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
-              if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
+              bool isJustCompleted = (aId == lastCompletedAnnouncementId && (millis() - lastCompletedAnnouncementTime < 60000UL));
+              if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
                 targetQId = cmd["queue_id"].as<int>();
@@ -341,7 +344,8 @@ public:
         if (!shouldTriggerBroadcast && !respDoc["active_notice"].isNull()) {
           JsonObject activeNotice = respDoc["active_notice"].as<JsonObject>();
           int aId = activeNotice["id"].as<int>();
-          if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
+          bool isJustCompleted = (aId == lastCompletedAnnouncementId && (millis() - lastCompletedAnnouncementTime < 60000UL));
+          if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
             shouldTriggerBroadcast = true;
             targetAnnId = aId;
             targetQId = activeNotice["queue_id"].as<int>();
@@ -516,38 +520,44 @@ public:
       Serial.print(F("🧠 [HEAP] Free heap for audio client: "));
       Serial.println(ESP.getFreeHeap());
 
-      HTTPClient httpAudio;
-      WiFiClientSecure secureAudioClient;
-      WiFiClient plainAudioClient;
+      {
+        HTTPClient httpAudio;
+        WiFiClientSecure secureAudioClient;
+        WiFiClient plainAudioClient;
 
-      if (streamUrl.startsWith("https://")) {
-        secureAudioClient.setInsecure();
-        httpAudio.begin(secureAudioClient, streamUrl);
-      } else {
-        httpAudio.begin(plainAudioClient, streamUrl);
-      }
-
-      httpAudio.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-      httpAudio.setTimeout(15000);
-      httpAudio.addHeader("Accept", "audio/wav, audio/*");
-      int httpCode = httpAudio.GET();
-
-      if (httpCode == 200) {
-        Serial.println(F("🔊 [I2S STREAM] HTTP 200 OK received! Streaming 16-bit PCM WAV to MAX98357A..."));
-        WiFiClient* streamClient = httpAudio.getStreamPtr();
-        if (streamClient) {
-          streamPlayed = audioMgr.streamWavAudio(*streamClient, [this]() {
-            displayMgr.renderEqualizerGraphic();
-          });
-          Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
+        if (streamUrl.startsWith("https://")) {
+          secureAudioClient.setInsecure();
+          httpAudio.begin(secureAudioClient, streamUrl);
         } else {
-          Serial.println(F("❌ [I2S STREAM] Failed to acquire HTTP stream pointer."));
+          httpAudio.begin(plainAudioClient, streamUrl);
         }
-      } else {
-        Serial.print(F("⚠️ [AUDIO STREAM] HTTP error: "));
-        Serial.println(httpCode);
+
+        httpAudio.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        httpAudio.setTimeout(15000);
+        httpAudio.addHeader("Accept", "audio/wav, audio/*");
+        int httpCode = httpAudio.GET();
+
+        if (httpCode == 200) {
+          Serial.println(F("🔊 [I2S STREAM] HTTP 200 OK received! Streaming 16-bit PCM WAV to MAX98357A..."));
+          WiFiClient* streamClient = httpAudio.getStreamPtr();
+          if (streamClient) {
+            streamPlayed = audioMgr.streamWavAudio(*streamClient, [this]() {
+              displayMgr.renderEqualizerGraphic();
+            });
+            Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
+          } else {
+            Serial.println(F("❌ [I2S STREAM] Failed to acquire HTTP stream pointer."));
+          }
+        } else {
+          Serial.print(F("⚠️ [AUDIO STREAM] HTTP error: "));
+          Serial.println(httpCode);
+        }
+        httpAudio.end();
+        if (streamUrl.startsWith("https://")) {
+          secureAudioClient.stop();
+        }
       }
-      httpAudio.end();
+      // Audio TLS client buffers fully destroyed and freed from heap here!
     }
 
     // 4. Fallback melody if streaming wasn't available
@@ -562,6 +572,10 @@ public:
     // 6. Reset visualizer graphic to clean baseline
     displayMgr.resetEqualizerGraphic();
 
+    // Give ESP32 CPU and heap a short breather to clean up buffers
+    yield();
+    delay(50);
+
     // 7. Auto-advance the backend queue right away so next item can queue
     int finishedQueueId = activeQueueId;
     activeQueueId = 0; // Reset so notify is only called once
@@ -569,10 +583,13 @@ public:
       notifyPlaybackCompleted(finishedQueueId);
     }
 
-    // After speech concludes, keep the notice card on screen for at least 8-10 seconds
-    // so viewers have ample time to read the notice title, department, and summary text!
-    unsigned long remainingTime = activePlaybackEndTime > millis() ? (activePlaybackEndTime - millis()) : 0;
-    activePlaybackEndTime = millis() + max((unsigned long)(streamPlayed ? 8000UL : 10000UL), remainingTime);
+    // Record as completed to prevent heartbeat re-triggers of the same notice
+    lastCompletedAnnouncementId = annId;
+    lastCompletedAnnouncementTime = millis();
+
+    // After speech concludes, keep the notice card on screen for 5 seconds
+    // so viewers have ample time to read the notice title and text, then cleanly return to idle ticker!
+    activePlaybackEndTime = millis() + 5000UL;
   }
 
   void stopActiveBroadcast() {
@@ -581,6 +598,8 @@ public:
       isBroadcasting = false;
       audioMgr.stopTone();
       displayMgr.clearActiveNotice();
+      lastCompletedAnnouncementId = activeAnnouncementId;
+      lastCompletedAnnouncementTime = millis();
       activeAnnouncementId = 0;
       activeQueueId = 0;
     }
@@ -611,6 +630,9 @@ public:
       Serial.println(F("✅ [QUEUE AUTO-ADVANCE] Server acknowledged completion. Queue advanced!"));
     }
     http.end();
+    if (serverUrl.startsWith("https://")) {
+      secureClient.stop();
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -625,6 +647,8 @@ public:
     // 2. Check if active notice broadcast duration has elapsed
     if (isBroadcasting && now >= activePlaybackEndTime) {
       isBroadcasting = false;
+      lastCompletedAnnouncementId = activeAnnouncementId;
+      lastCompletedAnnouncementTime = millis();
       displayMgr.clearActiveNotice();
       activeAnnouncementId = 0;
       activeQueueId = 0;

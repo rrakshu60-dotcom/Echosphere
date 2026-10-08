@@ -1232,16 +1232,6 @@ class AnnouncementController extends GetxController {
             }
           }
         }
-        if (backendId != null && effectiveDeliverSpeaker) {
-          try {
-            await EchosphereApiService().enqueueAnnouncement(
-              announcementId: backendId,
-              speakerNodeId: speakerNodeId,
-            );
-          } catch (_) {
-            // Already automatically enqueued by backend service
-          }
-        }
       } catch (e) {
         debugPrint('Backend create announcement error: $e');
       }
