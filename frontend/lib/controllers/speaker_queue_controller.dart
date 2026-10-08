@@ -209,54 +209,9 @@ class SpeakerQueueController extends GetxController {
   /// - Normal / Medium: 2 times
   /// - Low: 1 time
   int getNoticeMaxRepeats(Map<String, dynamic> item) {
-    if (_isItemEmergency(item)) {
-      return 999999;
-    }
-    final rawMax = item['max_repeats'];
-    if (rawMax is int && rawMax > 0) {
-      return rawMax;
-    }
-
-    final title = (item['title'] ?? '').toString().toLowerCase();
-    final desc = (item['description'] ?? item['message'] ?? item['content'] ?? '').toString().toLowerCase();
-    final combined = '$title $desc';
-    final p = (item['priority'] ?? '').toString().toUpperCase();
-
-    // Low Priority: 1 time (Explicit LOW or lost and found keywords)
-    if (p == 'LOW' ||
-        combined.contains('lost and found') ||
-        combined.contains('lost & found') ||
-        combined.contains('lost item') ||
-        combined.contains('found item') ||
-        combined.contains('lost') ||
-        combined.contains('found') ||
-        combined.contains('canteen') ||
-        combined.contains('maintenance') ||
-        combined.contains('bus timing') ||
-        combined.contains('reminder')) {
-      return 1;
-    }
-
-    // High Priority: 3 times (Explicit HIGH or Exam/Placement keywords)
-    if (p == 'HIGH' ||
-        p == 'URGENT' ||
-        combined.contains('exam') ||
-        combined.contains('examination') ||
-        combined.contains('test') ||
-        combined.contains('timetable') ||
-        combined.contains('hall ticket') ||
-        combined.contains('viva') ||
-        combined.contains('semester') ||
-        combined.contains('sem exam') ||
-        combined.contains('placement') ||
-        combined.contains('interview') ||
-        combined.contains('deadline') ||
-        combined.contains('fee payment')) {
-      return 3;
-    }
-
-    // Normal / Medium Priority: 2 times (sports, volleyball, events, hackathons, etc.)
-    return 2;
+    // In any repetition slot (e.g. 11:00-11:15 or custom window), all notices scheduled
+    // for that slot rotate continuously throughout that time period as much as can play.
+    return 999999;
   }
 
   /// Syncs speaker notices directly from AnnouncementController
@@ -514,29 +469,6 @@ class SpeakerQueueController extends GetxController {
         return t.contains('automated speaker notice') || t.contains('sample notice');
       });
 
-      // Sync Remote Intermission state from backend
-      final remoteIntermission = combined.firstWhereOrNull((q) => q['status']?.toString().toLowerCase() == 'intermission');
-      if (remoteIntermission != null) {
-        final rem = remoteIntermission['intermission_seconds_remaining'] as int? ?? 15;
-        if (!isIntermission.value) {
-          isIntermission.value = true;
-          intermissionSecondsRemaining.value = rem > 0 ? rem : broadcastGapSeconds;
-          isPlaying.value = false;
-          _playbackTimer?.cancel();
-        }
-      }
-
-      // Guard: If intermission is actively counting down, preserve intermission state and do NOT launch playback timer
-      if (isIntermission.value) {
-        for (var item in combined) {
-          if (item['status']?.toString().toLowerCase() == 'playing') {
-            item['status'] = 'Queued';
-          }
-        }
-        queueItems.assignAll(combined);
-        return;
-      }
-
       // Synchronize remote Playing state without overriding user's pause/stop command
       final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
       if (playingIdx != -1) {
@@ -580,9 +512,6 @@ class SpeakerQueueController extends GetxController {
   }
 
   String get activeTitle {
-    if (isIntermission.value) {
-      return 'Intermission (${intermissionSecondsRemaining.value}s)';
-    }
     if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
       return 'No active speaker announcement';
     }
@@ -591,9 +520,6 @@ class SpeakerQueueController extends GetxController {
   }
 
   String get activeSubtitle {
-    if (isIntermission.value) {
-      return '15-second gap before next scheduled broadcast';
-    }
     if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
       return 'PA system standing by';
     }
@@ -782,20 +708,22 @@ class SpeakerQueueController extends GetxController {
       return;
     }
 
-    // 2. Multi-tier repeat progression:
-    // - High Priority: plays 3 times
-    // - Medium / Normal Priority: plays 2 times
-    // - Low Priority: plays 1 time
-    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && currentPlayedCount < maxRepeats);
+    // 2. Continuous rotation in repeat slot:
+    bool isSlotActive = true;
+    if (playedItem['repeat_schedule'] != null && playedItem['repeat_schedule'] is Map) {
+      isSlotActive = isScheduleActiveNow(Map<String, dynamic>.from(playedItem['repeat_schedule']));
+    }
 
-    // Notify backend that notice playback finished, transitioning backend into 15s intermission
+    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive);
+
+    // Notify backend that notice playback finished
     final queueId = playedItem['id'];
     if (!Get.testMode && queueId is int) {
       _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
     }
 
     if (hasMoreRepeats) {
-      // Re-queue at the end of queue for the next repeat round
+      // Re-queue at the end of queue for continuous rotation throughout the slot
       playedItem['status'] = 'Queued';
       playedItem['repeat_round'] = currentPlayedCount + 1;
       final requeuedItem = Map<String, dynamic>.from(playedItem);
@@ -804,11 +732,11 @@ class SpeakerQueueController extends GetxController {
       currentElapsedSeconds.value = 0;
 
       snackBar(
-        'Broadcasted repeat round $currentPlayedCount of $maxRepeats for "$playedTitle". Re-queued for round #${currentPlayedCount + 1}.',
+        'Broadcasted repeat round $currentPlayedCount for "$playedTitle". Re-queued in continuous rotation.',
         title: 'Repeat Broadcast Progress',
       );
     } else {
-      // All repeats completed (or single play notice)
+      // All repeats completed (or single play notice, or repeat slot ended)
       if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
         Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
       }
@@ -817,14 +745,14 @@ class SpeakerQueueController extends GetxController {
       currentElapsedSeconds.value = 0;
 
       final finishMsg = hasRepeat
-          ? 'Completed all $maxRepeats repeat broadcast(s) of "$playedTitle". Removed from speaker queue.'
+          ? 'Completed repeat broadcast window of "$playedTitle". Removed from speaker queue.'
           : 'Completed broadcast of "$playedTitle". Removed from speaker queue.';
       snackBar(finishMsg, title: 'Broadcast Finished');
     }
 
     // 3. Advance to next queued notice or finish
     if (queueItems.isNotEmpty) {
-      // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first, 0s gap)
+      // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
       final emergencyIdx = queueItems.indexWhere((q) => _isItemEmergency(q));
 
       if (emergencyIdx != -1) {
@@ -834,6 +762,13 @@ class SpeakerQueueController extends GetxController {
         queueItems[0]['status'] = 'Playing';
         currentElapsedSeconds.value = 0;
         _updateActiveNoticeMetrics();
+
+        // Lockdown: keep all other notices paused while emergency is active
+        for (int i = 1; i < queueItems.length; i++) {
+          if (!_isItemEmergency(queueItems[i])) {
+            queueItems[i]['status'] = 'Paused';
+          }
+        }
         queueItems.refresh();
         isPlaying.value = true;
         _startPlaybackTimer();
@@ -861,28 +796,8 @@ class SpeakerQueueController extends GetxController {
         return;
       }
 
-      // Priority 2: Normal notices enforce a 15-second intermission gap
-      if (Get.testMode) {
-        _advanceToNextEligibleNotice();
-      } else {
-        _playbackTimer?.cancel();
-        isPlaying.value = false;
-        currentElapsedSeconds.value = 0;
-        isIntermission.value = true;
-        intermissionSecondsRemaining.value = broadcastGapSeconds;
-        queueItems.refresh();
-
-        _intermissionTimer?.cancel();
-        _intermissionTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-          intermissionSecondsRemaining.value--;
-          if (intermissionSecondsRemaining.value <= 0) {
-            t.cancel();
-            isIntermission.value = false;
-            currentElapsedSeconds.value = 0;
-            _advanceToNextEligibleNotice();
-          }
-        });
-      }
+      // Priority 2: Advance to next queued notice in round-robin rotation cleanly
+      _advanceToNextEligibleNotice();
     } else {
       _playbackTimer?.cancel();
       _intermissionTimer?.cancel();
@@ -1075,15 +990,9 @@ class SpeakerQueueController extends GetxController {
     final now = DateTime.now();
     final bool isFutureScheduled = announcement.scheduledAt != null && announcement.scheduledAt!.isAfter(now);
 
-    // If emergency, preempt any intermission and play immediately
-    if (isEmergency) {
-      _intermissionTimer?.cancel();
-      isIntermission.value = false;
-    }
-
     // Emergency always plays immediately; Publish Now plays immediately if queue is idle;
     // Scheduled notices are queued for their scheduled time in FCFS order.
-    final bool shouldPlayNow = isEmergency || (!isFutureScheduled && !hasActivePlayback && !isIntermission.value);
+    final bool shouldPlayNow = isEmergency || (!isFutureScheduled && !hasActivePlayback);
 
     int targetIndex;
 

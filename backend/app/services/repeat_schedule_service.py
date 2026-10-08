@@ -283,11 +283,14 @@ def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
     Evaluates announcement priority and emergency posture.
     Returns: (priority_weight, max_repeats_in_slot, priority_tier)
 
-    Tiers:
-      - EMERGENCY: weight=1000, max_repeats=999999 (repeats continuously whole break/custom window)
-      - HIGH: weight=300, max_repeats=3 (repeats 3 times)
-      - MEDIUM / NORMAL: weight=200, max_repeats=2 (repeats 2 times)
-      - LOW: weight=100, max_repeats=1 (repeats 1 time)
+    Emergency Notice:
+      - Weight: 1000, max_repeats: 999999 (Overrides ALL other notices and loops continuously)
+
+    Standard Notices in Repeat Slot:
+      - In the configured repeat time period (e.g. 11:00-11:15 or custom window), all notices
+        assigned to that slot rotate continuously throughout the entire window as much as can play.
+      - Priority weights dictate initial queue ordering (High 300 > Medium 200 > Low 100),
+        and all notices rotate in round-robin sequence until the slot concludes.
     """
     if is_emergency_announcement(ann):
         return 1000, 999999, "EMERGENCY"
@@ -301,13 +304,13 @@ def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
     if "HIGH" in prio_str or "URGENT" in prio_str or any(
         w in combined for w in ["exam", "examination", "test", "timetable", "hall ticket", "viva", "semester", "sem exam", "placement", "interview", "deadline", "fee payment"]
     ):
-        return 300, 3, "HIGH"
+        return 300, 999999, "HIGH"
     elif "LOW" in prio_str or any(
         w in combined for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing", "reminder"]
     ):
-        return 100, 1, "LOW"
+        return 100, 999999, "LOW"
     else:  # NORMAL or MEDIUM (sports, volleyball, events, cultural, hackathons)
-        return 200, 2, "MEDIUM"
+        return 200, 999999, "MEDIUM"
 
 
 def is_slot_active_at_time(
@@ -541,22 +544,17 @@ def evaluate_and_dispatch_repeat_slots(
                 db.query(SpeakerQueue)
                 .filter(
                     SpeakerQueue.announcement_id == sched.announcement_id,
-                    SpeakerQueue.status.in_(["Playing", "Intermission", "Next in Queue", "Queued"]),
+                    SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
                 )
                 .first()
             )
             if active_q:
-                # If notice is currently speaking or in 15s intermission, NEVER disturb it!
                 curr_played_at = getattr(active_q, "played_at", None)
                 curr_dur = getattr(active_q, "duration_seconds", 15) or 15
                 is_currently_speaking = False
                 if active_q.status == "Playing" and curr_played_at:
                     elapsed = (utc_now - curr_played_at).total_seconds()
                     if elapsed < curr_dur and not simulated_time_str:
-                        is_currently_speaking = True
-                elif active_q.status == "Intermission" and curr_played_at:
-                    elapsed_gap = (utc_now - curr_played_at).total_seconds()
-                    if elapsed_gap < 15 and not simulated_time_str:
                         is_currently_speaking = True
 
                 if is_currently_speaking:
@@ -571,27 +569,13 @@ def evaluate_and_dispatch_repeat_slots(
                     skipped.append({
                         "announcement_id": sched.announcement_id,
                         "slot": slot_name,
-                        "reason": f"Already active in speaker queue (status: {active_q.status})",
+                        "reason": f"Already active in speaker queue rotation (status: {active_q.status})",
                     })
                     continue
                 else:
                     # Item was left from an earlier slot/broadcast; mark completed so new slot begins fresh
                     active_q.status = "Completed"
                     db.commit()
-
-            # Cooldown check between repeat rounds for non-emergency notices
-            if not is_em and times_played_today > 0 and not simulated_date_str:
-                matching_logs = [log for log in slot_logs if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")]
-                if matching_logs:
-                    last_played = max(log.played_at for log in matching_logs)
-                    elapsed = (utc_now - last_played).total_seconds()
-                    if elapsed < 60:
-                        skipped.append({
-                            "announcement_id": sched.announcement_id,
-                            "slot": slot_name,
-                            "reason": f"Repeat cooldown active ({int(60 - elapsed)}s remaining)",
-                        })
-                        continue
 
             candidates.append({
                 "sched": sched,

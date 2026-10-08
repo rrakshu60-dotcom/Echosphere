@@ -544,44 +544,30 @@ def test_repeat_schedule_suite():
         q.status = "Completed"
     db.commit()
 
-    # Wave 2: 11:05 AM (High and Medium repeat; Low capped at 1x)
+    # Wave 2: 11:05 AM (Continuous slot rotation: all notices continue playing in rotation throughout slot)
     res_w2 = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:05",
         simulated_date_str="2026-09-21",
     )
-    assert res_w2["dispatched_count"] == 2, f"Expected 2 notices in Wave 2, got {res_w2['dispatched_count']}"
-    assert [d["announcement_id"] for d in res_w2["dispatched"]] == [ann_high.id, ann_med.id]
-    print("  ✓ Wave 2 dispatched High and Medium. Low (1x cap) finished!")
+    assert res_w2["dispatched_count"] == 3, f"Expected 3 notices in Wave 2, got {res_w2['dispatched_count']}"
+    assert [d["announcement_id"] for d in res_w2["dispatched"]] == [ann_high.id, ann_med.id, ann_low.id]
+    print("  ✓ Wave 2: All notices continue rotating repeatedly throughout the active slot window!")
 
     # Complete Wave 2 queue items
     for q in db.query(SpeakerQueue).all():
         q.status = "Completed"
     db.commit()
 
-    # Wave 3: 11:08 AM (High repeats; Medium capped at 2x)
+    # Wave 3: 11:08 AM (Still within 11:00-11:15 break: all notices rotate continuously)
     res_w3 = evaluate_and_dispatch_repeat_slots(
         db=db,
         simulated_time_str="11:08",
         simulated_date_str="2026-09-21",
     )
-    assert res_w3["dispatched_count"] == 1, f"Expected 1 notice in Wave 3, got {res_w3['dispatched_count']}"
-    assert res_w3["dispatched"][0]["announcement_id"] == ann_high.id
-    print("  ✓ Wave 3 dispatched High. Medium (2x cap) finished!")
-
-    # Complete Wave 3 queue items
-    for q in db.query(SpeakerQueue).all():
-        q.status = "Completed"
-    db.commit()
-
-    # Wave 4: 11:11 AM (High capped at 3x, all notices complete)
-    res_w4 = evaluate_and_dispatch_repeat_slots(
-        db=db,
-        simulated_time_str="11:11",
-        simulated_date_str="2026-09-21",
-    )
-    assert res_w4["dispatched_count"] == 0, f"Expected 0 notices in Wave 4, got {res_w4['dispatched_count']}"
-    print("  ✓ Wave 4: All notices reached repeat caps (High 3x, Medium 2x, Low 1x). Speakers quiet!")
+    assert res_w3["dispatched_count"] == 3, f"Expected 3 notices in Wave 3, got {res_w3['dispatched_count']}"
+    assert [d["announcement_id"] for d in res_w3["dispatched"]] == [ann_high.id, ann_med.id, ann_low.id]
+    print("  ✓ Wave 3: All notices rotate repeatedly throughout the entire 15-minute slot!")
 
     # -------------------------------------------------------------
     # TEST 10: Auto-Advance Queue Emergency Lockdown & Continuous Loop

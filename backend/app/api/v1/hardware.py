@@ -538,7 +538,7 @@ def fetch_speaker_queue(
     if status is None:
         queue_items = (
             db.query(SpeakerQueue)
-            .filter(SpeakerQueue.status.in_(["Playing", "Intermission", "Paused", "Next in Queue", "Queued"]))
+            .filter(SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]))
             .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
             .all()
         )
@@ -549,8 +549,6 @@ def fetch_speaker_queue(
     from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
     from app.services.repeat_schedule_service import get_notice_priority_info
     from datetime import timezone
-
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for item in queue_items:
         ann = item.announcement
@@ -567,11 +565,6 @@ def fetch_speaker_queue(
         ) if item.announcement_id else None
 
         prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-
-        intermission_rem = 0
-        if item.status == "Intermission" and item.played_at:
-            intermission_elapsed = (now_utc - item.played_at).total_seconds()
-            intermission_rem = max(0, int(15 - intermission_elapsed))
 
         sched_dict = None
         if sched:
@@ -610,7 +603,6 @@ def fetch_speaker_queue(
             "repeat_schedule": sched_dict,
             "has_repeat": sched is not None,
             "max_repeats": max_repeats,
-            "intermission_seconds_remaining": intermission_rem,
         })
     return result
 
@@ -745,18 +737,37 @@ def update_queue_action(
             return {"status": "success", "queue_id": id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        item.status = "Intermission"
-        item.played_at = now
+        from app.services.repeat_schedule_service import (
+            get_current_ist_datetime,
+            get_active_break_slots,
+            is_slot_active_at_time,
+        )
+        from app.models.announcement_repeat_schedule import (
+            AnnouncementRepeatSchedule,
+            RepeatSlotExecutionLog,
+        )
 
-        # Update repeat schedule played count and log execution
-        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule, RepeatSlotExecutionLog
+        ist_now = get_current_ist_datetime()
+        time_str = ist_now.strftime("%H:%M")
+        active_slots = get_active_break_slots(time_str)
+
         sched = (
             db.query(AnnouncementRepeatSchedule)
-            .filter(AnnouncementRepeatSchedule.announcement_id == item.announcement_id)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == item.announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
             .first()
         ) if item.announcement_id else None
 
+        is_slot_active = False
         if sched:
+            matched = is_slot_active_at_time(sched, time_str, active_slots)
+            if matched:
+                is_slot_active = True
+
+        if is_slot_active:
+            # Re-queue at the back of queue so all notices in this slot rotate repeatedly!
             sched.total_played_count += 1
             exec_log = RepeatSlotExecutionLog(
                 schedule_id=sched.id,
@@ -765,16 +776,31 @@ def update_queue_action(
                 played_at=now,
             )
             db.add(exec_log)
+            max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
+            item.status = "Queued"
+            item.queue_position = max_pos + 1
+            item.played_at = None
+            new_status = "Queued"
+        else:
+            item.status = "Completed"
+            new_status = "Completed"
 
         db.commit()
         db.refresh(item)
+
+        from app.services.hardware_speaker_service import auto_advance_speaker_queue
+        adv_res = None
+        try:
+            adv_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
+        except Exception:
+            pass
 
         return {
             "status": "success",
             "queue_id": id,
             "action": action,
-            "new_status": "Intermission",
-            "intermission_seconds_remaining": 15,
+            "new_status": new_status,
+            "auto_advance": adv_res,
         }
 
     status_map = {
