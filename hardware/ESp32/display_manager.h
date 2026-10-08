@@ -57,6 +57,7 @@ private:
   DisplayNotice dailyNotices[MAX_DAILY_NOTICES];
   int dailyNoticesCount = 0;
   int currentDailyNoticeIndex = 0;
+  int currentDailyNoticePage = 0;
   unsigned long lastDailyRotateTime = 0;
 
   // Audio equalizer animation tracking
@@ -217,7 +218,16 @@ public:
 
   void clearDailyNotices() {
     dailyNoticesCount = 0;
-    currentDailyNoticeIndex = 0;
+  }
+
+  void finalizeDailyNotices() {
+    if (dailyNoticesCount == 0) {
+      currentDailyNoticeIndex = 0;
+      currentDailyNoticePage = 0;
+    } else if (currentDailyNoticeIndex >= dailyNoticesCount) {
+      currentDailyNoticeIndex = 0;
+      currentDailyNoticePage = 0;
+    }
   }
 
   void addDailyNotice(const DisplayNotice& notice) {
@@ -232,11 +242,54 @@ public:
   DisplayState getState() const { return currentState; }
 
   // --------------------------------------------------------------------------
+  // Helper: Count total lines needed to word-wrap a given text string
+  // --------------------------------------------------------------------------
+  int countWrappedLines(const String& str, int maxCharsPerLine) const {
+    const char* text = str.c_str();
+    int len = 0;
+    while (text[len] != '\0') len++;
+    if (len == 0) return 0;
+
+    int totalLines = 0;
+    int currentPos = 0;
+
+    while (currentPos < len) {
+      int endPos = currentPos + maxCharsPerLine;
+      if (endPos >= len) {
+        endPos = len;
+      } else {
+        int lastSpace = -1;
+        for (int i = endPos; i > currentPos; i--) {
+          if (text[i] == ' ') {
+            lastSpace = i;
+            break;
+          }
+        }
+        if (lastSpace > currentPos) {
+          endPos = lastSpace;
+        }
+      }
+
+      while (currentPos < endPos && text[currentPos] == ' ') {
+        currentPos++;
+      }
+
+      totalLines++;
+      currentPos = endPos;
+      while (currentPos < len && text[currentPos] == ' ') {
+        currentPos++;
+      }
+    }
+    return totalLines;
+  }
+
+  // --------------------------------------------------------------------------
   // Helper: Draw word-wrapped text with crisp glyphs and ZERO screen flutter
+  // Supports lineOffset to smoothly paginate through long circular/notice text!
   // Uses tft.setTextColor(color, bgColor) to draw glyph and clear background
   // in a single operation without calling fillRect!
   // --------------------------------------------------------------------------
-  void drawWrappedText(const String& str, int startX, int startY, int maxCharsPerLine, int maxLines, uint16_t color, uint16_t bgColor) {
+  void drawWrappedText(const String& str, int startX, int startY, int maxCharsPerLine, int maxLines, uint16_t color, uint16_t bgColor, int lineOffset = 0) {
     tft.setTextColor(color, bgColor);
     tft.setTextSize(1);
     tft.setTextWrap(false);
@@ -245,10 +298,11 @@ public:
     int len = 0;
     while (text[len] != '\0') len++;
 
-    int line = 0;
+    int totalLineIdx = 0;
+    int visibleLine = 0;
     int currentPos = 0;
 
-    while (currentPos < len && line < maxLines) {
+    while (currentPos < len && visibleLine < maxLines) {
       int endPos = currentPos + maxCharsPerLine;
       if (endPos >= len) {
         endPos = len;
@@ -271,34 +325,37 @@ public:
         currentPos++;
       }
 
-      // Measure printed characters
-      int printedChars = 0;
-      tft.setCursor(startX, startY + (line * 10));
-      for (int i = currentPos; i < endPos; i++) {
-        tft.print(text[i]);
-        printedChars++;
+      // If this line is within the current requested page, render it!
+      if (totalLineIdx >= lineOffset) {
+        int printedChars = 0;
+        tft.setCursor(startX, startY + (visibleLine * 10));
+        for (int i = currentPos; i < endPos; i++) {
+          tft.print(text[i]);
+          printedChars++;
+        }
+
+        // Pad remaining space on line with blanks to cleanly overwrite old content
+        for (int s = printedChars; s < maxCharsPerLine; s++) {
+          tft.print(' ');
+        }
+        visibleLine++;
       }
 
-      // Pad remaining space on line with blanks to cleanly overwrite old content
-      for (int s = printedChars; s < maxCharsPerLine; s++) {
-        tft.print(' ');
-      }
-
+      totalLineIdx++;
       currentPos = endPos;
       // Skip spaces after word break
       while (currentPos < len && text[currentPos] == ' ') {
         currentPos++;
       }
-      line++;
     }
 
     // Clear any unused remaining lines
-    while (line < maxLines) {
-      tft.setCursor(startX, startY + (line * 10));
+    while (visibleLine < maxLines) {
+      tft.setCursor(startX, startY + (visibleLine * 10));
       for (int s = 0; s < maxCharsPerLine; s++) {
         tft.print(' ');
       }
-      line++;
+      visibleLine++;
     }
   }
 
@@ -375,8 +432,8 @@ public:
       }
     }
 
-    // 4. Smooth Rotation of Daily Notices (Every 6 seconds)
-    // When idle and multiple notices exist, transitions cleanly once every 6s.
+    // 4. Smooth Rotation of Daily Notices (Paginated & Multi-Notice Rotation)
+    // When idle and notices exist, smoothly displays notice pages every 4s, and rotates notices!
     if (!isNoticeActive && currentState == STATE_IDLE_DAILY_NOTICES) {
       if (!isScreenRendered) {
         if (dailyNoticesCount > 0) {
@@ -384,12 +441,31 @@ public:
         } else {
           renderStandbyScreen();
         }
-      } else if (dailyNoticesCount > 1) {
-        if (now - lastDailyRotateTime >= DAILY_NOTICE_ROTATE_INTERVAL_MS) {
+      } else if (dailyNoticesCount > 0) {
+        if (now - lastDailyRotateTime >= 4000) {
           lastDailyRotateTime = now;
-          currentDailyNoticeIndex = (currentDailyNoticeIndex + 1) % dailyNoticesCount;
-          printAsciiDailyNotice(dailyNotices[currentDailyNoticeIndex], currentDailyNoticeIndex + 1, dailyNoticesCount);
-          renderDailyNoticeCard();
+          const DisplayNotice& curNotice = dailyNotices[currentDailyNoticeIndex];
+          String summaryText = curNotice.summary.length() > 0 ? curNotice.summary : curNotice.title;
+          int summaryLines = countWrappedLines(summaryText, 24);
+          int totalPages = (summaryLines + 3) / 4;
+          if (totalPages < 1) totalPages = 1;
+
+          if (currentDailyNoticePage + 1 < totalPages) {
+            // Next page of current notice
+            currentDailyNoticePage++;
+            renderDailyNoticeCard();
+          } else {
+            // Current notice is done, reset page and advance to next notice if multiple exist
+            currentDailyNoticePage = 0;
+            if (dailyNoticesCount > 1) {
+              currentDailyNoticeIndex = (currentDailyNoticeIndex + 1) % dailyNoticesCount;
+              printAsciiDailyNotice(dailyNotices[currentDailyNoticeIndex], currentDailyNoticeIndex + 1, dailyNoticesCount);
+              renderDailyNoticeCard();
+            } else if (totalPages > 1) {
+              // Only 1 notice, but has multiple pages: loop back to page 0
+              renderDailyNoticeCard();
+            }
+          }
         }
       }
     }
@@ -420,6 +496,7 @@ public:
     int eqMaxHeight = 16;
     int waveHeights[16] = {3, 8, 14, 16, 11, 5, 13, 15, 9, 12, 6, 14, 10, 4, 16, 7};
 
+    tft.startWrite();
     for (int i = 0; i < 16; i++) {
       int newH = waveHeights[(i + animFrame) % 16];
       int oldH = prevBarHeights[i];
@@ -439,12 +516,14 @@ public:
         prevBarHeights[i] = newH;
       }
     }
+    tft.endWrite();
     animFrame = (animFrame + 1) % 16;
   }
 
   void resetEqualizerGraphic() {
     if (!isTftReady) return;
     int eqBottom = 111;
+    tft.startWrite();
     for (int i = 0; i < 16; i++) {
       int oldH = prevBarHeights[i];
       int barX = 8 + (i * 9);
@@ -454,6 +533,7 @@ public:
         prevBarHeights[i] = 0;
       }
     }
+    tft.endWrite();
   }
 
 private:
@@ -560,15 +640,33 @@ private:
     if (dailyNoticesCount == 0) return;
     const DisplayNotice& notice = dailyNotices[currentDailyNoticeIndex];
 
+    String summaryText = notice.summary.length() > 0 ? notice.summary : notice.title;
+    int summaryLines = countWrappedLines(summaryText, 24);
+    int totalPages = (summaryLines + 3) / 4;
+    if (totalPages < 1) totalPages = 1;
+    if (currentDailyNoticePage >= totalPages) currentDailyNoticePage = 0;
+
     // Update Header Counter smoothly
+    tft.fillRect(0, 0, 160, 20, COLOR_HEADER_BLUE);
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_HEADER_BLUE);
     tft.setTextSize(1);
     tft.setCursor(8, 6);
-    tft.print(F("* TODAY'S NOTICE ["));
-    tft.print(currentDailyNoticeIndex + 1);
-    tft.print(F("/"));
-    tft.print(dailyNoticesCount);
-    tft.print(F("] "));
+    if (totalPages > 1) {
+      tft.print(F("* NOTICE ["));
+      tft.print(currentDailyNoticeIndex + 1);
+      tft.print(F("/"));
+      tft.print(dailyNoticesCount);
+      tft.print(F("] P"));
+      tft.print(currentDailyNoticePage + 1);
+      tft.print(F("/"));
+      tft.print(totalPages);
+    } else {
+      tft.print(F("* TODAY'S NOTICE ["));
+      tft.print(currentDailyNoticeIndex + 1);
+      tft.print(F("/"));
+      tft.print(dailyNoticesCount);
+      tft.print(F("]"));
+    }
 
     // Clear card content area once (Y: 21 to 111 = 90px)
     tft.fillRect(0, 21, 160, 90, COLOR_BG);
@@ -595,13 +693,12 @@ private:
     tft.drawFastHLine(8, 36, 144, COLOR_PANEL);
 
     // Notice Title (Compact font size 1, up to 2 lines word-wrapped)
-    drawWrappedText(notice.title, 8, 40, 24, 2, COLOR_TEXT_WHITE, COLOR_BG);
+    drawWrappedText(notice.title, 8, 40, 24, 2, COLOR_TEXT_WHITE, COLOR_BG, 0);
 
     tft.drawFastHLine(8, 62, 144, COLOR_PANEL);
 
-    // Notice Summary (Compact font size 1, up to 4 lines word-wrapped)
-    String summaryText = notice.summary.length() > 0 ? notice.summary : notice.title;
-    drawWrappedText(summaryText, 8, 66, 24, 4, COLOR_TEXT_CYAN, COLOR_BG);
+    // Notice Summary (Compact font size 1, up to 4 lines word-wrapped with current page offset)
+    drawWrappedText(summaryText, 8, 66, 24, 4, COLOR_TEXT_CYAN, COLOR_BG, currentDailyNoticePage * 4);
 
   }
 

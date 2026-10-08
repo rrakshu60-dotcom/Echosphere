@@ -1,4 +1,5 @@
 from typing import List, Optional
+import re
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
@@ -177,12 +178,18 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         if is_targeted:
             dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
             p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
+            active_content = (ann.ai_summary or ann.description or "").strip()
+            for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+                if active_content.upper().startswith(prefix):
+                    active_content = active_content[len(prefix):].strip()
+            active_content = re.sub(r'[*_#`]', '', active_content).strip()
+            active_content = re.sub(r'\s+', ' ', active_content)[:240]
             active_dict = {
                 "is_playing": True,
                 "id": ann.id,
                 "queue_id": active_playing.id,
                 "title": ann.title,
-                "content": ann.description or "",
+                "content": active_content,
                 "priority": p_val,
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
@@ -232,10 +239,16 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         dept_name = n.creator.department.name if (n.creator and n.creator.department) else "College-Wide"
         p_str = n.priority.value if hasattr(n.priority, "value") else str(n.priority)
         cat_name = n.category.name if n.category else "Notice"
+        summary_raw = (n.ai_summary or n.description or "").strip()
+        for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+            if summary_raw.upper().startswith(prefix):
+                summary_raw = summary_raw[len(prefix):].strip()
+        summary_clean = re.sub(r'[*_#`]', '', summary_raw).strip()
+        summary_clean = re.sub(r'\s+', ' ', summary_clean)[:240]
         daily_list.append({
             "id": n.id,
             "title": n.title,
-            "summary": (n.ai_summary or n.description or "")[:120],
+            "summary": summary_clean,
             "priority": p_str,
             "department": dept_name,
             "category": cat_name,

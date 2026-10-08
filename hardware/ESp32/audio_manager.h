@@ -42,8 +42,8 @@ public:
       .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
       .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 8,
-      .dma_buf_len = 128,
+      .dma_buf_count = 12,
+      .dma_buf_len = 256,
       .use_apll = false,
       .tx_desc_auto_clear = true,
       .fixed_mclk = 0
@@ -181,8 +181,9 @@ public:
     unsigned long startWait = millis();
 
     while (headerBytesRead < 12 && client.connected() && (millis() - startWait < 6000)) {
-      if (client.available()) {
-        riffHeader[headerBytesRead++] = (uint8_t)client.read();
+      int r = client.read(riffHeader + headerBytesRead, 12 - headerBytesRead);
+      if (r > 0) {
+        headerBytesRead += r;
       } else {
         delay(2);
       }
@@ -212,11 +213,12 @@ public:
     while (client.connected() && !foundData && (millis() - startWait < 8000)) {
       uint8_t chunkHeader[8];
       size_t chRead = 0;
-      while (chRead < 8 && client.connected()) {
-        if (client.available()) {
-          chunkHeader[chRead++] = (uint8_t)client.read();
+      while (chRead < 8 && client.connected() && (millis() - startWait < 8000)) {
+        int r = client.read(chunkHeader + chRead, 8 - chRead);
+        if (r > 0) {
+          chRead += r;
         } else {
-          delay(1);
+          delay(2);
         }
       }
       if (chRead < 8) break;
@@ -230,13 +232,16 @@ public:
       if (chunkHeader[0] == 'f' && chunkHeader[1] == 'm' && chunkHeader[2] == 't' && chunkHeader[3] == ' ') {
         uint8_t fmtData[16];
         size_t fmtRead = 0;
-        while (fmtRead < 16 && client.connected()) {
-          if (client.available()) {
-            fmtData[fmtRead++] = (uint8_t)client.read();
+        while (fmtRead < 16 && client.connected() && (millis() - startWait < 8000)) {
+          int r = client.read(fmtData + fmtRead, 16 - fmtRead);
+          if (r > 0) {
+            fmtRead += r;
           } else {
-            delay(1);
+            delay(2);
           }
         }
+        if (fmtRead < 16) break;
+
         channels = (uint16_t)fmtData[2] | ((uint16_t)fmtData[3] << 8);
         sampleRate = (uint32_t)fmtData[4] | ((uint32_t)fmtData[5] << 8) |
                      ((uint32_t)fmtData[6] << 16) | ((uint32_t)fmtData[7] << 24);
@@ -244,9 +249,12 @@ public:
 
         // Skip extra header bytes if chunk > 16
         if (chunkSize > 16) {
-          for (uint32_t k = 0; k < chunkSize - 16; k++) {
-            while (!client.available() && client.connected()) delay(1);
-            if (client.available()) client.read();
+          uint32_t toSkip = chunkSize - 16;
+          uint8_t skipBuf[64];
+          while (toSkip > 0 && client.connected() && (millis() - startWait < 8000)) {
+            int r = client.read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
+            if (r > 0) toSkip -= r;
+            else delay(2);
           }
         }
       }
@@ -257,9 +265,12 @@ public:
       }
       else {
         // Skip unknown chunk
-        for (uint32_t k = 0; k < chunkSize; k++) {
-          while (!client.available() && client.connected()) delay(1);
-          if (client.available()) client.read();
+        uint32_t toSkip = chunkSize;
+        uint8_t skipBuf[64];
+        while (toSkip > 0 && client.connected() && (millis() - startWait < 8000)) {
+          int r = client.read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
+          if (r > 0) toSkip -= r;
+          else delay(2);
         }
       }
     }
@@ -283,63 +294,68 @@ public:
     i2s_set_clk(I2S_PORT_NUM, sampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 
     // 3. Audio Streaming Loop
-    const int CHUNK_SAMPLES = 128;
+    const int CHUNK_SAMPLES = 256;
     int16_t rawChunk[CHUNK_SAMPLES * 2];
     int16_t stereoChunk[CHUNK_SAMPLES * 2];
 
-    unsigned long lastIdleTime = millis();
+    unsigned long lastDataTime = millis();
     unsigned long lastVizTime = millis();
     unsigned long totalBytesStreamed = 0;
 
     while (client.connected() || client.available()) {
-      int avail = client.available();
-      if (avail <= 0) {
-        if (millis() - lastIdleTime > 3000) {
-          break; // Stream completed
+      int bytesToRead = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
+      
+      // Directly pull decrypted audio payload from network stream
+      int bytesRead = client.read((uint8_t*)rawChunk, bytesToRead);
+
+      if (bytesRead > 0) {
+        lastDataTime = millis();
+
+        // 16-bit PCM word-alignment guard: ensure even number of bytes
+        if (bytesRead % 2 != 0) {
+          int extra = client.read();
+          if (extra >= 0) {
+            ((uint8_t*)rawChunk)[bytesRead++] = (uint8_t)extra;
+          } else {
+            bytesRead--; // Drop dangling odd byte to preserve PCM phase alignment
+          }
+        }
+
+        totalBytesStreamed += bytesRead;
+        int samplesRead = bytesRead / 2;
+
+        // Scale volume and duplicate mono into stereo channels
+        if (channels == 1) {
+          for (int i = 0; i < samplesRead; i++) {
+            int16_t s = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
+            stereoChunk[i * 2]     = s;
+            stereoChunk[i * 2 + 1] = s;
+          }
+          size_t written = 0;
+          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
+        } else {
+          for (int i = 0; i < samplesRead; i++) {
+            stereoChunk[i] = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
+          }
+          size_t written = 0;
+          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
+        }
+
+        // Animate visualizer periodically
+        if (visualizerCallback && (millis() - lastVizTime >= 65)) {
+          lastVizTime = millis();
+          visualizerCallback();
+        }
+      } else {
+        // No data received in this pass
+        if (!client.connected() && client.available() <= 0) {
+          break; // Stream ended cleanly
+        }
+        if (millis() - lastDataTime > 5000) {
+          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (5s without data)"));
+          break;
         }
         delay(2);
-        yield();
-        continue;
-      }
-
-      lastIdleTime = millis();
-
-      int bytesToRead = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
-      if (avail < bytesToRead) bytesToRead = avail;
-      if (bytesToRead % 2 != 0) bytesToRead--;
-
-      if (bytesToRead <= 0) {
-        delay(1);
-        continue;
-      }
-
-      size_t bytesRead = client.read((uint8_t*)rawChunk, bytesToRead);
-      if (bytesRead == 0) continue;
-
-      totalBytesStreamed += bytesRead;
-      int samplesRead = bytesRead / 2;
-
-      // Scale volume and duplicate mono into stereo channels
-      if (channels == 1) {
-        for (int i = 0; i < samplesRead; i++) {
-          int16_t s = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-          stereoChunk[i * 2]     = s;
-          stereoChunk[i * 2 + 1] = s;
-        }
-        size_t written = 0;
-        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
-      } else {
-        for (int i = 0; i < samplesRead; i++) {
-          stereoChunk[i] = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-        }
-        size_t written = 0;
-        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
-      }
-
-      // Animate visualizer periodically
-      if (visualizerCallback && (millis() - lastVizTime >= 65)) {
-        lastVizTime = millis();
-        visualizerCallback();
       }
 
       yield();
