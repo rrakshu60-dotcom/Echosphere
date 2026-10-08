@@ -538,7 +538,7 @@ def fetch_speaker_queue(
     if status is None:
         queue_items = (
             db.query(SpeakerQueue)
-            .filter(SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]))
+            .filter(SpeakerQueue.status.in_(["Playing", "Intermission", "Paused", "Next in Queue", "Queued"]))
             .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
             .all()
         )
@@ -546,6 +546,12 @@ def fetch_speaker_queue(
         queue_items = get_speaker_queue(db=db, status=status)
     base_url = str(request.base_url).rstrip("/")
     result = []
+    from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+    from app.services.repeat_schedule_service import get_notice_priority_info
+    from datetime import timezone
+
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
     for item in queue_items:
         ann = item.announcement
         target_node = item.speaker_node
@@ -553,6 +559,34 @@ def fetch_speaker_queue(
         node_status = target_node.status if target_node else None
         node_zone = target_node.zone if target_node else "College-Wide"
         node_mac = target_node.mac_address if target_node else None
+
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(AnnouncementRepeatSchedule.announcement_id == item.announcement_id)
+            .first()
+        ) if item.announcement_id else None
+
+        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+
+        intermission_rem = 0
+        if item.status == "Intermission" and item.played_at:
+            intermission_elapsed = (now_utc - item.played_at).total_seconds()
+            intermission_rem = max(0, int(15 - intermission_elapsed))
+
+        sched_dict = None
+        if sched:
+            sched_dict = {
+                "id": sched.id,
+                "announcement_id": sched.announcement_id,
+                "selected_slots": sched.selected_slots,
+                "custom_start_time": sched.custom_start_time,
+                "custom_end_time": sched.custom_end_time,
+                "target_scope": sched.target_scope,
+                "target_node_id": sched.target_node_id,
+                "total_played_count": sched.total_played_count,
+                "is_active": sched.is_active,
+            }
+
         result.append({
             "id": item.id,
             "announcement_id": item.announcement_id,
@@ -560,18 +594,23 @@ def fetch_speaker_queue(
             "description": ann.description if ann else "",
             "content": ann.description if ann else "",
             "department": ann.creator.department.name if (ann and getattr(ann, 'creator', None) and getattr(ann.creator, 'department', None)) else "College-Wide",
-            "priority": ann.priority.value if (ann and hasattr(ann.priority, 'value')) else str(ann.priority) if ann else "Normal",
+            "priority": prio_tier,
             "type": "AI Speech",
             "status": item.status,
             "queue_position": item.queue_position,
             "scheduled_time": item.scheduled_time.isoformat() if item.scheduled_time else None,
             "played_at": item.played_at.isoformat() if item.played_at else None,
+            "duration_seconds": getattr(item, "duration_seconds", 15) or 15,
             "audio_url": f"{base_url}/api/v1/announcements/{item.announcement_id}/audio/stream",
             "speaker_node_id": item.speaker_node_id,
             "speaker_node_mac": node_mac,
             "speaker_node_name": node_name,
             "speaker_node_status": node_status,
             "speaker_node_zone": node_zone,
+            "repeat_schedule": sched_dict,
+            "has_repeat": sched is not None,
+            "max_repeats": max_repeats,
+            "intermission_seconds_remaining": intermission_rem,
         })
     return result
 
@@ -688,6 +727,56 @@ def update_queue_action(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
+    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
+
+    base_url = str(request.base_url).rstrip("/")
+    act_clean = action.lower().strip()
+
+    if act_clean == "complete":
+        ann = item.announcement
+        is_emerg = is_emergency_announcement(ann)
+        if is_emerg:
+            # Emergency notices loop continuously
+            item.status = "Playing"
+            item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            return {"status": "success", "queue_id": id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        item.status = "Intermission"
+        item.played_at = now
+
+        # Update repeat schedule played count and log execution
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule, RepeatSlotExecutionLog
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(AnnouncementRepeatSchedule.announcement_id == item.announcement_id)
+            .first()
+        ) if item.announcement_id else None
+
+        if sched:
+            sched.total_played_count += 1
+            exec_log = RepeatSlotExecutionLog(
+                schedule_id=sched.id,
+                slot_key=f"{sched.announcement_id}:SLOT:{sched.total_played_count}",
+                slot_name="REPEAT_SLOT",
+                played_at=now,
+            )
+            db.add(exec_log)
+
+        db.commit()
+        db.refresh(item)
+
+        return {
+            "status": "success",
+            "queue_id": id,
+            "action": action,
+            "new_status": "Intermission",
+            "intermission_seconds_remaining": 15,
+        }
+
     status_map = {
         "play": "Playing",
         "pause": "Paused",
@@ -695,16 +784,12 @@ def update_queue_action(
         "skip": "Skipped",
         "cancel": "Cancelled",
         "stop": "Cancelled",
-        "complete": "Completed",
         "remove": "Completed",
     }
-    new_status = status_map.get(action.lower(), "Queued")
+    new_status = status_map.get(act_clean, "Queued")
     updated = update_queue_item_status(db=db, queue_id=id, status=new_status)
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
     # Dispatch hardware command to all speaker nodes
-    base_url = str(request.base_url).rstrip("/")
     dispatch_res = dispatch_queue_action_to_speakers(
         db=db,
         queue_item=updated,
@@ -712,9 +797,8 @@ def update_queue_action(
         base_url=base_url,
     )
 
-    # Auto-advance to next queued item only if current was skipped or naturally completed
     advance_res = None
-    if action.lower() in ("skip", "complete"):
+    if act_clean == "skip":
         from app.services.hardware_speaker_service import auto_advance_speaker_queue
         try:
             advance_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)

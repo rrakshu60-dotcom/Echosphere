@@ -212,40 +212,47 @@ class SpeakerQueueController extends GetxController {
     if (_isItemEmergency(item)) {
       return 999999;
     }
-    final title = (item['title'] ?? '').toString().toLowerCase();
-    final p = (item['priority'] ?? '').toString().toUpperCase();
-
-    // High Priority: 3 times
-    if (p == 'HIGH' ||
-        p == 'URGENT' ||
-        title.contains('exam') ||
-        title.contains('examination') ||
-        title.contains('test') ||
-        title.contains('timetable') ||
-        title.contains('hall ticket') ||
-        title.contains('viva') ||
-        title.contains('semester') ||
-        title.contains('sem exam') ||
-        title.contains('placement') ||
-        title.contains('interview') ||
-        title.contains('deadline') ||
-        title.contains('fee payment')) {
-      return 3;
+    final rawMax = item['max_repeats'];
+    if (rawMax is int && rawMax > 0) {
+      return rawMax;
     }
 
-    // Low Priority: 1 time
+    final title = (item['title'] ?? '').toString().toLowerCase();
+    final desc = (item['description'] ?? item['message'] ?? item['content'] ?? '').toString().toLowerCase();
+    final combined = '$title $desc';
+    final p = (item['priority'] ?? '').toString().toUpperCase();
+
+    // Low Priority: 1 time (Explicit LOW or lost and found keywords)
     if (p == 'LOW' ||
-        title.contains('lost and found') ||
-        title.contains('lost & found') ||
-        title.contains('lost item') ||
-        title.contains('found item') ||
-        title.contains('lost') ||
-        title.contains('found') ||
-        title.contains('canteen') ||
-        title.contains('maintenance') ||
-        title.contains('bus timing') ||
-        title.contains('reminder')) {
+        combined.contains('lost and found') ||
+        combined.contains('lost & found') ||
+        combined.contains('lost item') ||
+        combined.contains('found item') ||
+        combined.contains('lost') ||
+        combined.contains('found') ||
+        combined.contains('canteen') ||
+        combined.contains('maintenance') ||
+        combined.contains('bus timing') ||
+        combined.contains('reminder')) {
       return 1;
+    }
+
+    // High Priority: 3 times (Explicit HIGH or Exam/Placement keywords)
+    if (p == 'HIGH' ||
+        p == 'URGENT' ||
+        combined.contains('exam') ||
+        combined.contains('examination') ||
+        combined.contains('test') ||
+        combined.contains('timetable') ||
+        combined.contains('hall ticket') ||
+        combined.contains('viva') ||
+        combined.contains('semester') ||
+        combined.contains('sem exam') ||
+        combined.contains('placement') ||
+        combined.contains('interview') ||
+        combined.contains('deadline') ||
+        combined.contains('fee payment')) {
+      return 3;
     }
 
     // Normal / Medium Priority: 2 times (sports, volleyball, events, hackathons, etc.)
@@ -440,15 +447,18 @@ class SpeakerQueueController extends GetxController {
         seenAnnouncementIds.add(annId);
 
         final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == annId || item['id'] == annId));
-        final existingPlayedCount = existing?['played_count'] as int? ?? 0;
-        final existingRepeatRound = existing?['repeat_round'] as int? ?? 1;
+        final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : 0;
+        final existingPlayedCount = existing?['played_count'] as int? ?? backendPlayedCount;
+        final existingRepeatRound = existing?['repeat_round'] as int? ?? (existingPlayedCount + 1);
+        final maxReps = q['max_repeats'] as int? ?? getNoticeMaxRepeats(q);
 
         combined.add({
           ...q,
           'node_name': nodeName,
           'node_status': nodeStatus,
           'duration_seconds': q['duration_seconds'] ?? 15,
-          'has_repeat': q['repeat_schedule'] != null || (q['title'] ?? '').toString().contains('[Repeat'),
+          'has_repeat': q['has_repeat'] == true || q['repeat_schedule'] != null || (q['title'] ?? '').toString().contains('[Repeat'),
+          'max_repeats': maxReps,
           'played_count': existingPlayedCount,
           'repeat_round': existingRepeatRound,
         });
@@ -503,6 +513,18 @@ class SpeakerQueueController extends GetxController {
         final t = (item['title'] ?? '').toString().toLowerCase();
         return t.contains('automated speaker notice') || t.contains('sample notice');
       });
+
+      // Sync Remote Intermission state from backend
+      final remoteIntermission = combined.firstWhereOrNull((q) => q['status']?.toString().toLowerCase() == 'intermission');
+      if (remoteIntermission != null) {
+        final rem = remoteIntermission['intermission_seconds_remaining'] as int? ?? 15;
+        if (!isIntermission.value) {
+          isIntermission.value = true;
+          intermissionSecondsRemaining.value = rem > 0 ? rem : broadcastGapSeconds;
+          isPlaying.value = false;
+          _playbackTimer?.cancel();
+        }
+      }
 
       // Guard: If intermission is actively counting down, preserve intermission state and do NOT launch playback timer
       if (isIntermission.value) {
@@ -766,6 +788,12 @@ class SpeakerQueueController extends GetxController {
     // - Low Priority: plays 1 time
     final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && currentPlayedCount < maxRepeats);
 
+    // Notify backend that notice playback finished, transitioning backend into 15s intermission
+    final queueId = playedItem['id'];
+    if (!Get.testMode && queueId is int) {
+      _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
+    }
+
     if (hasMoreRepeats) {
       // Re-queue at the end of queue for the next repeat round
       playedItem['status'] = 'Queued';
@@ -783,12 +811,6 @@ class SpeakerQueueController extends GetxController {
       // All repeats completed (or single play notice)
       if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
         Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
-      }
-
-      final bool hasActiveHardwareNodes = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
-      final queueId = playedItem['id'];
-      if (!Get.testMode && queueId is int && !hasActiveHardwareNodes) {
-        _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
       }
 
       queueItems.removeAt(activeIndex.value);

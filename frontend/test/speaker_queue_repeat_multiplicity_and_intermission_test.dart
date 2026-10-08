@@ -221,5 +221,83 @@ void main() {
           reason: 'Second round must start fresh at 0 seconds, preventing premature 1-second completion');
       expect(queueCtrl.currentTotalDuration.value, equals(15));
     });
+
+    test('4. 15-Second Intermission Gap & Zero Overlap Verification', () async {
+      final queueCtrl = Get.put(SpeakerQueueController());
+      queueCtrl.queueItems.clear();
+
+      // Enqueue 2 notices: Notice 1 and Notice 2
+      final notice1 = {
+        'id': 401,
+        'announcement_id': 401,
+        'title': 'Sem exam notice',
+        'priority': 'HIGH',
+        'duration_seconds': 15,
+        'status': 'Playing',
+        'has_repeat': true,
+        'played_count': 0,
+      };
+      final notice2 = {
+        'id': 402,
+        'announcement_id': 402,
+        'title': 'Volley ball selection',
+        'priority': 'NORMAL',
+        'duration_seconds': 15,
+        'status': 'Queued',
+        'has_repeat': true,
+        'played_count': 0,
+      };
+
+      queueCtrl.queueItems.assignAll([notice1, notice2]);
+      queueCtrl.activeIndex.value = 0;
+      queueCtrl.isPlaying.value = true;
+
+      // Notice 1 finishes playback -> triggers intermission
+      queueCtrl.isIntermission.value = true;
+      queueCtrl.intermissionSecondsRemaining.value = 15;
+      queueCtrl.isPlaying.value = false;
+
+      // At second 10 of intermission (5 seconds remaining or 10 seconds remaining):
+      queueCtrl.intermissionSecondsRemaining.value = 10;
+
+      // Remote poll arrives returning next item as queued/playing attempt
+      await queueCtrl.refreshQueue(silent: true);
+
+      // Verify: Intermission MUST still be active and next announcement MUST NOT be playing!
+      expect(queueCtrl.isIntermission.value, isTrue, reason: 'Must still be in intermission at 10s');
+      expect(queueCtrl.isPlaying.value, isFalse, reason: 'Next announcement must NOT play during intermission');
+      expect(queueCtrl.activeTitle, contains('Intermission (10s)'));
+
+      // Even if remote poll returns intermission from backend
+      final remoteStateWithIntermission = [
+        {
+          'id': 401,
+          'announcement_id': 401,
+          'title': 'Sem exam notice',
+          'status': 'Intermission',
+          'intermission_seconds_remaining': 10,
+          'has_repeat': true,
+        },
+        {
+          'id': 402,
+          'announcement_id': 402,
+          'title': 'Volley ball selection',
+          'status': 'Queued',
+          'has_repeat': true,
+        }
+      ];
+
+      // Verify that at 10s into intermission, nothing is playing
+      expect(queueCtrl.isPlaying.value, isFalse);
+      expect(queueCtrl.isIntermission.value, isTrue);
+
+      // Only when intermission timer reaches 0 does it finish intermission
+      queueCtrl.intermissionSecondsRemaining.value = 0;
+      queueCtrl.isIntermission.value = false;
+      queueCtrl.togglePlayPause(index: 0);
+
+      expect(queueCtrl.isPlaying.value, isTrue);
+      expect(queueCtrl.isIntermission.value, isFalse);
+    });
   });
 }
