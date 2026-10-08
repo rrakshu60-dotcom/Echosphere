@@ -7,6 +7,20 @@ logger = logging.getLogger("echosphere.websocket_api")
 router = APIRouter(tags=["Realtime Sync"])
 
 
+@router.get("/ws/live")
+def websocket_live_http_probe():
+    """
+    HTTP probe handler for /ws/live.
+    Informs clients or scanners that this endpoint requires WebSocket protocol (ws:// or wss://).
+    """
+    return {
+        "status": "online",
+        "service": "EchoSphere Realtime WebSocket",
+        "protocol": "WebSocket",
+        "message": "Connect via ws:// or wss:// to establish real-time stream.",
+    }
+
+
 @router.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket, token: str | None = None):
     """
