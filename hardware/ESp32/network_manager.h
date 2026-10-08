@@ -278,7 +278,7 @@ public:
       #if defined(ARDUINOJSON_VERSION_MAJOR) && (ARDUINOJSON_VERSION_MAJOR >= 7)
         JsonDocument respDoc;
       #else
-        DynamicJsonDocument respDoc(4096);
+        DynamicJsonDocument respDoc(8192);
       #endif
       DeserializationError err = deserializeJson(respDoc, response);
       if (!err) {
@@ -359,6 +359,27 @@ public:
           }
         }
 
+        // 2b. If broadcast was triggered (by pending command or active notice),
+        // IMMEDIATELY switch TFT display and status LED to STATE_PLAYING_ANNOUNCEMENT!
+        // This guarantees the display leaves idle mode instantly upon push,
+        // and renders the active notice before audio streaming begins.
+        if (shouldTriggerBroadcast) {
+          int effectiveDuration = targetDuration > 0 ? max(targetDuration, 15) : 15;
+          DisplayNotice notice;
+          notice.id = targetAnnId;
+          notice.title = targetTitle;
+          notice.summary = targetContent;
+          notice.priority = targetPriority;
+          notice.department = targetDept;
+          notice.category = "Notice";
+
+          displayMgr.setActiveNotice(notice, effectiveDuration);
+          isBroadcasting = true;
+          activeAnnouncementId = targetAnnId;
+          activeQueueId = targetQId;
+          activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
+        }
+
         // 3. Process daily important notices for idle display ticker
         if (respDoc["daily_notices"].is<JsonArray>()) {
           JsonArray dailyArray = respDoc["daily_notices"].as<JsonArray>();
@@ -389,7 +410,8 @@ public:
             displayMgr.finalizeDailyNotices();
             int newCount = displayMgr.getDailyNoticesCount();
             int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
-            if (!displayMgr.isBroadcasting()) {
+            // Only switch or refresh to idle screen if NOT currently broadcasting or about to broadcast
+            if (!displayMgr.isBroadcasting() && !shouldTriggerBroadcast && !pendingBroadcastScheduled) {
               if (displayMgr.getState() != STATE_IDLE_DAILY_NOTICES) {
                 displayMgr.setState(STATE_IDLE_DAILY_NOTICES);
               } else if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
@@ -448,9 +470,11 @@ public:
     activeQueueId = qId;
     isBroadcasting = true;
 
-    // Minimum 12 seconds or requested duration so notice card is readable
-    int effectiveDuration = durationSec > 0 ? max(durationSec, 12) : 15;
-    activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
+    // Minimum 15 seconds or requested duration so notice card is readable
+    int effectiveDuration = durationSec > 0 ? max(durationSec, 15) : 15;
+    if (millis() + (effectiveDuration * 1000UL) > activePlaybackEndTime) {
+      activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
+    }
 
     DisplayNotice notice;
     notice.id = annId;
@@ -460,9 +484,11 @@ public:
     notice.department = dept;
     notice.category = "Notice";
 
-    // 1. Immediately update TFT Display & LED status
+    // 1. Immediately update TFT Display & LED status if not already active
     // (This renders the card header, badges, wrapped title, message, AND initial equalizer bars!)
-    displayMgr.setActiveNotice(notice, effectiveDuration);
+    if (!displayMgr.isBroadcasting() || displayMgr.getState() != STATE_PLAYING_ANNOUNCEMENT) {
+      displayMgr.setActiveNotice(notice, effectiveDuration);
+    }
 
     // 2. Play attention chime or emergency siren through speaker
     if (priority.equalsIgnoreCase("EMERGENCY")) {
@@ -543,9 +569,10 @@ public:
       notifyPlaybackCompleted(finishedQueueId);
     }
 
-    // After speech concludes, give user 2.5s (or 4s on fallback) to see the card,
-    // then update() will automatically call clearActiveNotice() and return LCD to idle today's notices!
-    activePlaybackEndTime = millis() + (streamPlayed ? 2500UL : 4000UL);
+    // After speech concludes, keep the notice card on screen for at least 8-10 seconds
+    // so viewers have ample time to read the notice title, department, and summary text!
+    unsigned long remainingTime = activePlaybackEndTime > millis() ? (activePlaybackEndTime - millis()) : 0;
+    activePlaybackEndTime = millis() + max((unsigned long)(streamPlayed ? 8000UL : 10000UL), remainingTime);
   }
 
   void stopActiveBroadcast() {
@@ -605,7 +632,7 @@ public:
 
     // 2b. Execute pending broadcast outside of sendHeartbeat() call stack
     // (This guarantees the heartbeat WiFiClientSecure is destroyed and its ~45KB TLS buffer freed before audio streaming starts!)
-    if (pendingBroadcastScheduled && !isBroadcasting) {
+    if (pendingBroadcastScheduled) {
       pendingBroadcastScheduled = false;
       Serial.print(F("🧠 [HEAP] Free heap before audio stream: "));
       Serial.println(ESP.getFreeHeap());
