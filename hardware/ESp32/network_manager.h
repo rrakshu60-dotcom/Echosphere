@@ -362,14 +362,19 @@ public:
             displayMgr.finalizeDailyNotices();
             int newCount = displayMgr.getDailyNoticesCount();
             int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
-            if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
-              if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
+            if (!displayMgr.isBroadcasting()) {
+              if (displayMgr.getState() != STATE_IDLE_DAILY_NOTICES) {
+                displayMgr.setState(STATE_IDLE_DAILY_NOTICES);
+              } else if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
                 lastTopNoticeId = currentTopId;
                 displayMgr.refreshScreen();
               }
             }
           }
         }
+      } else {
+        Serial.print(F("⚠️ [HEARTBEAT] JSON parse error: "));
+        Serial.println(err.c_str());
       }
     } else {
       Serial.print(F("⚠️ [HEARTBEAT] Request failed (HTTP "));
