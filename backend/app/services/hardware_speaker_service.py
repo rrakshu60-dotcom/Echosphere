@@ -959,9 +959,21 @@ def auto_advance_speaker_queue(
                     .filter(SpeakerQueue.status == "Paused")
                     .all()
                 )
+                from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
                 for p_item in paused_by_emergency:
                     if not is_emergency_announcement(p_item.announcement):
-                        p_item.status = "Queued"
+                        p_sched = (
+                            db.query(AnnouncementRepeatSchedule)
+                            .filter(
+                                AnnouncementRepeatSchedule.announcement_id == p_item.announcement_id,
+                                AnnouncementRepeatSchedule.is_active == True,
+                            )
+                            .first()
+                        ) if p_item.announcement_id else None
+                        if p_sched is not None or getattr(p_item, "played_at", None) is None:
+                            p_item.status = "Queued"
+                        else:
+                            p_item.status = "Completed"
                 db.commit()
                 should_advance = True
 
@@ -1057,6 +1069,25 @@ def auto_advance_speaker_queue(
         .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
         .all()
     )
+    from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+    valid_queued = []
+    for q in queued_all:
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == q.announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
+            .first()
+        ) if q.announcement_id else None
+        # If no active repeat schedule, but already played at least once, mark Completed and skip!
+        if sched is None and getattr(q, "played_at", None) is not None:
+            setattr(q, "status", "Completed")
+            db.commit()
+            continue
+        valid_queued.append(q)
+    queued_all = valid_queued
+
     next_item = next(
         (q for q in queued_all if is_emergency_announcement(q.announcement)),
         None

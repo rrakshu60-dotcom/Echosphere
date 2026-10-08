@@ -738,7 +738,7 @@ def enqueue_speaker_announcement(
         scheduled_time=scheduled_time,
         speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
         base_url=base_url,
-        force_requeue=True,
+        force_requeue=False,
     )
     return {
         "status": "success",

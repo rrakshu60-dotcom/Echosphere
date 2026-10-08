@@ -478,7 +478,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
   void initState() {
     super.initState();
     _aiSummary = widget.notice.aiSummary;
-    _showSummary = widget.notice.aiSummary != null && widget.notice.aiSummary!.isNotEmpty;
+    _showSummary = false; // Closed by default - user must explicitly click to view
   }
 
   @override
@@ -487,7 +487,6 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
     if (widget.notice.aiSummary != oldWidget.notice.aiSummary && widget.notice.aiSummary != null) {
       setState(() {
         _aiSummary = widget.notice.aiSummary;
-        if (_aiSummary!.isNotEmpty) _showSummary = true;
       });
     }
   }
@@ -1022,9 +1021,9 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               _isSummarizing
                                   ? 'Summarizing...'
                                   : (_showSummary
-                                      ? 'Hide Summary'
+                                      ? 'Hide AI Summary'
                                       : (_aiSummary != null && _aiSummary!.isNotEmpty
-                                          ? 'View Summary'
+                                          ? 'View AI Summary'
                                           : 'AI Summarize')),
                               style: TextStyle(
                                 fontSize: 11,
@@ -1039,31 +1038,37 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                       ),
                     ),
 
-                    // 2. Neural Audio Playback (Listen via Kokoro TTS)
+                    // 2. Speech Audio Playback (Listen / Stop toggle from home page)
                     Obx(() {
                       final audio = TtsAudioService.instance;
                       final isThisPlaying = audio.isAnnouncementPlaying(widget.notice.id);
                       final isThisBuffering = audio.isAnnouncementActive(widget.notice.id) && audio.isBuffering.value;
                       return InkWell(
-                        onTap: () => audio.playAnnouncement(
-                          widget.notice.id,
-                          title: widget.notice.title,
-                          content: widget.notice.description,
-                          summary: _aiSummary ?? widget.notice.aiSummary,
-                          forceMode: _showSummary ? 'summary' : null,
-                        ),
+                        onTap: () {
+                          if (isThisPlaying || isThisBuffering) {
+                            audio.stop();
+                          } else {
+                            audio.playAnnouncement(
+                              widget.notice.id,
+                              title: widget.notice.title,
+                              content: widget.notice.description,
+                              summary: _aiSummary ?? widget.notice.aiSummary,
+                              forceMode: _showSummary ? 'summary' : 'full',
+                            );
+                          }
+                        },
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 5),
                           decoration: BoxDecoration(
                             color: isThisPlaying
-                                ? (isDark ? theme.colorScheme.primary.withOpacity(0.20) : const Color(0xFFEEF2FF))
+                                ? (isDark ? const Color(0xFFEF4444).withOpacity(0.18) : const Color(0xFFFEE2E2))
                                 : (isDark ? theme.colorScheme.surfaceContainer : const Color(0xFFF8FAFC)),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isThisPlaying
-                                  ? (isDark ? theme.colorScheme.primary : const Color(0xFF818CF8))
+                                  ? (isDark ? const Color(0xFFEF4444) : const Color(0xFFF87171))
                                   : (isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0)),
                               width: 1.0,
                             ),
@@ -1080,19 +1085,21 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               else
                                 Icon(
                                   isThisPlaying
-                                      ? Icons.pause_rounded
+                                      ? Icons.stop_circle_rounded
                                       : Icons.volume_up_rounded,
                                   size: 14,
-                                  color: theme.colorScheme.primary,
+                                  color: isThisPlaying
+                                      ? (isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626))
+                                      : theme.colorScheme.primary,
                                 ),
                               const SizedBox(width: 4),
                               Text(
-                                isThisPlaying ? 'Playing' : 'Listen',
+                                isThisPlaying ? 'Stop' : 'Listen',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: isThisPlaying ? FontWeight.bold : FontWeight.w600,
                                   color: isThisPlaying
-                                      ? theme.colorScheme.primary
+                                      ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C))
                                       : (isDark ? theme.colorScheme.onSurface : const Color(0xFF334155)),
                                 ),
                               ),

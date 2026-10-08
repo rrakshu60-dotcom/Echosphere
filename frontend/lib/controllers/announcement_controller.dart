@@ -449,6 +449,24 @@ class AnnouncementController extends GetxController {
   final Set<int> _persistedRejectedIds = <int>{};
   final Set<int> playedSpeakerNoticeIds = <int>{};
 
+  Future<void> _loadPersistedPlayedSpeakerNotices() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('echosphere_played_speaker_notice_ids') ?? [];
+      playedSpeakerNoticeIds.addAll(list.map((e) => int.tryParse(e)).whereType<int>());
+    } catch (_) {}
+  }
+
+  Future<void> _savePersistedPlayedSpeakerNotices() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'echosphere_played_speaker_notice_ids',
+        playedSpeakerNoticeIds.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
+
   Future<void> _loadPersistedApprovalStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -544,6 +562,7 @@ class AnnouncementController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _loadPersistedPlayedSpeakerNotices();
     _loadPersistedApprovalStatus();
     _loadPersistentCache();
     if (!Get.testMode) {
@@ -1194,6 +1213,16 @@ class AnnouncementController extends GetxController {
             update();
           }
 
+          try {
+            if (Get.isRegistered<dynamic>(tag: null)) {
+              // Reconcile temporary ID in speaker queue controller if active
+              final speakerCtrl = Get.isRegistered<dynamic>() ? Get.find<dynamic>() : null;
+              if (speakerCtrl != null && speakerCtrl.runtimeType.toString() == 'SpeakerQueueController') {
+                (speakerCtrl as dynamic).replaceTemporaryId(newId, backendId);
+              }
+            }
+          } catch (_) {}
+
           if (repeatSchedule != null) {
             try {
               final schedRes = await EchosphereApiService().setRepeatSchedule(backendId, repeatSchedule);
@@ -1348,6 +1377,7 @@ class AnnouncementController extends GetxController {
   /// Marks an announcement as played on the smart speaker queue
   void markNoticePlayedOnSpeaker(int id) {
     playedSpeakerNoticeIds.add(id);
+    _savePersistedPlayedSpeakerNotices();
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
