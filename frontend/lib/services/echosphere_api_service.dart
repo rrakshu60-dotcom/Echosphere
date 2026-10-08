@@ -36,6 +36,7 @@ class EchosphereApiService {
   String? _authToken;
 
   EchosphereApiService._internal() {
+    const String canonicalRenderUrl = 'https://echosphere-backend-9lv8.onrender.com/api/v1';
     const String envUrl = String.fromEnvironment('ECHOSPHERE_API_URL');
     String loadedUrl = '';
     try {
@@ -49,10 +50,10 @@ class EchosphereApiService {
       loadedUrl = envUrl;
     }
 
-    if (loadedUrl.isNotEmpty) {
+    if (loadedUrl.isNotEmpty && !loadedUrl.contains('localhost') && !loadedUrl.contains('127.0.0.1')) {
       _baseUrl = loadedUrl;
     } else {
-      _baseUrl = 'https://echosphere-backend-9lv8.onrender.com/api/v1';
+      _baseUrl = canonicalRenderUrl;
     }
 
     _dio = Dio(
@@ -114,31 +115,6 @@ class EchosphereApiService {
               debugPrint('Token auto-renewal failed: $rErr');
             }
           }
-          // Automatic local fallback if remote Render is offline or throws 500
-          if ((error.type == DioExceptionType.connectionError ||
-               error.type == DioExceptionType.connectionTimeout ||
-               error.response?.statusCode == 500) &&
-              !_baseUrl.contains('127.0.0.1') &&
-              !_baseUrl.contains('localhost')) {
-            try {
-              const localUrl = 'http://127.0.0.1:8000/api/v1';
-              debugPrint('[EchosphereApiService] Remote failure, attempting local backend fallback: $localUrl');
-              final localOpts = error.requestOptions.copyWith(
-                baseUrl: localUrl,
-              );
-              final localDio = Dio(BaseOptions(
-                baseUrl: localUrl,
-                connectTimeout: const Duration(seconds: 4),
-                receiveTimeout: const Duration(seconds: 4),
-                headers: localOpts.headers,
-              ));
-              final retryRes = await localDio.fetch(localOpts);
-              setBaseUrl(localUrl);
-              return handler.resolve(retryRes);
-            } catch (fallbackErr) {
-              debugPrint('[EchosphereApiService] Local fallback note: $fallbackErr');
-            }
-          }
           return handler.next(error);
         },
       ),
@@ -161,7 +137,13 @@ class EchosphereApiService {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString('custom_echosphere_api_url');
       if (saved != null && saved.trim().isNotEmpty) {
-        setBaseUrl(saved.trim());
+        // Automatically migrate legacy localhost/127.0.0.1 settings to Render cloud backend
+        if (saved.contains('127.0.0.1') || saved.contains('localhost')) {
+          await prefs.remove('custom_echosphere_api_url');
+          setBaseUrl('https://echosphere-backend-9lv8.onrender.com/api/v1');
+        } else {
+          setBaseUrl(saved.trim());
+        }
       }
     } catch (_) {}
   }
