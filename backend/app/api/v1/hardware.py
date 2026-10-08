@@ -12,6 +12,7 @@ from app.models.speaker_node import SpeakerNode
 from app.models.speaker_queue import SpeakerQueue
 from app.models.announcement_category import AnnouncementCategory
 from app.core.enums.announcement import AnnouncementPriority, AnnouncementStatus, EmergencyLevel
+from app.core.emergency_utils import is_emergency_announcement
 from app.repositories.hardware_repository import (
     add_to_speaker_queue,
     create_speaker_node,
@@ -722,7 +723,6 @@ def enqueue_speaker_announcement(
         dept_code = creator.department.code
 
     base_url = str(request.base_url).rstrip("/")
-    from app.core.emergency_utils import is_emergency_announcement
     is_emerg = is_emergency_announcement(ann)
     target_node_id = enqueue_in.speaker_node_id if (enqueue_in.speaker_node_id and enqueue_in.speaker_node_id > 0) else None
     scheduled_time = getattr(enqueue_in, 'scheduled_time', None) or getattr(ann, 'scheduled_at', None)

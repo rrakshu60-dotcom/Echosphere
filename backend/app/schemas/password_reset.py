@@ -8,7 +8,7 @@ class ForgotPasswordRequest(BaseModel):
 
     identifier: str = Field(
         ...,
-        example="EMP001",
+        examples=["EMP001"],
         description="Employee ID or Email",
     )
 
@@ -23,7 +23,7 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(
         min_length=8,
         max_length=128,
-        example="NewPassword@123",
+        examples=["NewPassword@123"],
     )
 
 
