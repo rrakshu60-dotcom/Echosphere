@@ -47,13 +47,29 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
     Broadcast commands are stored with unique command_id so every polling node receives them.
     Persists to SpeakerCommand DB table so multi-worker cloud servers (Render) never drop commands.
     """
+    global _BROADCAST_COMMANDS
     cmd_id = payload.get("command_id") or str(uuid.uuid4())
     payload["command_id"] = cmd_id
+    ann_id = payload.get("announcement_id")
+    cmd_type = payload.get("command")
+
+    # In-memory deduplication for PLAY commands
+    if ann_id and cmd_type in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
+        if not target_mac or target_mac.upper() == "ALL":
+            for c in _BROADCAST_COMMANDS:
+                if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
+                    logger.info(f"Duplicate command for announcement #{ann_id} already in memory broadcast queue.")
+                    return
+        else:
+            key = target_mac.upper()
+            if key in _PENDING_COMMANDS:
+                for c in _PENDING_COMMANDS[key]:
+                    if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
+                        logger.info(f"Duplicate command for announcement #{ann_id} already in node queue {key}.")
+                        return
 
     # 1. In-memory queue
     if not target_mac or target_mac.upper() == "ALL":
-        cmd_type = payload.get("command")
-        global _BROADCAST_COMMANDS
         if cmd_type in ("TEST_SPEAKER", "RESTART"):
             _BROADCAST_COMMANDS = [c for c in _BROADCAST_COMMANDS if c.get("command") != cmd_type]
         _BROADCAST_COMMANDS.append(payload)
@@ -86,6 +102,26 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
             from app.models.speaker_command import SpeakerCommand
             cmd_name = str(payload.get("command", "COMMAND"))
             target_norm = target_mac.upper() if target_mac else None
+
+            # Deduplicate DB pending commands for the same announcement
+            if ann_id and cmd_name in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
+                existing_cmds = (
+                    session.query(SpeakerCommand)
+                    .filter(
+                        SpeakerCommand.status == "PENDING",
+                        SpeakerCommand.command == cmd_name,
+                    )
+                    .all()
+                )
+                for ec in existing_cmds:
+                    try:
+                        p_data = json.loads(getattr(ec, "payload_json", "{}"))
+                        if p_data.get("announcement_id") == ann_id:
+                            logger.info(f"SpeakerCommand for announcement #{ann_id} already PENDING (Cmd #{ec.id}). Skipping duplicate.")
+                            return
+                    except Exception:
+                        pass
+
             cmd_record = SpeakerCommand(
                 command=cmd_name,
                 target_mac=target_norm,
@@ -510,12 +546,12 @@ def enqueue_and_broadcast_announcement(
     dur_secs = max(18, int(words / 2.2) + 6)
     now = utc_now()
 
-    # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap (or missing played_at)
+    # 1. Clean up any finished 'Playing' items whose playback duration has elapsed
     stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
     for sp in stale_playing:
         sp_played_at = getattr(sp, "played_at", None)
         sp_dur = getattr(sp, "duration_seconds", 15) or 15
-        if sp_played_at is None or (now - sp_played_at).total_seconds() > (sp_dur + 30):
+        if sp_played_at is None or (now - sp_played_at).total_seconds() >= (sp_dur + 2):
             setattr(sp, "status", "Completed")
             db.commit()
 

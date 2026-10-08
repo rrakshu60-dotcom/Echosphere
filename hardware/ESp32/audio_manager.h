@@ -207,6 +207,7 @@ public:
     uint32_t sampleRate = 24000;
     uint16_t channels = 1;
     uint16_t bitsPerSample = 16;
+    uint32_t totalDataBytes = 0;
     bool foundData = false;
 
     startWait = millis();
@@ -261,6 +262,7 @@ public:
       // Check for "data" chunk
       else if (chunkHeader[0] == 'd' && chunkHeader[1] == 'a' && chunkHeader[2] == 't' && chunkHeader[3] == 'a') {
         foundData = true;
+        totalDataBytes = chunkSize;
         break;
       }
       else {
@@ -346,13 +348,21 @@ public:
           lastVizTime = millis();
           visualizerCallback();
         }
+
+        // Clean instantaneous exit when all declared WAV data bytes have been delivered to I2S
+        if (totalDataBytes > 0 && totalBytesStreamed >= totalDataBytes) {
+          Serial.print(F("✅ [I2S AUDIO] All data chunk bytes ("));
+          Serial.print(totalBytesStreamed);
+          Serial.println(F(" bytes) fully streamed to I2S."));
+          break;
+        }
       } else {
         // No data received in this pass
         if (!client.connected() && client.available() <= 0) {
           break; // Stream ended cleanly
         }
-        if (millis() - lastDataTime > 5000) {
-          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (5s without data)"));
+        if (millis() - lastDataTime > 2500) {
+          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (2.5s without data)"));
           break;
         }
         delay(2);

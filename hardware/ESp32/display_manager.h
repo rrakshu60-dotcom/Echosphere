@@ -307,10 +307,29 @@ public:
     int currentPos = 0;
 
     while (currentPos < len && visibleLine < maxLines) {
+      // Skip leading spaces or newlines before starting a line
+      while (currentPos < len && (text[currentPos] == ' ' || text[currentPos] == '\r' || text[currentPos] == '\n')) {
+        currentPos++;
+      }
+      if (currentPos >= len) break;
+
       int endPos = currentPos + maxCharsPerLine;
       if (endPos >= len) {
         endPos = len;
-      } else {
+      }
+
+      // Check if an explicit newline exists within the current line buffer
+      int newlinePos = -1;
+      for (int i = currentPos; i < endPos; i++) {
+        if (text[i] == '\n' || text[i] == '\r') {
+          newlinePos = i;
+          break;
+        }
+      }
+
+      if (newlinePos != -1) {
+        endPos = newlinePos;
+      } else if (endPos < len) {
         // Find last space before endPos to avoid cutting words
         int lastSpace = -1;
         for (int i = endPos; i > currentPos; i--) {
@@ -324,18 +343,15 @@ public:
         }
       }
 
-      // Skip leading spaces for the line
-      while (currentPos < endPos && text[currentPos] == ' ') {
-        currentPos++;
-      }
-
       // If this line is within the current requested page, render it!
       if (totalLineIdx >= lineOffset) {
         int printedChars = 0;
         tft.setCursor(startX, startY + (visibleLine * 10));
         for (int i = currentPos; i < endPos; i++) {
-          tft.print(text[i]);
-          printedChars++;
+          if (text[i] != '\r' && text[i] != '\n') {
+            tft.print(text[i]);
+            printedChars++;
+          }
         }
 
         // Pad remaining space on line with blanks to cleanly overwrite old content
@@ -347,8 +363,8 @@ public:
 
       totalLineIdx++;
       currentPos = endPos;
-      // Skip spaces after word break
-      while (currentPos < len && text[currentPos] == ' ') {
+      // Skip spaces or newline characters after word break
+      while (currentPos < len && (text[currentPos] == ' ' || text[currentPos] == '\r' || text[currentPos] == '\n')) {
         currentPos++;
       }
     }
