@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/copilot_client.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
@@ -301,12 +301,18 @@ class EchosphereAiController extends GetxController {
         combined.contains('closed') ||
         combined.contains('urgent') ||
         combined.contains('emergency') ||
+        combined.contains('evacuat') ||
+        combined.contains('earthquake') ||
+        combined.contains('fire alert') ||
         combined.contains('suspended')) {
       priority = (role == 'HOD' || role == 'COLLEGE ADMIN' || role == 'PRINCIPAL' || role == 'DEVELOPER' || role == 'DEV ADMIN') ? 'EMERGENCY' : 'HIGH';
       category = 'Emergency';
     } else if (combined.contains('exam') ||
         combined.contains('timetable') ||
         combined.contains('test') ||
+        combined.contains('viva') ||
+        combined.contains('semester') ||
+        combined.contains('sem exam') ||
         combined.contains('hall ticket')) {
       priority = 'HIGH';
       category = 'Examinations';
@@ -314,20 +320,42 @@ class EchosphereAiController extends GetxController {
         combined.contains('drive') ||
         combined.contains('google') ||
         combined.contains('microsoft') ||
-        combined.contains('interview')) {
+        combined.contains('interview') ||
+        combined.contains('deadline') ||
+        combined.contains('fee payment')) {
       priority = 'HIGH';
       category = 'Placements';
+    } else if (combined.contains('lost and found') ||
+        combined.contains('lost & found') ||
+        combined.contains('lost item') ||
+        combined.contains('found item') ||
+        combined.contains('lost') ||
+        combined.contains('found') ||
+        combined.contains('canteen') ||
+        combined.contains('maintenance') ||
+        combined.contains('reminder')) {
+      priority = 'LOW';
+      category = 'General';
+    } else if (combined.contains('volley') ||
+        combined.contains('volleyball') ||
+        combined.contains('selection') ||
+        combined.contains('trials') ||
+        combined.contains('sports') ||
+        combined.contains('cricket') ||
+        combined.contains('football') ||
+        combined.contains('match') ||
+        combined.contains('tournament') ||
+        combined.contains('athletics')) {
+      priority = 'NORMAL';
+      category = 'Sports';
     } else if (combined.contains('hackathon') ||
         combined.contains('symposium') ||
         combined.contains('event') ||
+        combined.contains('workshop') ||
+        combined.contains('seminar') ||
         combined.contains('fest')) {
       priority = 'NORMAL';
       category = 'Events';
-    } else if (combined.contains('sports') ||
-        combined.contains('match') ||
-        combined.contains('tournament')) {
-      priority = 'NORMAL';
-      category = 'Sports';
     }
 
     return {

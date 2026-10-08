@@ -208,8 +208,8 @@ def create_announcement_service(
     )
 
     if deliver_speaker and created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
-        p_val = created_announcement.priority.value if hasattr(created_announcement.priority, 'value') else str(created_announcement.priority)
-        is_emerg = (p_val == "EMERGENCY")
+        from app.core.emergency_utils import is_emergency_announcement
+        is_emerg = is_emergency_announcement(created_announcement)
         try:
             from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
             dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
@@ -360,8 +360,8 @@ def update_announcement_service(
                 db.commit()
 
             if deliver_speaker and updated_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
-                p_val = updated_announcement.priority.value if hasattr(updated_announcement.priority, 'value') else str(updated_announcement.priority)
-                is_emerg = (p_val == "EMERGENCY")
+                from app.core.emergency_utils import is_emergency_announcement
+                is_emerg = is_emergency_announcement(updated_announcement)
                 from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
                 dept_code = "ALL"
                 if updated_announcement.creator and hasattr(updated_announcement.creator, 'department') and updated_announcement.creator.department:
@@ -560,8 +560,8 @@ def approve_announcement_service(
         elif hasattr(current_user, 'department') and current_user.department:
             dept_code = current_user.department.code
 
-        p_val = updated_announcement.priority.value if hasattr(updated_announcement.priority, 'value') else str(updated_announcement.priority)
-        is_emerg = (p_val == "EMERGENCY")
+        from app.core.emergency_utils import is_emergency_announcement
+        is_emerg = is_emergency_announcement(updated_announcement)
 
         has_speaker_delivery = is_emerg
         if not has_speaker_delivery and updated_announcement.deliveries:
@@ -716,8 +716,8 @@ def publish_announcement_service(
         dept_code = "ALL"
         if announcement.creator and hasattr(announcement.creator, 'department') and announcement.creator.department:
             dept_code = announcement.creator.department.code
-        p_val = announcement.priority.value if hasattr(announcement.priority, 'value') else str(announcement.priority)
-        is_emerg = (p_val == "EMERGENCY")
+        from app.core.emergency_utils import is_emergency_announcement
+        is_emerg = is_emergency_announcement(announcement)
 
         has_speaker_delivery = is_emerg
         if not has_speaker_delivery and announcement.deliveries:

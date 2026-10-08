@@ -409,6 +409,14 @@ PRIORITY_TRAINING_DATA = [
     ("Library book return reminder for final year", "NORMAL"),
     ("Guest lecture on Cloud Computing in auditorium", "NORMAL"),
     ("Sports ground maintenance and friendly match", "NORMAL"),
+    ("Volleyball team selection trials at indoor stadium", "NORMAL"),
+    ("Volley ball team selection trials today", "NORMAL"),
+    ("Inter-department cricket and football tournament trials", "NORMAL"),
+    ("Lost and found keys at campus cafeteria", "LOW"),
+    ("Lost black leather wallet in computer lab", "LOW"),
+    ("Found eyeglasses near central library entrance", "LOW"),
+    ("Lost student ID card near admin block", "LOW"),
+    ("Routine maintenance notice for water cooler", "LOW"),
 ]
 
 
@@ -670,17 +678,24 @@ class EchoSphereMLEngine:
 
         # High-assurance safety heuristic override
         text_lower = text.lower()
-        if any(w in text_lower for w in ["rain", "flood", "weather", "cyclone", "emergency", "evacuate", "holiday tomorrow"]):
+        if any(w in text_lower for w in ["rain", "flood", "weather", "cyclone", "emergency", "evacuate", "holiday tomorrow", "earthquake", "fire alert"]):
             priority = "EMERGENCY"
             category = "Emergency"
-        elif any(w in text_lower for w in ["exam", "timetable", "hall ticket", "viva", "test"]):
+        elif any(w in text_lower for w in ["exam", "timetable", "hall ticket", "viva", "test", "semester", "sem exam"]):
             category = "Examinations"
-            if priority == "NORMAL":
-                priority = "HIGH"
-        elif any(w in text_lower for w in ["placement", "interview", "hiring", "package", "ctc"]):
+            priority = "HIGH"
+        elif any(w in text_lower for w in ["placement", "interview", "hiring", "package", "ctc", "deadline"]):
             category = "Placements"
-            if priority == "NORMAL":
-                priority = "HIGH"
+            priority = "HIGH"
+        elif any(w in text_lower for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing"]):
+            category = "General"
+            priority = "LOW"
+        elif any(w in text_lower for w in ["volley", "volleyball", "cricket", "football", "badminton", "selection", "trials", "sport", "sports", "tournament", "athletics"]):
+            category = "Sports"
+            priority = "NORMAL"
+        elif any(w in text_lower for w in ["hackathon", "symposium", "workshop", "fest", "cultural", "event"]):
+            category = "Events"
+            priority = "NORMAL"
 
         # Authority enforcement: only privileged roles can broadcast EMERGENCY
         allowed_emergency_roles = ["COLLEGE ADMIN", "HOD", "PRINCIPAL", "DEVELOPER", "DEV ADMIN"]

@@ -173,6 +173,85 @@ class SpeakerQueueController extends GetxController {
     return false;
   }
 
+  bool _isNoticeEmergency(AnnouncementModel a) {
+    final p = a.priority.toUpperCase();
+    final el = (a.emergencyLevel ?? '').toUpperCase();
+    final cat = (a.category ?? '').toUpperCase();
+    if (p == 'EMERGENCY' || p == 'CRITICAL' || el == 'EMERGENCY' || el == 'CRITICAL' || cat == 'EMERGENCY') {
+      return true;
+    }
+    final text = '${a.title} ${a.description}'.toLowerCase();
+    const emergencyKeywords = [
+      'earthquake', 'evacuat', 'fire alert', 'siren', 'lockdown',
+      'hazard', 'gas leak', 'tsunami', 'tornado', 'active shooter', 'emergency'
+    ];
+    return emergencyKeywords.any((kw) => text.contains(kw));
+  }
+
+  bool _isItemEmergency(Map<String, dynamic> item) {
+    final p = (item['priority'] ?? '').toString().toUpperCase();
+    final el = (item['emergency_level'] ?? item['emergencyLevel'] ?? '').toString().toUpperCase();
+    final cat = (item['category'] ?? '').toString().toUpperCase();
+    if (p == 'EMERGENCY' || p == 'CRITICAL' || el == 'EMERGENCY' || el == 'CRITICAL' || cat == 'EMERGENCY') {
+      return true;
+    }
+    final text = '${item['title'] ?? ''} ${item['message'] ?? item['description'] ?? ''}'.toLowerCase();
+    const emergencyKeywords = [
+      'earthquake', 'evacuat', 'fire alert', 'siren', 'lockdown',
+      'hazard', 'gas leak', 'tsunami', 'tornado', 'active shooter', 'emergency'
+    ];
+    return emergencyKeywords.any((kw) => text.contains(kw));
+  }
+
+  /// Returns the maximum repeat broadcasts allowed in a repetition slot based on priority tier:
+  /// - Emergency: 999999 (loops continuously for entire break / custom window)
+  /// - High: 3 times
+  /// - Normal / Medium: 2 times
+  /// - Low: 1 time
+  int getNoticeMaxRepeats(Map<String, dynamic> item) {
+    if (_isItemEmergency(item)) {
+      return 999999;
+    }
+    final title = (item['title'] ?? '').toString().toLowerCase();
+    final p = (item['priority'] ?? '').toString().toUpperCase();
+
+    // High Priority: 3 times
+    if (p == 'HIGH' ||
+        p == 'URGENT' ||
+        title.contains('exam') ||
+        title.contains('examination') ||
+        title.contains('test') ||
+        title.contains('timetable') ||
+        title.contains('hall ticket') ||
+        title.contains('viva') ||
+        title.contains('semester') ||
+        title.contains('sem exam') ||
+        title.contains('placement') ||
+        title.contains('interview') ||
+        title.contains('deadline') ||
+        title.contains('fee payment')) {
+      return 3;
+    }
+
+    // Low Priority: 1 time
+    if (p == 'LOW' ||
+        title.contains('lost and found') ||
+        title.contains('lost & found') ||
+        title.contains('lost item') ||
+        title.contains('found item') ||
+        title.contains('lost') ||
+        title.contains('found') ||
+        title.contains('canteen') ||
+        title.contains('maintenance') ||
+        title.contains('bus timing') ||
+        title.contains('reminder')) {
+      return 1;
+    }
+
+    // Normal / Medium Priority: 2 times (sports, volleyball, events, hackathons, etc.)
+    return 2;
+  }
+
   /// Syncs speaker notices directly from AnnouncementController
   void _syncWithLocalAnnouncements() {
     if (!Get.isRegistered<AnnouncementController>()) return;
@@ -189,19 +268,12 @@ class SpeakerQueueController extends GetxController {
     }).toList();
 
     // Emergency Override Check: If ANY emergency notice is active (e.g. Earthquake Alert)
-    final emergencyNotices = eligibleNotices.where((a) {
-      final prio = a.priority.toUpperCase();
-      final title = a.title.toLowerCase();
-      return prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('earthquake') || title.contains('emergency') || title.contains('evacuat');
-    }).toList();
+    final emergencyNotices = eligibleNotices.where((a) => _isNoticeEmergency(a)).toList();
 
     if (emergencyNotices.isNotEmpty) {
-      // Pause non-emergency notices currently playing to enforce lockdown
+      // Pause ALL non-emergency notices currently in queue to enforce total lockdown
       for (var q in queueItems) {
-        final qPrio = (q['priority'] ?? '').toString().toUpperCase();
-        final qTitle = (q['title'] ?? '').toString().toLowerCase();
-        final isEm = qPrio == 'EMERGENCY' || qPrio == 'CRITICAL' || qTitle.contains('earthquake') || qTitle.contains('emergency');
-        if (!isEm && q['status'] == 'Playing') {
+        if (!_isItemEmergency(q)) {
           q['status'] = 'Paused';
         }
       }
@@ -239,6 +311,10 @@ class SpeakerQueueController extends GetxController {
           'node_name': nodeName,
           'duration_seconds': notice.durationSeconds,
           'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
+          'repeat_schedule': notice.repeatSchedule,
+          'has_repeat': notice.repeatSchedule != null,
+          'repeat_round': 1,
+          'played_count': 0,
         };
 
         if (isEm) {
@@ -253,7 +329,7 @@ class SpeakerQueueController extends GetxController {
     if (changed) {
       _updateActiveNoticeMetrics();
       queueItems.refresh();
-      if (!isPlaying.value && !userPausedOrStopped.value && queueItems.isNotEmpty) {
+      if (!Get.testMode && !isPlaying.value && !userPausedOrStopped.value && queueItems.isNotEmpty && emergencyNotices.isNotEmpty) {
         togglePlayPause(index: 0);
       }
     }
@@ -362,11 +438,19 @@ class SpeakerQueueController extends GetxController {
         final nodeName = q['speaker_node_name'] ?? _getNodeName(targetNodeId);
         final nodeStatus = q['speaker_node_status'] ?? getNodeStatus(targetNodeId);
         seenAnnouncementIds.add(annId);
+
+        final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == annId || item['id'] == annId));
+        final existingPlayedCount = existing?['played_count'] as int? ?? 0;
+        final existingRepeatRound = existing?['repeat_round'] as int? ?? 1;
+
         combined.add({
           ...q,
           'node_name': nodeName,
           'node_status': nodeStatus,
           'duration_seconds': q['duration_seconds'] ?? 15,
+          'has_repeat': q['repeat_schedule'] != null || (q['title'] ?? '').toString().contains('[Repeat'),
+          'played_count': existingPlayedCount,
+          'repeat_round': existingRepeatRound,
         });
       }
 
@@ -375,7 +459,7 @@ class SpeakerQueueController extends GetxController {
         final annCtrl = Get.find<AnnouncementController>();
         final speakerNotices = annCtrl.allAnnouncements.where((a) {
           final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
-          final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY';
+          final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY' || a.repeatSchedule != null;
           final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
               !a.title.toLowerCase().contains('sample notice');
           return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker && !dismissedAnnouncementIds.contains(a.id);
@@ -384,6 +468,10 @@ class SpeakerQueueController extends GetxController {
         for (var notice in speakerNotices) {
           if (!seenAnnouncementIds.contains(notice.id) && !dismissedAnnouncementIds.contains(notice.id)) {
             seenAnnouncementIds.add(notice.id);
+            final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == notice.id || item['id'] == notice.id));
+            final existingPlayedCount = existing?['played_count'] as int? ?? 0;
+            final existingRepeatRound = existing?['repeat_round'] as int? ?? 1;
+
             combined.add({
               'id': notice.id,
               'announcement_id': notice.id,
@@ -401,6 +489,10 @@ class SpeakerQueueController extends GetxController {
               'node_status': getNodeStatus(notice.speakerNodeId),
               'duration_seconds': notice.durationSeconds,
               'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
+              'repeat_schedule': notice.repeatSchedule,
+              'has_repeat': notice.repeatSchedule != null,
+              'played_count': existingPlayedCount,
+              'repeat_round': existingRepeatRound,
             });
           }
         }
@@ -411,6 +503,17 @@ class SpeakerQueueController extends GetxController {
         final t = (item['title'] ?? '').toString().toLowerCase();
         return t.contains('automated speaker notice') || t.contains('sample notice');
       });
+
+      // Guard: If intermission is actively counting down, preserve intermission state and do NOT launch playback timer
+      if (isIntermission.value) {
+        for (var item in combined) {
+          if (item['status']?.toString().toLowerCase() == 'playing') {
+            item['status'] = 'Queued';
+          }
+        }
+        queueItems.assignAll(combined);
+        return;
+      }
 
       // Synchronize remote Playing state without overriding user's pause/stop command
       final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
@@ -608,49 +711,27 @@ class SpeakerQueueController extends GetxController {
 
   /// Called automatically when the current notice completes its single playback
   Future<void> _onNoticePlaybackCompleted() async {
+    _playbackTimer?.cancel();
+
     if (queueItems.isEmpty || activeIndex.value < 0 || activeIndex.value >= queueItems.length) {
-      _playbackTimer?.cancel();
       isPlaying.value = false;
       return;
     }
 
     final playedItem = queueItems[activeIndex.value];
     final annId = playedItem['announcement_id'] as int? ?? playedItem['id'] as int? ?? 0;
-    final playedTitle = playedItem['title'] ?? 'Announcement';
+    final playedTitle = (playedItem['title'] ?? 'Announcement').toString();
 
-    // 1. Mark played in AnnouncementController
-    if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
-      Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
-    }
+    final bool isEmergencyNotice = _isItemEmergency(playedItem);
+    final bool hasRepeat = playedItem['repeat_schedule'] != null ||
+        playedItem['repeatSchedule'] != null ||
+        playedItem['has_repeat'] == true ||
+        playedTitle.contains('[EMERGENCY REPEAT]') ||
+        playedTitle.contains('[Repeat');
 
-    // 2. Notify remote backend action
-    // 2. Notify remote backend action only if no active physical hardware nodes are managing playback
-    final bool hasActiveHardwareNodes = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
-    final queueId = playedItem['id'];
-    if (!Get.testMode && queueId is int && !hasActiveHardwareNodes) {
-      _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
-    }
-
-    // 3. Check for Emergency Continuous Loop (Emergency repeats throughout the whole break window)
-    final prio = (playedItem['priority'] ?? '').toString().toUpperCase();
-    final title = (playedItem['title'] ?? '').toString().toLowerCase();
-    final bool isEmergencyNotice = prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('emergency') || title.contains('earthquake');
-
-    if (isEmergencyNotice) {
-      // Loop emergency announcement continuously throughout the emergency/break window
-      currentElapsedSeconds.value = 0;
-      queueItems[activeIndex.value]['status'] = 'Playing';
-      _updateActiveNoticeMetrics();
-      queueItems.refresh();
-      isPlaying.value = true;
-      _startPlaybackTimer();
-      snackBar('Repeating Emergency Broadcast: "$playedTitle"', title: 'Emergency Broadcast Continuous Loop');
-      return;
-    }
-
-    // 4. Remove standard notice from queue once played
-    queueItems.removeAt(activeIndex.value);
-    currentElapsedSeconds.value = 0;
+    final int maxRepeats = getNoticeMaxRepeats(playedItem);
+    int currentPlayedCount = (playedItem['played_count'] as int? ?? 0) + 1;
+    playedItem['played_count'] = currentPlayedCount;
 
     if (!Get.testMode && enableLocalAudioPreview.value) {
       try {
@@ -658,25 +739,78 @@ class SpeakerQueueController extends GetxController {
       } catch (_) {}
     }
 
-    snackBar(
-      'Completed broadcast of "$playedTitle". Removed from speaker queue.',
-      title: 'Broadcast Finished',
-    );
+    // 1. Emergency Continuous Loop (Emergency repeats throughout the whole break/custom window)
+    if (isEmergencyNotice && hasRepeat) {
+      currentElapsedSeconds.value = 0;
+      queueItems[activeIndex.value]['status'] = 'Playing';
+      _updateActiveNoticeMetrics();
+      queueItems.refresh();
+      isPlaying.value = true;
+      _startPlaybackTimer();
 
-    // 4. Advance to next queued notice or finish
+      // Enforce lockdown: ensure all non-emergency notices in queue remain Paused
+      for (int i = 0; i < queueItems.length; i++) {
+        if (i != activeIndex.value && !_isItemEmergency(queueItems[i])) {
+          queueItems[i]['status'] = 'Paused';
+        }
+      }
+      queueItems.refresh();
+
+      snackBar('Repeating Emergency Broadcast: "$playedTitle"', title: 'Emergency Broadcast Continuous Loop');
+      return;
+    }
+
+    // 2. Multi-tier repeat progression:
+    // - High Priority: plays 3 times
+    // - Medium / Normal Priority: plays 2 times
+    // - Low Priority: plays 1 time
+    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && currentPlayedCount < maxRepeats);
+
+    if (hasMoreRepeats) {
+      // Re-queue at the end of queue for the next repeat round
+      playedItem['status'] = 'Queued';
+      playedItem['repeat_round'] = currentPlayedCount + 1;
+      final requeuedItem = Map<String, dynamic>.from(playedItem);
+      queueItems.removeAt(activeIndex.value);
+      queueItems.add(requeuedItem);
+      currentElapsedSeconds.value = 0;
+
+      snackBar(
+        'Broadcasted repeat round $currentPlayedCount of $maxRepeats for "$playedTitle". Re-queued for round #${currentPlayedCount + 1}.',
+        title: 'Repeat Broadcast Progress',
+      );
+    } else {
+      // All repeats completed (or single play notice)
+      if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
+        Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
+      }
+
+      final bool hasActiveHardwareNodes = speakerNodes.any((n) => (n['status'] ?? '').toString().toUpperCase() == 'ONLINE');
+      final queueId = playedItem['id'];
+      if (!Get.testMode && queueId is int && !hasActiveHardwareNodes) {
+        _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
+      }
+
+      queueItems.removeAt(activeIndex.value);
+      currentElapsedSeconds.value = 0;
+
+      final finishMsg = hasRepeat
+          ? 'Completed all $maxRepeats repeat broadcast(s) of "$playedTitle". Removed from speaker queue.'
+          : 'Completed broadcast of "$playedTitle". Removed from speaker queue.';
+      snackBar(finishMsg, title: 'Broadcast Finished');
+    }
+
+    // 3. Advance to next queued notice or finish
     if (queueItems.isNotEmpty) {
       // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first, 0s gap)
-      final emergencyIdx = queueItems.indexWhere((q) {
-        final prio = (q['priority'] ?? '').toString().toUpperCase();
-        final title = (q['title'] ?? '').toString().toLowerCase();
-        return prio == 'EMERGENCY' || prio == 'CRITICAL' || title.contains('emergency');
-      });
+      final emergencyIdx = queueItems.indexWhere((q) => _isItemEmergency(q));
 
       if (emergencyIdx != -1) {
         final emergencyItem = queueItems.removeAt(emergencyIdx);
         queueItems.insert(0, emergencyItem);
         activeIndex.value = 0;
         queueItems[0]['status'] = 'Playing';
+        currentElapsedSeconds.value = 0;
         _updateActiveNoticeMetrics();
         queueItems.refresh();
         isPlaying.value = true;
@@ -705,11 +839,13 @@ class SpeakerQueueController extends GetxController {
         return;
       }
 
-      // Priority 2: Normal notices enforce a 10-20 sec gap (15s) and verify scheduled time
+      // Priority 2: Normal notices enforce a 15-second intermission gap
       if (Get.testMode) {
         _advanceToNextEligibleNotice();
       } else {
+        _playbackTimer?.cancel();
         isPlaying.value = false;
+        currentElapsedSeconds.value = 0;
         isIntermission.value = true;
         intermissionSecondsRemaining.value = broadcastGapSeconds;
         queueItems.refresh();
@@ -720,6 +856,7 @@ class SpeakerQueueController extends GetxController {
           if (intermissionSecondsRemaining.value <= 0) {
             t.cancel();
             isIntermission.value = false;
+            currentElapsedSeconds.value = 0;
             _advanceToNextEligibleNotice();
           }
         });
@@ -730,6 +867,7 @@ class SpeakerQueueController extends GetxController {
       isIntermission.value = false;
       activeIndex.value = 0;
       isPlaying.value = false;
+      currentElapsedSeconds.value = 0;
       queueItems.refresh();
       snackBar('All queued speaker notices have completed broadcast.');
     }
@@ -749,6 +887,7 @@ class SpeakerQueueController extends GetxController {
     // FCFS: iterate in queue order and pick first notice whose scheduled_time has arrived
     for (int i = 0; i < queueItems.length; i++) {
       final q = queueItems[i];
+      if (q['status'] == 'Paused' || q['status'] == 'Completed' || q['status'] == 'Cancelled') continue;
       final schedStr = q['scheduled_time']?.toString();
       if (schedStr == null || schedStr.isEmpty) {
         eligibleIdx = i;
@@ -766,6 +905,7 @@ class SpeakerQueueController extends GetxController {
       for (int i = 0; i < queueItems.length; i++) {
         queueItems[i]['status'] = (i == activeIndex.value) ? 'Playing' : 'Queued';
       }
+      currentElapsedSeconds.value = 0;
       _updateActiveNoticeMetrics();
       queueItems.refresh();
       isPlaying.value = true;

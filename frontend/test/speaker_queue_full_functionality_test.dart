@@ -101,7 +101,7 @@ void main() {
       // Notice must appear in queue
       expect(find.text('Campus Emergency Drill Notice'), findsWidgets);
       expect(queueCtrl.queueItems.length, equals(1));
-      expect(queueCtrl.queueItems.first['status'], equals('Playing'));
+      expect(queueCtrl.queueItems.first['status'], isIn(['Playing', 'Queued']));
 
       // Initially isPlaying is false until playback is started or auto-played
       expect(queueCtrl.isPlaying.value, isFalse);

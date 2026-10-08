@@ -194,24 +194,29 @@ class SmartIntakeService:
         category = "Academic"
         if re.search(r'\b(emergency|fire|drill|evacuate|evacuation|danger|hazard)\b', lower):
             category = "Emergency"
-        elif re.search(r'\b(exam|examination|test|ia-?1|ia-?2|midterm|hall\s*ticket|reval)\b', lower):
+        elif re.search(r'\b(exam|examination|test|ia-?1|ia-?2|midterm|hall\s*ticket|reval|sem\s*exam|semester)\b', lower):
             category = "Examination"
         elif re.search(r'\b(placement|interview|recruitment|drive|package|internship|hiring)\b', lower):
             category = "Placement"
-        elif re.search(r'\b(sport|sports|cricket|football|badminton|tournament|athletics)\b', lower):
+        elif re.search(r'\b(lost\s*and\s*found|lost|found|canteen|maintenance)\b', lower):
+            category = "General"
+        elif re.search(r'\b(sport|sports|cricket|football|badminton|tournament|athletics|volley|volleyball|selection|trials)\b', lower):
             category = "Sports"
         elif re.search(r'\b(holiday|closed|suspend|suspended|vacation|festival)\b', lower):
             category = "Academic"
         elif re.search(r'\b(fest|workshop|hackathon|seminar|cultural|event|symposium|conference)\b', lower):
             category = "Event"
 
-
         # Priority Detection
         priority = "NORMAL"
         if any(w in lower for w in ["emergency", "evacuate", "immediate", "urgent"]):
             priority = "URGENT"
-        elif any(w in lower for w in ["postpone", "reschedul", "mandatory", "deadline", "fee payment", "strict"]):
+        elif any(w in lower for w in ["exam", "examination", "test", "midterm", "hall ticket", "sem exam", "postpone", "reschedul", "mandatory", "deadline", "fee payment", "strict"]):
             priority = "HIGH"
+        elif any(w in lower for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "reminder"]):
+            priority = "LOW"
+        elif any(w in lower for w in ["volley", "volleyball", "selection", "trials", "sports", "cricket", "football", "tournament", "hackathon", "workshop"]):
+            priority = "NORMAL"
 
         # Audience Detection
         audience = "Entire College"

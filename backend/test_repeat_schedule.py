@@ -583,6 +583,72 @@ def test_repeat_schedule_suite():
     assert res_w4["dispatched_count"] == 0, f"Expected 0 notices in Wave 4, got {res_w4['dispatched_count']}"
     print("  ✓ Wave 4: All notices reached repeat caps (High 3x, Medium 2x, Low 1x). Speakers quiet!")
 
+    # -------------------------------------------------------------
+    # TEST 10: Auto-Advance Queue Emergency Lockdown & Continuous Loop
+    # -------------------------------------------------------------
+    print("\n🔍 [TEST 10] Testing Speaker Queue Auto-Advance Continuous Loop & Non-Emergency Suppression...")
+    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    from app.services.repeat_schedule_service import get_current_ist_datetime
+
+    # Setup emergency notice with custom window matching current time
+    ist_cur = get_current_ist_datetime()
+    start_cur = (ist_cur - timedelta(minutes=15)).strftime("%H:%M")
+    end_cur = (ist_cur + timedelta(minutes=45)).strftime("%H:%M")
+
+    sched_em.is_active = True
+    sched_em.selected_slots = ["CUSTOM_WINDOW"]
+    sched_em.custom_start_time = start_cur
+    sched_em.custom_end_time = end_cur
+    sched_em.start_date = now - timedelta(hours=2)
+    sched_em.end_date = now + timedelta(hours=24)
+    db.commit()
+
+    # Clear queue and add Emergency (Playing) + High (Next in Queue) + Med (Queued)
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    q_em = SpeakerQueue(announcement_id=ann_em.id, status="Playing", queue_position=1, duration_seconds=15)
+    q_hi = SpeakerQueue(announcement_id=ann_high.id, status="Next in Queue", queue_position=2, duration_seconds=15)
+    q_me = SpeakerQueue(announcement_id=ann_med.id, status="Queued", queue_position=3, duration_seconds=15)
+    db.add_all([q_em, q_hi, q_me])
+    db.commit()
+
+    # Simulate playback duration completed -> auto_advance_speaker_queue called
+    print("  -> Calling auto_advance_speaker_queue while emergency window active...")
+    res_adv1 = auto_advance_speaker_queue(db, force_advance=True)
+    assert res_adv1 is not None
+    assert res_adv1.get("status") == "emergency_continuous_loop"
+    print("  ✓ Emergency did NOT complete: Looped continuously for current window!")
+
+    # Verify queue states: Emergency is STILL 'Playing'; High and Med are 'Paused'
+    db.refresh(q_em)
+    db.refresh(q_hi)
+    db.refresh(q_me)
+    assert q_em.status == "Playing", f"Expected emergency to stay Playing, got {q_em.status}"
+    assert q_hi.status == "Paused", f"Expected High notice to be Paused, got {q_hi.status}"
+    assert q_me.status == "Paused", f"Expected Med notice to be Paused, got {q_me.status}"
+    print("  ✓ All non-emergency queue items successfully paused and suppressed from playing!")
+
+    # Advance again -> Emergency must continue to loop alone
+    res_adv2 = auto_advance_speaker_queue(db, force_advance=True)
+    assert res_adv2 is not None
+    assert res_adv2.get("status") == "emergency_continuous_loop"
+    db.refresh(q_em)
+    assert q_em.status == "Playing"
+    print("  ✓ Second advance verified: Emergency continues continuous loop monopoly!")
+
+    # When emergency schedule ends/deactivates, auto_advance completes emergency and resumes queue
+    sched_em.is_active = False
+    db.commit()
+
+    res_adv_normal = auto_advance_speaker_queue(db, force_advance=True)
+    assert res_adv_normal is not None
+    db.refresh(q_em)
+    db.refresh(q_hi)
+    assert q_em.status == "Completed"
+    assert q_hi.status == "Playing"
+    print("  ✓ After emergency window ends: Emergency completed and High notice resumed playing!")
+
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
     print("=======================================================\n")
