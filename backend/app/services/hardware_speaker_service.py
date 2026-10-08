@@ -476,6 +476,7 @@ def enqueue_and_broadcast_announcement(
     scheduled_time: Optional[datetime] = None,
     speaker_voice: Optional[Any] = "female",
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
+    force_requeue: bool = False,
 ) -> dict:
     """
     Enqueues an announcement into SpeakerQueue and broadcasts to targeted or all active speaker nodes.
@@ -569,7 +570,7 @@ def enqueue_and_broadcast_announcement(
         current_status = str(getattr(queue_item, "status", item_status))
     else:
         # Check if existing item is already Completed and has no repeat schedule
-        if getattr(existing_item, "status", "") == "Completed":
+        if getattr(existing_item, "status", "") == "Completed" and not is_emergency and not force_requeue:
             from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
             sched = db.query(AnnouncementRepeatSchedule).filter(
                 AnnouncementRepeatSchedule.announcement_id == announcement_id,

@@ -699,6 +699,7 @@ def enqueue_speaker_announcement(
         scheduled_time=scheduled_time,
         speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
         base_url=base_url,
+        force_requeue=True,
     )
     return {
         "status": "success",
@@ -732,8 +733,9 @@ def update_queue_action(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    from sqlalchemy import or_
-    item = db.query(SpeakerQueue).filter(or_(SpeakerQueue.id == id, SpeakerQueue.announcement_id == id)).order_by(SpeakerQueue.id.desc()).first()
+    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
+    if not item:
+        item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == id).order_by(SpeakerQueue.id.desc()).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
@@ -828,7 +830,7 @@ def update_queue_action(
         "remove": "Completed",
     }
     new_status = status_map.get(act_clean, "Queued")
-    updated = update_queue_item_status(db=db, queue_id=id, status=new_status)
+    updated = update_queue_item_status(db=db, queue_id=item.id, status=new_status)
 
     # Dispatch hardware command to all speaker nodes
     dispatch_res = dispatch_queue_action_to_speakers(
@@ -848,7 +850,7 @@ def update_queue_action(
 
     return {
         "status": "success",
-        "queue_id": id,
+        "queue_id": item.id,
         "action": action,
         "new_status": new_status,
         "hardware_dispatch": dispatch_res,
