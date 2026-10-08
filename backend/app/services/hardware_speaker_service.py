@@ -535,8 +535,17 @@ def enqueue_and_broadcast_announcement(
         or (active_ann_id == announcement_id)
     )
 
-    if is_emergency and active_playing and getattr(active_playing, "id", None) != (getattr(existing_item, "id", None) if existing_item else None):
-        setattr(active_playing, "status", "Paused")
+    if is_emergency:
+        other_active = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id != announcement_id,
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+            )
+            .all()
+        )
+        for oa in other_active:
+            oa.status = "Paused"
         db.commit()
 
     active_item = existing_item
@@ -767,6 +776,126 @@ def auto_advance_speaker_queue(
     5. Updates subsequent item to 'Next in Queue'.
     """
     now = utc_now()
+    # 1. Inspect active emergency repeat schedule locking the current break or custom window
+    from app.services.repeat_schedule_service import (
+        get_active_emergency_repeat_schedule,
+        get_current_ist_datetime,
+        get_active_break_slots,
+        is_slot_active_at_time,
+    )
+    from app.core.emergency_utils import is_emergency_announcement
+    from app.models.announcement_repeat_schedule import RepeatSlotExecutionLog
+
+    active_emerg_sched = get_active_emergency_repeat_schedule(db)
+    if active_emerg_sched and active_emerg_sched.announcement:
+        emerg_ann = active_emerg_sched.announcement
+
+        # Enforce emergency lockdown: pause all other non-emergency queue items
+        non_em_items = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id != emerg_ann.id,
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+            )
+            .all()
+        )
+        for nei in non_em_items:
+            nei.status = "Paused"
+        db.commit()
+
+        # Check emergency notice queue item
+        emerg_q = (
+            db.query(SpeakerQueue)
+            .filter(SpeakerQueue.announcement_id == emerg_ann.id)
+            .first()
+        )
+
+        if emerg_q and emerg_q.status == "Playing":
+            curr_played_at = getattr(emerg_q, "played_at", None)
+            curr_dur = getattr(emerg_q, "duration_seconds", 15) or 15
+            elapsed = (now - curr_played_at).total_seconds() if curr_played_at else curr_dur
+            if elapsed < curr_dur and not force_advance:
+                # Still within current playback round
+                return None
+
+            # Audio completed round: DO NOT mark Completed or advance to other notices!
+            # Loop continuously for the entire break or custom window!
+            emerg_q.played_at = now
+            emerg_q.status = "Playing"
+            emerg_q.queue_position = 1
+            active_emerg_sched.total_played_count += 1
+
+            # Log execution round
+            ist_now = get_current_ist_datetime()
+            time_str = ist_now.strftime("%H:%M")
+            date_str = ist_now.strftime("%Y-%m-%d")
+            matched_slots = is_slot_active_at_time(active_emerg_sched, time_str, get_active_break_slots(time_str))
+            slot_name = matched_slots[0] if matched_slots else "BREAK_SLOT"
+            prefix_key = f"{emerg_ann.id}:{slot_name}:{date_str}"
+            exec_log = RepeatSlotExecutionLog(
+                schedule_id=active_emerg_sched.id,
+                slot_key=f"{prefix_key}:{active_emerg_sched.total_played_count}",
+                slot_name=slot_name,
+                played_at=now,
+            )
+            db.add(exec_log)
+            db.commit()
+
+            dispatch_res = dispatch_queue_action_to_speakers(
+                db=db,
+                queue_item=emerg_q,
+                action="play",
+                base_url=base_url,
+            )
+            logger.info(
+                f"🚨 [EMERGENCY CONTINUOUS LOOP] Repeated Emergency Announcement #{emerg_ann.id} "
+                f"('{emerg_ann.title}') in {slot_name}. Play count today: {active_emerg_sched.total_played_count}."
+            )
+            return {
+                "status": "emergency_continuous_loop",
+                "advanced_to_id": emerg_q.id,
+                "title": emerg_ann.title,
+                "dispatch": dispatch_res,
+            }
+        else:
+            # Emergency item is not currently playing; start it immediately!
+            if not emerg_q:
+                dur_words = len(((getattr(emerg_ann, "title", "") or "") + " " + (getattr(emerg_ann, "description", "") or "")).split())
+                dur_secs = max(10, int(dur_words / 2.5))
+                emerg_q = cast(Any, SpeakerQueue)(
+                    announcement_id=emerg_ann.id,
+                    queue_position=1,
+                    status="Playing",
+                    scheduled_time=now,
+                    played_at=now,
+                    duration_seconds=dur_secs,
+                )
+                db.add(emerg_q)
+            else:
+                emerg_q.status = "Playing"
+                emerg_q.played_at = now
+                emerg_q.queue_position = 1
+
+            active_emerg_sched.total_played_count += 1
+            db.commit()
+
+            dispatch_res = dispatch_queue_action_to_speakers(
+                db=db,
+                queue_item=emerg_q,
+                action="play",
+                base_url=base_url,
+            )
+            logger.info(
+                f"🚨 [EMERGENCY LOCKDOWN INITIATED] Started emergency notice #{emerg_ann.id} "
+                f"('{emerg_ann.title}') continuously for entire break/custom window."
+            )
+            return {
+                "status": "emergency_lockdown_started",
+                "advanced_to_id": emerg_q.id,
+                "title": emerg_ann.title,
+                "dispatch": dispatch_res,
+            }
+
     current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
 
     should_advance = False
@@ -777,11 +906,7 @@ def auto_advance_speaker_queue(
         else:
             # Check if current playing is emergency
             ann = getattr(current_playing, "announcement", None)
-            is_curr_emerg = ann and (
-                getattr(ann, "emergency_level", None) == "EMERGENCY"
-                or (hasattr(getattr(ann, "priority", None), "value") and getattr(ann.priority, "value") == "EMERGENCY")
-                or str(getattr(ann, "priority", "")).upper() == "EMERGENCY"
-            )
+            is_curr_emerg = is_emergency_announcement(ann)
             # Gap of 15 seconds (10-20 sec range) between normal broadcasts; 0s gap for emergency
             gap = 0 if is_curr_emerg else BROADCAST_GAP_SECONDS
             curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
@@ -801,40 +926,36 @@ def auto_advance_speaker_queue(
             db.commit()
             db.refresh(current_playing)
             logger.info(f"Speaker queue item #{current_playing.id} completed playback after duration + {gap}s gap.")
+
+            # If emergency broadcast ended, unpause notices that were paused by emergency override
+            paused_by_emergency = (
+                db.query(SpeakerQueue)
+                .filter(SpeakerQueue.status == "Paused")
+                .all()
+            )
+            for p_item in paused_by_emergency:
+                if not is_emergency_announcement(p_item.announcement):
+                    p_item.status = "Queued"
+            db.commit()
     else:
         if force_advance:
             should_advance = True
         else:
-            # When idle/stopped, only advance for emergency preemption or scheduled announcements whose scheduled_time just arrived
+            # When idle/stopped, advance for emergency preemption or scheduled announcements whose scheduled_time arrived
             from datetime import timedelta
-            from app.core.enums.announcement import EmergencyLevel
-            from app.models.announcement import Announcement
 
-            emergency_waiting = (
+            queued_items = (
                 db.query(SpeakerQueue)
-                .join(SpeakerQueue.announcement)
-                .filter(
-                    SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-                    or_(
-                        Announcement.emergency_level == EmergencyLevel.EMERGENCY,
-                        Announcement.title.ilike("%emergency%"),
-                    ),
-                )
-                .first()
+                .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
+                .all()
             )
+            emergency_waiting = any(is_emergency_announcement(q.announcement) for q in queued_items)
             if emergency_waiting:
                 should_advance = True
             else:
-                scheduled_due = (
-                    db.query(SpeakerQueue)
-                    .filter(
-                        SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-                        or_(
-                            SpeakerQueue.scheduled_time == None,
-                            SpeakerQueue.scheduled_time <= (now + timedelta(seconds=15)),
-                        ),
-                    )
-                    .first()
+                scheduled_due = any(
+                    q.scheduled_time is None or q.scheduled_time <= (now + timedelta(seconds=15))
+                    for q in queued_items
                 )
                 if scheduled_due:
                     should_advance = True
@@ -843,32 +964,22 @@ def auto_advance_speaker_queue(
         return None
 
     # Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
-    from app.core.enums.announcement import AnnouncementPriority, EmergencyLevel
-    from app.models.announcement import Announcement
-    next_item = (
+    queued_all = (
         db.query(SpeakerQueue)
-        .join(SpeakerQueue.announcement)
-        .filter(
-            SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-            or_(
-                Announcement.emergency_level == EmergencyLevel.EMERGENCY,
-                Announcement.title.ilike("%emergency%"),
-            )
-        )
+        .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
         .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
-        .first()
+        .all()
+    )
+    next_item = next(
+        (q for q in queued_all if is_emergency_announcement(q.announcement)),
+        None
     )
 
     # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
     if not next_item:
-        next_item = (
-            db.query(SpeakerQueue)
-            .filter(
-                SpeakerQueue.status.in_(["Next in Queue", "Queued"]),
-                or_(SpeakerQueue.scheduled_time == None, SpeakerQueue.scheduled_time <= now)
-            )
-            .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
-            .first()
+        next_item = next(
+            (q for q in queued_all if q.scheduled_time is None or q.scheduled_time <= now),
+            None
         )
 
     if not next_item:

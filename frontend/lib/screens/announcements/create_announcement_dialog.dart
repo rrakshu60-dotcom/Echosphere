@@ -774,7 +774,30 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                               'Priority:',
                               style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                             ),
-                            EchoSphereBadge.priority(priority: aiDetectedPriority),
+                            PopupMenuButton<String>(
+                              tooltip: 'Change Priority Level',
+                              initialValue: aiDetectedPriority,
+                              onSelected: (val) {
+                                setState(() {
+                                  aiDetectedPriority = val;
+                                });
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(value: 'HIGH', child: Text('HIGH (Repeats 3x)')),
+                                const PopupMenuItem(value: 'NORMAL', child: Text('NORMAL / MEDIUM (Repeats 2x)')),
+                                const PopupMenuItem(value: 'LOW', child: Text('LOW (Repeats 1x)')),
+                                if (user != null && (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN')))
+                                  const PopupMenuItem(value: 'EMERGENCY', child: Text('EMERGENCY (Continuous Loop)')),
+                              ],
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  EchoSphereBadge.priority(priority: aiDetectedPriority),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.arrow_drop_down_rounded, size: 16, color: theme.colorScheme.primary),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -988,7 +1011,30 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               runSpacing: 6,
               children: [
                 EchoSphereBadge.secondary(label: 'Category: $aiDetectedCategory'),
-                EchoSphereBadge.priority(priority: aiDetectedPriority),
+                PopupMenuButton<String>(
+                  tooltip: 'Change Priority Level',
+                  initialValue: aiDetectedPriority,
+                  onSelected: (val) {
+                    setState(() {
+                      aiDetectedPriority = val;
+                    });
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(value: 'HIGH', child: Text('HIGH (Repeats 3x)')),
+                    const PopupMenuItem(value: 'NORMAL', child: Text('NORMAL / MEDIUM (Repeats 2x)')),
+                    const PopupMenuItem(value: 'LOW', child: Text('LOW (Repeats 1x)')),
+                    if (user != null && (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN')))
+                      const PopupMenuItem(value: 'EMERGENCY', child: Text('EMERGENCY (Continuous Loop)')),
+                  ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      EchoSphereBadge.priority(priority: aiDetectedPriority),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_drop_down_rounded, size: 16, color: theme.colorScheme.primary),
+                    ],
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),

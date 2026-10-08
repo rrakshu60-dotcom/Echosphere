@@ -1707,7 +1707,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                             final nodeName = (item['node_name'] ?? _queueCtrl.getNodeName(targetNodeId)).toString();
                                             final isOnline = _queueCtrl.isNodeOnline(targetNodeId);
                                             return ConstrainedBox(
-                                              constraints: const BoxConstraints(maxWidth: 130),
+                                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width < 360 ? 70 : 130),
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                                 decoration: BoxDecoration(
@@ -1801,7 +1801,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 ),
                                 IconButton(
                                   tooltip: isCurrentlyPlaying ? 'Pause' : 'Play Now',
-                                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                                   padding: EdgeInsets.zero,
                                   icon: Container(
                                     padding: const EdgeInsets.all(5),
@@ -1824,7 +1825,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                   onPressed: () => _queueCtrl.togglePlayPause(index: i),
                                 ),
                                 IconButton(
-                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                   padding: EdgeInsets.zero,
                                   tooltip: 'Move Up',
                                   icon: Icon(
@@ -1835,7 +1837,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                   onPressed: i == 0 ? null : () => _queueCtrl.reorderQueue(i, i - 1),
                                 ),
                                 IconButton(
-                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                   padding: EdgeInsets.zero,
                                   tooltip: 'Move Down',
                                   icon: Icon(
@@ -1850,7 +1853,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 ),
                                 if (!_isStudent)
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                    visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                     padding: EdgeInsets.zero,
                                     icon: Icon(Icons.repeat_rounded,
                                         size: 16, color: context.colors.primary),
@@ -1858,7 +1862,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                     onPressed: () => _openRepeatScheduleForQueueItem(item),
                                   ),
                                 IconButton(
-                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                                   padding: EdgeInsets.zero,
                                   icon: Icon(Icons.delete_outline_rounded,
                                       size: 16, color: context.colors.primary),

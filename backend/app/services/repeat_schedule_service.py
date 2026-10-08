@@ -261,6 +261,9 @@ def delete_repeat_schedule(
     return True
 
 
+from app.core.emergency_utils import is_emergency_announcement
+
+
 def get_active_break_slots(time_str: str) -> List[str]:
     """Identifies which standard campus acoustic break slot is currently active in IST."""
     active = []
@@ -281,35 +284,118 @@ def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
     Returns: (priority_weight, max_repeats_in_slot, priority_tier)
 
     Tiers:
-      - EMERGENCY: weight=1000, max_repeats=999999 (repeats continuously whole break)
+      - EMERGENCY: weight=1000, max_repeats=999999 (repeats continuously whole break/custom window)
       - HIGH: weight=300, max_repeats=3 (repeats 3 times)
       - MEDIUM / NORMAL: weight=200, max_repeats=2 (repeats 2 times)
       - LOW: weight=100, max_repeats=1 (repeats 1 time)
     """
-    em_level = getattr(ann, "emergency_level", None)
-    prio = getattr(ann, "priority", None)
-
-    is_emergency = (
-        em_level == EmergencyLevel.EMERGENCY
-        or str(em_level).upper() == "EMERGENCY"
-        or prio == "EMERGENCY"
-        or str(prio).upper() == "EMERGENCY"
-    )
-    if not is_emergency:
-        title_desc = f"{getattr(ann, 'title', '')} {getattr(ann, 'description', '')}".lower()
-        if any(w in title_desc for w in ("earthquake", "evacuate", "evacuation", "fire alert", "immediate evacuation", "siren")):
-            is_emergency = True
-
-    if is_emergency:
+    if is_emergency_announcement(ann):
         return 1000, 999999, "EMERGENCY"
 
+    prio = getattr(ann, "priority", None)
     prio_str = str(getattr(prio, "value", prio) or "NORMAL").upper()
-    if "HIGH" in prio_str or "URGENT" in prio_str:
+    title = str(getattr(ann, "title", "") or "").lower()
+    desc = str(getattr(ann, "description", "") or "").lower()
+    combined = f"{title} {desc}"
+
+    if "HIGH" in prio_str or "URGENT" in prio_str or any(
+        w in combined for w in ["exam", "examination", "test", "timetable", "hall ticket", "viva", "semester", "sem exam", "placement", "interview", "deadline", "fee payment"]
+    ):
         return 300, 3, "HIGH"
-    elif "LOW" in prio_str:
+    elif "LOW" in prio_str or any(
+        w in combined for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing", "reminder"]
+    ):
         return 100, 1, "LOW"
-    else:  # NORMAL or MEDIUM
+    else:  # NORMAL or MEDIUM (sports, volleyball, events, cultural, hackathons)
         return 200, 2, "MEDIUM"
+
+
+def is_slot_active_at_time(
+    sched: AnnouncementRepeatSchedule,
+    time_str: str,
+    active_standard_slots: List[str],
+) -> List[str]:
+    """Checks whether the given repeat schedule has slots matching current time_str."""
+    matched_slots: List[str] = []
+    for slot in (sched.selected_slots or []):
+        if slot in active_standard_slots:
+            matched_slots.append(slot)
+        elif slot == "CUSTOM_WINDOW":
+            c_start = (sched.custom_start_time or "").strip()
+            c_end = (sched.custom_end_time or "").strip()
+            if not c_end and c_start:
+                try:
+                    sh, sm = map(int, c_start.split(":"))
+                    end_minutes = (sh * 60 + sm + 30) % (24 * 60)
+                    eh, em = end_minutes // 60, end_minutes % 60
+                    c_end = f"{eh:02d}:{em:02d}"
+                except Exception:
+                    c_end = c_start
+            if c_start and c_end:
+                if c_start <= c_end:
+                    if c_start <= time_str <= c_end:
+                        matched_slots.append("CUSTOM_WINDOW")
+                else:
+                    # Midnight wraparound (e.g. 23:45 to 00:15)
+                    if time_str >= c_start or time_str <= c_end:
+                        matched_slots.append("CUSTOM_WINDOW")
+            elif c_start and c_start == time_str:
+                matched_slots.append("CUSTOM_WINDOW")
+    return matched_slots
+
+
+def get_active_emergency_repeat_schedule(
+    db: Session,
+    simulated_time_str: Optional[str] = None,
+    simulated_date_str: Optional[str] = None,
+) -> Optional[AnnouncementRepeatSchedule]:
+    """
+    Checks if there is ANY active emergency announcement with a repeat schedule
+    matching the current acoustic window (break slot or custom window).
+    Returns the matching AnnouncementRepeatSchedule if found, else None.
+    """
+    ist_now = get_current_ist_datetime()
+    ist_now_naive = ist_now.replace(tzinfo=None)
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    time_str = simulated_time_str or ist_now.strftime("%H:%M")
+
+    active_standard_slots = get_active_break_slots(time_str)
+
+    from sqlalchemy import and_, or_
+    query = db.query(AnnouncementRepeatSchedule).filter(
+        AnnouncementRepeatSchedule.is_active == True,
+    )
+    if not simulated_date_str:
+        query = query.filter(
+            or_(
+                and_(
+                    AnnouncementRepeatSchedule.start_date <= (utc_now + timedelta(minutes=5)),
+                    AnnouncementRepeatSchedule.end_date >= (utc_now - timedelta(minutes=5)),
+                ),
+                and_(
+                    AnnouncementRepeatSchedule.start_date <= (ist_now_naive + timedelta(minutes=5)),
+                    AnnouncementRepeatSchedule.end_date >= (ist_now_naive - timedelta(minutes=5)),
+                ),
+            )
+        )
+    schedules = query.all()
+    for sched in schedules:
+        ann = sched.announcement
+        if not ann:
+            continue
+        ann_status = getattr(ann, "status", "")
+        status_val = ann_status.value if hasattr(ann_status, "value") else str(ann_status)
+        if status_val.upper() not in ("PUBLISHED", "SCHEDULED"):
+            continue
+
+        if not is_emergency_announcement(ann):
+            continue
+
+        matched = is_slot_active_at_time(sched, time_str, active_standard_slots)
+        if matched:
+            return sched
+
+    return None
 
 
 def evaluate_and_dispatch_repeat_slots(
@@ -321,13 +407,16 @@ def evaluate_and_dispatch_repeat_slots(
     """
     Evaluates current time against configured repeat schedules:
     1. Determines active campus break or custom window in Indian Standard Time (IST).
-    2. Ranks eligible notices by AI-assigned priority (Emergency -> High -> Medium -> Low).
-    3. Repeats according to priority tier:
-       - Emergency: Repeats throughout the whole break
+    2. Enforces Emergency Broadcast Lockdown: If ANY emergency notice is active for this break
+       or custom window, it plays CONTINUOUSLY for the entire window and completely SUPPRESSES
+       all other notices!
+    3. Ranks eligible notices by AI-assigned priority (Emergency -> High -> Medium -> Low).
+    4. Repeats according to priority tier:
+       - Emergency: Repeats throughout the whole break / custom window
        - High: Repeats up to 3 times
        - Medium / Normal: Repeats up to 2 times
        - Low: Repeats 1 time
-    4. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
+    5. Protects class lecture hours with hard cutoff slot end TTLs, expiring unplayed items.
     """
     ist_now = get_current_ist_datetime()
     ist_now_naive = ist_now.replace(tzinfo=None)
@@ -339,6 +428,12 @@ def evaluate_and_dispatch_repeat_slots(
 
     dispatched = []
     skipped = []
+
+    # Priority Check: Detect active emergency repeat schedule for this acoustic window
+    active_emerg_sched = get_active_emergency_repeat_schedule(
+        db, simulated_time_str=time_str, simulated_date_str=date_str
+    )
+    has_active_emergency_scheduled = (active_emerg_sched is not None)
 
     # 1. Fetch all active repeat schedules within valid date window
     query = db.query(AnnouncementRepeatSchedule).filter(
@@ -362,9 +457,22 @@ def evaluate_and_dispatch_repeat_slots(
         )
     schedules = query.all()
 
+    # If an emergency broadcast schedule is actively ongoing, enforce total pause of all other notices
+    if has_active_emergency_scheduled and active_emerg_sched:
+        active_non_em = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id != active_emerg_sched.announcement_id,
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+            )
+            .all()
+        )
+        for item in active_non_em:
+            item.status = "Paused"
+        db.commit()
+
     # 2. Phase 1: Collect & validate candidates matching active acoustic window
     candidates = []
-    has_active_emergency_scheduled = False
 
     for sched in schedules:
         ann = sched.announcement
@@ -380,32 +488,25 @@ def evaluate_and_dispatch_repeat_slots(
             continue
 
         # Check which of the schedule's chosen slots match current time
-        matched_slots: List[str] = []
-        for slot in (sched.selected_slots or []):
-            if slot in active_standard_slots:
-                matched_slots.append(slot)
-            elif slot == "CUSTOM_WINDOW":
-                if sched.custom_start_time and sched.custom_end_time:
-                    if sched.custom_start_time <= time_str <= sched.custom_end_time:
-                        matched_slots.append("CUSTOM_WINDOW")
-                elif sched.custom_start_time:
-                    try:
-                        sh, sm = map(int, sched.custom_start_time.split(":"))
-                        end_minutes = (sh * 60 + sm + 30) % (24 * 60)
-                        eh, em = end_minutes // 60, end_minutes % 60
-                        calc_end = f"{eh:02d}:{em:02d}"
-                        if sched.custom_start_time <= time_str <= calc_end:
-                            matched_slots.append("CUSTOM_WINDOW")
-                    except Exception:
-                        if sched.custom_start_time == time_str:
-                            matched_slots.append("CUSTOM_WINDOW")
+        matched_slots = is_slot_active_at_time(sched, time_str, active_standard_slots)
 
         if not matched_slots:
             continue
 
         prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann)
-        if prio_tier == "EMERGENCY":
+        is_em = (prio_tier == "EMERGENCY")
+        if is_em:
             has_active_emergency_scheduled = True
+
+        # If an emergency broadcast override is active, strictly skip and suppress all non-emergency notices!
+        if has_active_emergency_scheduled and not is_em:
+            for slot_name in matched_slots:
+                skipped.append({
+                    "announcement_id": sched.announcement_id,
+                    "slot": slot_name,
+                    "reason": "Suppressed by active Emergency Broadcast Override (e.g. Earthquake/Evacuation alert active)",
+                })
+            continue
 
         for slot_name in matched_slots:
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
@@ -426,7 +527,7 @@ def evaluate_and_dispatch_repeat_slots(
                 if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")
             )
 
-            # Check if repeat cap reached
+            # Check if repeat cap reached (emergency has cap 999999 so repeats whole break)
             if times_played_today >= max_repeats:
                 skipped.append({
                     "announcement_id": sched.announcement_id,
@@ -446,19 +547,20 @@ def evaluate_and_dispatch_repeat_slots(
             )
             if active_q:
                 if times_played_today > 0:
-                    skipped.append({
-                        "announcement_id": sched.announcement_id,
-                        "slot": slot_name,
-                        "reason": f"Already active in speaker queue (status: {active_q.status})",
-                    })
-                    continue
+                    if not is_em or active_q.status == "Playing":
+                        skipped.append({
+                            "announcement_id": sched.announcement_id,
+                            "slot": slot_name,
+                            "reason": f"Already active in speaker queue (status: {active_q.status})",
+                        })
+                        continue
                 else:
                     # Item was left from an earlier slot/broadcast; mark completed so new slot begins fresh
                     active_q.status = "Completed"
                     db.commit()
 
             # Cooldown check between repeat rounds for non-emergency notices
-            if prio_tier != "EMERGENCY" and times_played_today > 0 and not simulated_date_str:
+            if not is_em and times_played_today > 0 and not simulated_date_str:
                 matching_logs = [log for log in slot_logs if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")]
                 if matching_logs:
                     last_played = max(log.played_at for log in matching_logs)
@@ -480,14 +582,14 @@ def evaluate_and_dispatch_repeat_slots(
                 "max_repeats": max_repeats,
                 "tier": prio_tier,
                 "times_played_today": times_played_today,
-                "is_emergency": (prio_tier == "EMERGENCY"),
+                "is_emergency": is_em,
                 "created_at": getattr(ann, "created_at", None) or datetime.min,
             })
 
     # 3. Phase 2: Emergency Override Lock
-    # If ANY emergency notice (e.g. Earthquake, Evacuation, Fire Alert) is scheduled for this break,
+    # If ANY emergency notice (e.g. Earthquake, Evacuation, Fire Alert) is scheduled for this break/custom window,
     # it completely supersedes and suppresses ALL other announcements.
-    # ONLY the emergency notice broadcasts, repeating continuously for the entire break!
+    # ONLY the emergency notice broadcasts, repeating continuously for the entire break or custom window!
     emergency_candidates = [c for c in candidates if c["is_emergency"]]
     if emergency_candidates or has_active_emergency_scheduled:
         non_emergency_candidates = [c for c in candidates if not c["is_emergency"]]
@@ -505,15 +607,9 @@ def evaluate_and_dispatch_repeat_slots(
             .all()
         )
         for item in active_non_em:
-            ann_prio = getattr(item.announcement, "priority", None)
-            ann_em = getattr(item.announcement, "emergency_level", None)
-            is_item_em = (
-                ann_em == EmergencyLevel.EMERGENCY
-                or str(ann_em).upper() == "EMERGENCY"
-                or str(ann_prio).upper() == "EMERGENCY"
-            )
-            if not is_item_em:
-                item.status = "Paused"
+            if item.announcement and is_emergency_announcement(item.announcement):
+                continue
+            item.status = "Paused"
         db.commit()
 
         candidates = emergency_candidates
@@ -521,7 +617,7 @@ def evaluate_and_dispatch_repeat_slots(
             logger.warning(
                 f"🚨 [EMERGENCY LOCKDOWN] Active emergency notice detected. "
                 f"Ignoring all {len(non_emergency_candidates)} other notices. "
-                f"Broadcasting Announcement #{candidates[0]['sched'].announcement_id} continuously for the whole break!"
+                f"Broadcasting Announcement #{candidates[0]['sched'].announcement_id} continuously for the entire break/custom window!"
             )
     else:
         # If no emergency, sort standard candidates by Priority (High 300 > Medium 200 > Low 100) and Recency

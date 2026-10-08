@@ -639,7 +639,8 @@ def enqueue_speaker_announcement(
         dept_code = creator.department.code
 
     base_url = str(request.base_url).rstrip("/")
-    p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
+    from app.core.emergency_utils import is_emergency_announcement
+    is_emerg = is_emergency_announcement(ann)
     target_node_id = enqueue_in.speaker_node_id if (enqueue_in.speaker_node_id and enqueue_in.speaker_node_id > 0) else None
     scheduled_time = getattr(enqueue_in, 'scheduled_time', None) or getattr(ann, 'scheduled_at', None)
     result = enqueue_and_broadcast_announcement(
@@ -649,7 +650,7 @@ def enqueue_speaker_announcement(
         content=str(ann.description),
         department_code=dept_code,
         zone="College-Wide",
-        is_emergency=(p_val == "EMERGENCY"),
+        is_emergency=is_emerg,
         speaker_node_id=target_node_id,
         scheduled_time=scheduled_time,
         speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
