@@ -896,56 +896,9 @@ def auto_advance_speaker_queue(
                 "dispatch": dispatch_res,
             }
 
-    # 1. Handle Active Intermission Gap
-    current_intermission = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Intermission").first()
     should_advance = False
 
-    if current_intermission:
-        if force_advance:
-            intermission_complete = True
-        else:
-            intermission_start = getattr(current_intermission, "played_at", None)
-            elapsed_gap = (now - intermission_start).total_seconds() if intermission_start else BROADCAST_GAP_SECONDS
-            intermission_complete = (elapsed_gap >= BROADCAST_GAP_SECONDS)
-
-        if not intermission_complete:
-            # HARD LOCK: Actively within the 15-second intermission gap!
-            # Do NOT advance to next notice, do NOT play audio on speakers!
-            rem_secs = max(0, int(BROADCAST_GAP_SECONDS - elapsed_gap))
-            return {
-                "status": "intermission",
-                "seconds_remaining": rem_secs,
-                "intermission_item_id": current_intermission.id,
-            }
-
-        # Intermission completed! Determine if notice has repeat rounds remaining
-        from app.services.repeat_schedule_service import get_notice_priority_info
-        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
-        ann = current_intermission.announcement
-        sched = (
-            db.query(AnnouncementRepeatSchedule)
-            .filter(AnnouncementRepeatSchedule.announcement_id == current_intermission.announcement_id)
-            .first()
-        ) if current_intermission.announcement_id else None
-
-        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-        played_count = sched.total_played_count if sched else 1
-
-        if sched and played_count < max_repeats:
-            max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
-            current_intermission.status = "Queued"
-            current_intermission.queue_position = max_pos + 1
-            current_intermission.played_at = None
-            db.commit()
-            logger.info(f"🔁 Announcement #{ann.id} ({prio_tier}) re-queued for repeat round {played_count + 1} of {max_repeats}.")
-        else:
-            current_intermission.status = "Completed"
-            db.commit()
-            logger.info(f"Speaker queue item #{current_intermission.id} completed after 15s intermission.")
-
-        should_advance = True
-
-    # 2. Handle Currently Playing Item
+    # Handle Currently Playing Item
     current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
 
     if current_playing:
@@ -969,7 +922,7 @@ def auto_advance_speaker_queue(
             from app.services.repeat_schedule_service import get_active_emergency_repeat_schedule
             curr_active_emerg_sched = get_active_emergency_repeat_schedule(db)
             if curr_active_emerg_sched and getattr(curr_active_emerg_sched, "is_active", True):
-                # Emergency notices loop continuously with zero intermission gap
+                # Emergency notices loop continuously
                 current_playing.status = "Playing"
                 current_playing.played_at = now
                 db.commit()
@@ -990,19 +943,40 @@ def auto_advance_speaker_queue(
                 should_advance = True
 
         else:
-            # Normal notices transition to strictly enforced 15-second Intermission
-            current_playing.status = "Intermission"
-            current_playing.played_at = now
+            # Normal notice completed audio playback
+            from app.services.repeat_schedule_service import (
+                get_current_ist_datetime,
+                get_active_break_slots,
+                is_slot_active_at_time,
+            )
+            from app.models.announcement_repeat_schedule import (
+                AnnouncementRepeatSchedule,
+                RepeatSlotExecutionLog,
+            )
 
-            # Update repeat schedule played count and log execution
-            from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule, RepeatSlotExecutionLog
+            ist_now = get_current_ist_datetime()
+            time_str = ist_now.strftime("%H:%M")
+            date_str = ist_now.strftime("%Y-%m-%d")
+            active_slots = get_active_break_slots(time_str)
+
             sched = (
                 db.query(AnnouncementRepeatSchedule)
-                .filter(AnnouncementRepeatSchedule.announcement_id == current_playing.announcement_id)
+                .filter(
+                    AnnouncementRepeatSchedule.announcement_id == current_playing.announcement_id,
+                    AnnouncementRepeatSchedule.is_active == True,
+                )
                 .first()
             ) if current_playing.announcement_id else None
 
+            is_slot_active = False
             if sched:
+                matched = is_slot_active_at_time(sched, time_str, active_slots)
+                if matched:
+                    is_slot_active = True
+
+            if is_slot_active:
+                # Notice is within its active repeating time window (e.g. 11:00-11:15 or custom window):
+                # Re-queue at the back of the queue so all notices in the slot rotate repeatedly!
                 sched.total_played_count += 1
                 exec_log = RepeatSlotExecutionLog(
                     schedule_id=sched.id,
@@ -1011,15 +985,19 @@ def auto_advance_speaker_queue(
                     played_at=now,
                 )
                 db.add(exec_log)
+                max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
+                current_playing.status = "Queued"
+                current_playing.queue_position = max_pos + 1
+                current_playing.played_at = None
+                db.commit()
+                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for continuous slot rotation (Play count: {sched.total_played_count}).")
+            else:
+                # Schedule ended or no repeat configured -> mark completed
+                current_playing.status = "Completed"
+                db.commit()
+                logger.info(f"Speaker queue item #{current_playing.id} completed playback.")
 
-            db.commit()
-            db.refresh(current_playing)
-            logger.info(f"⏸️ Speaker queue item #{current_playing.id} finished audio. Entering strictly enforced 15s intermission (Total played count: {sched.total_played_count if sched else 1}).")
-            return {
-                "status": "intermission",
-                "seconds_remaining": BROADCAST_GAP_SECONDS,
-                "intermission_item_id": current_playing.id,
-            }
+            should_advance = True
     elif not should_advance:
         if force_advance:
             should_advance = True
