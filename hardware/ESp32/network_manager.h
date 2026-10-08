@@ -44,6 +44,7 @@ public:
   }
 
   int lastTopNoticeId = 0;
+  uint32_t lastDailyNoticesHash = 0;
 
   void begin() {
     // Initialize WiFi in STA mode first so radio hardware MAC is valid
@@ -312,29 +313,38 @@ public:
         // 3. Process daily important notices for idle display ticker
         if (respDoc["daily_notices"].is<JsonArray>()) {
           JsonArray dailyArray = respDoc["daily_notices"].as<JsonArray>();
-          int oldCount = displayMgr.getDailyNoticesCount();
-          displayMgr.clearDailyNotices();
+          uint32_t incomingHash = 0;
           for (JsonObject item : dailyArray) {
-            DisplayNotice n;
-            n.id = item["id"].as<int>();
-            const char* t = item["title"];
-            n.title = t ? String(t) : "";
-            const char* s = item["summary"];
-            n.summary = s ? String(s) : "";
-            const char* p = item["priority"];
-            n.priority = p ? String(p) : "NORMAL";
-            const char* d = item["department"];
-            n.department = d ? String(d) : "College-Wide";
-            const char* cat = item["category"];
-            n.category = cat ? String(cat) : "Notice";
-            displayMgr.addDailyNotice(n);
+            incomingHash = (incomingHash * 31) + (uint32_t)item["id"].as<int>();
           }
-          int newCount = displayMgr.getDailyNoticesCount();
-          int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
-          if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
-            if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
-              lastTopNoticeId = currentTopId;
-              displayMgr.refreshScreen();
+
+          if (incomingHash != lastDailyNoticesHash || !displayMgr.isRendered()) {
+            lastDailyNoticesHash = incomingHash;
+            int oldCount = displayMgr.getDailyNoticesCount();
+            displayMgr.clearDailyNotices();
+            for (JsonObject item : dailyArray) {
+              DisplayNotice n;
+              n.id = item["id"].as<int>();
+              const char* t = item["title"];
+              n.title = t ? String(t) : "";
+              const char* s = item["summary"];
+              n.summary = s ? String(s) : "";
+              const char* p = item["priority"];
+              n.priority = p ? String(p) : "NORMAL";
+              const char* d = item["department"];
+              n.department = d ? String(d) : "College-Wide";
+              const char* cat = item["category"];
+              n.category = cat ? String(cat) : "Notice";
+              displayMgr.addDailyNotice(n);
+            }
+            displayMgr.finalizeDailyNotices();
+            int newCount = displayMgr.getDailyNoticesCount();
+            int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
+            if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
+              if (oldCount != newCount || currentTopId != lastTopNoticeId || !displayMgr.isRendered()) {
+                lastTopNoticeId = currentTopId;
+                displayMgr.refreshScreen();
+              }
             }
           }
         }
@@ -425,6 +435,7 @@ public:
 
       if (streamUrl.startsWith("https://")) {
         secureAudioClient.setInsecure();
+        secureAudioClient.setBufferSizes(4096, 1024);
         httpAudio.begin(secureAudioClient, streamUrl);
       } else {
         httpAudio.begin(plainAudioClient, streamUrl);

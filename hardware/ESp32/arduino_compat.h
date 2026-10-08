@@ -198,6 +198,8 @@
     void drawRoundRect(int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) {}
     void fillRoundRect(int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) {}
     void fillScreen(uint16_t) {}
+    void startWrite() {}
+    void endWrite() {}
   };
 
   class Adafruit_ST7735 : public Adafruit_GFX {

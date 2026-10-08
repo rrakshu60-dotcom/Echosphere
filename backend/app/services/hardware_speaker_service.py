@@ -206,7 +206,7 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                 if b_id not in delivered_set and b_id not in seen_command_ids:
                     ann = getattr(p_item, "announcement", None)
                     title = getattr(ann, "title", "Announcement") if ann else "Announcement"
-                    message = getattr(ann, "description", "") if ann else ""
+                    message = (getattr(ann, "ai_summary", None) or getattr(ann, "description", "")) if ann else ""
                     audio_url = f"https://echosphere-backend-9lv8.onrender.com/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav"
                     cmds.append({
                         "command": "PLAY_ANNOUNCEMENT",
@@ -659,7 +659,7 @@ def dispatch_queue_action_to_speakers(
     """
     ann = queue_item.announcement
     title = ann.title if ann else "Announcement"
-    message = ann.description if ann else ""
+    message = (getattr(ann, "ai_summary", None) or getattr(ann, "description", "")) if ann else ""
     dept_code = "ALL"
     if ann and getattr(ann, 'creator', None) and getattr(ann.creator, 'department', None):
         dept_code = ann.creator.department.code or "ALL"
