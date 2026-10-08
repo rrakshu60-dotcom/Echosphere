@@ -284,6 +284,7 @@
   public:
     void mode(int) {}
     void begin(const char*, const char*) {}
+    bool disconnect(bool = false, bool = false) { return true; }
     bool softAP(const char*, const char* = nullptr) { return true; }
     IPAddress softAPIP() { return IPAddress(); }
     int status() { return WL_CONNECTED; }
@@ -359,6 +360,7 @@
   class DeserializationError {
   public:
     operator bool() const { return false; }
+    const char* c_str() const { return "Ok"; }
   };
 
   template<size_t N>
