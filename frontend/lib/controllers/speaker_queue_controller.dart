@@ -33,6 +33,9 @@ class SpeakerQueueController extends GetxController {
   /// Set of announcement IDs explicitly dismissed or removed by the user in this session
   final Set<int> dismissedAnnouncementIds = <int>{};
 
+  /// Set of announcement IDs that have finished single broadcast and should never repeat
+  final Set<int> completedSinglePlayAnnouncementIds = <int>{};
+
   Timer? _playbackTimer;
   Timer? _pollTimer;
   Timer? _intermissionTimer;
@@ -226,7 +229,11 @@ class SpeakerQueueController extends GetxController {
       final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
           !a.title.toLowerCase().contains('sample notice');
       final hasActiveRepeat = a.repeatSchedule != null && isScheduleActiveNow(a.repeatSchedule!);
-      return isApproved && isSpeaker && isNotAutomated && (!a.playedOnSpeaker || hasActiveRepeat) && !dismissedAnnouncementIds.contains(a.id);
+      final isSingleCompleted = dismissedAnnouncementIds.contains(a.id) ||
+          completedSinglePlayAnnouncementIds.contains(a.id) ||
+          annCtrl.playedSpeakerNoticeIds.contains(a.id);
+      if (isSingleCompleted && !hasActiveRepeat) return false;
+      return isApproved && isSpeaker && isNotAutomated && (!a.playedOnSpeaker || hasActiveRepeat);
     }).toList();
 
     // Emergency Override Check: If ANY emergency notice is active (e.g. Earthquake Alert)
@@ -376,6 +383,11 @@ class SpeakerQueueController extends GetxController {
             .map((q) => Map<String, dynamic>.from(q))
             .where((q) {
               final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+              final isSingleCompleted = dismissedAnnouncementIds.contains(annId) ||
+                  completedSinglePlayAnnouncementIds.contains(annId) ||
+                  (Get.isRegistered<AnnouncementController>() && Get.find<AnnouncementController>().playedSpeakerNoticeIds.contains(annId));
+              final hasRepeat = q['has_repeat'] == true || q['repeat_schedule'] != null;
+              if (isSingleCompleted && !hasRepeat) return false;
               return q['status'] != 'Completed' &&
                   q['status'] != 'Cancelled' &&
                   q['status'] != 'Skipped' &&
@@ -427,7 +439,12 @@ class SpeakerQueueController extends GetxController {
           final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY' || a.repeatSchedule != null;
           final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
               !a.title.toLowerCase().contains('sample notice');
-          return isApproved && isSpeaker && isNotAutomated && !a.playedOnSpeaker && !dismissedAnnouncementIds.contains(a.id);
+          final hasActiveRepeat = a.repeatSchedule != null && isScheduleActiveNow(a.repeatSchedule!);
+          final isSingleCompleted = dismissedAnnouncementIds.contains(a.id) ||
+              completedSinglePlayAnnouncementIds.contains(a.id) ||
+              annCtrl.playedSpeakerNoticeIds.contains(a.id);
+          if (isSingleCompleted && !hasActiveRepeat) return false;
+          return isApproved && isSpeaker && isNotAutomated && (!a.playedOnSpeaker || hasActiveRepeat);
         }).toList();
 
         for (var notice in speakerNotices) {
@@ -671,11 +688,17 @@ class SpeakerQueueController extends GetxController {
     final playedTitle = (playedItem['title'] ?? 'Announcement').toString();
 
     final bool isEmergencyNotice = _isItemEmergency(playedItem);
-    final bool hasRepeat = playedItem['repeat_schedule'] != null ||
-        playedItem['repeatSchedule'] != null ||
+    final bool hasRepeat = (playedItem['repeat_schedule'] != null &&
+            playedItem['repeat_schedule'] is Map &&
+            (playedItem['repeat_schedule'] as Map)['is_active'] != false) ||
         playedItem['has_repeat'] == true ||
         playedTitle.contains('[EMERGENCY REPEAT]') ||
         playedTitle.contains('[Repeat');
+
+    bool isSlotActive = true;
+    if (playedItem['repeat_schedule'] != null && playedItem['repeat_schedule'] is Map) {
+      isSlotActive = isScheduleActiveNow(Map<String, dynamic>.from(playedItem['repeat_schedule']));
+    }
 
     final int maxRepeats = getNoticeMaxRepeats(playedItem);
     int currentPlayedCount = (playedItem['played_count'] as int? ?? 0) + 1;
@@ -687,8 +710,8 @@ class SpeakerQueueController extends GetxController {
       } catch (_) {}
     }
 
-    // 1. Emergency Continuous Loop (Emergency repeats throughout the whole break/custom window)
-    if (isEmergencyNotice && hasRepeat) {
+    // 1. Emergency Continuous Loop (Emergency repeats throughout the whole break/custom window ONLY if rescheduling was configured)
+    if (isEmergencyNotice && hasRepeat && isSlotActive) {
       currentElapsedSeconds.value = 0;
       queueItems[activeIndex.value]['status'] = 'Playing';
       _updateActiveNoticeMetrics();
@@ -709,17 +732,12 @@ class SpeakerQueueController extends GetxController {
     }
 
     // 2. Continuous rotation in repeat slot:
-    bool isSlotActive = true;
-    if (playedItem['repeat_schedule'] != null && playedItem['repeat_schedule'] is Map) {
-      isSlotActive = isScheduleActiveNow(Map<String, dynamic>.from(playedItem['repeat_schedule']));
-    }
-
     final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive && (maxRepeats <= 0 || currentPlayedCount < maxRepeats));
 
     // Notify backend that notice playback finished
-    final queueId = playedItem['id'];
-    if (!Get.testMode && queueId is int) {
-      _apiService.queueAction(queueId, 'complete').catchError((_) => <String, dynamic>{});
+    final targetId = annId > 0 ? annId : (playedItem['id'] as int? ?? 0);
+    if (!Get.testMode && targetId > 0) {
+      _apiService.queueAction(targetId, 'complete').catchError((_) => <String, dynamic>{});
     }
 
     if (hasMoreRepeats) {
@@ -737,6 +755,8 @@ class SpeakerQueueController extends GetxController {
       );
     } else {
       // All repeats completed (or single play notice, or repeat slot ended)
+      dismissedAnnouncementIds.add(annId);
+      completedSinglePlayAnnouncementIds.add(annId);
       if (annId > 0 && Get.isRegistered<AnnouncementController>()) {
         Get.find<AnnouncementController>().markNoticePlayedOnSpeaker(annId);
       }
@@ -750,8 +770,12 @@ class SpeakerQueueController extends GetxController {
       snackBar(finishMsg, title: 'Broadcast Finished');
     }
 
-    // 3. Advance to next queued notice or finish
+    // 3. Advance to next queued notice or finish (with clean transition to prevent audio overlap)
     if (queueItems.isNotEmpty) {
+      // Small clean silence gap between notices so audio never collides or overlaps
+      if (!Get.testMode) {
+        await Future.delayed(const Duration(milliseconds: 1500));
+      }
       // Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
       final emergencyIdx = queueItems.indexWhere((q) => _isItemEmergency(q));
 
@@ -1018,6 +1042,10 @@ class SpeakerQueueController extends GetxController {
         'node_name': nodeName,
         'duration_seconds': announcement.durationSeconds > 0 ? announcement.durationSeconds : 15,
         'audio_url': '/static/audio_streams/announcement_${announcement.id}.mp3',
+        'repeat_schedule': announcement.repeatSchedule,
+        'has_repeat': announcement.repeatSchedule != null,
+        'played_count': 0,
+        'repeat_round': 1,
       };
 
       if (isEmergency) {

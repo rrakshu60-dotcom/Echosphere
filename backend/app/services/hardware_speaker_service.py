@@ -568,6 +568,26 @@ def enqueue_and_broadcast_announcement(
         queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
         current_status = str(getattr(queue_item, "status", item_status))
     else:
+        # Check if existing item is already Completed and has no repeat schedule
+        if getattr(existing_item, "status", "") == "Completed":
+            from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+            sched = db.query(AnnouncementRepeatSchedule).filter(
+                AnnouncementRepeatSchedule.announcement_id == announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            ).first()
+            if not sched:
+                logger.info(f"Announcement #{announcement_id} has already completed single broadcast. Not re-activating.")
+                return {
+                    "status": "completed",
+                    "command": "COMPLETED",
+                    "topic": "",
+                    "audio_url": f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream",
+                    "queue_position": int(getattr(existing_item, "queue_position", 1) or 1),
+                    "queue_status": "Completed",
+                    "is_playing": False,
+                    "mqtt_dispatched": False,
+                }
+
         if speaker_node_id:
             setattr(existing_item, "speaker_node_id", speaker_node_id)
         max_pos = db.query(SpeakerQueue).count()
@@ -921,14 +941,18 @@ def auto_advance_speaker_queue(
         if is_curr_emerg:
             from app.services.repeat_schedule_service import get_active_emergency_repeat_schedule
             curr_active_emerg_sched = get_active_emergency_repeat_schedule(db)
-            if curr_active_emerg_sched and getattr(curr_active_emerg_sched, "is_active", True):
-                # Emergency notices loop continuously
+            if (
+                curr_active_emerg_sched
+                and getattr(curr_active_emerg_sched, "is_active", True)
+                and curr_active_emerg_sched.announcement_id == current_playing.announcement_id
+            ):
+                # Emergency notice with active repeat schedule loops continuously throughout the slot
                 current_playing.status = "Playing"
                 current_playing.played_at = now
                 db.commit()
                 return {"status": "emergency_continuous_loop"}
             else:
-                # Emergency schedule ended or deactivated! Complete emergency notice and unpause queue!
+                # Emergency notice completed! No repeat schedule or schedule ended. Mark Completed!
                 current_playing.status = "Completed"
                 db.commit()
                 paused_by_emergency = (
@@ -969,19 +993,22 @@ def auto_advance_speaker_queue(
             ) if current_playing.announcement_id else None
 
             is_slot_active = False
+            matched = []
             if sched:
                 matched = is_slot_active_at_time(sched, time_str, active_slots)
                 if matched:
                     is_slot_active = True
 
-            if is_slot_active:
+            if is_slot_active and sched:
                 # Notice is within its active repeating time window (e.g. 11:00-11:15 or custom window):
                 # Re-queue at the back of the queue so all notices in the slot rotate repeatedly!
                 sched.total_played_count += 1
+                slot_name = matched[0] if matched else "REPEAT_SLOT"
+                prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
                 exec_log = RepeatSlotExecutionLog(
                     schedule_id=sched.id,
-                    slot_key=f"{sched.announcement_id}:SLOT:{sched.total_played_count}",
-                    slot_name="REPEAT_SLOT",
+                    slot_key=f"{prefix_key}:{sched.total_played_count}",
+                    slot_name=slot_name,
                     played_at=now,
                 )
                 db.add(exec_log)
@@ -990,7 +1017,7 @@ def auto_advance_speaker_queue(
                 current_playing.queue_position = max_pos + 1
                 current_playing.played_at = None
                 db.commit()
-                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for continuous slot rotation (Play count: {sched.total_played_count}).")
+                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for continuous slot rotation in {slot_name} (Play count: {sched.total_played_count}).")
             else:
                 # Schedule ended or no repeat configured -> mark completed
                 current_playing.status = "Completed"

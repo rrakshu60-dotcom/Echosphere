@@ -447,6 +447,7 @@ class AnnouncementController extends GetxController {
 
   final Set<int> _persistedApprovedIds = <int>{};
   final Set<int> _persistedRejectedIds = <int>{};
+  final Set<int> playedSpeakerNoticeIds = <int>{};
 
   Future<void> _loadPersistedApprovalStatus() async {
     try {
@@ -833,7 +834,17 @@ class AnnouncementController extends GetxController {
           // Dynamic database notices: preserve all announcements by unique database ID
           final Map<int, AnnouncementModel> mergedById = {};
           for (final a in fetched) {
-            mergedById[a.id] = a;
+            final wasPlayed = playedSpeakerNoticeIds.contains(a.id) ||
+                (_rawAnnouncements.firstWhereOrNull((old) => old.id == a.id)?.playedOnSpeaker ?? false);
+            if (wasPlayed) {
+              playedSpeakerNoticeIds.add(a.id);
+              mergedById[a.id] = a.copyWith(
+                playedOnSpeaker: true,
+                speakerStatus: 'Completed',
+              );
+            } else {
+              mergedById[a.id] = a;
+            }
           }
           _rawAnnouncements.value = mergedById.values.toList();
           _savePersistentCache(_rawAnnouncements.toList());
@@ -1326,6 +1337,7 @@ class AnnouncementController extends GetxController {
 
   /// Marks an announcement as played on the smart speaker queue
   void markNoticePlayedOnSpeaker(int id) {
+    playedSpeakerNoticeIds.add(id);
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
       final old = _rawAnnouncements[idx];
