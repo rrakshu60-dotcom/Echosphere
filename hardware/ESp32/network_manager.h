@@ -111,12 +111,34 @@ public:
     }
   }
 
+  unsigned long lastWiFiCheckTime = 0;
+  bool isReconnecting = false;
+
   void checkWiFiConnection() {
-    if (WiFi.status() != WL_CONNECTED) {
+    unsigned long now = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      if (isReconnecting) {
+        isReconnecting = false;
+        Serial.println();
+        Serial.print(F("✅ [WIFI] Reconnected! Assigned IP: "));
+        Serial.println(WiFi.localIP());
+        displayMgr.setConnectedWiFi(WiFi.localIP().toString());
+        digitalWrite(PIN_LED_ONLINE, HIGH);
+        registerNode();
+      }
+      return;
+    }
+
+    // Wi-Fi is disconnected: throttle reconnection attempts to once every 8 seconds!
+    // This allows the ESP32 Wi-Fi radio sufficient time to authenticate and complete DHCP!
+    if (now - lastWiFiCheckTime >= 8000) {
+      lastWiFiCheckTime = now;
+      isReconnecting = true;
       digitalWrite(PIN_LED_ONLINE, LOW);
-      Serial.println(F("⚠️ [WIFI] Connection lost. Reconnecting..."));
+      Serial.println(F("⚠️ [WIFI] Wi-Fi disconnected. Attempting reconnection..."));
       displayMgr.setConnectingWiFi(WIFI_SSID);
-      WiFi.reconnect();
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
   }
 

@@ -132,6 +132,7 @@ public:
   }
 
   void setConnectingWiFi(const String& ssid) {
+    if (currentState == STATE_CONNECTING_WIFI && isScreenRendered) return;
     currentState = STATE_CONNECTING_WIFI;
     if (!isTftReady) return;
 
@@ -151,9 +152,11 @@ public:
     tft.setTextColor(COLOR_TEXT_CYAN, COLOR_BG);
     tft.setCursor(10, 58);
     tft.println(F("Authenticating..."));
+    isScreenRendered = true;
   }
 
   void setConnectedWiFi(const String& ip) {
+    if (currentState == STATE_REGISTERING && isScreenRendered) return;
     currentState = STATE_REGISTERING;
     if (!isTftReady) return;
 
@@ -176,6 +179,7 @@ public:
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_BG);
     tft.setCursor(10, 72);
     tft.print(F("Registering with App..."));
+    isScreenRendered = true;
   }
 
   void setActiveNotice(const DisplayNotice& notice, int durationSec = 15) {
