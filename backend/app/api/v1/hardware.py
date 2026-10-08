@@ -206,12 +206,6 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     active_statuses = [
         AnnouncementStatus.PUBLISHED,
         AnnouncementStatus.SCHEDULED,
-        "Published",
-        "PUBLISHED",
-        "Approved",
-        "APPROVED",
-        "Scheduled",
-        "SCHEDULED",
     ]
 
     published_notices = (
@@ -234,23 +228,11 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             .all()
         )
 
-    # Fallback to any recent non-archived/non-rejected notice if none are formally published yet
+    # Fallback to any recent pending approval notice so display is not blank if awaiting verification
     if not published_notices:
         published_notices = (
             db.query(Announcement)
-            .filter(
-                Announcement.status.notin_([
-                    AnnouncementStatus.ARCHIVED,
-                    AnnouncementStatus.REJECTED,
-                    AnnouncementStatus.DRAFT,
-                    "Archived",
-                    "ARCHIVED",
-                    "Rejected",
-                    "REJECTED",
-                    "Draft",
-                    "DRAFT",
-                ])
-            )
+            .filter(Announcement.status == AnnouncementStatus.PENDING_APPROVAL)
             .order_by(Announcement.created_at.desc())
             .limit(10)
             .all()
