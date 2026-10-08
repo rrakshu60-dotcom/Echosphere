@@ -896,48 +896,131 @@ def auto_advance_speaker_queue(
                 "dispatch": dispatch_res,
             }
 
+    # 1. Handle Active Intermission Gap
+    current_intermission = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Intermission").first()
+    should_advance = False
+
+    if current_intermission:
+        if force_advance:
+            intermission_complete = True
+        else:
+            intermission_start = getattr(current_intermission, "played_at", None)
+            elapsed_gap = (now - intermission_start).total_seconds() if intermission_start else BROADCAST_GAP_SECONDS
+            intermission_complete = (elapsed_gap >= BROADCAST_GAP_SECONDS)
+
+        if not intermission_complete:
+            # HARD LOCK: Actively within the 15-second intermission gap!
+            # Do NOT advance to next notice, do NOT play audio on speakers!
+            rem_secs = max(0, int(BROADCAST_GAP_SECONDS - elapsed_gap))
+            return {
+                "status": "intermission",
+                "seconds_remaining": rem_secs,
+                "intermission_item_id": current_intermission.id,
+            }
+
+        # Intermission completed! Determine if notice has repeat rounds remaining
+        from app.services.repeat_schedule_service import get_notice_priority_info
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+        ann = current_intermission.announcement
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(AnnouncementRepeatSchedule.announcement_id == current_intermission.announcement_id)
+            .first()
+        ) if current_intermission.announcement_id else None
+
+        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+        played_count = sched.total_played_count if sched else 1
+
+        if sched and played_count < max_repeats:
+            max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
+            current_intermission.status = "Queued"
+            current_intermission.queue_position = max_pos + 1
+            current_intermission.played_at = None
+            db.commit()
+            logger.info(f"🔁 Announcement #{ann.id} ({prio_tier}) re-queued for repeat round {played_count + 1} of {max_repeats}.")
+        else:
+            current_intermission.status = "Completed"
+            db.commit()
+            logger.info(f"Speaker queue item #{current_intermission.id} completed after 15s intermission.")
+
+        should_advance = True
+
+    # 2. Handle Currently Playing Item
     current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
 
-    should_advance = False
-    gap: int = 0
     if current_playing:
-        if force_advance:
-            should_advance = True
-        else:
-            # Check if current playing is emergency
-            ann = getattr(current_playing, "announcement", None)
-            is_curr_emerg = is_emergency_announcement(ann)
-            # Gap of 15 seconds (10-20 sec range) between normal broadcasts; 0s gap for emergency
-            gap = 0 if is_curr_emerg else BROADCAST_GAP_SECONDS
-            curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
-            duration = curr_dur + gap
+        ann = getattr(current_playing, "announcement", None)
+        is_curr_emerg = is_emergency_announcement(ann)
+        curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
+        curr_dur = max(15, int(curr_dur))
+        curr_played_at = getattr(current_playing, "played_at", None)
 
-            curr_played_at = getattr(current_playing, "played_at", None)
-            if curr_played_at:
-                elapsed = (now - curr_played_at).total_seconds()
-                if elapsed >= duration:
-                    should_advance = True
-            else:
-                setattr(current_playing, "played_at", now)
+        if not curr_played_at:
+            current_playing.played_at = now
+            db.commit()
+            return None
+
+        elapsed = (now - curr_played_at).total_seconds()
+        if elapsed < curr_dur and not force_advance:
+            # Audio is actively broadcasting
+            return None
+
+        if is_curr_emerg:
+            from app.services.repeat_schedule_service import get_active_emergency_repeat_schedule
+            curr_active_emerg_sched = get_active_emergency_repeat_schedule(db)
+            if curr_active_emerg_sched and getattr(curr_active_emerg_sched, "is_active", True):
+                # Emergency notices loop continuously with zero intermission gap
+                current_playing.status = "Playing"
+                current_playing.played_at = now
                 db.commit()
+                return {"status": "emergency_continuous_loop"}
+            else:
+                # Emergency schedule ended or deactivated! Complete emergency notice and unpause queue!
+                current_playing.status = "Completed"
+                db.commit()
+                paused_by_emergency = (
+                    db.query(SpeakerQueue)
+                    .filter(SpeakerQueue.status == "Paused")
+                    .all()
+                )
+                for p_item in paused_by_emergency:
+                    if not is_emergency_announcement(p_item.announcement):
+                        p_item.status = "Queued"
+                db.commit()
+                should_advance = True
 
-        if should_advance:
-            setattr(current_playing, "status", "Completed")
+        else:
+            # Normal notices transition to strictly enforced 15-second Intermission
+            current_playing.status = "Intermission"
+            current_playing.played_at = now
+
+            # Update repeat schedule played count and log execution
+            from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule, RepeatSlotExecutionLog
+            sched = (
+                db.query(AnnouncementRepeatSchedule)
+                .filter(AnnouncementRepeatSchedule.announcement_id == current_playing.announcement_id)
+                .first()
+            ) if current_playing.announcement_id else None
+
+            if sched:
+                sched.total_played_count += 1
+                exec_log = RepeatSlotExecutionLog(
+                    schedule_id=sched.id,
+                    slot_key=f"{sched.announcement_id}:SLOT:{sched.total_played_count}",
+                    slot_name="REPEAT_SLOT",
+                    played_at=now,
+                )
+                db.add(exec_log)
+
             db.commit()
             db.refresh(current_playing)
-            logger.info(f"Speaker queue item #{current_playing.id} completed playback after duration + {gap}s gap.")
-
-            # If emergency broadcast ended, unpause notices that were paused by emergency override
-            paused_by_emergency = (
-                db.query(SpeakerQueue)
-                .filter(SpeakerQueue.status == "Paused")
-                .all()
-            )
-            for p_item in paused_by_emergency:
-                if not is_emergency_announcement(p_item.announcement):
-                    p_item.status = "Queued"
-            db.commit()
-    else:
+            logger.info(f"⏸️ Speaker queue item #{current_playing.id} finished audio. Entering strictly enforced 15s intermission (Total played count: {sched.total_played_count if sched else 1}).")
+            return {
+                "status": "intermission",
+                "seconds_remaining": BROADCAST_GAP_SECONDS,
+                "intermission_item_id": current_playing.id,
+            }
+    elif not should_advance:
         if force_advance:
             should_advance = True
         else:
@@ -990,10 +1073,10 @@ def auto_advance_speaker_queue(
     if next_item.announcement and str(getattr(next_item.announcement, "status", "")).upper() in ("SCHEDULED", "APPROVED", "SUBMITTED"):
         from app.core.enums.announcement import AnnouncementStatus
         setattr(next_item.announcement, "status", AnnouncementStatus.PUBLISHED)
-    if not getattr(next_item, "duration_seconds", None):
+    if not getattr(next_item, "duration_seconds", None) or next_item.duration_seconds < 15:
         ann = getattr(next_item, "announcement", None)
         words = len(((getattr(ann, "title", "") or '') + ' ' + (getattr(ann, "description", "") or '')).split())
-        setattr(next_item, "duration_seconds", max(10, int(words / 2.5)))
+        setattr(next_item, "duration_seconds", max(15, int(words / 2.5) + 3))
     db.commit()
     db.refresh(next_item)
 

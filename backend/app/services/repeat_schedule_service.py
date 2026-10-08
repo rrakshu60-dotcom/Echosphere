@@ -541,19 +541,39 @@ def evaluate_and_dispatch_repeat_slots(
                 db.query(SpeakerQueue)
                 .filter(
                     SpeakerQueue.announcement_id == sched.announcement_id,
-                    SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+                    SpeakerQueue.status.in_(["Playing", "Intermission", "Next in Queue", "Queued"]),
                 )
                 .first()
             )
             if active_q:
+                # If notice is currently speaking or in 15s intermission, NEVER disturb it!
+                curr_played_at = getattr(active_q, "played_at", None)
+                curr_dur = getattr(active_q, "duration_seconds", 15) or 15
+                is_currently_speaking = False
+                if active_q.status == "Playing" and curr_played_at:
+                    elapsed = (utc_now - curr_played_at).total_seconds()
+                    if elapsed < curr_dur and not simulated_time_str:
+                        is_currently_speaking = True
+                elif active_q.status == "Intermission" and curr_played_at:
+                    elapsed_gap = (utc_now - curr_played_at).total_seconds()
+                    if elapsed_gap < 15 and not simulated_time_str:
+                        is_currently_speaking = True
+
+                if is_currently_speaking:
+                    skipped.append({
+                        "announcement_id": sched.announcement_id,
+                        "slot": slot_name,
+                        "reason": f"Already actively broadcasting in speaker queue (status: {active_q.status})",
+                    })
+                    continue
+
                 if times_played_today > 0:
-                    if not is_em or active_q.status == "Playing":
-                        skipped.append({
-                            "announcement_id": sched.announcement_id,
-                            "slot": slot_name,
-                            "reason": f"Already active in speaker queue (status: {active_q.status})",
-                        })
-                        continue
+                    skipped.append({
+                        "announcement_id": sched.announcement_id,
+                        "slot": slot_name,
+                        "reason": f"Already active in speaker queue (status: {active_q.status})",
+                    })
+                    continue
                 else:
                     # Item was left from an earlier slot/broadcast; mark completed so new slot begins fresh
                     active_q.status = "Completed"
@@ -754,8 +774,12 @@ def evaluate_and_dispatch_repeat_slots(
                     except Exception:
                         c_end = c_start
                 if any(c_start <= st <= c_end for st in sched_time_candidates) and (time_str > c_end):
-                    expired = True
-                    logger.info(f"⏸️ Speaker Queue #{item.id} expired: Custom Window ended at {c_end}. Quiet hours protected.")
+                    prio_weight, max_repeats, prio_tier = get_notice_priority_info(item.announcement) if item.announcement else (200, 2, "MEDIUM")
+                    if sched.total_played_count < max_repeats:
+                        expired = False
+                    else:
+                        expired = True
+                        logger.info(f"⏸️ Speaker Queue #{item.id} expired: Custom Window ended at {c_end}. Quiet hours protected.")
 
             if expired:
                 item.status = "Expired_Slot_Ended"
