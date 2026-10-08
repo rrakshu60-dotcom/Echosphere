@@ -4,11 +4,11 @@ from pydantic import BaseModel, Field
 
 
 class SpeakerNodeBase(BaseModel):
-    name: str = Field(..., example="CSE Main Horn 1")
-    mac_address: str = Field(..., example="AA:BB:CC:DD:EE:01")
-    ip_address: Optional[str] = Field(None, example="192.168.1.101")
+    name: str = Field(..., examples=["CSE Main Horn 1"])
+    mac_address: str = Field(..., examples=["AA:BB:CC:DD:EE:01"])
+    ip_address: Optional[str] = Field(None, examples=["192.168.1.101"])
     department_id: Optional[int] = None
-    zone: str = Field("College-Wide", example="Block A")
+    zone: str = Field("College-Wide", examples=["Block A"])
     volume: int = Field(80, ge=0, le=100)
 
 
@@ -58,15 +58,15 @@ class SpeakerBroadcastRequest(BaseModel):
 
 
 class EmergencyOverrideRequest(BaseModel):
-    title: str = Field(..., example="EMERGENCY CAMPUS EVACUATION NOTICE")
-    message: str = Field(..., example="Emergency warning: Please proceed calmly to designated assembly area.")
+    title: str = Field(..., examples=["EMERGENCY CAMPUS EVACUATION NOTICE"])
+    message: str = Field(..., examples=["Emergency warning: Please proceed calmly to designated assembly area."])
     zone: Optional[str] = "College-Wide"
     voice_type: Optional[str] = "AI Text-to-Speech"
     volume: Optional[int] = 100
 
 
 class SpeakerControlRequest(BaseModel):
-    command: str = Field(..., example="PLAY_ANNOUNCEMENT")  # PLAY_ANNOUNCEMENT, PAUSE, RESUME, SKIP, CANCEL, RESTART, TEST_SPEAKER, SET_VOLUME
+    command: str = Field(..., examples=["PLAY_ANNOUNCEMENT"])  # PLAY_ANNOUNCEMENT, PAUSE, RESUME, SKIP, CANCEL, RESTART, TEST_SPEAKER, SET_VOLUME
     announcement_id: Optional[int] = None
     audio_url: Optional[str] = None
     volume: Optional[int] = None
@@ -91,7 +91,7 @@ class SpeakerQueueItemResponse(BaseModel):
 
 
 class ReorderQueueRequest(BaseModel):
-    queue_ids: List[int] = Field(..., example=[3, 1, 2])
+    queue_ids: List[int] = Field(..., examples=[[3, 1, 2]])
 
 
 class EnqueueAnnouncementRequest(BaseModel):
