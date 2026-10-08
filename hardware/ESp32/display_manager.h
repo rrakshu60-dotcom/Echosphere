@@ -202,6 +202,7 @@ public:
     isNoticeActive = false;
     currentState = STATE_IDLE_DAILY_NOTICES;
     isScreenRendered = false;
+    resetEqualizerGraphic();
 
     // Turn off Broadcasting LED
     digitalWrite(PIN_LED_BROADCAST, LOW);
@@ -441,6 +442,20 @@ public:
     animFrame = (animFrame + 1) % 16;
   }
 
+  void resetEqualizerGraphic() {
+    if (!isTftReady) return;
+    int eqBottom = 111;
+    for (int i = 0; i < 16; i++) {
+      int oldH = prevBarHeights[i];
+      int barX = 8 + (i * 9);
+      int barW = 5;
+      if (oldH > 0) {
+        tft.fillRect(barX, eqBottom - oldH, barW, oldH, COLOR_BG);
+        prevBarHeights[i] = 0;
+      }
+    }
+  }
+
 private:
   uint16_t getPriorityColor(const String& priority) {
     if (priority.equalsIgnoreCase("EMERGENCY")) return COLOR_EMERGENCY;
@@ -462,8 +477,8 @@ private:
     tft.setCursor(isEmergency ? 12 : 20, 6);
     tft.print(isEmergency ? F("! EMERGENCY BROADCAST !") : F("> NOW BROADCASTING"));
 
-    // 2. Clear content body once
-    tft.fillRect(0, 20, 160, 72, COLOR_BG);
+    // 2. Clear content body cleanly down to footer (Y: 20 to 114)
+    tft.fillRect(0, 20, 160, 94, COLOR_BG);
 
     // 3. Department & Priority Badges
     uint16_t pColor = getPriorityColor(activeNotice.priority);
@@ -479,17 +494,27 @@ private:
 
     tft.drawFastHLine(8, 36, 144, COLOR_PANEL);
 
-    // 4. Compact Wrapped Notice Title (Max 2 lines, 24 chars/line)
-    drawWrappedText(activeNotice.title, 8, 40, 24, 2, COLOR_TEXT_WHITE, COLOR_BG);
+    // 4. Compact Wrapped Notice Title (Max 2 lines, 24 chars/line, Y: 39-58)
+    drawWrappedText(activeNotice.title, 8, 39, 24, 2, COLOR_TEXT_WHITE, COLOR_BG);
 
-    // 5. Compact Wrapped Message / Summary (Max 2 lines)
+    // 5. Compact Wrapped Message / Summary (Max 2 lines, Y: 60-79)
     String msg = activeNotice.summary.length() > 0 ? activeNotice.summary : activeNotice.title;
-    drawWrappedText(msg, 8, 62, 24, 2, COLOR_TEXT_CYAN, COLOR_BG);
+    drawWrappedText(msg, 8, 60, 24, 2, COLOR_TEXT_CYAN, COLOR_BG);
 
-    // 6. Base line for Equalizer
-    tft.drawFastHLine(8, 92, 144, COLOR_PANEL);
+    // 6. Base line for Equalizer (Y: 112)
+    tft.drawFastHLine(8, 112, 144, COLOR_PANEL);
+
+    // 7. Footer Status Bar (Y: 114 to 127)
+    tft.fillRect(0, 114, 160, 14, isEmergency ? COLOR_EMERGENCY : COLOR_PANEL);
+    tft.setTextColor(COLOR_TEXT_WHITE, isEmergency ? COLOR_EMERGENCY : COLOR_PANEL);
+    tft.setTextSize(1);
+    tft.setCursor(8, 117);
+    tft.print(isEmergency ? F("! EMERGENCY AUDIO STREAM !") : F(">> LIVE AUDIO BROADCAST"));
 
     isScreenRendered = true;
+
+    // Immediately render initial equalizer frame so visualizer graphic is seen right away!
+    renderEqualizerGraphic();
   }
 
   // --------------------------------------------------------------------------

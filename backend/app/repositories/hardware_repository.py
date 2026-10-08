@@ -126,7 +126,7 @@ def update_speaker_node_heartbeat(db: Session, heartbeat: SpeakerNodeHeartbeat) 
             zone="Campus Main Corridor" if (is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD") else "College-Wide",
             volume=90 if (is_esp32_zero_mac or target_mac.upper() == "D4:F3:2D:22:2A:CD") else 80,
             status=incoming_status,
-            last_heartbeat=now if incoming_status == "ONLINE" else None,
+            last_heartbeat=now,
         )
         db.add(node)
     else:
@@ -144,10 +144,7 @@ def update_speaker_node_heartbeat(db: Session, heartbeat: SpeakerNodeHeartbeat) 
             node.memory_usage = heartbeat.memory_usage
         if heartbeat.disk_space is not None:
             node.disk_space = heartbeat.disk_space
-        if incoming_status == "ONLINE":
-            node.last_heartbeat = now
-        else:
-            node.last_heartbeat = None
+        node.last_heartbeat = now
 
     db.commit()
     db.refresh(node)
