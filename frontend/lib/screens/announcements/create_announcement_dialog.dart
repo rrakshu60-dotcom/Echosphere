@@ -786,7 +786,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                                 const PopupMenuItem(value: 'HIGH', child: Text('HIGH (Repeats 3x)')),
                                 const PopupMenuItem(value: 'NORMAL', child: Text('NORMAL / MEDIUM (Repeats 2x)')),
                                 const PopupMenuItem(value: 'LOW', child: Text('LOW (Repeats 1x)')),
-                                if (user != null && (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN')))
+                                if (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN'))
                                   const PopupMenuItem(value: 'EMERGENCY', child: Text('EMERGENCY (Continuous Loop)')),
                               ],
                               child: Row(
@@ -1023,7 +1023,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                     const PopupMenuItem(value: 'HIGH', child: Text('HIGH (Repeats 3x)')),
                     const PopupMenuItem(value: 'NORMAL', child: Text('NORMAL / MEDIUM (Repeats 2x)')),
                     const PopupMenuItem(value: 'LOW', child: Text('LOW (Repeats 1x)')),
-                    if (user != null && (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN')))
+                    if (user.role.toUpperCase() == 'HOD' || user.role.toUpperCase() == 'COLLEGE ADMIN' || user.role.toUpperCase() == 'PRINCIPAL' || user.role.toUpperCase().contains('ADMIN'))
                       const PopupMenuItem(value: 'EMERGENCY', child: Text('EMERGENCY (Continuous Loop)')),
                   ],
                   child: Row(

@@ -220,9 +220,23 @@ public:
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(4000);
 
+    // Extraction variables to hold incoming playback/control instructions
+    bool hasControlCommand = false;
+    String pendingCommand = "";
+    int cmdVol = -1;
+
+    bool shouldTriggerBroadcast = false;
+    int targetAnnId = 0;
+    int targetQId = 0;
+    String targetTitle = "";
+    String targetContent = "";
+    String targetPriority = "NORMAL";
+    String targetDept = "College-Wide";
+    int targetDuration = 15;
+    String targetAudioUrl = "";
+
     int httpCode = http.POST(requestBody);
     if (httpCode == 200 || httpCode == 201) {
-      // Pulse status LED on successful heartbeat
       displayMgr.triggerHeartbeatPulse();
 
       String response = http.getString();
@@ -233,32 +247,65 @@ public:
       #endif
       DeserializationError err = deserializeJson(respDoc, response);
       if (!err) {
-        // 1. Process pending control commands
+        // 1. Check pending commands
         if (respDoc["pending_commands"].is<JsonArray>()) {
           JsonArray commands = respDoc["pending_commands"].as<JsonArray>();
           for (JsonObject cmd : commands) {
-            handleCommand(cmd);
+            const char* rawMac = cmd["target_mac"];
+            String tMac = rawMac ? String(rawMac) : "";
+            if (tMac.length() > 0 && !tMac.equalsIgnoreCase("ALL") && !tMac.equalsIgnoreCase(nodeMac)) {
+              continue; // not for this node
+            }
+            const char* rawC = cmd["command"];
+            String c = rawC ? String(rawC) : "";
+            if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP")) {
+              hasControlCommand = true;
+              pendingCommand = c;
+            } else if (c.equalsIgnoreCase("SET_VOLUME")) {
+              hasControlCommand = true;
+              pendingCommand = c;
+              cmdVol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
+            } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
+              int aId = cmd["announcement_id"].as<int>();
+              if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
+                shouldTriggerBroadcast = true;
+                targetAnnId = aId;
+                targetQId = cmd["queue_id"].as<int>();
+                const char* rT = cmd["title"];
+                targetTitle = rT ? String(rT) : "Campus Notice";
+                const char* rM = cmd["message"];
+                if (!rM || strlen(rM) == 0) rM = cmd["content"];
+                targetContent = rM ? String(rM) : "";
+                targetPriority = c.equalsIgnoreCase("PLAY_EMERGENCY") ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
+                const char* rD = cmd["department"];
+                targetDept = rD ? String(rD) : "College-Wide";
+                targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
+                const char* rA = cmd["audio_url"];
+                targetAudioUrl = rA ? String(rA) : "";
+              }
+            }
           }
         }
 
-        // 2. Process active playing announcement
-        if (!respDoc["active_notice"].isNull()) {
+        // 2. Check active playing notice if no command triggered playback
+        if (!shouldTriggerBroadcast && !respDoc["active_notice"].isNull()) {
           JsonObject activeNotice = respDoc["active_notice"].as<JsonObject>();
-          int annId = activeNotice["id"].as<int>();
-          int qId = activeNotice["queue_id"].as<int>();
-          if (annId > 0 && (!isBroadcasting || activeAnnouncementId != annId)) {
+          int aId = activeNotice["id"].as<int>();
+          if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
+            shouldTriggerBroadcast = true;
+            targetAnnId = aId;
+            targetQId = activeNotice["queue_id"].as<int>();
             const char* rawT = activeNotice["title"];
-            String title = rawT ? String(rawT) : "Campus Notice";
+            targetTitle = rawT ? String(rawT) : "Campus Notice";
             const char* rawC = activeNotice["content"];
-            String content = rawC ? String(rawC) : "";
+            targetContent = rawC ? String(rawC) : "";
             const char* rawP = activeNotice["priority"];
-            String priority = rawP ? String(rawP) : "NORMAL";
+            targetPriority = rawP ? String(rawP) : "NORMAL";
             const char* rawD = activeNotice["department"];
-            String dept = rawD ? String(rawD) : "College-Wide";
-            int duration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
+            targetDept = rawD ? String(rawD) : "College-Wide";
+            targetDuration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
             const char* rawA = activeNotice["audio_url"];
-            String audioUrl = rawA ? String(rawA) : "";
-            triggerNoticeBroadcast(annId, qId, title, content, priority, dept, duration, audioUrl);
+            targetAudioUrl = rawA ? String(rawA) : "";
           }
         }
 
@@ -278,11 +325,10 @@ public:
             n.priority = p ? String(p) : "NORMAL";
             const char* d = item["department"];
             n.department = d ? String(d) : "College-Wide";
-            const char* c = item["category"];
-            n.category = c ? String(c) : "Notice";
+            const char* cat = item["category"];
+            n.category = cat ? String(cat) : "Notice";
             displayMgr.addDailyNotice(n);
           }
-          // Refresh screen if notice count changed, top notice changed, or screen is not rendered
           int newCount = displayMgr.getDailyNoticesCount();
           int currentTopId = dailyArray.size() > 0 ? dailyArray[0]["id"].as<int>() : 0;
           if (!displayMgr.isBroadcasting() && displayMgr.getState() == STATE_IDLE_DAILY_NOTICES) {
@@ -298,57 +344,28 @@ public:
       Serial.print(httpCode);
       Serial.println(F(")"));
     }
-    http.end();
-  }
 
-  // --------------------------------------------------------------------------
-  // Command Dispatcher
-  // --------------------------------------------------------------------------
-  void handleCommand(JsonObject cmd) {
-    const char* rawCmd = cmd["command"];
-    String command = rawCmd ? String(rawCmd) : "";
-    const char* rawMac = cmd["target_mac"];
-    String targetMac = rawMac ? String(rawMac) : "";
-    if (targetMac.length() > 0 && !targetMac.equalsIgnoreCase("ALL") && !targetMac.equalsIgnoreCase(nodeMac)) {
-      return; // Not targeted to this node
+    // CRITICAL: Close heartbeat HTTP & release TLS heap memory BEFORE dispatching audio streams!
+    http.end();
+
+    // Now execute control command if present
+    if (hasControlCommand) {
+      if (pendingCommand.equalsIgnoreCase("TEST_SPEAKER")) {
+        audioMgr.playDiagnosticTest();
+      } else if (pendingCommand.equalsIgnoreCase("SET_VOLUME")) {
+        if (cmdVol >= 0) audioMgr.setVolume(cmdVol);
+      } else if (pendingCommand.equalsIgnoreCase("STOP") || pendingCommand.equalsIgnoreCase("CANCEL") || pendingCommand.equalsIgnoreCase("SKIP")) {
+        stopActiveBroadcast();
+      } else if (pendingCommand.equalsIgnoreCase("RESTART")) {
+        registerNode();
+      }
     }
 
-    Serial.print(F("⚡ [COMMAND RECEIVED] Action: '"));
-    Serial.print(command);
-    Serial.println(F("'"));
-
-    if (command.equalsIgnoreCase("TEST_SPEAKER")) {
-      audioMgr.playDiagnosticTest();
-    } else if (command.equalsIgnoreCase("SET_VOLUME")) {
-      int vol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
-      audioMgr.setVolume(vol);
-    } else if (command.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || command.equalsIgnoreCase("PLAY_EMERGENCY")) {
-      int annId = cmd["announcement_id"].as<int>();
-      int qId = cmd["queue_id"].as<int>();
-      const char* rawTitle = cmd["title"];
-      String title = rawTitle ? String(rawTitle) : "Campus Notice";
-      const char* rawMsg = cmd["message"];
-      if (!rawMsg || strlen(rawMsg) == 0) {
-        rawMsg = cmd["content"];
-      }
-      String message = rawMsg ? String(rawMsg) : "";
-      const char* rawPri = cmd["priority"];
-      String priority = command.equalsIgnoreCase("PLAY_EMERGENCY") ? "EMERGENCY" : (rawPri ? String(rawPri) : "NORMAL");
-      const char* rawDept = cmd["department"];
-      String dept = rawDept ? String(rawDept) : "College-Wide";
-      int duration = 15;
-      if (!cmd["duration"].isNull()) {
-        duration = cmd["duration"].as<int>();
-      } else if (!cmd["duration_seconds"].isNull()) {
-        duration = cmd["duration_seconds"].as<int>();
-      }
-      const char* rawA = cmd["audio_url"];
-      String audioUrl = rawA ? String(rawA) : "";
-      triggerNoticeBroadcast(annId, qId, title, message, priority, dept, duration, audioUrl);
-    } else if (command.equalsIgnoreCase("STOP") || command.equalsIgnoreCase("CANCEL") || command.equalsIgnoreCase("SKIP")) {
-      stopActiveBroadcast();
-    } else if (command.equalsIgnoreCase("RESTART")) {
-      registerNode();
+    // Now trigger audio broadcast if scheduled
+    if (shouldTriggerBroadcast) {
+      Serial.print(F("🧠 [HEAP] Free heap before audio stream: "));
+      Serial.println(ESP.getFreeHeap());
+      triggerNoticeBroadcast(targetAnnId, targetQId, targetTitle, targetContent, targetPriority, targetDept, targetDuration, targetAudioUrl);
     }
   }
 
@@ -359,7 +376,10 @@ public:
     activeAnnouncementId = annId;
     activeQueueId = qId;
     isBroadcasting = true;
-    activePlaybackEndTime = millis() + ((durationSec > 0 ? durationSec : 15) * 1000UL);
+
+    // Minimum 12 seconds or requested duration so notice card is readable
+    int effectiveDuration = durationSec > 0 ? max(durationSec, 12) : 15;
+    activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
 
     DisplayNotice notice;
     notice.id = annId;
@@ -369,8 +389,9 @@ public:
     notice.department = dept;
     notice.category = "Notice";
 
-    // 1. Immediately update OLED/TFT & LED status
-    displayMgr.setActiveNotice(notice, durationSec);
+    // 1. Immediately update TFT Display & LED status
+    // (This renders the card header, badges, wrapped title, message, AND initial equalizer bars!)
+    displayMgr.setActiveNotice(notice, effectiveDuration);
 
     // 2. Play attention chime or emergency siren through speaker
     if (priority.equalsIgnoreCase("EMERGENCY")) {
@@ -395,6 +416,8 @@ public:
     if (streamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
       Serial.print(F("🎙️ [AUDIO STREAM] Connecting to audio source: "));
       Serial.println(streamUrl);
+      Serial.print(F("🧠 [HEAP] Free heap for audio client: "));
+      Serial.println(ESP.getFreeHeap());
 
       HTTPClient httpAudio;
       WiFiClientSecure secureAudioClient;
@@ -407,7 +430,8 @@ public:
         httpAudio.begin(plainAudioClient, streamUrl);
       }
 
-      httpAudio.setTimeout(12000);
+      httpAudio.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+      httpAudio.setTimeout(15000);
       httpAudio.addHeader("Accept", "audio/wav, audio/*");
       int httpCode = httpAudio.GET();
 
@@ -431,21 +455,28 @@ public:
 
     // 4. Fallback melody if streaming wasn't available
     if (!streamPlayed && !priority.equalsIgnoreCase("EMERGENCY")) {
+      Serial.println(F("ℹ️ [AUDIO FALLBACK] Playing fallback broadcast chime sequence..."));
       audioMgr.playAnnouncementMelody();
     }
 
     // 5. Play completion chime after speech concludes
     audioMgr.playCompletionChime();
 
-    // 6. Complete active notice and auto-advance speaker queue
-    isBroadcasting = false;
-    displayMgr.clearActiveNotice();
-    int finishedQueueId = activeQueueId;
-    activeAnnouncementId = 0;
-    activeQueueId = 0;
+    // 6. Reset visualizer graphic to clean baseline
+    displayMgr.resetEqualizerGraphic();
 
+    // 7. Auto-advance the backend queue right away so next item can queue
+    int finishedQueueId = activeQueueId;
+    activeQueueId = 0; // Reset so notify is only called once
     if (finishedQueueId > 0) {
       notifyPlaybackCompleted(finishedQueueId);
+    }
+
+    // Notice remains on the TFT screen until activePlaybackEndTime in update()
+    if (millis() >= activePlaybackEndTime) {
+      isBroadcasting = false;
+      displayMgr.clearActiveNotice();
+      activeAnnouncementId = 0;
     }
   }
 
@@ -497,17 +528,10 @@ public:
 
     // 2. Check if active notice broadcast duration has elapsed
     if (isBroadcasting && now >= activePlaybackEndTime) {
-      int completedQueueId = activeQueueId;
       isBroadcasting = false;
-      audioMgr.playCompletionChime();
       displayMgr.clearActiveNotice();
       activeAnnouncementId = 0;
       activeQueueId = 0;
-
-      // Auto-advance the backend queue so the next announcement plays!
-      if (completedQueueId > 0) {
-        notifyPlaybackCompleted(completedQueueId);
-      }
     }
 
     // 3. Periodic 3-second heartbeat & display feed telemetry

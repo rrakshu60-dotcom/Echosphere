@@ -508,7 +508,7 @@ def enqueue_and_broadcast_announcement(
             speaker_node_id = None
 
     words = len((title + " " + content).split())
-    dur_secs = max(10, int(words / 2.5))
+    dur_secs = max(18, int(words / 2.2) + 6)
     now = utc_now()
 
     # 1. Clean up any stale 'Playing' items older than playback duration + 30s gap (or missing played_at)
@@ -905,7 +905,7 @@ def auto_advance_speaker_queue(
         ann = getattr(current_playing, "announcement", None)
         is_curr_emerg = is_emergency_announcement(ann)
         curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
-        curr_dur = max(15, int(curr_dur))
+        curr_dur = max(20, int(curr_dur) + 8)
         curr_played_at = getattr(current_playing, "played_at", None)
 
         if not curr_played_at:

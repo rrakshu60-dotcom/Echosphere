@@ -302,11 +302,21 @@
   };
   class WiFiClientSecure : public WiFiClient { public: void setInsecure() {} };
 
+  #define HTTPC_STRICT_FOLLOW_REDIRECTS 1
+  #define HTTPC_FORCE_FOLLOW_REDIRECTS 2
+
+  class EspClass {
+  public:
+    uint32_t getFreeHeap() { return 110000; }
+  };
+  static EspClass ESP;
+
   class HTTPClient {
   public:
     bool begin(WiFiClient&, const String&) { return true; }
     void addHeader(const String&, const String&) {}
     void setTimeout(uint16_t) {}
+    void setFollowRedirects(int) {}
     int POST(const String&) { return 200; }
     int GET() { return 200; }
     String getString() { return String("{}"); }

@@ -175,8 +175,8 @@ class SpeakerQueueController extends GetxController {
 
   bool _isNoticeEmergency(AnnouncementModel a) {
     final p = a.priority.toUpperCase();
-    final el = (a.emergencyLevel ?? '').toUpperCase();
-    final cat = (a.category ?? '').toUpperCase();
+    final el = a.emergencyLevel.toUpperCase();
+    final cat = a.category.toUpperCase();
     if (p == 'EMERGENCY' || p == 'CRITICAL' || el == 'EMERGENCY' || el == 'CRITICAL' || cat == 'EMERGENCY') {
       return true;
     }
@@ -714,7 +714,7 @@ class SpeakerQueueController extends GetxController {
       isSlotActive = isScheduleActiveNow(Map<String, dynamic>.from(playedItem['repeat_schedule']));
     }
 
-    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive);
+    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive && (maxRepeats <= 0 || currentPlayedCount < maxRepeats));
 
     // Notify backend that notice playback finished
     final queueId = playedItem['id'];
