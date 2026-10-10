@@ -211,8 +211,76 @@ _kokoro_onnx_instance = None
 _kokoro_onnx_lock = None
 
 
+def download_kokoro_int8_weights(target_dir: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Downloads lightweight INT8 Kokoro-82M model (~88MB) and voice binaries (~28MB)
+    from GitHub Releases into target_dir if not already cached.
+    Uses atomic temp files so corrupted downloads never persist.
+    """
+    try:
+        import urllib.request
+        os.makedirs(target_dir, exist_ok=True)
+        model_path = os.path.join(target_dir, "kokoro-v1.0.int8.onnx")
+        voices_path = os.path.join(target_dir, "voices-v1.0.bin")
+
+        base_url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+        
+        # 1. Download Model if missing or incomplete (< 50MB)
+        if not os.path.exists(model_path) or os.path.getsize(model_path) < 50_000_000:
+            tmp_m = model_path + ".tmp"
+            logger.info("Downloading Kokoro-82M INT8 ONNX neural model (88MB)...")
+            urllib.request.urlretrieve(f"{base_url}/kokoro-v1.0.int8.onnx", tmp_m)
+            if os.path.exists(tmp_m) and os.path.getsize(tmp_m) > 50_000_000:
+                os.replace(tmp_m, model_path)
+                logger.info(f"Kokoro-82M INT8 model cached successfully: {model_path}")
+
+        # 2. Download Voices if missing or incomplete (< 15MB)
+        if not os.path.exists(voices_path) or os.path.getsize(voices_path) < 15_000_000:
+            tmp_v = voices_path + ".tmp"
+            logger.info("Downloading Kokoro voice embeddings (28MB)...")
+            urllib.request.urlretrieve(f"{base_url}/voices-v1.0.bin", tmp_v)
+            if os.path.exists(tmp_v) and os.path.getsize(tmp_v) > 15_000_000:
+                os.replace(tmp_v, voices_path)
+                logger.info(f"Kokoro voices cached successfully: {voices_path}")
+
+        if os.path.exists(model_path) and os.path.exists(voices_path):
+            return model_path, voices_path
+    except Exception as dl_err:
+        logger.warning(f"Kokoro INT8 weights download error: {dl_err}")
+    return None, None
+
+
+def convert_wav_to_mp3(wav_path: str, mp3_path: str, bitrate: int = 128) -> bool:
+    """
+    Converts a WAV file to MP3 using lameenc.
+    Returns True if mp3_path is created and valid.
+    """
+    if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 100:
+        return False
+    try:
+        import lameenc
+        with wave.open(wav_path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            sample_rate = wf.getframerate()
+            frames = wf.readframes(wf.getnframes())
+
+        encoder = lameenc.Encoder()
+        encoder.set_bit_rate(bitrate)
+        encoder.set_in_sample_rate(sample_rate)
+        encoder.set_channels(n_channels)
+        encoder.set_quality(5)
+        mp3_bytes = encoder.encode(frames) + encoder.flush()
+
+        with open(mp3_path, "wb") as f:
+            f.write(mp3_bytes)
+        return os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 500
+    except Exception as e:
+        logger.debug(f"lameenc conversion note: {e}")
+        return False
+
+
 def get_kokoro_onnx():
-    """Returns a thread-safe cached Kokoro-ONNX instance if installed and weights are found."""
+    """Returns a thread-safe cached Kokoro-ONNX instance if installed and weights are found or auto-downloaded."""
     global _kokoro_onnx_instance, _kokoro_onnx_lock
     if _kokoro_onnx_lock is None:
         import threading
@@ -222,25 +290,38 @@ def get_kokoro_onnx():
             return _kokoro_onnx_instance
         try:
             from kokoro_onnx import Kokoro
+            import tempfile
+            cache_tmp_dir = os.path.join(tempfile.gettempdir(), "kokoro")
             candidate_dirs = [
-                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "kokoro")),
+                cache_tmp_dir,
                 os.path.abspath("models/kokoro"),
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "kokoro")),
                 os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models_data", "kokoro")),
                 os.path.expanduser("~/.cache/kokoro"),
+                "/tmp/kokoro",
             ]
             model_path = None
             voices_path = None
             for d in candidate_dirs:
+                m_int8 = os.path.join(d, "kokoro-v1.0.int8.onnx")
                 m1 = os.path.join(d, "kokoro-v1.0.onnx")
                 m2 = os.path.join(d, "kokoro-v0_19.onnx")
                 v1 = os.path.join(d, "voices-v1.0.bin")
                 v2 = os.path.join(d, "voices.bin")
-                m_chosen = m1 if os.path.exists(m1) else (m2 if os.path.exists(m2) else None)
+                m_chosen = m_int8 if os.path.exists(m_int8) else (m1 if os.path.exists(m1) else (m2 if os.path.exists(m2) else None))
                 v_chosen = v1 if os.path.exists(v1) else (v2 if os.path.exists(v2) else None)
                 if m_chosen and v_chosen:
                     model_path = m_chosen
                     voices_path = v_chosen
                     break
+
+            # If not found in any candidate directory, auto-download INT8 weights (88MB)
+            if not model_path or not voices_path:
+                dl_m, dl_v = download_kokoro_int8_weights(cache_tmp_dir)
+                if dl_m and dl_v:
+                    model_path = dl_m
+                    voices_path = dl_v
+
             if model_path and voices_path:
                 _kokoro_onnx_instance = Kokoro(model_path, voices_path)
                 logger.info(f"Initialized Kokoro-ONNX neural TTS pipeline from '{model_path}'.")
@@ -389,8 +470,7 @@ def generate_announcement_audio_sync(
                 }
 
         # 1B. Local Kokoro-ONNX / PyTorch Pipeline
-        if is_kokoro_available():
-            kok_onnx = get_kokoro_onnx()
+        kok_onnx = get_kokoro_onnx()
         if kok_onnx is not None:
             try:
                 import soundfile as sf
@@ -408,13 +488,17 @@ def generate_announcement_audio_sync(
 
                     sf.write(wav_filepath, combined, sample_rate)
                     duration = round(len(combined) / float(sample_rate), 2)
-                    logger.info(f"Kokoro-ONNX offline audio generated: {wav_filepath}")
+                    logger.info(f"Kokoro-ONNX neural audio generated: {wav_filepath}")
+
+                    # Automatically encode MP3 for low-bandwidth streaming to ESP32 / web
+                    has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
+
                     return {
-                        "file_name": wav_filename,
-                        "file_path": wav_filepath,
-                        "url_path": f"/static/audio_streams/{wav_filename}",
-                        "type": "wav",
-                        "engine": f"Kokoro TTS ({voice_name})",
+                        "file_name": mp3_filename if has_mp3 else wav_filename,
+                        "file_path": mp3_filepath if has_mp3 else wav_filepath,
+                        "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else wav_filename}",
+                        "type": "mp3" if has_mp3 else "wav",
+                        "engine": f"Kokoro-82M INT8 ({voice_name})",
                         "voice": voice_name,
                         "duration_sec": duration,
                         "chime": selected_chime if include_chime else "none",
@@ -610,8 +694,7 @@ def synthesize_text_audio(
                 }
 
         # 1B. Local Kokoro-ONNX / PyTorch Pipeline
-        if is_kokoro_available():
-            kok_onnx = get_kokoro_onnx()
+        kok_onnx = get_kokoro_onnx()
         if kok_onnx is not None:
             try:
                 import soundfile as sf
@@ -620,12 +703,13 @@ def synthesize_text_audio(
                 if samples is not None and len(samples) > 0:
                     sf.write(wav_filepath, samples, sample_rate)
                     duration = round(len(samples) / float(sample_rate), 2)
+                    has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
                     return {
-                        "file_name": wav_filename,
-                        "file_path": wav_filepath,
-                        "url_path": f"/static/audio_streams/{wav_filename}",
-                        "type": "wav",
-                        "engine": f"Kokoro TTS ({voice_name})",
+                        "file_name": mp3_filename if has_mp3 else wav_filename,
+                        "file_path": mp3_filepath if has_mp3 else wav_filepath,
+                        "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else wav_filename}",
+                        "type": "mp3" if has_mp3 else "wav",
+                        "engine": f"Kokoro-82M INT8 ({voice_name})",
                         "voice": voice_name,
                         "duration_sec": duration,
                     }
