@@ -257,7 +257,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/api/v1/diagnostic/tts")
-def diagnostic_tts():
+def diagnostic_tts(run_test: bool = False):
     import traceback
     diag = {}
     from app.services.tts_service import (
@@ -279,18 +279,19 @@ def diagnostic_tts():
         diag["kokoro_onnx_installed"] = False
         diag["kokoro_onnx_error"] = str(e)
 
-    try:
-        res = generate_announcement_audio_sync(
-            announcement_id=9999,
-            text="EchoSphere diagnostic audio test.",
-            gender="female",
-            accent="american",
-            include_chime=False,
-        )
-        diag["generate_result"] = res
-    except Exception as e:
-        diag["generate_error"] = f"{type(e).__name__}: {str(e)}"
-        diag["generate_traceback"] = traceback.format_exc().splitlines()[-12:]
+    if run_test:
+        try:
+            res = generate_announcement_audio_sync(
+                announcement_id=9999,
+                text="EchoSphere diagnostic audio test.",
+                gender="female",
+                accent="american",
+                include_chime=False,
+            )
+            diag["generate_result"] = res
+        except Exception as e:
+            diag["generate_error"] = f"{type(e).__name__}: {str(e)}"
+            diag["generate_traceback"] = traceback.format_exc().splitlines()[-12:]
 
     return diag
 
