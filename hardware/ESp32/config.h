@@ -1,7 +1,8 @@
 #ifndef ECHOSPHERE_CONFIG_H
 #define ECHOSPHERE_CONFIG_H
 
-#if __has_include(<Arduino.h>)
+#include <functional>
+#if __has_include(<Arduino.h>) && !defined(__clang__)
 #include <Arduino.h>
 #endif
 
@@ -86,9 +87,8 @@
   22 // Server Heartbeat & Status LED (Pulses on 3s heartbeats)
 #define PIN_LED_ONBOARD 2 // ESP32 DevKit Onboard Blue LED
 
-// --- D. Optional Test Pushbutton (Safe Input-Only Pin) ---
-#define PIN_BUTTON_TEST                                                        \
-  34 // Optional input button for local speaker/display test
+// --- D. Optional Test Pushbutton (Safe Input-Only Pin - disabled by default to avoid floating pin beeps) ---
+// #define PIN_BUTTON_TEST 34
 
 // Compile-Time Safety Guard: Ensure ZERO outputs are assigned to pins 32 - 39
 static_assert(PIN_I2S_BCLK < 32,

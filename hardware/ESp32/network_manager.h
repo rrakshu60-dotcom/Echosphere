@@ -39,7 +39,43 @@ private:
   String pendingTargetDept = "College-Wide";
   int pendingTargetDuration = 15;
   String pendingTargetAudioUrl = "";
-  String lastExecutedCommandId = "";
+  static const int MAX_EXECUTED_CMDS = 16;
+  String executedCommandIds[MAX_EXECUTED_CMDS];
+  int executedCmdIndex = 0;
+
+  bool isCommandExecuted(const String& cmdId) const {
+    if (cmdId.length() == 0) return false;
+    for (int i = 0; i < MAX_EXECUTED_CMDS; i++) {
+      if (executedCommandIds[i] == cmdId) return true;
+    }
+    return false;
+  }
+
+  void markCommandExecuted(const String& cmdId) {
+    if (cmdId.length() == 0) return;
+    executedCommandIds[executedCmdIndex] = cmdId;
+    executedCmdIndex = (executedCmdIndex + 1) % MAX_EXECUTED_CMDS;
+  }
+
+  static const int MAX_COMPLETED_ANNS = 16;
+  int completedAnnouncementIds[MAX_COMPLETED_ANNS] = {0};
+  int completedAnnIndex = 0;
+
+  bool isAnnouncementCompleted(int annId) const {
+    if (annId <= 0) return false;
+    for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
+      if (completedAnnouncementIds[i] == annId) return true;
+    }
+    return false;
+  }
+
+  void markAnnouncementCompleted(int annId) {
+    if (annId <= 0) return;
+    completedAnnouncementIds[completedAnnIndex] = annId;
+    completedAnnIndex = (completedAnnIndex + 1) % MAX_COMPLETED_ANNS;
+    lastCompletedAnnouncementId = annId;
+    lastCompletedAnnouncementTime = millis();
+  }
 
 public:
   EchoNetworkManager(DisplayManager& disp, AudioManager& audio)
@@ -301,7 +337,7 @@ public:
             } else if (!cmd["id"].isNull()) {
               cmdId = String(cmd["id"].as<int>());
             }
-            if (cmdId.length() > 0 && cmdId == lastExecutedCommandId) {
+            if (cmdId.length() > 0 && isCommandExecuted(cmdId)) {
               continue; // already executed this command
             }
 
@@ -310,15 +346,15 @@ public:
             if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP") || c.equalsIgnoreCase("PAUSE")) {
               hasControlCommand = true;
               pendingCommand = c;
-              if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
+              if (cmdId.length() > 0) markCommandExecuted(cmdId);
             } else if (c.equalsIgnoreCase("SET_VOLUME")) {
               hasControlCommand = true;
               pendingCommand = c;
               cmdVol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
-              if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
+              if (cmdId.length() > 0) markCommandExecuted(cmdId);
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
-              bool isJustCompleted = (aId == lastCompletedAnnouncementId && (millis() - lastCompletedAnnouncementTime < 60000UL));
+              bool isJustCompleted = isAnnouncementCompleted(aId);
               if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
@@ -334,7 +370,7 @@ public:
                 targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
                 const char* rA = cmd["audio_url"];
                 targetAudioUrl = rA ? String(rA) : "";
-                if (cmdId.length() > 0) lastExecutedCommandId = cmdId;
+                if (cmdId.length() > 0) markCommandExecuted(cmdId);
               }
             }
           }
@@ -344,7 +380,7 @@ public:
         if (!shouldTriggerBroadcast && !respDoc["active_notice"].isNull()) {
           JsonObject activeNotice = respDoc["active_notice"].as<JsonObject>();
           int aId = activeNotice["id"].as<int>();
-          bool isJustCompleted = (aId == lastCompletedAnnouncementId && (millis() - lastCompletedAnnouncementTime < 60000UL));
+          bool isJustCompleted = isAnnouncementCompleted(aId);
           if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
             shouldTriggerBroadcast = true;
             targetAnnId = aId;
@@ -494,14 +530,14 @@ public:
       displayMgr.setActiveNotice(notice, effectiveDuration);
     }
 
-    // 2. Play attention chime or emergency siren through speaker
+    // 2. Play physical attention chime or emergency siren through MAX98357A first!
     if (priority.equalsIgnoreCase("EMERGENCY")) {
       audioMgr.playEmergencySiren();
     } else {
       audioMgr.playAttentionChime();
     }
 
-    // 3. High-Fidelity MP3 Audio Stream over HTTPS via ESP32-audioI2S
+    // 3. High-Fidelity Speech Audio Stream over HTTPS via ESP32-audioI2S
     String streamUrl = customAudioUrl;
     if (streamUrl.length() == 0 && annId > 0) {
       streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=mp3&include_chime=false";
@@ -509,13 +545,16 @@ public:
       streamUrl = serverUrl + streamUrl;
     }
 
-    if (streamUrl.length() > 0 && streamUrl.indexOf("audio_format=") < 0) {
+    // Always enforce compressed MP3 for fast, lightweight Wi-Fi data transfer
+    if (streamUrl.indexOf("audio_format=wav") >= 0) {
+      streamUrl.replace("audio_format=wav", "audio_format=mp3");
+    } else if (streamUrl.indexOf("audio_format=") < 0) {
       streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=mp3&include_chime=false" : "?audio_format=mp3&include_chime=false");
     }
 
     bool streamPlayed = false;
     if (streamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
-      Serial.print(F("🎙️ [AUDIO STREAM] Streaming MP3 speech broadcast via ESP32-audioI2S: "));
+      Serial.print(F("🎙️ [AUDIO STREAM] Streaming compressed MP3 notice speech via ESP32-audioI2S: "));
       Serial.println(streamUrl);
       Serial.print(F("🧠 [HEAP] Free heap before stream: "));
       Serial.println(ESP.getFreeHeap());
@@ -524,12 +563,12 @@ public:
         displayMgr.renderEqualizerGraphic();
       });
 
-      Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
+      Serial.println(streamPlayed ? F("✅ [I2S STREAM] Notice speech playback completed successfully!") : F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
     }
 
-    // 4. Fallback melody if streaming wasn't available
+    // 4. Fallback melody if cloud speech streaming wasn't available
     if (!streamPlayed && !priority.equalsIgnoreCase("EMERGENCY")) {
-      Serial.println(F("ℹ️ [AUDIO FALLBACK] Playing fallback broadcast chime sequence..."));
+      Serial.println(F("ℹ️ [AUDIO FALLBACK] Playing campus broadcast melody..."));
       audioMgr.playAnnouncementMelody();
     }
 
@@ -550,13 +589,21 @@ public:
       notifyPlaybackCompleted(finishedQueueId);
     }
 
-    // Record as completed to prevent heartbeat re-triggers of the same notice
-    lastCompletedAnnouncementId = annId;
-    lastCompletedAnnouncementTime = millis();
+    // Record as completed to prevent duplicate replay loops
+    markAnnouncementCompleted(annId);
 
-    // After speech concludes, keep the notice card on screen for 5 seconds
+    // After speech concludes, keep the notice card on screen for 4 seconds
     // so viewers have ample time to read the notice title and text, then cleanly return to idle ticker!
-    activePlaybackEndTime = millis() + 5000UL;
+    unsigned long dwellStart = millis();
+    while (millis() - dwellStart < 4000UL) {
+      delay(50);
+      yield();
+    }
+
+    // GUARANTEED: Explicitly clear active notice and return to idle daily ticker!
+    isBroadcasting = false;
+    activeAnnouncementId = 0;
+    displayMgr.clearActiveNotice();
   }
 
   void stopActiveBroadcast() {

@@ -45,6 +45,8 @@
  * ============================================================================
  */
 
+#include "arduino_compat.h"
+#if !defined(__clang__)
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -54,8 +56,11 @@
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
-#include <driver/i2s.h>
+#if __has_include(<driver/i2s_std.h>)
+#include <driver/i2s_std.h>
+#endif
 #include <Audio.h>
+#endif
 
 #include "config.h"
 #include "display_manager.h"
@@ -124,11 +129,12 @@ void setup() {
   // 5. Initialize Display & LEDs on safe GPIOs 21, 22, 18, 19, 2
   displayManager.begin();
 
-  // 6. Connect to Wi-Fi and register node with EchoSphere backend
+  // 6. Single Startup Confirmation Beep - Sounds immediately when ESP32 powers on!
+  audioManager.playStartupBeep();
+
+  // 7. Connect to Wi-Fi and register node with EchoSphere backend
   networkManager.begin();
 
-  // 7. Play startup chime to confirm audio path
-  audioManager.playAttentionChime();
   Serial.println(F("🚀 [BOOT COMPLETE] EchoSphere ESP32 Node is LIVE and LISTENING."));
 }
 
