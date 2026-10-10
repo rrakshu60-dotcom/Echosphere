@@ -337,10 +337,11 @@
   class Audio {
   public:
     Audio(bool = false, uint8_t = 3, uint8_t = 0) {}
+    void setBufsize(int = 0, int = 0) {}
     bool setPinout(uint8_t, uint8_t, uint8_t, int8_t = -1) { return true; }
     void setVolume(uint8_t, uint8_t = 0) {}
     bool connecttohost(const char*, const char* = "", const char* = "") { return true; }
-    bool isRunning() { return false; }
+    bool isRunning() const { return false; }
     void loop() {}
     uint32_t stopSong() { return 0; }
   };

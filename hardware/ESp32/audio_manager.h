@@ -22,7 +22,7 @@ private:
   int currentVolume = NODE_DEFAULT_VOL; // 0 to 100%
   bool isPlaying = false;
   bool isInitialized = false;
-  Audio audio;
+  mutable Audio audio;
 
 public:
   AudioManager() {}
