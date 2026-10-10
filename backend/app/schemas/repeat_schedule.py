@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -78,21 +78,23 @@ class RepeatScheduleBase(BaseModel):
         if "CUSTOM_WINDOW" in self.selected_slots:
             if not self.custom_start_time:
                 raise ValueError("custom_start_time (HH:MM or HH:MM AM/PM) is required when CUSTOM_WINDOW is selected.")
-            self.custom_start_time = _normalize_time_str(self.custom_start_time)
-            if not TIME_REGEX.match(self.custom_start_time):
+            start_str = _normalize_time_str(self.custom_start_time)
+            if not start_str or not TIME_REGEX.match(start_str):
                 raise ValueError(f"custom_start_time '{self.custom_start_time}' must be in 24-hour HH:MM format or 12-hour format with AM/PM.")
+            self.custom_start_time = start_str
 
             if not self.custom_end_time:
                 # Default end time to +30 minutes if omitted
-                sh, sm = map(int, self.custom_start_time.split(":"))
+                sh, sm = map(int, start_str.split(":"))
                 end_m = (sh * 60 + sm + 30) % (24 * 60)
                 self.custom_end_time = f"{end_m // 60:02d}:{end_m % 60:02d}"
             else:
-                self.custom_end_time = _normalize_time_str(self.custom_end_time)
-                if not TIME_REGEX.match(self.custom_end_time):
+                end_str = _normalize_time_str(self.custom_end_time)
+                if not end_str or not TIME_REGEX.match(end_str):
                     raise ValueError(f"custom_end_time '{self.custom_end_time}' must be in 24-hour HH:MM format or 12-hour format with AM/PM.")
-                if self.custom_start_time >= self.custom_end_time:
+                if start_str >= end_str:
                     raise ValueError("custom_start_time must be earlier than custom_end_time.")
+                self.custom_end_time = end_str
 
         # 2. Date order
         if self.end_date < self.start_date:
