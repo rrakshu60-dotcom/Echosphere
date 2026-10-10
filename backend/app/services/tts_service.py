@@ -121,7 +121,7 @@ def synthesize_remote_kokoro_api(
     voice: str = "af_heart",
     output_path: str = "",
     response_format: str = "mp3",
-    timeout: float = 25.0,
+    timeout: float = 45.0,
 ) -> bool:
     """
     Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces
