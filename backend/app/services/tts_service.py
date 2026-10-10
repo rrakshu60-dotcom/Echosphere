@@ -287,6 +287,15 @@ def convert_wav_to_mp3(wav_path: str, mp3_path: str, bitrate: int = 128) -> bool
 
 def get_kokoro_onnx():
     """Returns a thread-safe cached Kokoro-ONNX instance if installed and weights are found or auto-downloaded."""
+    is_on_render = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
+    allow_local_on_render = os.getenv("ENABLE_LOCAL_KOKORO_ON_RENDER", "false").lower() == "true"
+    if is_on_render and not allow_local_on_render:
+        logger.info(
+            "Render 512MB cloud environment detected. Local Kokoro-ONNX disabled to enforce strict 512MB memory boundary. "
+            "Set KOKORO_API_URL to route to dedicated 16GB Kokoro worker."
+        )
+        return None
+
     global _kokoro_onnx_instance, _kokoro_onnx_lock
     if _kokoro_onnx_lock is None:
         import threading
@@ -353,6 +362,10 @@ def get_kokoro_onnx():
 
 def get_kokoro_pipeline(lang_code: str = "a"):
     """Returns a thread-safe cached Kokoro-82M pipeline instance if installed."""
+    is_on_render = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
+    if is_on_render:
+        return None
+
     global _kokoro_pipelines, _kokoro_lock
     if _kokoro_lock is None:
         import threading
@@ -370,7 +383,9 @@ def get_kokoro_pipeline(lang_code: str = "a"):
 
 
 def is_kokoro_available() -> bool:
-    """Check whether Kokoro neural TTS (ONNX or PyTorch) is installed and operational."""
+    """Check whether Kokoro neural TTS (Remote Worker, ONNX, or PyTorch) is installed and operational."""
+    if bool(os.getenv("KOKORO_API_URL")):
+        return True
     if get_kokoro_onnx() is not None:
         return True
     try:

@@ -262,22 +262,13 @@ def diagnostic_tts(run_test: bool = False):
     diag = {}
     from app.services.tts_service import (
         STATIC_AUDIO_DIR,
-        get_kokoro_onnx,
         generate_announcement_audio_sync,
     )
     diag["static_audio_dir"] = STATIC_AUDIO_DIR
     diag["dir_exists"] = os.path.exists(STATIC_AUDIO_DIR)
-    try:
-        import onnxruntime
-        diag["onnxruntime_version"] = onnxruntime.__version__
-    except Exception as e:
-        diag["onnxruntime_error"] = str(e)
-    try:
-        import kokoro_onnx
-        diag["kokoro_onnx_installed"] = True
-    except Exception as e:
-        diag["kokoro_onnx_installed"] = False
-        diag["kokoro_onnx_error"] = str(e)
+    diag["kokoro_api_url_configured"] = bool(os.getenv("KOKORO_API_URL"))
+    diag["is_render"] = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
+    diag["local_kokoro_allowed_on_render"] = os.getenv("ENABLE_LOCAL_KOKORO_ON_RENDER", "false").lower() == "true"
 
     if run_test:
         try:
