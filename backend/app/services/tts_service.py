@@ -329,8 +329,21 @@ def get_kokoro_onnx():
                     voices_path = dl_v
 
             if model_path and voices_path:
-                _kokoro_onnx_instance = Kokoro(model_path, voices_path)
-                logger.info(f"Initialized Kokoro-ONNX neural TTS pipeline from '{model_path}'.")
+                try:
+                    import onnxruntime as rt
+                    sess_options = rt.SessionOptions()
+                    sess_options.intra_op_num_threads = 1
+                    sess_options.inter_op_num_threads = 1
+                    sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
+                    sess_options.enable_cpu_mem_arena = False
+                    sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                    session = rt.InferenceSession(model_path, sess_options=sess_options, providers=["CPUExecutionProvider"])
+                    _kokoro_onnx_instance = Kokoro.from_session(session, voices_path)
+                    logger.info(f"Initialized ultra-low-memory Kokoro-ONNX pipeline from '{model_path}'.")
+                except Exception as opt_err:
+                    logger.debug(f"from_session note: {opt_err}. Fallback to standard Kokoro...")
+                    _kokoro_onnx_instance = Kokoro(model_path, voices_path)
+                    logger.info(f"Initialized Kokoro-ONNX pipeline from '{model_path}'.")
                 return _kokoro_onnx_instance
         except Exception as e:
             logger.debug(f"Kokoro-ONNX initialization note: {e}")
@@ -498,6 +511,8 @@ def generate_announcement_audio_sync(
 
                     # Automatically encode MP3 for low-bandwidth streaming to ESP32 / web
                     has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
+                    import gc
+                    gc.collect()
 
                     return {
                         "file_name": mp3_filename if has_mp3 else wav_filename,
