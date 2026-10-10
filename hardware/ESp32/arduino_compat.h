@@ -27,6 +27,10 @@
     #include <driver/i2s.h>
   #endif
 
+  #if __has_include(<Audio.h>)
+    #include <Audio.h>
+  #endif
+
   #if __has_include(<WiFi.h>)
     #include <WiFi.h>
     #include <HTTPClient.h>
@@ -327,6 +331,18 @@
     WiFiClient& getStream() { static WiFiClient c; return c; }
     int getSize() { return 0; }
     void end() {}
+  };
+
+  // --- ESP32-audioI2S Shim for Desktop IntelliSense ---
+  class Audio {
+  public:
+    Audio(bool = false, uint8_t = 3, uint8_t = 0) {}
+    bool setPinout(uint8_t, uint8_t, uint8_t, int8_t = -1) { return true; }
+    void setVolume(uint8_t, uint8_t = 0) {}
+    bool connecttohost(const char*, const char* = "", const char* = "") { return true; }
+    bool isRunning() { return false; }
+    void loop() {}
+    uint32_t stopSong() { return 0; }
   };
 
   // --- ArduinoJson Shim for Desktop IntelliSense ---

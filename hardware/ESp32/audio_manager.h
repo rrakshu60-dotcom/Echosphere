@@ -22,12 +22,13 @@ private:
   int currentVolume = NODE_DEFAULT_VOL; // 0 to 100%
   bool isPlaying = false;
   bool isInitialized = false;
+  Audio audio;
 
 public:
   AudioManager() {}
 
   void begin() {
-    Serial.println(F("🔊 [I2S AUDIO] Initializing MAX98357A I2S driver..."));
+    Serial.println(F("🔊 [I2S AUDIO] Initializing MAX98357A I2S driver via ESP32-audioI2S..."));
 
     #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
       pinMode(PIN_I2S_SD, OUTPUT);
@@ -35,59 +36,29 @@ public:
       delay(10);
     #endif
 
-    i2s_config_t i2s_config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-      .sample_rate = I2S_SAMPLE_RATE,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-      .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-      .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 12,
-      .dma_buf_len = 256,
-      .use_apll = false,
-      .tx_desc_auto_clear = true,
-      .fixed_mclk = 0
-    };
+    // Route standard I2S pins to MAX98357A Class-D amplifier
+    audio.setPinout(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DIN);
 
-    i2s_pin_config_t pin_config = {
-      .bck_io_num = PIN_I2S_BCLK,   // GPIO 26
-      .ws_io_num = PIN_I2S_LRC,     // GPIO 25
-      .data_out_num = PIN_I2S_DIN,  // GPIO 27
-      .data_in_num = I2S_PIN_NO_CHANGE
-    };
+    // Set internal RAM buffer size (24KB RAM buffer for smooth cloud streaming)
+    audio.setBufsize(24576, 0);
 
-    esp_err_t err = i2s_driver_install(I2S_PORT_NUM, &i2s_config, 0, NULL);
-    if (err != ESP_OK) {
-      Serial.print(F("❌ [I2S AUDIO] Driver install error: "));
-      Serial.println(err);
-      return;
-    }
+    // Map 0..100% volume to ESP32-audioI2S scale (0..21)
+    uint8_t aVol = (uint8_t)map(currentVolume, 0, 100, 0, 21);
+    audio.setVolume(aVol);
 
-    err = i2s_set_pin(I2S_PORT_NUM, &pin_config);
-    if (err != ESP_OK) {
-      Serial.print(F("❌ [I2S AUDIO] Pin config error: "));
-      Serial.println(err);
-      return;
-    }
-
-    // Explicitly lock hardware clock PLL dividers for 44.1kHz stereo audio
-    i2s_set_clk(I2S_PORT_NUM, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-
-    #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
-      pinMode(PIN_I2S_SD, OUTPUT);
-      digitalWrite(PIN_I2S_SD, HIGH); // Drive SD pin HIGH to wake MAX98357A from shutdown mode
-    #endif
-
-    i2s_zero_dma_buffer(I2S_PORT_NUM);
     isInitialized = true;
     Serial.println(F("✅ [I2S AUDIO] MAX98357A 3W Class-D I2S Amplifier ready for 8Ω Speaker!"));
   }
 
   void setVolume(int vol) {
     currentVolume = constrain(vol, 0, 100);
+    uint8_t aVol = (uint8_t)map(currentVolume, 0, 100, 0, 21);
+    audio.setVolume(aVol);
     Serial.print(F("🔊 [I2S AUDIO] Volume set to "));
     Serial.print(currentVolume);
-    Serial.println(F("%"));
+    Serial.print(F("% (Audio lib level: "));
+    Serial.print(aVol);
+    Serial.println(F("/21)"));
   }
 
   int getVolume() const {
@@ -95,7 +66,7 @@ public:
   }
 
   bool getIsPlaying() const {
-    return isPlaying;
+    return isPlaying || audio.isRunning();
   }
 
   // --------------------------------------------------------------------------
@@ -105,6 +76,10 @@ public:
     if (!isInitialized || frequency <= 0 || currentVolume <= 0) {
       delay(durationMs);
       return;
+    }
+
+    if (audio.isRunning()) {
+      audio.stopSong();
     }
 
     isPlaying = true;
@@ -162,225 +137,77 @@ public:
   }
 
   void stopTone() {
+    if (audio.isRunning()) {
+      audio.stopSong();
+    }
     silence(20);
     isPlaying = false;
   }
 
   // --------------------------------------------------------------------------
-  // Stream Lossless 16-Bit PCM WAV Audio Directly to MAX98357A I2S
+  // Stream Lossless / Compressed Audio Stream Directly via ESP32-audioI2S
+  // Supports MP3, AAC, and WAV over HTTPS with built-in ring buffering
   // --------------------------------------------------------------------------
-  bool streamWavAudio(WiFiClient& client, std::function<void()> visualizerCallback = nullptr) {
-    if (!isInitialized) return false;
+  bool playStream(const String& streamUrl, std::function<void()> visualizerCallback = nullptr) {
+    if (!isInitialized || streamUrl.length() == 0) return false;
 
     isPlaying = true;
-    Serial.println(F("🎧 [I2S AUDIO] Starting 16-bit PCM WAV stream playback..."));
+    Serial.print(F("🎧 [I2S AUDIO] Connecting ESP32-audioI2S to: "));
+    Serial.println(streamUrl);
 
-    // 1. Read RIFF/WAVE header (first 12 bytes)
-    uint8_t riffHeader[12];
-    size_t headerBytesRead = 0;
-    unsigned long startWait = millis();
+    #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
+      pinMode(PIN_I2S_SD, OUTPUT);
+      digitalWrite(PIN_I2S_SD, HIGH);
+    #endif
 
-    while (headerBytesRead < 12 && client.connected() && (millis() - startWait < 6000)) {
-      int r = client.read(riffHeader + headerBytesRead, 12 - headerBytesRead);
-      if (r > 0) {
-        headerBytesRead += r;
-      } else {
-        delay(2);
-      }
+    // Sync volume
+    uint8_t aVol = (uint8_t)map(currentVolume, 0, 100, 0, 21);
+    audio.setVolume(aVol);
+
+    if (audio.isRunning()) {
+      audio.stopSong();
     }
 
-    if (headerBytesRead < 12) {
-      Serial.println(F("❌ [I2S AUDIO] Timeout reading WAV RIFF header"));
+    bool started = audio.connecttohost(streamUrl.c_str());
+    if (!started) {
+      Serial.println(F("❌ [I2S AUDIO] Failed to initiate stream connection"));
       isPlaying = false;
       return false;
     }
 
-    // Verify RIFF & WAVE signature
-    if (riffHeader[0] != 'R' || riffHeader[1] != 'I' || riffHeader[2] != 'F' || riffHeader[3] != 'F' ||
-        riffHeader[8] != 'W' || riffHeader[9] != 'A' || riffHeader[10] != 'V' || riffHeader[11] != 'E') {
-      Serial.println(F("❌ [I2S AUDIO] Invalid WAV file signature"));
-      isPlaying = false;
-      return false;
-    }
-
-    // 2. Scan chunks to extract "fmt " parameters and locate "data" chunk
-    uint32_t sampleRate = 24000;
-    uint16_t channels = 1;
-    uint16_t bitsPerSample = 16;
-    uint32_t totalDataBytes = 0;
-    bool foundData = false;
-
-    startWait = millis();
-    while (client.connected() && !foundData && (millis() - startWait < 8000)) {
-      uint8_t chunkHeader[8];
-      size_t chRead = 0;
-      while (chRead < 8 && client.connected() && (millis() - startWait < 8000)) {
-        int r = client.read(chunkHeader + chRead, 8 - chRead);
-        if (r > 0) {
-          chRead += r;
-        } else {
-          delay(2);
-        }
-      }
-      if (chRead < 8) break;
-
-      uint32_t chunkSize = (uint32_t)chunkHeader[4] |
-                           ((uint32_t)chunkHeader[5] << 8) |
-                           ((uint32_t)chunkHeader[6] << 16) |
-                           ((uint32_t)chunkHeader[7] << 24);
-
-      // Check for "fmt " chunk
-      if (chunkHeader[0] == 'f' && chunkHeader[1] == 'm' && chunkHeader[2] == 't' && chunkHeader[3] == ' ') {
-        uint8_t fmtData[16];
-        size_t fmtRead = 0;
-        while (fmtRead < 16 && client.connected() && (millis() - startWait < 8000)) {
-          int r = client.read(fmtData + fmtRead, 16 - fmtRead);
-          if (r > 0) {
-            fmtRead += r;
-          } else {
-            delay(2);
-          }
-        }
-        if (fmtRead < 16) break;
-
-        channels = (uint16_t)fmtData[2] | ((uint16_t)fmtData[3] << 8);
-        sampleRate = (uint32_t)fmtData[4] | ((uint32_t)fmtData[5] << 8) |
-                     ((uint32_t)fmtData[6] << 16) | ((uint32_t)fmtData[7] << 24);
-        bitsPerSample = (uint16_t)fmtData[14] | ((uint16_t)fmtData[15] << 8);
-
-        // Skip extra header bytes if chunk > 16
-        if (chunkSize > 16) {
-          uint32_t toSkip = chunkSize - 16;
-          uint8_t skipBuf[64];
-          while (toSkip > 0 && client.connected() && (millis() - startWait < 8000)) {
-            int r = client.read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
-            if (r > 0) toSkip -= r;
-            else delay(2);
-          }
-        }
-      }
-      // Check for "data" chunk
-      else if (chunkHeader[0] == 'd' && chunkHeader[1] == 'a' && chunkHeader[2] == 't' && chunkHeader[3] == 'a') {
-        foundData = true;
-        totalDataBytes = chunkSize;
-        break;
-      }
-      else {
-        // Skip unknown chunk
-        uint32_t toSkip = chunkSize;
-        uint8_t skipBuf[64];
-        while (toSkip > 0 && client.connected() && (millis() - startWait < 8000)) {
-          int r = client.read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
-          if (r > 0) toSkip -= r;
-          else delay(2);
-        }
-      }
-    }
-
-    if (!foundData) {
-      Serial.println(F("❌ [I2S AUDIO] Could not locate 'data' chunk in WAV stream"));
-      isPlaying = false;
-      return false;
-    }
-
-    if (sampleRate < 8000 || sampleRate > 96000) sampleRate = 24000;
-    Serial.print(F("✅ [I2S AUDIO] Stream Format: "));
-    Serial.print(sampleRate);
-    Serial.print(F("Hz, "));
-    Serial.print(channels);
-    Serial.print(F("ch, "));
-    Serial.print(bitsPerSample);
-    Serial.println(F("bit PCM. Locking hardware I2S clock..."));
-
-    // Dynamically lock hardware clock PLL dividers to match audio sample rate
-    i2s_set_clk(I2S_PORT_NUM, sampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-
-    // 3. Audio Streaming Loop
-    const int CHUNK_SAMPLES = 256;
-    int16_t rawChunk[CHUNK_SAMPLES * 2];
-    int16_t stereoChunk[CHUNK_SAMPLES * 2];
-
-    unsigned long lastDataTime = millis();
+    unsigned long startTime = millis();
     unsigned long lastVizTime = millis();
-    unsigned long totalBytesStreamed = 0;
 
-    while (client.connected() || client.available()) {
-      int bytesToRead = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
-      
-      // Directly pull decrypted audio payload from network stream
-      int bytesRead = client.read((uint8_t*)rawChunk, bytesToRead);
+    // Dedicated audio pump loop
+    while (audio.isRunning()) {
+      audio.loop();
 
-      if (bytesRead > 0) {
-        lastDataTime = millis();
+      if (visualizerCallback && (millis() - lastVizTime >= 75)) {
+        lastVizTime = millis();
+        visualizerCallback();
+      }
 
-        // 16-bit PCM word-alignment guard: ensure even number of bytes
-        if (bytesRead % 2 != 0) {
-          int extra = client.read();
-          if (extra >= 0) {
-            ((uint8_t*)rawChunk)[bytesRead++] = (uint8_t)extra;
-          } else {
-            bytesRead--; // Drop dangling odd byte to preserve PCM phase alignment
-          }
-        }
-
-        totalBytesStreamed += bytesRead;
-        int samplesRead = bytesRead / 2;
-
-        // Scale volume and duplicate mono into stereo channels
-        if (channels == 1) {
-          for (int i = 0; i < samplesRead; i++) {
-            int16_t s = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-            stereoChunk[i * 2]     = s;
-            stereoChunk[i * 2 + 1] = s;
-          }
-          size_t written = 0;
-          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
-        } else {
-          for (int i = 0; i < samplesRead; i++) {
-            stereoChunk[i] = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-          }
-          size_t written = 0;
-          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
-        }
-
-        // Animate visualizer periodically
-        if (visualizerCallback && (millis() - lastVizTime >= 65)) {
-          lastVizTime = millis();
-          visualizerCallback();
-        }
-
-        // Clean instantaneous exit when all declared WAV data bytes have been delivered to I2S
-        if (totalDataBytes > 0 && totalBytesStreamed >= totalDataBytes) {
-          Serial.print(F("✅ [I2S AUDIO] All data chunk bytes ("));
-          Serial.print(totalBytesStreamed);
-          Serial.println(F(" bytes) fully streamed to I2S."));
-          break;
-        }
-      } else {
-        // No data received in this pass
-        if (!client.connected() && client.available() <= 0) {
-          break; // Stream ended cleanly
-        }
-        if (millis() - lastDataTime > 2500) {
-          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (2.5s without data)"));
-          break;
-        }
-        delay(2);
+      // 120-second safety timeout guard
+      if (millis() - startTime > 120000UL) {
+        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded 120s safety limit. Stopping."));
+        audio.stopSong();
+        break;
       }
 
       yield();
     }
 
-    Serial.print(F("✅ [I2S AUDIO] Voice stream playback completed ("));
-    Serial.print(totalBytesStreamed);
-    Serial.println(F(" bytes delivered to 8Ω speaker)"));
-
+    Serial.println(F("✅ [I2S AUDIO] Voice stream playback completed successfully."));
     silence(25);
-    // Restore default 44.1kHz rate for standard chimes
-    i2s_set_clk(I2S_PORT_NUM, I2S_SAMPLE_RATE, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
     isPlaying = false;
     return true;
   }
+
+  // Legacy compatibility wrapper
+  bool streamWavAudio(const String& streamUrl, std::function<void()> visualizerCallback = nullptr) {
+    return playStream(streamUrl, visualizerCallback);
+  }
+
 
 
   // --------------------------------------------------------------------------

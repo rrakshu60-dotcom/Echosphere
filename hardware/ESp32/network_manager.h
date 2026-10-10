@@ -501,63 +501,30 @@ public:
       audioMgr.playAttentionChime();
     }
 
-    // 3. Lossless 16-Bit PCM WAV Audio Stream over HTTP to MAX98357A I2S
+    // 3. High-Fidelity MP3 Audio Stream over HTTPS via ESP32-audioI2S
     String streamUrl = customAudioUrl;
     if (streamUrl.length() == 0 && annId > 0) {
-      streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=wav";
+      streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=mp3&include_chime=false";
     } else if (streamUrl.length() > 0 && !streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
       streamUrl = serverUrl + streamUrl;
     }
 
     if (streamUrl.length() > 0 && streamUrl.indexOf("audio_format=") < 0) {
-      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=wav" : "?audio_format=wav");
+      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=mp3&include_chime=false" : "?audio_format=mp3&include_chime=false");
     }
 
     bool streamPlayed = false;
     if (streamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
-      Serial.print(F("🎙️ [AUDIO STREAM] Connecting to audio source: "));
+      Serial.print(F("🎙️ [AUDIO STREAM] Streaming MP3 speech broadcast via ESP32-audioI2S: "));
       Serial.println(streamUrl);
-      Serial.print(F("🧠 [HEAP] Free heap for audio client: "));
+      Serial.print(F("🧠 [HEAP] Free heap before stream: "));
       Serial.println(ESP.getFreeHeap());
 
-      {
-        HTTPClient httpAudio;
-        WiFiClientSecure secureAudioClient;
-        WiFiClient plainAudioClient;
+      streamPlayed = audioMgr.playStream(streamUrl, [this]() {
+        displayMgr.renderEqualizerGraphic();
+      });
 
-        if (streamUrl.startsWith("https://")) {
-          secureAudioClient.setInsecure();
-          httpAudio.begin(secureAudioClient, streamUrl);
-        } else {
-          httpAudio.begin(plainAudioClient, streamUrl);
-        }
-
-        httpAudio.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-        httpAudio.setTimeout(15000);
-        httpAudio.addHeader("Accept", "audio/wav, audio/*");
-        int httpCode = httpAudio.GET();
-
-        if (httpCode == 200) {
-          Serial.println(F("🔊 [I2S STREAM] HTTP 200 OK received! Streaming 16-bit PCM WAV to MAX98357A..."));
-          WiFiClient* streamClient = httpAudio.getStreamPtr();
-          if (streamClient) {
-            streamPlayed = audioMgr.streamWavAudio(*streamClient, [this]() {
-              displayMgr.renderEqualizerGraphic();
-            });
-            Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
-          } else {
-            Serial.println(F("❌ [I2S STREAM] Failed to acquire HTTP stream pointer."));
-          }
-        } else {
-          Serial.print(F("⚠️ [AUDIO STREAM] HTTP error: "));
-          Serial.println(httpCode);
-        }
-        httpAudio.end();
-        if (streamUrl.startsWith("https://")) {
-          secureAudioClient.stop();
-        }
-      }
-      // Audio TLS client buffers fully destroyed and freed from heap here!
+      Serial.println(streamPlayed ? F("✅ [I2S STREAM] Audio playback finished successfully!") : F("⚠️ [I2S STREAM] Playback finished or aborted early."));
     }
 
     // 4. Fallback melody if streaming wasn't available
