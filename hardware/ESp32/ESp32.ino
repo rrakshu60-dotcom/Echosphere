@@ -59,23 +59,12 @@
 #if __has_include(<driver/i2s_std.h>)
 #include <driver/i2s_std.h>
 #endif
-#include <Audio.h>
 #endif
 
 #include "config.h"
 #include "display_manager.h"
 #include "audio_manager.h"
 #include "network_manager.h"
-
-// Optional ESP32-audioI2S diagnostic callbacks for Serial Monitor inspection
-void audio_info(const char *info) {
-  Serial.print(F("ℹ️ [AUDIO INFO] "));
-  Serial.println(info);
-}
-
-void audio_eof_mp3(const char *info) {
-  Serial.println(F("⏹️ [AUDIO EOF] MP3 stream playback completed."));
-}
 
 // Instantiate Subsystems
 DisplayManager displayManager;

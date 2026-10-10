@@ -537,25 +537,25 @@ public:
       audioMgr.playAttentionChime();
     }
 
-    // 3. High-Fidelity Speech Audio Stream over HTTPS via ESP32-audioI2S
+    // 3. High-Fidelity Speech Audio Stream over HTTPS via Native I2S
     String streamUrl = customAudioUrl;
     if (streamUrl.length() == 0 && annId > 0) {
-      streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=mp3&include_chime=false";
+      streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=wav&include_chime=false";
     } else if (streamUrl.length() > 0 && !streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
       streamUrl = serverUrl + streamUrl;
     }
 
-    // Always enforce compressed MP3 for fast, lightweight Wi-Fi data transfer
-    int wavFormatPos = streamUrl.indexOf("audio_format=wav");
-    if (wavFormatPos >= 0) {
-      streamUrl = streamUrl.substring(0, wavFormatPos) + "audio_format=mp3" + streamUrl.substring(wavFormatPos + 16);
+    // Always enforce 16-bit PCM WAV for native hardware I2S streaming
+    int mp3FormatPos = streamUrl.indexOf("audio_format=mp3");
+    if (mp3FormatPos >= 0) {
+      streamUrl = streamUrl.substring(0, mp3FormatPos) + "audio_format=wav" + streamUrl.substring(mp3FormatPos + 16);
     } else if (streamUrl.indexOf("audio_format=") < 0) {
-      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=mp3&include_chime=false" : "?audio_format=mp3&include_chime=false");
+      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=wav&include_chime=false" : "?audio_format=wav&include_chime=false");
     }
 
     bool streamPlayed = false;
     if (streamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
-      Serial.print(F("🎙️ [AUDIO STREAM] Streaming compressed MP3 notice speech via ESP32-audioI2S: "));
+      Serial.print(F("🎙️ [AUDIO STREAM] Streaming 16-bit PCM WAV notice speech via Native I2S: "));
       Serial.println(streamUrl);
       Serial.print(F("🧠 [HEAP] Free heap before stream: "));
       Serial.println(ESP.getFreeHeap());

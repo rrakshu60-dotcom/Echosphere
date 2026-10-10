@@ -31,10 +31,6 @@
     #include <driver/i2s.h>
   #endif
 
-  #if __has_include(<Audio.h>)
-    #include <Audio.h>
-  #endif
-
   #if __has_include(<WiFi.h>)
     #include <WiFi.h>
     #include <HTTPClient.h>
@@ -331,6 +327,53 @@
   };
 
   typedef void* i2s_chan_handle_t;
+  typedef int gpio_num_t;
+  #define I2S_ROLE_MASTER 0
+  #define I2S_DATA_BIT_WIDTH_16BIT 16
+  #define I2S_SLOT_MODE_STEREO 2
+  #define I2S_SLOT_MODE_MONO 1
+
+  struct i2s_chan_config_t {
+    int id;
+    int role;
+  };
+  #define I2S_CHANNEL_DEFAULT_CONFIG(port, role) { port, role }
+
+  struct i2s_std_clk_config_t {
+    uint32_t sample_rate_hz;
+  };
+  #define I2S_STD_CLK_DEFAULT_CONFIG(rate) { (uint32_t)(rate) }
+
+  struct i2s_std_slot_config_t {
+    int data_bit_width;
+    int slot_mode;
+  };
+  #define I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(width, mode) { width, mode }
+
+  struct i2s_std_gpio_config_t {
+    int mclk;
+    gpio_num_t bclk;
+    gpio_num_t ws;
+    gpio_num_t dout;
+    int din;
+    struct {
+      bool mclk_inv;
+      bool bclk_inv;
+      bool ws_inv;
+    } invert_flags;
+  };
+
+  struct i2s_std_config_t {
+    i2s_std_clk_config_t clk_cfg;
+    i2s_std_slot_config_t slot_cfg;
+    i2s_std_gpio_config_t gpio_cfg;
+  };
+
+  inline esp_err_t i2s_new_channel(const i2s_chan_config_t*, i2s_chan_handle_t*, void*) { return ESP_OK; }
+  inline esp_err_t i2s_channel_init_std_mode(i2s_chan_handle_t, const i2s_std_config_t*) { return ESP_OK; }
+  inline esp_err_t i2s_channel_enable(i2s_chan_handle_t) { return ESP_OK; }
+  inline esp_err_t i2s_channel_disable(i2s_chan_handle_t) { return ESP_OK; }
+  inline esp_err_t i2s_channel_reconfig_std_clock(i2s_chan_handle_t, const i2s_std_clk_config_t*) { return ESP_OK; }
   inline esp_err_t i2s_channel_write(i2s_chan_handle_t, const void*, size_t, size_t* bytes_written, uint32_t) {
     if (bytes_written) *bytes_written = 0;
     return ESP_OK;
