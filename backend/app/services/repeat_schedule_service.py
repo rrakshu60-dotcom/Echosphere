@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -406,7 +406,7 @@ def evaluate_and_dispatch_repeat_slots(
     simulated_time_str: Optional[str] = None,
     simulated_date_str: Optional[str] = None,
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Evaluates current time against configured repeat schedules:
     1. Determines active campus break or custom window in Indian Standard Time (IST).
