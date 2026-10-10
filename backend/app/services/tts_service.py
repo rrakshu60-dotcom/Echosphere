@@ -151,8 +151,21 @@ def synthesize_remote_kokoro_api(
 
         resp = requests.post(target_url, json=payload, headers=headers, timeout=timeout)
         if resp.status_code == 200 and len(resp.content) > 1024:
+            is_wav = resp.content[:4] == b"RIFF"
             with open(output_path, "wb") as f:
                 f.write(resp.content)
+
+            # Ensure companion file exists for both ESP32 I2S WAV streaming and web MP3 streaming
+            if is_wav and output_path.endswith(".mp3"):
+                companion_wav = output_path[:-4] + ".wav"
+                with open(companion_wav, "wb") as f:
+                    f.write(resp.content)
+                convert_wav_to_mp3(companion_wav, output_path)
+            elif not is_wav and output_path.endswith(".wav"):
+                companion_mp3 = output_path[:-4] + ".mp3"
+                with open(companion_mp3, "wb") as f:
+                    f.write(resp.content)
+
             logger.info(f"Kokoro-82M audio generated via remote worker: {output_path} ({len(resp.content)} bytes)")
             return True
         else:
