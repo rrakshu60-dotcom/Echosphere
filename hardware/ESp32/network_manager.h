@@ -546,8 +546,9 @@ public:
     }
 
     // Always enforce compressed MP3 for fast, lightweight Wi-Fi data transfer
-    if (streamUrl.indexOf("audio_format=wav") >= 0) {
-      streamUrl.replace("audio_format=wav", "audio_format=mp3");
+    int wavFormatPos = streamUrl.indexOf("audio_format=wav");
+    if (wavFormatPos >= 0) {
+      streamUrl = streamUrl.substring(0, wavFormatPos) + "audio_format=mp3" + streamUrl.substring(wavFormatPos + 16);
     } else if (streamUrl.indexOf("audio_format=") < 0) {
       streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=mp3&include_chime=false" : "?audio_format=mp3&include_chime=false");
     }
