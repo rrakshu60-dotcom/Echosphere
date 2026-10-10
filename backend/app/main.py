@@ -235,9 +235,64 @@ app.include_router(
 
 
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
 # -------------------------
-# Health Check
+# Health Check & Diagnostics
 # -------------------------
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error_type": type(exc).__name__,
+            "error_detail": str(exc),
+            "traceback": traceback.format_exc().splitlines()[-12:],
+        },
+    )
+
+
+@app.get("/api/v1/diagnostic/tts")
+def diagnostic_tts():
+    import traceback
+    diag = {}
+    from app.services.tts_service import (
+        STATIC_AUDIO_DIR,
+        get_kokoro_onnx,
+        generate_announcement_audio_sync,
+    )
+    diag["static_audio_dir"] = STATIC_AUDIO_DIR
+    diag["dir_exists"] = os.path.exists(STATIC_AUDIO_DIR)
+    try:
+        import onnxruntime
+        diag["onnxruntime_version"] = onnxruntime.__version__
+    except Exception as e:
+        diag["onnxruntime_error"] = str(e)
+    try:
+        import kokoro_onnx
+        diag["kokoro_onnx_installed"] = True
+    except Exception as e:
+        diag["kokoro_onnx_installed"] = False
+        diag["kokoro_onnx_error"] = str(e)
+
+    try:
+        res = generate_announcement_audio_sync(
+            announcement_id=9999,
+            text="EchoSphere diagnostic audio test.",
+            gender="female",
+            accent="american",
+            include_chime=False,
+        )
+        diag["generate_result"] = res
+    except Exception as e:
+        diag["generate_error"] = f"{type(e).__name__}: {str(e)}"
+        diag["generate_traceback"] = traceback.format_exc().splitlines()[-12:]
+
+    return diag
 
 
 @app.get("/")

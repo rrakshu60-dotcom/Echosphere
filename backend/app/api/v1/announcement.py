@@ -390,8 +390,10 @@ def get_announcement_audio_endpoint(
         else:
             gender = "female"
 
+    clean_accent = (accent or "american").lower()
+    clean_gender = (gender or "female").lower()
     base_url = str(request.base_url).rstrip("/")
-    tag = f"{accent.lower()}_{gender.lower()}"
+    tag = f"{clean_accent}_{clean_gender}"
     if is_summary:
         tag += "_summary"
 
@@ -477,7 +479,9 @@ def stream_announcement_audio_endpoint(
     from app.services.ai_service import AIService
     from app.services.translation_service import TranslationService
     clean_lang = TranslationService.normalize_language_code(lang) if lang else "en"
-    tag = f"{accent.lower()}_{gender.lower()}"
+    clean_accent = (accent or "american").lower()
+    clean_gender = (gender or "female").lower()
+    tag = f"{clean_accent}_{clean_gender}"
     if is_summary:
         tag += "_summary"
     if clean_lang != "en":
