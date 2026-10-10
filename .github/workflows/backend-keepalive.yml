@@ -21,13 +21,22 @@ jobs:
       - name: Ping EchoSphere Production Backend
         run: |
           echo "Pinging EchoSphere Render Backend..."
-          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" -m 30 "https://echosphere-backend-9lv8.onrender.com/")
+          HTTP_STATUS=$(curl -s -o response.txt -w "%{http_code}" --connect-timeout 20 -m 90 "https://echosphere-backend-9lv8.onrender.com/" || echo "000")
           echo "HTTP Response Code: $HTTP_STATUS"
-          cat response.txt
-          echo ""
+          if [ -f response.txt ]; then cat response.txt; echo ""; fi
 
-          if [ "$HTTP_STATUS" -eq 200 ]; then
+          if [ "$HTTP_STATUS" = "200" ]; then
             echo "Backend is hot and healthy!"
           else
-            echo "Backend responded with non-200 code ($HTTP_STATUS). Waking up..."
+            echo "Backend returned code $HTTP_STATUS (cold start or spin-up in progress). Waiting 15s for secondary probe..."
+            sleep 15
+            RETRY_STATUS=$(curl -s -o response_retry.txt -w "%{http_code}" --connect-timeout 15 -m 60 "https://echosphere-backend-9lv8.onrender.com/" || echo "000")
+            echo "Secondary Probe Code: $RETRY_STATUS"
+            if [ -f response_retry.txt ]; then cat response_retry.txt; echo ""; fi
+            if [ "$RETRY_STATUS" = "200" ]; then
+              echo "Backend is now awake and healthy!"
+            else
+              echo "Wake-up ping registered with Render. Container will finish booting shortly."
+            fi
           fi
+          exit 0
