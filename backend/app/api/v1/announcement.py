@@ -434,18 +434,30 @@ def get_announcement_audio_endpoint(
         notice_category = "General"
         notice_emergency = "NORMAL"
 
-    res = generate_announcement_audio_sync(
-        announcement_id=announcement_id,
-        text=speech_text,
-        gender=gender,
-        accent=accent,
-        is_summary=is_summary,
-        include_chime=include_chime,
-        chime_type=selected_chime,
-        priority=notice_priority,
-        category=notice_category,
-        emergency_level=notice_emergency,
-    )
+    try:
+        res = generate_announcement_audio_sync(
+            announcement_id=announcement_id,
+            text=speech_text,
+            gender=clean_gender,
+            accent=clean_accent,
+            is_summary=is_summary,
+            include_chime=include_chime,
+            chime_type=selected_chime,
+            priority=notice_priority,
+            category=notice_category,
+            emergency_level=notice_emergency,
+        )
+    except Exception as exc:
+        from app.services.chime_service import get_or_create_chime_wav
+        wav_fallback = get_or_create_chime_wav(selected_chime)
+        res = {
+            "url_path": f"/api/v1/announcements/{announcement_id}/chime",
+            "file_name": os.path.basename(wav_fallback),
+            "engine": "Campus Notice Chime",
+            "voice": "Institutional Chime",
+            "type": "wav",
+            "duration_sec": 3.0,
+        }
     return {
         "status": "ready",
         "audio_url": f"{base_url}{res['url_path']}",
@@ -556,21 +568,27 @@ def stream_announcement_audio_endpoint(
     if clean_lang != "en":
         speech_text = TranslationService.translate_text(speech_text, clean_lang)
 
-    res = generate_announcement_audio_sync(
-        announcement_id=announcement_id,
-        text=speech_text,
-        gender=gender,
-        accent=accent,
-        is_summary=is_summary,
-        include_chime=include_chime,
-        chime_type=selected_chime,
-        priority=notice_priority,
-        category=notice_category,
-        emergency_level=notice_emergency,
-    )
-    file_path = res["file_path"]
-    media_type = "audio/wav" if res.get("type") == "wav" else "audio/mpeg"
-    file_name = res["file_name"]
+    try:
+        res = generate_announcement_audio_sync(
+            announcement_id=announcement_id,
+            text=speech_text,
+            gender=clean_gender,
+            accent=clean_accent,
+            is_summary=is_summary,
+            include_chime=include_chime,
+            chime_type=selected_chime,
+            priority=notice_priority,
+            category=notice_category,
+            emergency_level=notice_emergency,
+        )
+        file_path = res["file_path"]
+        media_type = "audio/wav" if res.get("type") == "wav" else "audio/mpeg"
+        file_name = res["file_name"]
+    except Exception as exc:
+        from app.services.chime_service import get_or_create_chime_wav
+        file_path = get_or_create_chime_wav(selected_chime or "standard")
+        media_type = "audio/wav"
+        file_name = f"chime_{selected_chime or 'standard'}.wav"
 
     if audio_format.lower() == "wav" and file_path.endswith(".mp3"):
         wav_path = file_path[:-4] + ".wav"

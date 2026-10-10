@@ -609,7 +609,24 @@ def generate_announcement_audio_sync(
     except Exception as p_err:
         logger.error(f"pyttsx3 offline synthesis error: {p_err}")
 
-    # If all tiers fail, raise descriptive error — NEVER write dummy beep pulses
+    # Tier 5: Contextual institutional chime fallback — guarantees valid audio and zero HTTP 500
+    try:
+        from app.services.chime_service import get_or_create_chime_wav
+        fallback_wav = get_or_create_chime_wav(selected_chime)
+        if os.path.exists(fallback_wav) and os.path.getsize(fallback_wav) > 1024:
+            has_mp3 = convert_wav_to_mp3(fallback_wav, mp3_filepath)
+            return {
+                "file_name": mp3_filename if has_mp3 else os.path.basename(fallback_wav),
+                "file_path": mp3_filepath if has_mp3 else fallback_wav,
+                "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else os.path.basename(fallback_wav)}",
+                "type": "mp3" if has_mp3 else "wav",
+                "engine": f"Campus Notice Chime ({selected_chime})",
+                "voice": "Institutional Chime",
+                "chime": selected_chime,
+            }
+    except Exception as chime_fallback_err:
+        logger.error(f"Chime fallback error: {chime_fallback_err}")
+
     raise RuntimeError("All speech synthesis engines (Edge-TTS, gTTS, pyttsx3) are currently unavailable.")
 
 

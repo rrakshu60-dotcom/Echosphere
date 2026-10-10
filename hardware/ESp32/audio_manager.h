@@ -121,6 +121,11 @@ public:
 
       size_t bytesWritten = 0;
 #if ESP_IDF_VERSION_MAJOR == 5
+      if (!audio.m_i2s_tx_handle) {
+        delay(durationMs);
+        isPlaying = false;
+        return;
+      }
       esp_err_t err = i2s_channel_write(audio.m_i2s_tx_handle, sampleBuffer, samplesThisChunk * 4, &bytesWritten, 100);
       if (err != ESP_OK) {
         i2s_channel_enable(audio.m_i2s_tx_handle);
@@ -139,6 +144,12 @@ public:
 
   void silence(unsigned long durationMs) {
     if (!isInitialized) return;
+#if ESP_IDF_VERSION_MAJOR == 5
+    if (!audio.m_i2s_tx_handle) {
+      delay(durationMs);
+      return;
+    }
+#endif
     int16_t zeroBuffer[64 * 2] = {0};
     unsigned long totalChunks = (I2S_SAMPLE_RATE * durationMs) / (1000UL * 64);
     if (totalChunks == 0) totalChunks = 1;
@@ -194,7 +205,7 @@ public:
     unsigned long startTime = millis();
     unsigned long lastVizTime = millis();
 
-    // Dedicated audio pump loop
+    // Dedicated audio pump loop with tight safety timeouts
     while (audio.isRunning()) {
       audio.loop();
 
@@ -203,9 +214,9 @@ public:
         visualizerCallback();
       }
 
-      // 120-second safety timeout guard
-      if (millis() - startTime > 120000UL) {
-        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded 120s safety limit. Stopping."));
+      // Safety duration guard: max 35s per announcement stream
+      if (millis() - startTime > 35000UL) {
+        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded 35s safety limit. Stopping cleanly."));
         audio.stopSong();
         break;
       }
@@ -213,8 +224,10 @@ public:
       yield();
     }
 
-    Serial.println(F("✅ [I2S AUDIO] Voice stream playback completed successfully."));
-    silence(25);
+    Serial.println(F("✅ [I2S AUDIO] Voice stream playback completed cleanly."));
+    if (audio.isRunning()) {
+      audio.stopSong();
+    }
     isPlaying = false;
     return true;
   }

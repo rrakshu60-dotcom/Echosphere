@@ -603,8 +603,11 @@ public:
 
     // GUARANTEED: Explicitly clear active notice and return to idle daily ticker!
     isBroadcasting = false;
+    lastCompletedAnnouncementId = annId;
+    lastCompletedAnnouncementTime = millis();
     activeAnnouncementId = 0;
     displayMgr.clearActiveNotice();
+    Serial.println(F("📺 [DISPLAY] Broadcast completed. Cleanly restored Today's Notices ticker."));
   }
 
   void stopActiveBroadcast() {
