@@ -55,11 +55,22 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <driver/i2s.h>
+#include <Audio.h>
 
 #include "config.h"
 #include "display_manager.h"
 #include "audio_manager.h"
 #include "network_manager.h"
+
+// Optional ESP32-audioI2S diagnostic callbacks for Serial Monitor inspection
+void audio_info(const char *info) {
+  Serial.print(F("ℹ️ [AUDIO INFO] "));
+  Serial.println(info);
+}
+
+void audio_eof_mp3(const char *info) {
+  Serial.println(F("⏹️ [AUDIO EOF] MP3 stream playback completed."));
+}
 
 // Instantiate Subsystems
 DisplayManager displayManager;
