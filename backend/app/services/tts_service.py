@@ -252,30 +252,36 @@ def download_kokoro_int8_weights(target_dir: str) -> Tuple[Optional[str], Option
 
 def convert_wav_to_mp3(wav_path: str, mp3_path: str, bitrate: int = 128) -> bool:
     """
-    Converts a WAV file to MP3 using lameenc.
-    Returns True if mp3_path is created and valid.
+    Converts a WAV file to MP3 using lameenc and soundfile/wave.
+    Handles IEEE float and standard int16 PCM seamlessly.
     """
     if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 100:
         return False
     try:
         import lameenc
-        with wave.open(wav_path, "rb") as wf:
-            n_channels = wf.getnchannels()
-            sample_rate = wf.getframerate()
-            frames = wf.readframes(wf.getnframes())
+        try:
+            import soundfile as sf
+            data, sample_rate = sf.read(wav_path, dtype="int16")
+            n_channels = 1 if len(data.shape) == 1 else data.shape[1]
+            pcm_bytes = data.tobytes()
+        except Exception:
+            with wave.open(wav_path, "rb") as wf:
+                n_channels = wf.getnchannels()
+                sample_rate = wf.getframerate()
+                pcm_bytes = wf.readframes(wf.getnframes())
 
         encoder = lameenc.Encoder()
         encoder.set_bit_rate(bitrate)
         encoder.set_in_sample_rate(sample_rate)
         encoder.set_channels(n_channels)
         encoder.set_quality(5)
-        mp3_bytes = encoder.encode(frames) + encoder.flush()
+        mp3_bytes = encoder.encode(pcm_bytes) + encoder.flush()
 
         with open(mp3_path, "wb") as f:
             f.write(mp3_bytes)
         return os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 500
     except Exception as e:
-        logger.debug(f"lameenc conversion note: {e}")
+        logger.debug(f"convert_wav_to_mp3 note: {e}")
         return False
 
 

@@ -504,16 +504,19 @@ def stream_announcement_audio_endpoint(
             mtype = "audio/wav"
     elif audio_format.lower() == "mp3" and fpath and fpath.endswith(".wav"):
         mp3_path = fpath[:-4] + ".mp3"
-        if not os.path.exists(mp3_path):
-            from app.services.tts_service import convert_wav_to_mp3
-            if convert_wav_to_mp3(fpath, mp3_path):
-                fpath = mp3_path
-                fname = os.path.basename(mp3_path)
-                mtype = "audio/mpeg"
-        else:
+        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 500:
             fpath = mp3_path
             fname = os.path.basename(mp3_path)
             mtype = "audio/mpeg"
+        else:
+            try:
+                from app.services.tts_service import convert_wav_to_mp3
+                if convert_wav_to_mp3(fpath, mp3_path):
+                    fpath = mp3_path
+                    fname = os.path.basename(mp3_path)
+                    mtype = "audio/mpeg"
+            except Exception:
+                pass
 
     if fname and fpath:
         return FileResponse(fpath, media_type=mtype, filename=fname)
@@ -583,16 +586,19 @@ def stream_announcement_audio_endpoint(
             media_type = "audio/wav"
     elif audio_format.lower() == "mp3" and file_path.endswith(".wav"):
         mp3_path = file_path[:-4] + ".mp3"
-        if not os.path.exists(mp3_path):
-            from app.services.tts_service import convert_wav_to_mp3
-            if convert_wav_to_mp3(file_path, mp3_path):
-                file_path = mp3_path
-                file_name = os.path.basename(mp3_path)
-                media_type = "audio/mpeg"
-        else:
+        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 500:
             file_path = mp3_path
             file_name = os.path.basename(mp3_path)
             media_type = "audio/mpeg"
+        else:
+            try:
+                from app.services.tts_service import convert_wav_to_mp3
+                if convert_wav_to_mp3(file_path, mp3_path):
+                    file_path = mp3_path
+                    file_name = os.path.basename(mp3_path)
+                    media_type = "audio/mpeg"
+            except Exception:
+                pass
 
     return FileResponse(file_path, media_type=media_type, filename=file_name)
 
