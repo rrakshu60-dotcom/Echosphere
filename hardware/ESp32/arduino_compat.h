@@ -9,7 +9,9 @@
 // complete C++ type definitions to eliminate ALL IDE errors and diagnostics.
 // ============================================================================
 
-#if __has_include(<Arduino.h>)
+#include <functional>
+
+#if __has_include(<Arduino.h>) && !defined(__clang__)
 
   #include <Arduino.h>
   #include <SPI.h>
@@ -23,7 +25,9 @@
     #include <Adafruit_ST7735.h>
   #endif
 
-  #if __has_include(<driver/i2s.h>)
+  #if __has_include(<driver/i2s_std.h>)
+    #include <driver/i2s_std.h>
+  #elif __has_include(<driver/i2s.h>)
     #include <driver/i2s.h>
   #endif
 
@@ -50,6 +54,11 @@
   #include <algorithm>
   #include <cmath>
 
+  typedef int clockid_t;
+  #ifndef M_PI
+    #define M_PI 3.14159265358979323846
+  #endif
+
   // --- Arduino Core Constants ---
   #ifndef OUTPUT
     #define OUTPUT 0x01
@@ -58,8 +67,12 @@
     #define HIGH   0x01
   #endif
 
+  class __FlashStringHelper;
+  #ifndef FPSTR
+    #define FPSTR(p) (reinterpret_cast<const __FlashStringHelper *>(p))
+  #endif
   #ifndef F
-    #define F(str) (str)
+    #define F(str) (reinterpret_cast<const __FlashStringHelper *>(str))
   #endif
 
   #ifndef INITR_BLACKTAB
@@ -136,6 +149,21 @@
       while (!empty() && isspace((unsigned char)back())) pop_back();
     }
 
+    void replace(const char* findStr, const char* replaceStr) {
+      if (!findStr || !replaceStr) return;
+      size_t pos = 0;
+      size_t findLen = strlen(findStr);
+      size_t replaceLen = strlen(replaceStr);
+      if (findLen == 0) return;
+      while ((pos = std::string::find(findStr, pos)) != std::string::npos) {
+        std::string::replace(pos, findLen, replaceStr);
+        pos += replaceLen;
+      }
+    }
+    void replace(const String& findStr, const String& replaceStr) {
+      this->replace(findStr.c_str(), replaceStr.c_str());
+    }
+
     String& operator+=(const String& o) { append(o); return *this; }
     String& operator+=(const char* s) { if (s) append(s); return *this; }
     String& operator+=(char c) { push_back(c); return *this; }
@@ -155,22 +183,56 @@
     operator String() const { return toString(); }
   };
 
-  // --- Serial & Peripheral Stream Shim ---
-  class HardwareSerial {
+  // --- Standard Arduino Print Base Class ---
+  class Print {
   public:
-    void begin(unsigned long) {}
-    template <typename T>
-    void print(const T& val) { std::cout << val; }
-    void print(const String& s) { std::cout << s; }
-    void print(const char* s) { if (s) std::cout << s; }
-    void print(const IPAddress& ip) { std::cout << ip.toString(); }
+    virtual size_t write(uint8_t) { return 1; }
+    virtual size_t write(const uint8_t*, size_t size) { return size; }
 
+    size_t print(const __FlashStringHelper*) { return 0; }
+    size_t print(const String&) { return 0; }
+    size_t print(const char*) { return 0; }
+    size_t print(char) { return 0; }
+    size_t print(unsigned char, int = 10) { return 0; }
+    size_t print(int, int = 10) { return 0; }
+    size_t print(unsigned int, int = 10) { return 0; }
+    size_t print(long, int = 10) { return 0; }
+    size_t print(unsigned long, int = 10) { return 0; }
+    size_t print(double, int = 2) { return 0; }
+    size_t print(const IPAddress&) { return 0; }
     template <typename T>
-    void println(const T& val) { std::cout << val << std::endl; }
-    void println(const String& s) { std::cout << s << std::endl; }
-    void println(const char* s) { if (s) std::cout << s << std::endl; else std::cout << std::endl; }
-    void println(const IPAddress& ip) { std::cout << ip.toString() << std::endl; }
-    void println() { std::cout << std::endl; }
+    size_t print(const T&) { return 0; }
+
+    size_t println(const __FlashStringHelper*) { return 0; }
+    size_t println(const String&) { return 0; }
+    size_t println(const char*) { return 0; }
+    size_t println(char) { return 0; }
+    size_t println(unsigned char, int = 10) { return 0; }
+    size_t println(int, int = 10) { return 0; }
+    size_t println(unsigned int, int = 10) { return 0; }
+    size_t println(long, int = 10) { return 0; }
+    size_t println(unsigned long, int = 10) { return 0; }
+    size_t println(double, int = 2) { return 0; }
+    size_t println(const IPAddress&) { return 0; }
+    size_t println(void) { return 0; }
+    template <typename T>
+    size_t println(const T&) { return 0; }
+  };
+
+  // --- Standard Arduino Stream Base Class ---
+  class Stream : public Print {
+  public:
+    virtual int available() { return 0; }
+    virtual int read() { return -1; }
+    virtual int peek() { return -1; }
+    virtual void flush() {}
+  };
+
+  // --- HardwareSerial Stream Shim ---
+  class HardwareSerial : public Stream {
+  public:
+    void begin(unsigned long, uint32_t = 0, int8_t = -1, int8_t = -1, bool = false, unsigned long = 20000UL) {}
+    void end() {}
   };
   static HardwareSerial Serial;
 
@@ -181,19 +243,13 @@
   static SPIClass SPI;
 
   // --- Display Graphics Shim (Adafruit GFX / ST7735) ---
-  class Adafruit_GFX {
+  class Adafruit_GFX : public Print {
   public:
     void setTextSize(uint8_t) {}
     void setTextWrap(bool) {}
     void setTextColor(uint16_t) {}
     void setTextColor(uint16_t, uint16_t) {}
     void setCursor(int16_t, int16_t) {}
-    void print(const String&) {}
-    void print(const char*) {}
-    void print(char) {}
-    void print(int) {}
-    void println(const String&) {}
-    void println(const char*) {}
     void drawFastHLine(int16_t, int16_t, int16_t, uint16_t) {}
     void drawFastVLine(int16_t, int16_t, int16_t, uint16_t) {}
     void drawLine(int16_t, int16_t, int16_t, int16_t, uint16_t) {}
@@ -222,6 +278,9 @@
   inline int constrain(int amt, int low, int high) {
     return ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)));
   }
+  inline long map(long x, long in_min, long in_max, long out_min, long out_max) {
+    return (in_max == in_min) ? out_min : (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+  }
 
   #ifndef min
     #define min(a, b) (((a) < (b)) ? (a) : (b))
@@ -232,6 +291,8 @@
 
   // --- ESP32 I2S Audio Driver Types & Functions ---
   typedef int esp_err_t;
+  typedef int i2s_bits_per_sample_t;
+  typedef int i2s_channel_t;
   #define ESP_OK 0
   typedef int i2s_port_t;
   #define I2S_NUM_0 0
@@ -269,6 +330,11 @@
     int data_in_num;
   };
 
+  typedef void* i2s_chan_handle_t;
+  inline esp_err_t i2s_channel_write(i2s_chan_handle_t, const void*, size_t, size_t* bytes_written, uint32_t) {
+    if (bytes_written) *bytes_written = 0;
+    return ESP_OK;
+  }
   inline esp_err_t i2s_driver_install(i2s_port_t, const i2s_config_t*, int, void*) { return ESP_OK; }
   inline esp_err_t i2s_set_pin(i2s_port_t, const i2s_pin_config_t*) { return ESP_OK; }
   inline esp_err_t i2s_set_clk(i2s_port_t, uint32_t, i2s_bits_per_sample_t, i2s_channel_t) { return ESP_OK; }
@@ -340,6 +406,7 @@
     void setBufsize(int = 0, int = 0) {}
     bool setPinout(uint8_t, uint8_t, uint8_t, int8_t = -1) { return true; }
     void setVolume(uint8_t, uint8_t = 0) {}
+    void setConnectionTimeout(uint16_t = 0, uint16_t = 0) {}
     bool connecttohost(const char*, const char* = "", const char* = "") { return true; }
     bool isRunning() const { return false; }
     void loop() {}

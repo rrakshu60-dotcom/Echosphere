@@ -42,11 +42,15 @@ public:
     // Set internal RAM buffer size (24KB RAM buffer for smooth cloud streaming)
     audio.setBufsize(24576, 0);
 
+    // Set connection timeout: 5s plain HTTP, 10s HTTPS SSL handshake (for Cloudflare/Render)
+    audio.setConnectionTimeout(5000, 10000);
+
     // Map 0..100% volume to ESP32-audioI2S scale (0..21)
     uint8_t aVol = (uint8_t)map(currentVolume, 0, 100, 0, 21);
     audio.setVolume(aVol);
 
     isInitialized = true;
+    delay(50); // Allow MAX98357A internal PLL to lock to I2S clock
     Serial.println(F("✅ [I2S AUDIO] MAX98357A 3W Class-D I2S Amplifier ready for 8Ω Speaker!"));
   }
 
@@ -116,7 +120,15 @@ public:
       }
 
       size_t bytesWritten = 0;
+#if ESP_IDF_VERSION_MAJOR == 5
+      esp_err_t err = i2s_channel_write(audio.m_i2s_tx_handle, sampleBuffer, samplesThisChunk * 4, &bytesWritten, 100);
+      if (err != ESP_OK) {
+        i2s_channel_enable(audio.m_i2s_tx_handle);
+        i2s_channel_write(audio.m_i2s_tx_handle, sampleBuffer, samplesThisChunk * 4, &bytesWritten, 100);
+      }
+#else
       i2s_write(I2S_PORT_NUM, sampleBuffer, samplesThisChunk * 4, &bytesWritten, portMAX_DELAY);
+#endif
       samplesGenerated += samplesThisChunk;
     }
 
@@ -132,7 +144,11 @@ public:
     if (totalChunks == 0) totalChunks = 1;
     size_t written = 0;
     for (unsigned long i = 0; i < totalChunks; i++) {
+#if ESP_IDF_VERSION_MAJOR == 5
+      i2s_channel_write(audio.m_i2s_tx_handle, zeroBuffer, sizeof(zeroBuffer), &written, 100);
+#else
       i2s_write(I2S_PORT_NUM, zeroBuffer, sizeof(zeroBuffer), &written, portMAX_DELAY);
+#endif
     }
   }
 
@@ -148,7 +164,7 @@ public:
   // Stream Lossless / Compressed Audio Stream Directly via ESP32-audioI2S
   // Supports MP3, AAC, and WAV over HTTPS with built-in ring buffering
   // --------------------------------------------------------------------------
-  bool playStream(const String& streamUrl, std::function<void()> visualizerCallback = nullptr) {
+  bool playStream(const String& streamUrl, std::function<void()> visualizerCallback = {}) {
     if (!isInitialized || streamUrl.length() == 0) return false;
 
     isPlaying = true;
@@ -204,11 +220,23 @@ public:
   }
 
   // Legacy compatibility wrapper
-  bool streamWavAudio(const String& streamUrl, std::function<void()> visualizerCallback = nullptr) {
+  bool streamWavAudio(const String& streamUrl, std::function<void()> visualizerCallback = {}) {
     return playStream(streamUrl, visualizerCallback);
   }
 
 
+
+  // --------------------------------------------------------------------------
+  // Startup Confirmation Beep (Plays immediately when ESP32 powers on)
+  // Crisp power-on confirmation tone: 880Hz (A5, 100ms) -> 1200Hz (150ms)
+  // --------------------------------------------------------------------------
+  void playStartupBeep() {
+    Serial.println(F("⚡ [I2S AUDIO] Power-On Startup Beep on MAX98357A 8Ω speaker..."));
+    playTone(880.00f, 100);  // High A5 note (100ms)
+    silence(25);
+    playTone(1200.00f, 150); // Crisp confirmation note (150ms)
+    silence(30);
+  }
 
   // --------------------------------------------------------------------------
   // Attention Chime (Matches speaker_node_client.py: 587Hz -> 880Hz)

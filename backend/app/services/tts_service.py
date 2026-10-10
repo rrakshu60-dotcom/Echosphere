@@ -113,6 +113,55 @@ def clean_text_for_speech(text: str) -> str:
 TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
+KOKORO_API_URL = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
+
+
+def synthesize_remote_kokoro_api(
+    text: str,
+    voice: str = "af_heart",
+    output_path: str = "",
+    response_format: str = "mp3",
+    timeout: float = 25.0,
+) -> bool:
+    """
+    Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces
+    running Kokoro-FastAPI) via the OpenAI-compatible /v1/audio/speech endpoint.
+    Saves high-fidelity audio stream to output_path.
+    """
+    api_url = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
+    if not api_url:
+        return False
+    try:
+        import requests
+        clean = clean_text_for_speech(text)
+        if not clean:
+            clean = "Attention. Official campus announcement broadcast."
+
+        target_url = f"{api_url}/v1/audio/speech"
+        payload = {
+            "input": clean,
+            "voice": voice or "af_heart",
+            "model": "kokoro",
+            "response_format": response_format,
+        }
+        headers = {"Content-Type": "application/json"}
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
+
+        resp = requests.post(target_url, json=payload, headers=headers, timeout=timeout)
+        if resp.status_code == 200 and len(resp.content) > 1024:
+            with open(output_path, "wb") as f:
+                f.write(resp.content)
+            logger.info(f"Kokoro-82M audio generated via remote worker: {output_path} ({len(resp.content)} bytes)")
+            return True
+        else:
+            logger.warning(f"Remote Kokoro worker returned status {resp.status_code}: {resp.text[:150]}")
+            return False
+    except Exception as e:
+        logger.warning(f"Remote Kokoro worker connection error: {e}")
+        return False
+
 
 VOICE_PROFILES = {
     # English Neural Voices
@@ -323,9 +372,25 @@ def generate_announcement_audio_sync(
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # Tier 1: Try Kokoro Neural Engine (ONNX or PyTorch pipeline)
-    if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
-        kok_onnx = get_kokoro_onnx()
+    # Tier 1: Try Kokoro Neural Engine (Remote AI Worker, ONNX, or PyTorch pipeline)
+    if TTS_ENGINE not in ["edge_only", "gtts_only"]:
+        # 1A. Dedicated Remote Kokoro-82M Worker (Hugging Face Spaces with 16GB RAM)
+        if KOKORO_API_URL:
+            # Generate high-fidelity MP3 for streaming to ESP32 and web clients
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3"):
+                return {
+                    "file_name": mp3_filename,
+                    "file_path": mp3_filepath,
+                    "url_path": f"/static/audio_streams/{mp3_filename}",
+                    "type": "mp3",
+                    "engine": f"Kokoro-82M Neural ({voice_name})",
+                    "voice": voice_name,
+                    "chime": selected_chime if include_chime else "none",
+                }
+
+        # 1B. Local Kokoro-ONNX / PyTorch Pipeline
+        if is_kokoro_available():
+            kok_onnx = get_kokoro_onnx()
         if kok_onnx is not None:
             try:
                 import soundfile as sf
@@ -530,9 +595,23 @@ def synthesize_text_audio(
             "voice": voice_name,
         }
 
-    # Tier 1: Kokoro Neural Engine (ONNX or PyTorch pipeline)
-    if TTS_ENGINE not in ["edge_only", "gtts_only"] and is_kokoro_available():
-        kok_onnx = get_kokoro_onnx()
+    # Tier 1: Kokoro Neural Engine (Remote AI Worker, ONNX, or PyTorch pipeline)
+    if TTS_ENGINE not in ["edge_only", "gtts_only"]:
+        # 1A. Dedicated Remote Kokoro-82M Worker
+        if KOKORO_API_URL:
+            if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3"):
+                return {
+                    "file_name": mp3_filename,
+                    "file_path": mp3_filepath,
+                    "url_path": f"/static/audio_streams/{mp3_filename}",
+                    "type": "mp3",
+                    "engine": f"Kokoro-82M Neural ({voice_name})",
+                    "voice": voice_name,
+                }
+
+        # 1B. Local Kokoro-ONNX / PyTorch Pipeline
+        if is_kokoro_available():
+            kok_onnx = get_kokoro_onnx()
         if kok_onnx is not None:
             try:
                 import soundfile as sf
