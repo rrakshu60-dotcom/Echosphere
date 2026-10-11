@@ -70,9 +70,8 @@ private:
     unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
       if (completedAnnouncements[i].annId == annId) {
-        // Cooldown of 45 seconds ensures the queue advances without duplicate immediate re-triggers,
-        // while allowing repeat schedules and break slot replays after 45 seconds.
-        if (now - completedAnnouncements[i].completedAt < 45000UL) {
+        // Cooldown of 15 seconds ensures the queue advances without duplicate immediate re-triggers
+        if (now - completedAnnouncements[i].completedAt < 15000UL) {
           return true;
         }
       }
@@ -431,8 +430,7 @@ public:
               if (cmdId.length() > 0) markCommandExecuted(cmdId);
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
-              bool isJustCompleted = isAnnouncementCompleted(aId);
-              if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
+              if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
                 targetQId = cmd["queue_id"].as<int>();
