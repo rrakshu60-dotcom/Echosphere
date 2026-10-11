@@ -167,7 +167,7 @@ def add_to_speaker_queue(
     duration_seconds: Optional[int] = 0,
 ) -> SpeakerQueue:
     existing = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
-    if existing:
+    if existing and existing.status in ("Playing", "Next in Queue", "Queued", "Paused"):
         return existing
 
     max_pos = db.query(SpeakerQueue).count()
@@ -181,6 +181,21 @@ def add_to_speaker_queue(
         item_status = "Next in Queue"
     else:
         item_status = "Queued"
+
+    if existing:
+        existing.status = item_status
+        existing.queue_position = max_pos + 1
+        existing.scheduled_time = scheduled_time or datetime.utcnow()
+        existing.played_at = datetime.utcnow() if item_status == "Playing" else None
+        if speaker_node_id:
+            existing.speaker_node_id = speaker_node_id
+        if duration_seconds:
+            existing.duration_seconds = duration_seconds
+        existing.failure_reason = None
+        existing.error_count = 0
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     queue_item = SpeakerQueue(
         announcement_id=announcement_id,

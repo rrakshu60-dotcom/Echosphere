@@ -304,13 +304,13 @@ def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
     if "HIGH" in prio_str or "URGENT" in prio_str or any(
         w in combined for w in ["exam", "examination", "test", "timetable", "hall ticket", "viva", "semester", "sem exam", "placement", "interview", "deadline", "fee payment"]
     ):
-        return 300, 999999, "HIGH"
+        return 300, 3, "HIGH"
     elif "LOW" in prio_str or any(
         w in combined for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing", "reminder"]
     ):
-        return 100, 999999, "LOW"
+        return 100, 1, "LOW"
     else:  # NORMAL or MEDIUM (sports, volleyball, events, cultural, hackathons)
-        return 200, 999999, "MEDIUM"
+        return 200, 2, "MEDIUM"
 
 
 def is_slot_active_at_time(
@@ -394,6 +394,20 @@ def get_active_emergency_repeat_schedule(
         if not is_emergency_announcement(ann):
             continue
 
+        # Check if the emergency notice is actually in the speaker queue in an active state today
+        from app.models.speaker_queue import SpeakerQueue
+        active_q = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id == sched.announcement_id,
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+            )
+            .first()
+        )
+        if not active_q and getattr(sched, "total_played_count", 0) > 0:
+            # If the emergency announcement was already played and is not actively queued, don't lock down
+            continue
+
         matched = is_slot_active_at_time(sched, time_str, active_standard_slots)
         if matched:
             return sched
@@ -473,6 +487,14 @@ def evaluate_and_dispatch_repeat_slots(
         for item in active_non_em:
             item.status = "Paused"
         db.commit()
+    else:
+        # If no emergency schedule is active, ensure any notices paused during a previous emergency
+        # are safely restored to "Queued" so playback proceeds normally!
+        paused_items = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Paused").all()
+        for p_item in paused_items:
+            p_item.status = "Queued"
+        if paused_items:
+            db.commit()
 
     # 2. Phase 1: Collect & validate candidates matching active acoustic window
     candidates = []
