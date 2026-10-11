@@ -9,7 +9,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# 1. Hugging Face Spaces & Gradio 4.x Compatibility Patches
+# 1. Compatibility patch for Gradio 4.x / huggingface_hub
 try:
     import huggingface_hub
     if not hasattr(huggingface_hub, "HfFolder"):
@@ -27,21 +27,22 @@ try:
 except Exception:
     pass
 
-import spaces
+# 2. Safe ZeroGPU Import (Works seamlessly on CPU Basic and ZeroGPU)
+try:
+    import spaces
+    gpu_decorator = spaces.GPU(duration=60)
+except Exception:
+    gpu_decorator = lambda f: f
+
 import gradio as gr
 
-# Startup probe to satisfy ZeroGPU scanner unconditionally
-@spaces.GPU
-def _zerogpu_probe():
-    pass
-
-# 2. Kokoro Pipeline Caching
+# 3. Kokoro Pipeline Caching (16 GB RAM)
 _pipelines = {}
 
 def get_pipeline(lang_code: str = "a"):
     """
     Loads and caches KPipeline for English American ('a') or British ('b').
-    Uses CUDA under @spaces.GPU or CPU fallback.
+    Runs ultra-fast on 16 GB RAM.
     """
     global _pipelines
     if lang_code not in _pipelines:
@@ -52,13 +53,9 @@ def get_pipeline(lang_code: str = "a"):
     return _pipelines[lang_code]
 
 
-# 3. Core Synthesis Function Decorated Directly at Module Level
-@spaces.GPU(duration=60)
+# 4. Core Speech Synthesis
+@gpu_decorator
 def synthesize(text: str, voice: str = "af_heart", speed: float = 1.0) -> Tuple[int, np.ndarray]:
-    """
-    Primary synthesis function decorated with @spaces.GPU at the module level.
-    Directly registered with Gradio Interface and called by FastAPI endpoints.
-    """
     clean_voice = (voice or "af_heart").strip().lower()
     lang_code = "b" if clean_voice.startswith("b") else "a"
     pipeline = get_pipeline(lang_code)
@@ -98,7 +95,7 @@ def pcm_to_mp3(samples: np.ndarray, sample_rate: int = 24000, bitrate: int = 128
         return buf.getvalue()
 
 
-# 4. FastAPI Endpoint Integration
+# 5. FastAPI Endpoints for EchoSphere Render Backend
 app = FastAPI(title="EchoSphere Kokoro Dedicated Worker", version="2.0.0")
 
 app.add_middleware(
@@ -120,7 +117,8 @@ class SpeechRequest(BaseModel):
 def health_check():
     return {
         "status": "healthy",
-        "service": "EchoSphere Kokoro-82M Worker",
+        "service": "EchoSphere Kokoro-82M Dedicated Worker",
+        "memory_ram": "16 GB High Memory",
         "cuda_available": torch.cuda.is_available(),
     }
 
@@ -145,7 +143,7 @@ def openai_speech(req: SpeechRequest):
         return Response(content=buf.getvalue(), media_type="audio/wav")
 
 
-# 5. Gradio UI Interface
+# 6. Interactive Gradio UI
 VOICE_CHOICES = [
     "af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "af_alloy",
     "am_adam", "am_michael", "am_echo", "am_eric", "am_fenrir", "am_puck",
@@ -164,8 +162,8 @@ demo = gr.Interface(
         gr.Slider(minimum=0.5, maximum=2.0, value=1.0, step=0.1, label="Speed"),
     ],
     outputs=gr.Audio(label="Synthesized Kokoro Audio (24kHz Studio Quality)"),
-    title="🎙️ EchoSphere Kokoro-82M AI Worker (ZeroGPU)",
-    description="100% Free ZeroGPU AI Speech Microservice for EchoSphere PA & Smart Speakers.",
+    title="🎙️ EchoSphere Kokoro-82M AI Worker",
+    description="100% Free 16 GB RAM Neural Audio Worker for EchoSphere PA & Smart Speakers.",
 )
 
 demo.queue()
