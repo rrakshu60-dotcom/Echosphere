@@ -6,7 +6,44 @@ import torch
 import numpy as np
 import os
 
-# 1. Compatibility patch for Pydantic boolean schemas in Gradio Client
+# 1. Compatibility patch for Starlette TemplateResponse (fixes Jinja2 TypeError: unhashable type: 'dict' on localhost)
+try:
+    from starlette.templating import Jinja2Templates
+    from starlette.requests import Request
+    _orig_template_response = Jinja2Templates.TemplateResponse
+
+    def _safe_template_response(self, *args, **kwargs):
+        name = None
+        context = kwargs.get("context", {})
+        request = kwargs.get("request")
+
+        for arg in args:
+            if isinstance(arg, str):
+                name = arg
+            elif isinstance(arg, dict):
+                context = arg
+            elif isinstance(arg, Request):
+                request = arg
+
+        if not request and isinstance(context, dict):
+            request = context.get("request")
+
+        if not name:
+            name = kwargs.get("name", "index.html")
+
+        if isinstance(context, dict) and request:
+            context.setdefault("request", request)
+
+        try:
+            return _orig_template_response(self, request=request, name=name, context=context)
+        except TypeError:
+            return _orig_template_response(self, name, context)
+
+    Jinja2Templates.TemplateResponse = _safe_template_response
+except Exception:
+    pass
+
+# 2. Compatibility patch for Pydantic boolean schemas in Gradio Client
 try:
     import gradio_client.utils
     _orig_get_type = gradio_client.utils.get_type
@@ -26,7 +63,7 @@ try:
 except Exception:
     pass
 
-# 2. Compatibility patch for HfFolder
+# 3. Compatibility patch for HfFolder
 try:
     import huggingface_hub
     if not hasattr(huggingface_hub, "HfFolder"):
@@ -44,7 +81,7 @@ try:
 except Exception:
     pass
 
-# 3. Pipeline caching
+# 4. Pipeline caching
 pipelines = {}
 
 def get_pipeline(lang_code="a"):
@@ -54,7 +91,7 @@ def get_pipeline(lang_code="a"):
         pipelines[lang_code] = KPipeline(lang_code=lang_code, device=device)
     return pipelines[lang_code]
 
-# 4. ZeroGPU Accelerated Function
+# 5. ZeroGPU Accelerated Function
 @spaces.GPU(duration=60)
 def generate_audio(text: str, voice: str = "af_heart", speed: float = 1.0):
     clean_voice = (voice or "af_heart").strip().lower()
