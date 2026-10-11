@@ -264,6 +264,25 @@ def create_announcement_service(
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on announcement creation: {e}")
 
+    # Automatically pre-warm voice audio in background so speech is instantly ready on disk for broadcast
+    try:
+        import threading
+        def _prewarm_new_ann():
+            try:
+                from app.services.tts_service import generate_announcement_audio_sync
+                v = created_announcement.speaker_voice or "female"
+                generate_announcement_audio_sync(
+                    created_announcement.id,
+                    f"{created_announcement.title}. {created_announcement.description}",
+                    gender=v,
+                    include_chime=False,
+                )
+            except Exception as e:
+                logger.warning(f"Background audio pre-warm on creation note: {e}")
+        threading.Thread(target=_prewarm_new_ann, daemon=True).start()
+    except Exception:
+        pass
+
     return created_announcement
 
 
@@ -627,6 +646,25 @@ def approve_announcement_service(
         })
     except Exception as e:
         logger.warning(f"WebSocket broadcast error on approval: {e}")
+
+    # Automatically pre-warm voice audio in background so speech is instantly ready on disk for broadcast
+    try:
+        import threading
+        def _prewarm_approved_ann():
+            try:
+                from app.services.tts_service import generate_announcement_audio_sync
+                v = updated_announcement.speaker_voice or "female"
+                generate_announcement_audio_sync(
+                    updated_announcement.id,
+                    f"{updated_announcement.title}. {updated_announcement.description}",
+                    gender=v,
+                    include_chime=False,
+                )
+            except Exception as e:
+                logger.warning(f"Background audio pre-warm on approval note: {e}")
+        threading.Thread(target=_prewarm_approved_ann, daemon=True).start()
+    except Exception:
+        pass
 
     return {"message": "Announcement approved successfully."}
 

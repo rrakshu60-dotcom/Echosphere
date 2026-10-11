@@ -116,10 +116,51 @@ def _speaker_and_repeat_daemon():
             time.sleep(1)
 
 
+def _prewarm_recent_announcements():
+    """
+    On server boot, pre-warms top recent published announcements into Render's ephemeral disk
+    so hardware speaker nodes and web audio player experience zero latency (<0.2s) from the very first request.
+    """
+    try:
+        time.sleep(4)
+        from app.db.database import SessionLocal
+        from app.models.announcement import Announcement
+        from app.core.enums.announcement import AnnouncementStatus
+        from app.services.tts_service import generate_announcement_audio_sync
+        from app.api.v1.announcement import _find_cached_audio_file
+        with SessionLocal() as db_session:
+            recent = (
+                db_session.query(Announcement)
+                .filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+                .order_by(Announcement.id.desc())
+                .limit(5)
+                .all()
+            )
+            for a in recent:
+                v = getattr(a, "speaker_voice", "female") or "female"
+                clean_v = str(v).lower()
+                tag = f"american_{clean_v}"
+                fname, fpath, _ = _find_cached_audio_file(a.id, tag, include_chime=False, prefer_wav=True)
+                if not fname or not fpath:
+                    try:
+                        generate_announcement_audio_sync(
+                            a.id,
+                            f"{a.title}. {a.description}",
+                            gender=clean_v,
+                            include_chime=False,
+                        )
+                    except Exception:
+                        pass
+    except Exception as exc:
+        print(f"Startup audio pre-warm note: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     t = threading.Thread(target=_speaker_and_repeat_daemon, daemon=True, name="SpeakerAndRepeatDaemon")
     t.start()
+    t2 = threading.Thread(target=_prewarm_recent_announcements, daemon=True, name="AudioPrewarmDaemon")
+    t2.start()
     yield
 
 
