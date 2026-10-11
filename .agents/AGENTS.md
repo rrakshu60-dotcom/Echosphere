@@ -15,7 +15,9 @@
     - Voice selection: "Speaker Voice" (header), "Female Voice" and "Male Voice" (options/chips).
     - Summarization: "AI Summary", "✨ AI Summary generated!", "Generating AI Summary...".
     - Audio playback: "Listen to Notice", "Reading AI Summary Aloud", "Reading Full Notice Aloud".
-- This rule applies unconditionally to all future features, menus, dialogs, screens, and functions across the entire application.
+## Strict Data Cleanliness & Zero Test Artifacts Rule
+- **Mandatory Post-Test Cleanup**: Any test, synthetic, mock, or dummy announcements, queue items, notifications, or temporary test audio files created during manual or automated verification, hardware checks, or audio tests MUST be immediately and cleanly deleted from the database and filesystem upon test completion.
+- **Zero Pollution of Production Data**: Never leave test records (e.g., "[TEST]", "Diagnostic Notice", dummy text, dummy audio files) persisting in Supabase or the live web/mobile app feeds. All tests must execute within a clean teardown lifecycle (create -> verify -> clean up).
 
 ## Database Integrity & Cloud-First Source of Truth
 - **Canonical Database**: The production database is hosted on **Supabase PostgreSQL** (`aws-0-ap-south-1.pooler.supabase.com:6543/postgres`).
