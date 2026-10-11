@@ -124,3 +124,8 @@ backend/api/index.py
 *.bat
 !frontend/android/gradlew.bat
 
+# Local Chat Documentation & Session History (Do not track in Git)
+COMPLETE_CHAT_CONVERSATION_HISTORY.md
+ZEROGPU_TTS_DEPLOYMENT_JOURNEY.md
+
+
