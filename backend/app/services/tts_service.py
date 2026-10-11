@@ -176,7 +176,10 @@ def synthesize_remote_kokoro_api(
         try:
             from gradio_client import Client
             import shutil
-            client = Client(api_url, hf_token=hf_token)
+            try:
+                client = Client(api_url, token=hf_token)
+            except TypeError:
+                client = Client(api_url, hf_token=hf_token)
             audio_path = client.predict(
                 clean,
                 voice or "af_heart",

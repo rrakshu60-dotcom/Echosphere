@@ -1,0 +1,17 @@
+{
+  "name": "echosphere-guardian",
+  "version": "2.2.0",
+  "description": "EchoSphere v2.2 Master Operations, Diagnostics, Audio & Embedded Hardware Guardian Plugin",
+  "author": {
+    "name": "EchoSphere Engineering Team"
+  },
+  "keywords": [
+    "echosphere",
+    "esp32",
+    "zerogpu",
+    "speaker-queue",
+    "audio",
+    "i2s",
+    "diagnostics"
+  ]
+}
