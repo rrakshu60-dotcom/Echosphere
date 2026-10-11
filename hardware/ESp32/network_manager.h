@@ -141,11 +141,14 @@ public:
   }
 
   void connectWiFi() {
-    Serial.print(F("📶 [WIFI] Connecting to SSID: "));
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+
+    Serial.print(F("📶 [WIFI] Connecting to Primary SSID: "));
     Serial.println(WIFI_SSID);
     displayMgr.setConnectingWiFi(WIFI_SSID);
 
-    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     unsigned long startAttempt = millis();
@@ -157,6 +160,47 @@ public:
       digitalWrite(PIN_LED_ONLINE, ledToggle ? HIGH : LOW);
       digitalWrite(PIN_LED_ONBOARD, ledToggle ? HIGH : LOW);
     }
+
+#ifdef WIFI_FALLBACK_SSID
+    // If primary SSID timed out, try secondary / fallback SSID
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println();
+      Serial.print(F("📶 [WIFI] Primary timed out. Trying Fallback SSID: "));
+      Serial.println(WIFI_FALLBACK_SSID);
+      displayMgr.setConnectingWiFi(WIFI_FALLBACK_SSID);
+      WiFi.disconnect();
+      WiFi.begin(WIFI_FALLBACK_SSID, WIFI_FALLBACK_PASSWORD);
+
+      startAttempt = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < WIFI_TIMEOUT_MS) {
+        delay(300);
+        Serial.print(F("."));
+        ledToggle = !ledToggle;
+        digitalWrite(PIN_LED_ONLINE, ledToggle ? HIGH : LOW);
+        digitalWrite(PIN_LED_ONBOARD, ledToggle ? HIGH : LOW);
+      }
+    }
+#endif
+#ifdef WIFI_ALT_SSID
+    // If fallback SSID timed out, try alternative SSID
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println();
+      Serial.print(F("📶 [WIFI] Fallback timed out. Trying Alt SSID: "));
+      Serial.println(WIFI_ALT_SSID);
+      displayMgr.setConnectingWiFi(WIFI_ALT_SSID);
+      WiFi.disconnect();
+      WiFi.begin(WIFI_ALT_SSID, WIFI_ALT_PASSWORD);
+
+      startAttempt = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < WIFI_TIMEOUT_MS) {
+        delay(300);
+        Serial.print(F("."));
+        ledToggle = !ledToggle;
+        digitalWrite(PIN_LED_ONLINE, ledToggle ? HIGH : LOW);
+        digitalWrite(PIN_LED_ONBOARD, ledToggle ? HIGH : LOW);
+      }
+    }
+#endif
 
     if (WiFi.status() == WL_CONNECTED) {
       WiFi.setSleep(false); // Disable Wi-Fi modem sleep to guarantee lowest latency and zero packet jitter for audio streaming!
@@ -176,12 +220,14 @@ public:
 
   unsigned long lastWiFiCheckTime = 0;
   bool isReconnecting = false;
+  int wifiRetryCount = 0;
 
   void checkWiFiConnection() {
     unsigned long now = millis();
     if (WiFi.status() == WL_CONNECTED) {
       if (isReconnecting) {
         isReconnecting = false;
+        wifiRetryCount = 0;
         Serial.println();
         Serial.print(F("✅ [WIFI] Reconnected! Assigned IP: "));
         Serial.println(WiFi.localIP());
@@ -192,16 +238,34 @@ public:
       return;
     }
 
-    // Wi-Fi is disconnected: throttle reconnection attempts to once every 8 seconds!
-    // This allows the ESP32 Wi-Fi radio sufficient time to authenticate and complete DHCP!
-    if (now - lastWiFiCheckTime >= 8000) {
+    // Wi-Fi is disconnected: throttle reconnection attempts to once every 12 seconds
+    if (now - lastWiFiCheckTime >= 12000) {
       lastWiFiCheckTime = now;
       isReconnecting = true;
+      wifiRetryCount++;
       digitalWrite(PIN_LED_ONLINE, LOW);
       Serial.println(F("⚠️ [WIFI] Wi-Fi disconnected. Attempting reconnection..."));
-      displayMgr.setConnectingWiFi(WIFI_SSID);
-      WiFi.disconnect();
-      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+      int cycle = wifiRetryCount % 3;
+      if (cycle == 1) {
+        displayMgr.setConnectingWiFi(WIFI_FALLBACK_SSID);
+        WiFi.disconnect();
+        WiFi.begin(WIFI_FALLBACK_SSID, WIFI_FALLBACK_PASSWORD);
+      } else if (cycle == 2) {
+#ifdef WIFI_ALT_SSID
+        displayMgr.setConnectingWiFi(WIFI_ALT_SSID);
+        WiFi.disconnect();
+        WiFi.begin(WIFI_ALT_SSID, WIFI_ALT_PASSWORD);
+#else
+        displayMgr.setConnectingWiFi(WIFI_SSID);
+        WiFi.disconnect();
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+#endif
+      } else {
+        displayMgr.setConnectingWiFi(WIFI_SSID);
+        WiFi.disconnect();
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      }
     }
   }
 

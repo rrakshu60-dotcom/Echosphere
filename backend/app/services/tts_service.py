@@ -541,6 +541,13 @@ def generate_announcement_audio_sync(
         if KOKORO_API_URL:
             # Generate high-fidelity MP3 for streaming to ESP32 and web clients
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3"):
+                # Also decode/write wav_filepath immediately in the pre-generation phase so hardware I2S gets instant WAV!
+                try:
+                    import miniaudio
+                    decoded = miniaudio.mp3_read_file_s16(mp3_filepath)
+                    miniaudio.wav_write_file(wav_filepath, decoded)
+                except Exception:
+                    pass
                 return {
                     "file_name": mp3_filename,
                     "file_path": mp3_filepath,
@@ -634,6 +641,13 @@ def generate_announcement_audio_sync(
         run_coroutine_sync(_run_edge(), timeout=25.0)
 
         if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
+            # Also decode/write wav_filepath immediately in the pre-generation phase so hardware I2S gets instant WAV!
+            try:
+                import miniaudio
+                decoded = miniaudio.mp3_read_file_s16(mp3_filepath)
+                miniaudio.wav_write_file(wav_filepath, decoded)
+            except Exception:
+                pass
             logger.info(f"Edge-TTS neural audio generated ({voice_name}): {mp3_filepath}")
             return {
                 "file_name": mp3_filename,

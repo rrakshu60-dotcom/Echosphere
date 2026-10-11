@@ -264,11 +264,11 @@ public:
     isPlaying = false;
 #ifdef ECHOSPHERE_I2S_V5
     if (tx_handle) {
-      // 1. Flush entire 48KB DMA ring with silence to eliminate looping sine wave residue
+      // 1. Flush DMA ring with silence to eliminate looping sine wave residue
       int16_t zeroBuf[256 * 2] = {0}; // 1024 bytes (256 stereo frames)
       size_t written = 0;
-      for (int i = 0; i < 48; i++) {
-        i2s_channel_write(tx_handle, zeroBuf, sizeof(zeroBuf), &written, 20);
+      for (int i = 0; i < 4; i++) {
+        i2s_channel_write(tx_handle, zeroBuf, sizeof(zeroBuf), &written, 15);
       }
       // 2. Disable I2S TX channel immediately so hardware DMA stops cycling
       i2s_channel_disable(tx_handle);
@@ -276,8 +276,8 @@ public:
 #else
     int16_t zeroBuf[256 * 2] = {0};
     size_t written = 0;
-    for (int i = 0; i < 48; i++) {
-      i2s_write(I2S_PORT_NUM, zeroBuf, sizeof(zeroBuf), &written, 20);
+    for (int i = 0; i < 4; i++) {
+      i2s_write(I2S_PORT_NUM, zeroBuf, sizeof(zeroBuf), &written, 15);
     }
 #endif
   }
@@ -558,7 +558,7 @@ public:
     // This creates an unbreakable DMA cushion that eliminates network jitter and absorbs SPI redraw latency!
     Serial.println(F("⚡ [I2S AUDIO] Pre-buffering audio into DMA pipeline..."));
     int prefillChunks = 0;
-    while (prefillChunks < 8 && (stream->connected() || stream->available())) {
+    while (prefillChunks < 4 && (stream->connected() || stream->available())) {
       int n = fetchChunk(chunkBytesTarget);
       if (n > 0) {
         pushChunk(n);
@@ -653,9 +653,9 @@ public:
   // --------------------------------------------------------------------------
   void playAttentionChime() {
     Serial.println(F("🔔 [I2S AUDIO] Broadcasting Attention Chime (587Hz -> 880Hz) to 8Ω speaker..."));
-    playTone(587.33f, 180); // D5
-    silence(40);
-    playTone(880.00f, 280); // A5
+    playTone(587.33f, 130); // D5 (130ms)
+    silence(25);
+    playTone(880.00f, 200); // A5 (200ms)
     stopAudio();
   }
 
@@ -667,14 +667,14 @@ public:
     int prevVol = currentVolume;
     currentVolume = 100; // Maximum power on emergency
 
-    for (int sweep = 0; sweep < 3; sweep++) {
+    for (int sweep = 0; sweep < 2; sweep++) {
       // Sweep up
-      for (float freq = 650.0f; freq <= 1400.0f; freq += 60.0f) {
-        playTone(freq, 22);
+      for (float freq = 650.0f; freq <= 1400.0f; freq += 75.0f) {
+        playTone(freq, 16);
       }
       // Sweep down
-      for (float freq = 1400.0f; freq >= 650.0f; freq -= 60.0f) {
-        playTone(freq, 22);
+      for (float freq = 1400.0f; freq >= 650.0f; freq -= 75.0f) {
+        playTone(freq, 16);
       }
     }
 

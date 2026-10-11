@@ -16,9 +16,13 @@
 // ----------------------------------------------------------------------------
 // 1. Wi-Fi Configuration
 // ----------------------------------------------------------------------------
-#define WIFI_SSID "OnePlus 13"   // Your Router / Mobile Hotspot SSID
-#define WIFI_PASSWORD "12345678" // Your Router / Mobile Hotspot Password
-#define WIFI_TIMEOUT_MS 20000    // Wi-Fi connection timeout in ms
+#define WIFI_SSID "OnePlus 13"                  // Primary Mobile Hotspot SSID
+#define WIFI_PASSWORD "12345678"                // Primary Hotspot Password
+#define WIFI_FALLBACK_SSID "ACT-ai_102814513118"// Home Wi-Fi SSID
+#define WIFI_FALLBACK_PASSWORD "94415283"       // Home Wi-Fi Password
+#define WIFI_ALT_SSID "Rakshitha"               // Secondary Hotspot SSID
+#define WIFI_ALT_PASSWORD "12345678"            // Secondary Hotspot Password
+#define WIFI_TIMEOUT_MS 6000                    // Wi-Fi connection timeout in ms per SSID attempt
 
 // ----------------------------------------------------------------------------
 // 2. EchoSphere Backend Server URL
@@ -130,8 +134,8 @@ static_assert(PIN_LED_ONBOARD < 32,
 // 6. Timing & Polling Settings
 // ----------------------------------------------------------------------------
 #define HEARTBEAT_INTERVAL_MS                                                  \
-  3000 // Periodic heartbeat interval to backend in ms
-#define QUEUE_POLL_INTERVAL_MS 2500 // Queue check interval in ms
+  1200 // Periodic heartbeat interval to backend in ms (rapid 1.2s broadcast detection)
+#define QUEUE_POLL_INTERVAL_MS 1200 // Queue check interval in ms
 #define LED_PULSE_DURATION_MS 60    // Heartbeat LED flash duration in ms
 
 #endif // ECHOSPHERE_CONFIG_H
