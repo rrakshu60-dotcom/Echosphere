@@ -408,6 +408,21 @@ public:
             targetDuration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
             const char* rawA = activeNotice["audio_url"];
             targetAudioUrl = rawA ? String(rawA) : "";
+          } else if (isJustCompleted && (isBroadcasting || displayMgr.isBroadcasting() || displayMgr.getState() == STATE_PLAYING_ANNOUNCEMENT)) {
+            // Already finished playing this announcement; clean up active notice and return to idle ticker
+            isBroadcasting = false;
+            activeAnnouncementId = 0;
+            activeQueueId = 0;
+            displayMgr.clearActiveNotice();
+          }
+        } else if (respDoc["active_notice"].isNull() && !pendingBroadcastScheduled) {
+          // Backend has no active notice: ensure node is never stuck on "NOW BROADCASTING"
+          if (isBroadcasting || displayMgr.isBroadcasting() || displayMgr.getState() == STATE_PLAYING_ANNOUNCEMENT) {
+            Serial.println(F("⏹️ [HEARTBEAT SYNC] Backend has no active notice. Exiting broadcast mode."));
+            isBroadcasting = false;
+            activeAnnouncementId = 0;
+            activeQueueId = 0;
+            displayMgr.clearActiveNotice();
           }
         }
 
@@ -681,7 +696,7 @@ public:
     checkWiFiConnection();
 
     // 2. Check if active notice broadcast duration has elapsed
-    if (isBroadcasting && now >= activePlaybackEndTime) {
+    if ((isBroadcasting || displayMgr.isBroadcasting() || displayMgr.getState() == STATE_PLAYING_ANNOUNCEMENT) && now >= activePlaybackEndTime) {
       isBroadcasting = false;
       lastCompletedAnnouncementId = activeAnnouncementId;
       lastCompletedAnnouncementTime = millis();

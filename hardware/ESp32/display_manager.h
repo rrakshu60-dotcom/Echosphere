@@ -151,6 +151,9 @@ public:
   }
 
   void setState(DisplayState state) {
+    if (state != STATE_PLAYING_ANNOUNCEMENT) {
+      isNoticeActive = false;
+    }
     if (currentState != state) {
       currentState = state;
       isScreenRendered = false;
@@ -252,6 +255,11 @@ public:
     // Turn off Broadcasting LED
     digitalWrite(PIN_LED_BROADCAST, LOW);
     digitalWrite(PIN_LED_ONBOARD, LOW);
+
+    // CRITICAL: Clean wipe screen to erase broadcasting headers, badges, and card
+    if (isTftReady) {
+      tft.fillScreen(COLOR_BG);
+    }
 
     Serial.println(F("\n══════════════════════════════════════════════════════════════════════"));
     Serial.println(F("⏹️  [BROADCAST COMPLETE] 1.8\" TFT Returning to Daily Campus Notice Screen"));
@@ -483,6 +491,14 @@ public:
         emergencyLedState = !emergencyLedState;
         digitalWrite(PIN_LED_BROADCAST, emergencyLedState ? HIGH : LOW);
       }
+    }
+
+    // 2c. Autonomous Safety Timeout for Live Broadcast Screen:
+    // If notice broadcast has been active for longer than declared duration + 4s buffer,
+    // automatically exit the broadcast screen and restore the idle daily notices screen!
+    if (isNoticeActive && (now - playbackStartTime >= (playbackDurationSeconds + 4) * 1000UL)) {
+      Serial.println(F("⏱️ [DISPLAY TIMEOUT] Notice playback duration exceeded. Restoring Idle Screen."));
+      clearActiveNotice();
     }
 
     // 3. Smooth Audio Equalizer Animation (During Playing State Only)

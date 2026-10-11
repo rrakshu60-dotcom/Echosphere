@@ -263,10 +263,10 @@ public:
     bool isHttps = streamUrl.startsWith("https://");
     if (isHttps) {
       secureClient.setInsecure(); // Skip certificate verification for low memory overhead
-      secureClient.setTimeout(12);
+      secureClient.setTimeout(25);
       clientPtr = &secureClient;
     } else {
-      plainClient.setTimeout(10);
+      plainClient.setTimeout(20);
       clientPtr = &plainClient;
     }
 
@@ -451,7 +451,13 @@ public:
           }
           size_t written = 0;
 #ifdef ECHOSPHERE_I2S_V5
-          if (tx_handle) i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 100);
+          if (tx_handle) {
+            esp_err_t err = i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 100);
+            if (err != ESP_OK) {
+              i2s_channel_enable(tx_handle);
+              i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 100);
+            }
+          }
 #else
           i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
 #endif
@@ -461,7 +467,13 @@ public:
           }
           size_t written = 0;
 #ifdef ECHOSPHERE_I2S_V5
-          if (tx_handle) i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 100);
+          if (tx_handle) {
+            esp_err_t err = i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 100);
+            if (err != ESP_OK) {
+              i2s_channel_enable(tx_handle);
+              i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 100);
+            }
+          }
 #else
           i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
 #endif
@@ -502,15 +514,22 @@ public:
 
     http.end();
 
-    Serial.print(F("✅ [I2S AUDIO] Voice stream playback completed ("));
-    Serial.print(totalBytesStreamed);
-    Serial.println(F(" bytes delivered to 8Ω speaker)"));
+    bool streamPlayedSuccess = (totalBytesStreamed >= 2048);
+    if (!streamPlayedSuccess) {
+      Serial.print(F("⚠️ [I2S AUDIO] Voice stream delivered only "));
+      Serial.print(totalBytesStreamed);
+      Serial.println(F(" bytes (insufficient for audible speech, will sound fallback cue)."));
+    } else {
+      Serial.print(F("✅ [I2S AUDIO] Voice stream playback completed ("));
+      Serial.print(totalBytesStreamed);
+      Serial.println(F(" bytes delivered to 8Ω speaker)"));
+    }
 
     silence(25);
     // Restore default sample rate for standard chimes
     setSampleRate(I2S_SAMPLE_RATE);
     isPlaying = false;
-    return true;
+    return streamPlayedSuccess;
   }
 
   // Legacy compatibility wrapper
