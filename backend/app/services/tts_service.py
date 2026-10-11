@@ -115,48 +115,57 @@ KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 KOKORO_API_URL = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
 
+_cached_gradio_client = None
+_cached_gradio_url = None
+_openai_endpoint_supported = None
+
 
 def synthesize_remote_kokoro_api(
     text: str,
     voice: str = "af_heart",
     output_path: str = "",
     response_format: str = "mp3",
-    timeout: float = 45.0,
+    timeout: float = 8.0,
 ) -> bool:
     """
-    Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces
-    running Kokoro-FastAPI) via the OpenAI-compatible /v1/audio/speech endpoint.
-    Saves high-fidelity audio stream to output_path.
+    Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces)
+    via OpenAI-compatible /v1/audio/speech endpoint or native Gradio ZeroGPU space with client caching.
+    Guarantees companion WAV and MP3 files exist on disk for instant ESP32 I2S and web streaming.
     """
+    global _cached_gradio_client, _cached_gradio_url, _openai_endpoint_supported
+
     api_url = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
     if not api_url:
         return False
-    try:
-        import requests
-        clean = clean_text_for_speech(text)
-        if not clean:
-            clean = "Attention. Official campus announcement broadcast."
 
-        target_url = f"{api_url}/v1/audio/speech"
-        payload = {
-            "input": clean,
-            "voice": voice or "af_heart",
-            "model": "kokoro",
-            "response_format": response_format,
-        }
-        headers = {"Content-Type": "application/json"}
-        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
-        if hf_token:
-            headers["Authorization"] = f"Bearer {hf_token}"
+    clean = clean_text_for_speech(text)
+    if not clean:
+        clean = "Attention. Official campus announcement broadcast."
 
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+
+    # Fast Probe: Only try OpenAI endpoint if not previously discovered to be unsupported
+    if _openai_endpoint_supported is not False:
         try:
-            resp = requests.post(target_url, json=payload, headers=headers, timeout=timeout)
+            import requests
+            target_url = f"{api_url}/v1/audio/speech"
+            payload = {
+                "input": clean,
+                "voice": voice or "af_heart",
+                "model": "kokoro",
+                "response_format": response_format,
+            }
+            headers = {"Content-Type": "application/json"}
+            if hf_token:
+                headers["Authorization"] = f"Bearer {hf_token}"
+
+            resp = requests.post(target_url, json=payload, headers=headers, timeout=2.5)
             if resp.status_code == 200 and len(resp.content) > 1024:
+                _openai_endpoint_supported = True
                 is_wav = resp.content[:4] == b"RIFF"
                 with open(output_path, "wb") as f:
                     f.write(resp.content)
 
-                # Ensure companion file exists for both ESP32 I2S WAV streaming and web MP3 streaming
                 if is_wav and output_path.endswith(".mp3"):
                     companion_wav = output_path[:-4] + ".wav"
                     with open(companion_wav, "wb") as f:
@@ -166,48 +175,73 @@ def synthesize_remote_kokoro_api(
                     companion_mp3 = output_path[:-4] + ".mp3"
                     with open(companion_mp3, "wb") as f:
                         f.write(resp.content)
-
                 logger.info(f"Kokoro-82M audio generated via remote worker: {output_path} ({len(resp.content)} bytes)")
                 return True
+            else:
+                _openai_endpoint_supported = False
         except Exception as http_err:
+            _openai_endpoint_supported = False
             logger.debug(f"OpenAI endpoint call note: {http_err}")
 
-        # Fallback 2: Connect via Gradio Client (native Hugging Face ZeroGPU Gradio Space)
-        try:
-            from gradio_client import Client
-            import shutil
+    # Fallback 2: Connect via Gradio Client (native Hugging Face ZeroGPU Gradio Space with persistent client cache)
+    try:
+        from gradio_client import Client
+        import shutil
+
+        if _cached_gradio_client is None or _cached_gradio_url != api_url:
             try:
-                client = Client(api_url, token=hf_token)
+                _cached_gradio_client = Client(api_url, token=hf_token)
             except TypeError:
-                client = Client(api_url, hf_token=hf_token)
-            audio_path = client.predict(
-                clean,
-                voice or "af_heart",
-                1.0,
-                api_name="/synthesize"
-            )
-            if audio_path and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1024:
-                shutil.copy(audio_path, output_path)
-                with open(output_path, "rb") as f:
-                    sample_bytes = f.read(4)
-                is_wav = sample_bytes == b"RIFF"
-                if is_wav and output_path.endswith(".mp3"):
+                _cached_gradio_client = Client(api_url, hf_token=hf_token)
+            _cached_gradio_url = api_url
+
+        audio_path = _cached_gradio_client.predict(
+            clean,
+            voice or "af_heart",
+            1.0,
+            api_name="/synthesize",
+        )
+        if audio_path and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1024:
+            with open(audio_path, "rb") as f:
+                sample_bytes = f.read(4)
+            is_wav = sample_bytes == b"RIFF"
+
+            if output_path.endswith(".wav"):
+                if is_wav:
+                    shutil.copy(audio_path, output_path)
+                    companion_mp3 = output_path[:-4] + ".mp3"
+                    convert_wav_to_mp3(output_path, companion_mp3)
+                else:
+                    companion_mp3 = output_path[:-4] + ".mp3"
+                    shutil.copy(audio_path, companion_mp3)
+                    try:
+                        import miniaudio
+                        decoded = miniaudio.mp3_read_file_s16(companion_mp3)
+                        miniaudio.wav_write_file(output_path, decoded)
+                    except Exception:
+                        pass
+            else:
+                if is_wav:
                     companion_wav = output_path[:-4] + ".wav"
                     shutil.copy(audio_path, companion_wav)
                     convert_wav_to_mp3(companion_wav, output_path)
-                elif not is_wav and output_path.endswith(".wav"):
-                    companion_mp3 = output_path[:-4] + ".mp3"
-                    shutil.copy(audio_path, companion_mp3)
+                else:
+                    shutil.copy(audio_path, output_path)
+                    companion_wav = output_path[:-4] + ".wav"
+                    try:
+                        import miniaudio
+                        decoded = miniaudio.mp3_read_file_s16(output_path)
+                        miniaudio.wav_write_file(companion_wav, decoded)
+                    except Exception:
+                        pass
 
-                logger.info(f"Kokoro-82M audio generated via Gradio ZeroGPU worker: {output_path}")
-                return True
-        except Exception as g_err:
-            logger.debug(f"Gradio Space client error: {g_err}")
+            logger.info(f"Kokoro-82M audio generated via Gradio ZeroGPU worker: {output_path}")
+            return True
+    except Exception as g_err:
+        logger.debug(f"Gradio Space client error: {g_err}")
+        _cached_gradio_client = None
 
-        return False
-    except Exception as e:
-        logger.warning(f"Remote Kokoro worker connection error: {e}")
-        return False
+    return False
 
 
 
@@ -539,20 +573,15 @@ def generate_announcement_audio_sync(
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
         # 1A. Dedicated Remote Kokoro-82M Worker (Hugging Face Spaces with 16GB RAM)
         if KOKORO_API_URL:
-            # Generate high-fidelity MP3 for streaming to ESP32 and web clients
-            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3"):
-                # Also decode/write wav_filepath immediately in the pre-generation phase so hardware I2S gets instant WAV!
-                try:
-                    import miniaudio
-                    decoded = miniaudio.mp3_read_file_s16(mp3_filepath)
-                    miniaudio.wav_write_file(wav_filepath, decoded)
-                except Exception:
-                    pass
+            # Generate high-fidelity WAV & MP3 companions for streaming to ESP32 and web clients
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav"):
+                if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
+                    convert_wav_to_mp3(wav_filepath, mp3_filepath)
                 return {
-                    "file_name": mp3_filename,
-                    "file_path": mp3_filepath,
-                    "url_path": f"/static/audio_streams/{mp3_filename}",
-                    "type": "mp3",
+                    "file_name": mp3_filename if os.path.exists(mp3_filepath) else wav_filename,
+                    "file_path": mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath,
+                    "url_path": f"/static/audio_streams/{mp3_filename if os.path.exists(mp3_filepath) else wav_filename}",
+                    "type": "mp3" if os.path.exists(mp3_filepath) else "wav",
                     "engine": f"Kokoro-82M Neural ({voice_name})",
                     "voice": voice_name,
                     "chime": selected_chime if include_chime else "none",

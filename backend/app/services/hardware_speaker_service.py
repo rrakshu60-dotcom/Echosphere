@@ -417,7 +417,28 @@ async def broadcast_announcement_to_speaker(
     # 2. Form robust streaming audio URL directly targeting 16-bit PCM WAV for ESP32 hardware streaming
     audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
 
-    # 3. Publish MQTT dispatch and queue command for REST-polling nodes IMMEDIATELY (sub-millisecond latency!)
+    # 3. Ensure WAV audio stream is 100% written to disk BEFORE dispatching command to ESP32
+    clean_v = (speaker_voice or "female").lower()
+    tag = f"american_{clean_v}"
+    from app.api.v1.announcement import _find_cached_audio_file
+    fname, fpath, _ = _find_cached_audio_file(
+        announcement_id,
+        tag,
+        include_chime=False,
+        prefer_wav=True,
+    )
+    if not fname or not fpath:
+        try:
+            generate_announcement_audio_sync(
+                announcement_id,
+                f"{title}. {content}",
+                gender=clean_v,
+                include_chime=False,
+            )
+        except Exception as bg_e:
+            logger.warning(f"Audio pre-generation on broadcast note: {bg_e}")
+
+    # 4. Publish MQTT dispatch and queue command for REST-polling nodes
     topic = f"echosphere/dept/{department_code}/speakers/command"
     if zone and zone != "College-Wide":
         topic = f"echosphere/zone/{zone}/speakers/command"
@@ -437,23 +458,6 @@ async def broadcast_announcement_to_speaker(
 
     publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=None, db=db)
-
-    # 4. Asynchronously pre-warm the audio stream so WAV file is generated while ESP32 connects and plays attention chime
-    try:
-        import threading
-        def _prewarm_bg():
-            try:
-                generate_announcement_audio_sync(
-                    announcement_id,
-                    f"{title}. {content}",
-                    gender=speaker_voice or "female",
-                    include_chime=False,
-                )
-            except Exception as bg_e:
-                logger.warning(f"Background audio pre-warm note: {bg_e}")
-        threading.Thread(target=_prewarm_bg, daemon=True).start()
-    except Exception as e:
-        logger.warning(f"Audio pre-warm dispatch note: {e}")
 
     return {
         "status": "success",
@@ -701,28 +705,47 @@ def enqueue_and_broadcast_announcement(
 
     publish_success = False
     if should_play:
+        clean_v = (speaker_voice or "female").lower()
+        tag = f"american_{clean_v}"
+        from app.api.v1.announcement import _find_cached_audio_file
+        fname, fpath, _ = _find_cached_audio_file(
+            announcement_id,
+            tag,
+            include_chime=False,
+            prefer_wav=True,
+        )
+        if not fname or not fpath:
+            try:
+                generate_announcement_audio_sync(
+                    announcement_id,
+                    f"{title}. {content}",
+                    gender=clean_v,
+                    include_chime=False,
+                )
+            except Exception as bg_e:
+                logger.warning(f"Audio pre-generation on auto-play note: {bg_e}")
+
         publish_success = publish_mqtt_command(topic, payload)
         queue_command_for_nodes(payload, target_mac=target_mac, db=db)
         logger.info(f"📢 [AUTO-PLAY] Announcement #{announcement_id} ('{title}') -> Immediately playing on {topic} (Node: {target_mac or 'ALL'})")
     else:
         logger.info(f"📋 [ENQUEUED] Announcement #{announcement_id} ('{title}') -> Standing by at queue position #{queue_pos} ({current_status})")
-
-    # 4. Asynchronously pre-warm the audio stream so WAV file is generated while ESP32 connects and plays attention chime
-    try:
-        import threading
-        def _prewarm_bg():
-            try:
-                generate_announcement_audio_sync(
-                    announcement_id,
-                    f"{title}. {content}",
-                    gender=speaker_voice or "female",
-                    include_chime=False,
-                )
-            except Exception as bg_e:
-                logger.warning(f"Background audio pre-warm note: {bg_e}")
-        threading.Thread(target=_prewarm_bg, daemon=True).start()
-    except Exception as e:
-        logger.warning(f"Audio pre-warm dispatch note: {e}")
+        # Pre-warm audio in background for this enqueued announcement so it's ready when played later
+        try:
+            import threading
+            def _prewarm_bg():
+                try:
+                    generate_announcement_audio_sync(
+                        announcement_id,
+                        f"{title}. {content}",
+                        gender=speaker_voice or "female",
+                        include_chime=False,
+                    )
+                except Exception as bg_e:
+                    logger.warning(f"Background audio pre-warm note: {bg_e}")
+            threading.Thread(target=_prewarm_bg, daemon=True).start()
+        except Exception as e:
+            logger.warning(f"Audio pre-warm dispatch note: {e}")
 
     return {
         "status": "success",
@@ -762,16 +785,27 @@ def dispatch_queue_action_to_speakers(
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
         # Direct neural audio stream URL (16-bit PCM WAV for ESP32 I2S)
-        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav"
-        try:
-            voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
-            generate_announcement_audio_sync(
-                ann_id,
-                f"{title}. {message}",
-                gender=voice_gender,
-            )
-        except Exception as e:
-            logger.warning(f"Audio pre-generation on queue play: {e}")
+        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav&include_chime=false"
+        voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
+        clean_v = str(voice_gender).lower()
+        tag = f"american_{clean_v}"
+        from app.api.v1.announcement import _find_cached_audio_file
+        fname, fpath, _ = _find_cached_audio_file(
+            ann_id,
+            tag,
+            include_chime=False,
+            prefer_wav=True,
+        )
+        if not fname or not fpath:
+            try:
+                generate_announcement_audio_sync(
+                    ann_id,
+                    f"{title}. {message}",
+                    gender=clean_v,
+                    include_chime=False,
+                )
+            except Exception as e:
+                logger.warning(f"Audio pre-generation on queue play: {e}")
 
         payload = {
             "command": "PLAY_ANNOUNCEMENT",
