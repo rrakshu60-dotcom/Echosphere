@@ -582,6 +582,39 @@ def fetch_speaker_queue(
     except Exception:
         pass
 
+    # Clean up stale items from previous dates (before today in campus IST) that have no active repeat schedule
+    from datetime import timedelta, timezone
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_ist = now_utc + timedelta(hours=5, minutes=30)
+    start_of_today_ist = datetime(now_ist.year, now_ist.month, now_ist.day)
+    start_of_today_utc = start_of_today_ist - timedelta(hours=5, minutes=30)
+
+    try:
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+        stale_past_items = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]),
+                SpeakerQueue.scheduled_time < start_of_today_utc,
+            )
+            .all()
+        )
+        for stale_item in stale_past_items:
+            s_sched = (
+                db.query(AnnouncementRepeatSchedule)
+                .filter(
+                    AnnouncementRepeatSchedule.announcement_id == stale_item.announcement_id,
+                    AnnouncementRepeatSchedule.is_active == True,
+                )
+                .first()
+            ) if stale_item.announcement_id else None
+            if not s_sched:
+                stale_item.status = "Completed"
+        if stale_past_items:
+            db.commit()
+    except Exception:
+        pass
+
     if status is None:
         queue_items = (
             db.query(SpeakerQueue)
@@ -595,7 +628,6 @@ def fetch_speaker_queue(
     result = []
     from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
     from app.services.repeat_schedule_service import get_notice_priority_info
-    from datetime import timezone
 
     for item in queue_items:
         ann = item.announcement
@@ -607,14 +639,21 @@ def fetch_speaker_queue(
 
         sched = (
             db.query(AnnouncementRepeatSchedule)
-            .filter(AnnouncementRepeatSchedule.announcement_id == item.announcement_id)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == item.announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
             .first()
         ) if item.announcement_id else None
 
-        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-
+        has_repeat_active = False
+        max_repeats = 1
         sched_dict = None
-        if sched:
+
+        if sched and sched.is_active:
+            prio_weight, max_reps_val, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+            has_repeat_active = True
+            max_repeats = max_reps_val
             sched_dict = {
                 "id": sched.id,
                 "announcement_id": sched.announcement_id,
@@ -626,6 +665,8 @@ def fetch_speaker_queue(
                 "total_played_count": sched.total_played_count,
                 "is_active": sched.is_active,
             }
+        else:
+            prio_tier = (ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)) if ann else "NORMAL"
 
         result.append({
             "id": item.id,
@@ -648,7 +689,7 @@ def fetch_speaker_queue(
             "speaker_node_status": node_status,
             "speaker_node_zone": node_zone,
             "repeat_schedule": sched_dict,
-            "has_repeat": sched is not None,
+            "has_repeat": has_repeat_active,
             "max_repeats": max_repeats,
         })
     return result
@@ -732,7 +773,7 @@ def enqueue_speaker_announcement(
         scheduled_time=scheduled_time,
         speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
         base_url=base_url,
-        force_requeue=getattr(enqueue_in, 'force_requeue', False),
+        force_requeue=True,
     )
     return {
         "status": "success",
@@ -804,15 +845,19 @@ def update_queue_action(
         matched = is_slot_active_at_time(sched, time_str, active_slots) if sched else []
         is_slot_active = bool(matched)
 
-        if is_emerg and is_slot_active and sched:
+        from app.services.repeat_schedule_service import get_notice_priority_info
+        prio_weight, max_reps_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+
+        if is_emerg and is_slot_active and sched and sched.total_played_count < max_reps_limit:
             # Emergency notices loop continuously ONLY if repeat schedule is configured and slot is active
+            sched.total_played_count += 1
             item.status = "Playing"
             item.played_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
             return {"status": "success", "queue_id": item.id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
 
-        if is_slot_active and sched:
-            # Re-queue at the back of queue so all notices in this slot rotate repeatedly!
+        if is_slot_active and sched and sched.total_played_count < max_reps_limit:
+            # Re-queue at the back of queue so all notices in this slot rotate up to max_reps_limit
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             sched.total_played_count += 1
             slot_name = matched[0] if matched else "REPEAT_SLOT"
@@ -831,7 +876,7 @@ def update_queue_action(
             item.played_at = None
             new_status = "Queued"
         else:
-            # No repeat schedule or slot ended -> mark completed!
+            # No repeat schedule, slot ended, or max repeats reached -> mark completed!
             item.status = "Completed"
             new_status = "Completed"
 

@@ -255,14 +255,31 @@ class SpeakerQueueController extends GetxController {
   /// - Normal / Medium: 2 times
   /// - Low: 1 time
   int getNoticeMaxRepeats(Map<String, dynamic> item) {
-    // In any repetition slot (e.g. 11:00-11:15 or custom window), all notices scheduled
-    // for that slot rotate continuously throughout that time period as much as can play.
-    return 999999;
+    if (item['max_repeats'] is int && (item['max_repeats'] as int) > 0) {
+      return item['max_repeats'] as int;
+    }
+    if (_isItemEmergency(item)) {
+      return 999999;
+    }
+    final p = (item['priority'] ?? '').toString().toUpperCase();
+    final title = (item['title'] ?? '').toString().toLowerCase();
+    final desc = (item['description'] ?? item['message'] ?? item['content'] ?? '').toString().toLowerCase();
+    final combined = '$title $desc';
+
+    if (p.contains('HIGH') || p.contains('URGENT') ||
+        ['exam', 'examination', 'test', 'timetable', 'hall ticket', 'viva', 'semester', 'placement', 'interview', 'deadline', 'fee payment'].any((w) => combined.contains(w))) {
+      return 3;
+    } else if (p.contains('LOW') ||
+        ['lost and found', 'lost & found', 'lost', 'found', 'canteen', 'maintenance', 'bus timing', 'reminder'].any((w) => combined.contains(w))) {
+      return 1;
+    }
+    return 2;
   }
 
-  /// Syncs speaker notices directly from AnnouncementController
+  /// Syncs speaker notices directly from AnnouncementController (test mode only)
   void _syncWithLocalAnnouncements() {
     if (!Get.isRegistered<AnnouncementController>()) return;
+    if (!Get.testMode) return; // In live mode, queue is canonical and driven by backend API
     final annCtrl = Get.find<AnnouncementController>();
 
     // All published announcements marked for speaker broadcast or repeat schedule
@@ -447,7 +464,10 @@ class SpeakerQueueController extends GetxController {
               final isSingleCompleted = dismissedAnnouncementIds.contains(annId) ||
                   completedSinglePlayAnnouncementIds.contains(annId) ||
                   (Get.isRegistered<AnnouncementController>() && Get.find<AnnouncementController>().playedSpeakerNoticeIds.contains(annId));
-              final hasRepeat = q['has_repeat'] == true || q['repeat_schedule'] != null;
+              final hasRepeat = q['has_repeat'] == true &&
+                  q['repeat_schedule'] != null &&
+                  q['repeat_schedule'] is Map &&
+                  (q['repeat_schedule'] as Map)['is_active'] == true;
               if (isSingleCompleted && !hasRepeat) return false;
               return q['status'] != 'Completed' &&
                   q['status'] != 'Cancelled' &&
@@ -462,11 +482,10 @@ class SpeakerQueueController extends GetxController {
         }
       }
 
-      // 3. Collect local notices from AnnouncementController
+      // 3. Assemble active queue strictly from canonical backend queue
       List<Map<String, dynamic>> combined = [];
       final Set<int> seenAnnouncementIds = {};
 
-      // Add remote active items first
       for (var q in remoteActiveItems) {
         final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
         final targetNodeId = q['speaker_node_id'] as int?;
@@ -478,73 +497,22 @@ class SpeakerQueueController extends GetxController {
         final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : 0;
         final existingPlayedCount = existing?['played_count'] as int? ?? backendPlayedCount;
         final existingRepeatRound = existing?['repeat_round'] as int? ?? (existingPlayedCount + 1);
-        final maxReps = q['max_repeats'] as int? ?? getNoticeMaxRepeats(q);
+        final bool hasRepeatActive = q['has_repeat'] == true &&
+            q['repeat_schedule'] != null &&
+            q['repeat_schedule'] is Map &&
+            (q['repeat_schedule'] as Map)['is_active'] == true;
+        final maxReps = hasRepeatActive ? (q['max_repeats'] as int? ?? getNoticeMaxRepeats(q)) : 1;
 
         combined.add({
           ...q,
           'node_name': nodeName,
           'node_status': nodeStatus,
           'duration_seconds': q['duration_seconds'] ?? 15,
-          'has_repeat': q['has_repeat'] == true || q['repeat_schedule'] != null || (q['title'] ?? '').toString().contains('[Repeat'),
+          'has_repeat': hasRepeatActive,
           'max_repeats': maxReps,
           'played_count': existingPlayedCount,
           'repeat_round': existingRepeatRound,
         });
-      }
-
-      // Add local speaker notices from AnnouncementController
-      if (Get.isRegistered<AnnouncementController>()) {
-        final annCtrl = Get.find<AnnouncementController>();
-        final speakerNotices = annCtrl.allAnnouncements.where((a) {
-          final isApproved = a.status == 'PUBLISHED' || a.status == 'APPROVED';
-          final isSpeaker = a.deliverSpeaker || a.priority.toUpperCase() == 'EMERGENCY' || a.repeatSchedule != null;
-          final isNotAutomated = !a.title.toLowerCase().contains('automated speaker notice') &&
-              !a.title.toLowerCase().contains('sample notice');
-          final hasActiveRepeat = a.repeatSchedule != null && isScheduleActiveNow(a.repeatSchedule!);
-          final isSingleCompleted = dismissedAnnouncementIds.contains(a.id) ||
-              completedSinglePlayAnnouncementIds.contains(a.id) ||
-              annCtrl.playedSpeakerNoticeIds.contains(a.id);
-          if (isSingleCompleted && !hasActiveRepeat) return false;
-          return isApproved && isSpeaker && isNotAutomated && (!a.playedOnSpeaker || hasActiveRepeat);
-        }).toList();
-
-        for (var notice in speakerNotices) {
-          final alreadyInCombined = combined.any((c) =>
-              c['announcement_id'] == notice.id ||
-              c['id'] == notice.id ||
-              ((c['title'] ?? '').toString().trim().toLowerCase() == notice.title.trim().toLowerCase() &&
-               (c['department'] ?? '').toString() == notice.department));
-
-          if (!alreadyInCombined && !seenAnnouncementIds.contains(notice.id) && !dismissedAnnouncementIds.contains(notice.id)) {
-            seenAnnouncementIds.add(notice.id);
-            final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == notice.id || item['id'] == notice.id));
-            final existingPlayedCount = existing?['played_count'] as int? ?? 0;
-            final existingRepeatRound = existing?['repeat_round'] as int? ?? 1;
-
-            combined.add({
-              'id': notice.id,
-              'announcement_id': notice.id,
-              'title': notice.title,
-              'description': notice.description,
-              'department': notice.department,
-              'priority': notice.priority,
-              'category': notice.category,
-              'type': 'AI Speech',
-              'status': 'Queued',
-              'queue_position': combined.length + 1,
-              'scheduled_time': notice.scheduledAt?.toIso8601String() ?? notice.createdAt.toIso8601String(),
-              'speaker_node_id': notice.speakerNodeId,
-              'node_name': _getNodeName(notice.speakerNodeId),
-              'node_status': getNodeStatus(notice.speakerNodeId),
-              'duration_seconds': notice.durationSeconds,
-              'audio_url': '/static/audio_streams/announcement_${notice.id}.mp3',
-              'repeat_schedule': notice.repeatSchedule,
-              'has_repeat': notice.repeatSchedule != null,
-              'played_count': existingPlayedCount,
-              'repeat_round': existingRepeatRound,
-            });
-          }
-        }
       }
 
       // Filter out any legacy dummy/automated notices from combined list
@@ -552,6 +520,13 @@ class SpeakerQueueController extends GetxController {
         final t = (item['title'] ?? '').toString().toLowerCase();
         return t.contains('automated speaker notice') || t.contains('sample notice');
       });
+
+      if (combined.isEmpty) {
+        isPlaying.value = false;
+        _playbackTimer?.cancel();
+        activeIndex.value = 0;
+        currentElapsedSeconds.value = 0;
+      }
 
       // Synchronize remote Playing state without overriding user's pause/stop command
       final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
@@ -764,12 +739,10 @@ class SpeakerQueueController extends GetxController {
     final playedTitle = (playedItem['title'] ?? 'Announcement').toString();
 
     final bool isEmergencyNotice = _isItemEmergency(playedItem);
-    final bool hasRepeat = (playedItem['repeat_schedule'] != null &&
-            playedItem['repeat_schedule'] is Map &&
-            (playedItem['repeat_schedule'] as Map)['is_active'] != false) ||
-        playedItem['has_repeat'] == true ||
-        playedTitle.contains('[EMERGENCY REPEAT]') ||
-        playedTitle.contains('[Repeat');
+    final bool hasRepeat = playedItem['has_repeat'] == true &&
+        playedItem['repeat_schedule'] != null &&
+        playedItem['repeat_schedule'] is Map &&
+        (playedItem['repeat_schedule'] as Map)['is_active'] == true;
 
     bool isSlotActive = true;
     if (playedItem['repeat_schedule'] != null && playedItem['repeat_schedule'] is Map) {
@@ -808,7 +781,7 @@ class SpeakerQueueController extends GetxController {
     }
 
     // 2. Continuous rotation in repeat slot:
-    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive && (maxRepeats <= 0 || currentPlayedCount < maxRepeats));
+    final bool hasMoreRepeats = (!isEmergencyNotice && hasRepeat && isSlotActive && (maxRepeats > 0 && currentPlayedCount < maxRepeats));
 
     // Notify backend that notice playback finished
     final targetId = annId > 0 ? annId : (playedItem['id'] as int? ?? 0);
@@ -1233,9 +1206,11 @@ class SpeakerQueueController extends GetxController {
     String audioType = 'AI Speech',
     int? speakerNodeId,
   }) async {
-    // Immediately resolve and add from AnnouncementController if present for 0ms lag
+    completedSinglePlayAnnouncementIds.remove(announcementId);
+    dismissedAnnouncementIds.remove(announcementId);
     if (Get.isRegistered<AnnouncementController>()) {
       final annCtrl = Get.find<AnnouncementController>();
+      annCtrl.playedSpeakerNoticeIds.remove(announcementId);
       final match = annCtrl.allAnnouncements.firstWhereOrNull((a) => a.id == announcementId);
       if (match != null) {
         await broadcastAnnouncement(match, speakerNodeId: speakerNodeId);

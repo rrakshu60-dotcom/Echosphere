@@ -1046,9 +1046,12 @@ def auto_advance_speaker_queue(
                 if matched:
                     is_slot_active = True
 
-            if is_slot_active and sched:
-                # Notice is within its active repeating time window (e.g. 11:00-11:15 or custom window):
-                # Re-queue at the back of the queue so all notices in the slot rotate repeatedly!
+            from app.services.repeat_schedule_service import get_notice_priority_info
+            prio_weight, max_reps_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+
+            if is_slot_active and sched and sched.total_played_count < max_reps_limit:
+                # Notice is within its active repeating time window and has repeats remaining:
+                # Re-queue at the back of the queue so notices in the slot rotate up to max_reps_limit
                 sched.total_played_count += 1
                 slot_name = matched[0] if matched else "REPEAT_SLOT"
                 prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
@@ -1064,12 +1067,12 @@ def auto_advance_speaker_queue(
                 current_playing.queue_position = max_pos + 1
                 current_playing.played_at = None
                 db.commit()
-                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for continuous slot rotation in {slot_name} (Play count: {sched.total_played_count}).")
+                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for slot rotation in {slot_name} (Play count: {sched.total_played_count}/{max_reps_limit}).")
             else:
-                # Schedule ended or no repeat configured -> mark completed
+                # Schedule ended, max repeats reached, or no repeat configured -> mark completed
                 current_playing.status = "Completed"
                 db.commit()
-                logger.info(f"Speaker queue item #{current_playing.id} completed playback.")
+                logger.info(f"Speaker queue item #{current_playing.id} completed playback and cleared from queue.")
 
             should_advance = True
     elif not should_advance:
