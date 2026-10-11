@@ -149,6 +149,18 @@
       while (!empty() && isspace((unsigned char)back())) pop_back();
     }
 
+    void toUpperCase() {
+      for (size_t i = 0; i < length(); i++) {
+        (*this)[i] = (char)toupper((unsigned char)(*this)[i]);
+      }
+    }
+
+    void toLowerCase() {
+      for (size_t i = 0; i < length(); i++) {
+        (*this)[i] = (char)tolower((unsigned char)(*this)[i]);
+      }
+    }
+
     void replace(const char* findStr, const char* replaceStr) {
       if (!findStr || !replaceStr) return;
       size_t pos = 0;
@@ -257,6 +269,8 @@
     void fillRect(int16_t, int16_t, int16_t, int16_t, uint16_t) {}
     void drawRoundRect(int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) {}
     void fillRoundRect(int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) {}
+    void drawCircle(int16_t, int16_t, int16_t, uint16_t) {}
+    void fillCircle(int16_t, int16_t, int16_t, uint16_t) {}
     void fillScreen(uint16_t) {}
     void startWrite() {}
     void endWrite() {}
@@ -267,6 +281,8 @@
     Adafruit_ST7735(int8_t, int8_t, int8_t) {}
     void initR(uint8_t) {}
     void setRotation(uint8_t) {}
+    void drawCircle(int16_t, int16_t, int16_t, uint16_t) {}
+    void fillCircle(int16_t, int16_t, int16_t, uint16_t) {}
   };
 
   // --- Core Utility Functions ---

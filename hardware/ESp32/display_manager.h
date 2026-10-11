@@ -82,6 +82,22 @@ private:
 
 public:
   // --------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Helper: Case-insensitive prefix matcher (zero heap allocations)
+  // --------------------------------------------------------------------------
+  static bool startsWithIgnoreCase(const String& str, const char* prefix, unsigned int pLen) {
+    if (str.length() < pLen) return false;
+    for (unsigned int i = 0; i < pLen; i++) {
+      char c1 = str.charAt(i);
+      char c2 = prefix[i];
+      if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+      if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+      if (c1 != c2) return false;
+    }
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
   // Helper: Sanitize title and notice text (removes markdown and redundant prefixes)
   // --------------------------------------------------------------------------
   static String sanitizeTitleText(const String& raw) {
@@ -99,14 +115,12 @@ public:
     bool stripped = true;
     while (stripped && clean.length() > 0) {
       stripped = false;
-      String upper = clean;
-      upper.toUpperCase();
-      if (upper.startsWith("OFFICIAL CIRCULAR:")) { clean = clean.substring(18); stripped = true; }
-      else if (upper.startsWith("CIRCULAR:")) { clean = clean.substring(9); stripped = true; }
-      else if (upper.startsWith("OFFICIAL NOTICE:")) { clean = clean.substring(16); stripped = true; }
-      else if (upper.startsWith("NOTICE:")) { clean = clean.substring(7); stripped = true; }
-      else if (upper.startsWith("ANNOUNCEMENT:")) { clean = clean.substring(13); stripped = true; }
-      else if (upper.startsWith("SUMMARY:")) { clean = clean.substring(8); stripped = true; }
+      if (startsWithIgnoreCase(clean, "OFFICIAL CIRCULAR:", 18)) { clean = clean.substring(18); stripped = true; }
+      else if (startsWithIgnoreCase(clean, "CIRCULAR:", 9)) { clean = clean.substring(9); stripped = true; }
+      else if (startsWithIgnoreCase(clean, "OFFICIAL NOTICE:", 16)) { clean = clean.substring(16); stripped = true; }
+      else if (startsWithIgnoreCase(clean, "NOTICE:", 7)) { clean = clean.substring(7); stripped = true; }
+      else if (startsWithIgnoreCase(clean, "ANNOUNCEMENT:", 13)) { clean = clean.substring(13); stripped = true; }
+      else if (startsWithIgnoreCase(clean, "SUMMARY:", 8)) { clean = clean.substring(8); stripped = true; }
       clean.trim();
     }
     return clean.length() > 0 ? clean : raw;
@@ -270,14 +284,19 @@ public:
 
   void clearDailyNotices() {
     dailyNoticesCount = 0;
+    currentDailyNoticeIndex = 0;
+    currentDailyNoticePage = 0;
+    lastDailyRotateTime = millis();
   }
 
   void finalizeDailyNotices() {
     if (dailyNoticesCount == 0) {
       currentDailyNoticeIndex = 0;
       currentDailyNoticePage = 0;
-    } else if (currentDailyNoticeIndex >= dailyNoticesCount) {
-      currentDailyNoticeIndex = 0;
+    } else {
+      if (currentDailyNoticeIndex >= dailyNoticesCount) {
+        currentDailyNoticeIndex = 0;
+      }
       currentDailyNoticePage = 0;
     }
   }
@@ -297,8 +316,42 @@ public:
   DisplayState getState() const { return currentState; }
 
   // --------------------------------------------------------------------------
-  // Auto-Paging Carousel for Live Broadcast (Advances page every 3.5s)
-  // Can be called directly from audio streaming loops to keep LCD in sync!
+  // Subtitle Synchronization: Advances notice text page smoothly in real-time
+  // matching audio stream speech progression!
+  // --------------------------------------------------------------------------
+  void updateSubtitleProgress(float progressRatio) {
+    if (!isNoticeActive || !isTftReady) return;
+    String msg = activeNotice.summary.length() > 0 ? activeNotice.summary : activeNotice.title;
+    msg = sanitizeTitleText(msg);
+    String cleanTitle = sanitizeTitleText(activeNotice.title);
+    int titleLines = countWrappedLines(cleanTitle, 24);
+    int linesPerPage = (titleLines > 1) ? 4 : 5;
+    int totalLines = countWrappedLines(msg, 24);
+    int totalPages = (totalLines + linesPerPage - 1) / linesPerPage;
+    if (totalPages <= 1) return;
+
+    if (progressRatio < 0.0f) progressRatio = 0.0f;
+    if (progressRatio > 1.0f) progressRatio = 1.0f;
+
+    // Calculate exact target page based on speech progress ratio
+    int targetPage = (int)(progressRatio * totalPages);
+    if (targetPage >= totalPages) targetPage = totalPages - 1;
+
+    if (targetPage != currentBroadcastPage) {
+      currentBroadcastPage = targetPage;
+      renderPlayingContentCard();
+      Serial.print(F("📄 [SUBTITLE SYNC] Speech audio page: "));
+      Serial.print(currentBroadcastPage + 1);
+      Serial.print(F("/"));
+      Serial.print(totalPages);
+      Serial.print(F(" (Progress: "));
+      Serial.print((int)(progressRatio * 100));
+      Serial.println(F("%)"));
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Auto-Paging Carousel for Live Broadcast (Used during post-speech dwell)
   // --------------------------------------------------------------------------
   void tickBroadcastCarousel(unsigned long now = 0) {
     if (!isNoticeActive || !isTftReady) return;
@@ -322,6 +375,7 @@ public:
       }
     }
   }
+
 
   // --------------------------------------------------------------------------
   // Helper: Count total lines needed to word-wrap a given text string
@@ -463,37 +517,35 @@ public:
   void renderStandbyScreen() {
     if (!isTftReady) return;
 
-    // 1. Top Header Banner
-    tft.fillRect(0, 0, 160, 20, COLOR_HEADER_BLUE);
+    // 1. Top Header Banner with Online Status Indicator
+    tft.fillRect(0, 0, 160, 18, COLOR_HEADER_BLUE);
     tft.setTextColor(COLOR_TEXT_WHITE, COLOR_HEADER_BLUE);
     tft.setTextSize(1);
-    tft.setCursor(18, 6);
+    tft.setCursor(14, 5);
     tft.print(F("ECHOSPHERE SMART PA"));
+    drawStatusDot(148, 8, 3, COLOR_NORMAL);
 
-    // 2. Standby Content Area
-    tft.fillRect(0, 20, 160, 92, COLOR_BG);
-    tft.drawRoundRect(10, 26, 140, 80, 4, COLOR_PANEL);
+    // 2. Standby Content Area (Expanded to fill entire screen)
+    tft.fillRect(0, 18, 160, 110, COLOR_BG);
+    tft.drawRoundRect(10, 24, 140, 96, 4, COLOR_PANEL);
 
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_BG);
-    tft.setCursor(24, 40);
+    tft.setCursor(24, 42);
     tft.print(F("No Active Notices"));
 
     tft.setTextColor(COLOR_TEXT_CYAN, COLOR_BG);
-    tft.setCursor(22, 58);
+    tft.setCursor(22, 62);
     tft.print(F("System on Standby"));
 
     tft.setTextColor(COLOR_TEXT_WHITE, COLOR_BG);
-    tft.setCursor(18, 78);
+    tft.setCursor(18, 82);
     tft.print(F("Ready for Broadcast"));
 
-    // 3. Status Footer Bar
-    tft.fillRect(0, 112, 160, 16, COLOR_PANEL);
-    tft.setTextColor(COLOR_NORMAL, COLOR_PANEL);
-    tft.setCursor(8, 116);
+    // Online Status Indicator inside the Standby Card
+    drawStatusDot(50, 103, 3, COLOR_NORMAL);
+    tft.setTextColor(COLOR_NORMAL, COLOR_BG);
+    tft.setCursor(58, 100);
     tft.print(F("ONLINE"));
-    tft.setTextColor(COLOR_TEXT_WHITE, COLOR_PANEL);
-    tft.print(F(" | "));
-    tft.print(NODE_ZONE);
 
     isScreenRendered = true;
   }
@@ -532,7 +584,7 @@ public:
     // Differential drawing: updates ONLY the 16 small bars, zero text flutter!
     if (isNoticeActive && (now - lastAnimTime >= 80)) {
       lastAnimTime = now;
-      animFrame = (animFrame + 1) % 8;
+      animFrame = (animFrame + 1) % 16;
       if (isTftReady) {
         renderEqualizerGraphic();
       }
@@ -555,8 +607,8 @@ public:
           lastDailyRotateTime = now;
           const DisplayNotice& curNotice = dailyNotices[currentDailyNoticeIndex];
           String summaryText = curNotice.summary.length() > 0 ? curNotice.summary : curNotice.title;
-          int summaryLines = countWrappedLines(summaryText, 24);
-          int totalPages = (summaryLines + 3) / 4;
+          int summaryLines = countWrappedLines(summaryText, 25);
+          int totalPages = (summaryLines + 5) / 6;
           if (totalPages < 1) totalPages = 1;
 
           if (currentDailyNoticePage + 1 < totalPages) {
@@ -624,7 +676,6 @@ public:
         prevBarHeights[i] = newH;
       }
     }
-    animFrame = (animFrame + 1) % 16;
   }
 
   void resetEqualizerGraphic() {
@@ -642,6 +693,10 @@ public:
   }
 
 private:
+  void drawStatusDot(int16_t cx, int16_t cy, int16_t r, uint16_t color) {
+    tft.fillRoundRect(cx - r, cy - r, (r * 2) + 1, (r * 2) + 1, r, color);
+  }
+
   uint16_t getPriorityColor(const String& priority) {
     if (priority.equalsIgnoreCase("EMERGENCY")) return COLOR_EMERGENCY;
     if (priority.equalsIgnoreCase("HIGH") || priority.equalsIgnoreCase("URGENT")) return COLOR_URGENT;
@@ -756,102 +811,111 @@ private:
       return;
     }
 
-    // Draw full template (Header + Footer)
-    const DisplayNotice& notice = dailyNotices[currentDailyNoticeIndex];
+    // Always reset to Notice 1, Page 1 upon entering the daily notice screen
+    currentDailyNoticeIndex = 0;
+    currentDailyNoticePage = 0;
+    lastDailyRotateTime = millis();
 
-    // 1. Top Header Banner
-    tft.fillRect(0, 0, 160, 20, COLOR_HEADER_BLUE);
+    // 1. Top Header Banner with sleek Online Indicator
+    tft.fillRect(0, 0, 160, 18, COLOR_HEADER_BLUE);
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_HEADER_BLUE);
     tft.setTextSize(1);
-    tft.setCursor(8, 6);
-    tft.print(F("* TODAY'S NOTICE ["));
-    tft.print(currentDailyNoticeIndex + 1);
-    tft.print(F("/"));
+    tft.setCursor(6, 5);
+    tft.print(F("* NOTICE [1/"));
     tft.print(dailyNoticesCount);
     tft.print(F("]"));
 
-    // 2. Status Footer Bar
-    tft.fillRect(0, 112, 160, 16, COLOR_PANEL);
-    tft.setTextColor(COLOR_NORMAL, COLOR_PANEL);
-    tft.setCursor(8, 116);
-    tft.print(F("ONLINE"));
-    tft.setTextColor(COLOR_TEXT_WHITE, COLOR_PANEL);
-    tft.print(F(" | "));
-    tft.print(NODE_ZONE);
+    // Small Online Indicator: Green Dot + 'ON' in top-right of header
+    tft.setTextColor(COLOR_NORMAL, COLOR_HEADER_BLUE);
+    tft.setCursor(128, 5);
+    tft.print(F("ON"));
+    drawStatusDot(148, 8, 3, COLOR_NORMAL);
 
-    // 3. Render the card body
+    // 2. Clear entire notice content body (Y: 18 to 127 = 110px) cleanly
+    tft.fillRect(0, 18, 160, 110, COLOR_BG);
+
+    // 3. Render the card body for Notice 1, Page 1
     renderDailyNoticeCard();
+
+    // Mark rendered to prevent 100Hz loop re-render flickering!
+    isScreenRendered = true;
   }
 
   // --------------------------------------------------------------------------
   // Daily Notice Card Body (Smoothly updated when rotating notices)
+  // Maximize space: 6 full lines of summary text (was 4), zero wasted footer!
   // --------------------------------------------------------------------------
   void renderDailyNoticeCard() {
     if (dailyNoticesCount == 0) return;
     const DisplayNotice& notice = dailyNotices[currentDailyNoticeIndex];
 
     String summaryText = notice.summary.length() > 0 ? notice.summary : notice.title;
-    int summaryLines = countWrappedLines(summaryText, 24);
-    int totalPages = (summaryLines + 3) / 4;
+    int summaryLines = countWrappedLines(summaryText, 25);
+    int totalPages = (summaryLines + 5) / 6;
     if (totalPages < 1) totalPages = 1;
     if (currentDailyNoticePage >= totalPages) currentDailyNoticePage = 0;
 
-    // Update Header Counter smoothly
-    tft.fillRect(0, 0, 160, 20, COLOR_HEADER_BLUE);
+    // Update Header Counter smoothly in-place with background color (zero flash)
+    tft.setCursor(6, 5);
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_HEADER_BLUE);
     tft.setTextSize(1);
-    tft.setCursor(8, 6);
+    char headerBuf[24];
     if (totalPages > 1) {
-      tft.print(F("* NOTICE ["));
-      tft.print(currentDailyNoticeIndex + 1);
-      tft.print(F("/"));
-      tft.print(dailyNoticesCount);
-      tft.print(F("] P"));
-      tft.print(currentDailyNoticePage + 1);
-      tft.print(F("/"));
-      tft.print(totalPages);
+      snprintf(headerBuf, sizeof(headerBuf), "* NOTICE [%d/%d] P%d/%d",
+               currentDailyNoticeIndex + 1, dailyNoticesCount,
+               currentDailyNoticePage + 1, totalPages);
     } else {
-      tft.print(F("* TODAY'S NOTICE ["));
-      tft.print(currentDailyNoticeIndex + 1);
-      tft.print(F("/"));
-      tft.print(dailyNoticesCount);
-      tft.print(F("]"));
+      snprintf(headerBuf, sizeof(headerBuf), "* NOTICE [%d/%d]",
+               currentDailyNoticeIndex + 1, dailyNoticesCount);
+    }
+    tft.print(headerBuf);
+    int hLen = strlen(headerBuf);
+    for (int s = hLen; s < 20; s++) {
+      tft.print(' ');
     }
 
-    // Clear card content area once (Y: 21 to 111 = 90px)
-    tft.fillRect(0, 21, 160, 90, COLOR_BG);
+    // Ensure Online Indicator remains intact
+    tft.setTextColor(COLOR_NORMAL, COLOR_HEADER_BLUE);
+    tft.setCursor(128, 5);
+    tft.print(F("ON"));
+    drawStatusDot(148, 8, 3, COLOR_NORMAL);
+
+    // Badge area (Y: 20 to 32): clear only the 13px badge row
+    tft.fillRect(6, 20, 148, 13, COLOR_BG);
 
     // Priority badge
     uint16_t pColor = getPriorityColor(notice.priority);
-    tft.fillRoundRect(8, 23, 44, 11, 2, pColor);
+    tft.fillRoundRect(6, 20, 44, 11, 2, pColor);
     tft.setTextColor(COLOR_BG, pColor);
-    tft.setCursor(11, 25);
+    tft.setCursor(9, 22);
     tft.print(notice.priority);
 
     // Category & Department
     tft.setTextColor(COLOR_TEXT_GOLD, COLOR_BG);
-    tft.setCursor(56, 25);
+    tft.setCursor(54, 22);
     String meta = notice.category;
     if (meta.length() > 0 && notice.department.length() > 0) {
       meta += " * " + notice.department;
     }
-    if (meta.length() > 16) {
-      meta = meta.substring(0, 15);
+    if (meta.length() > 17) {
+      meta = meta.substring(0, 17);
     }
     tft.print(meta);
 
-    tft.drawFastHLine(8, 36, 144, COLOR_PANEL);
+    tft.drawFastHLine(6, 33, 148, COLOR_PANEL);
 
     // Notice Title (Compact font size 1, up to 2 lines word-wrapped)
     String cleanTitle = sanitizeTitleText(notice.title);
-    drawWrappedText(cleanTitle, 8, 40, 24, 2, COLOR_TEXT_WHITE, COLOR_BG, 0);
+    drawWrappedText(cleanTitle, 6, 36, 25, 2, COLOR_TEXT_WHITE, COLOR_BG, 0, 10);
 
-    tft.drawFastHLine(8, 62, 144, COLOR_PANEL);
+    tft.drawFastHLine(6, 57, 148, COLOR_PANEL);
 
-    // Notice Summary (Compact font size 1, up to 4 lines word-wrapped with current page offset)
+    // Notice Summary: Now 6 full lines of text (was 4)!
     summaryText = sanitizeTitleText(summaryText);
-    drawWrappedText(summaryText, 8, 66, 24, 4, COLOR_TEXT_CYAN, COLOR_BG, currentDailyNoticePage * 4);
+    drawWrappedText(summaryText, 6, 60, 25, 6, COLOR_TEXT_CYAN, COLOR_BG, currentDailyNoticePage * 6, 10);
 
+    // Mark rendered
+    isScreenRendered = true;
   }
 
   void printAsciiPlayingBanner(const DisplayNotice& n) {

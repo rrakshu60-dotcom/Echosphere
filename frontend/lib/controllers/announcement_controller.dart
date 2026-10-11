@@ -172,21 +172,25 @@ class AnnouncementModel {
   }
 
   factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
-    final catId = json['category_id'] ?? 1;
+    final catId = json['category_id'] ?? 2;
     String catName = 'Academic';
-    if (catId == 2) catName = 'Examination';
-    if (catId == 3) catName = 'Placement';
-    if (catId == 4) catName = 'Event';
-    if (catId == 5) catName = 'Workshop';
-    if (catId == 6) catName = 'Seminar';
-    if (catId == 7) catName = 'Holiday';
-    if (catId == 8) catName = 'Sports';
-    if (catId == 9) catName = 'Cultural';
-    if (catId == 10) catName = 'Club Activities';
-    if (catId == 11) catName = 'General';
-    if (catId == 12) catName = 'Emergency';
+    if (catId == 1) catName = 'Emergency';
+    if (catId == 2) catName = 'Academic';
+    if (catId == 3) catName = 'Examination';
+    if (catId == 4) catName = 'Placement';
+    if (catId == 5) catName = 'Events';
+    if (catId == 6) catName = 'Workshop';
+    if (catId == 7) catName = 'Seminar';
+    if (catId == 8) catName = 'Holiday';
+    if (catId == 9) catName = 'Sports';
+    if (catId == 10) catName = 'Cultural';
+    if (catId == 11) catName = 'Club Activities';
+    if (catId == 12) catName = 'General';
     if (catId == 13) catName = 'Circular';
     if (catId == 14) catName = 'Fee Payment';
+    if (json['category_name'] != null && json['category_name'].toString().isNotEmpty) {
+      catName = json['category_name'].toString();
+    }
 
     final bool delivSpk = json['deliver_speaker'] == true || json['deliverSpeaker'] == true;
     final bool delivInApp = json['deliver_in_app'] != null
