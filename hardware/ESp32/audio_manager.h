@@ -179,6 +179,12 @@ public:
       return;
     }
 
+#ifdef ECHOSPHERE_I2S_V5
+    if (tx_handle) {
+      i2s_channel_enable(tx_handle);
+    }
+#endif
+
     if (currentSampleRate != I2S_SAMPLE_RATE) {
       setSampleRate(I2S_SAMPLE_RATE);
     }
@@ -253,9 +259,31 @@ public:
     }
   }
 
-  void stopTone() {
-    silence(20);
+  void stopAudio() {
+    if (!isInitialized) return;
     isPlaying = false;
+#ifdef ECHOSPHERE_I2S_V5
+    if (tx_handle) {
+      // 1. Flush entire 48KB DMA ring with silence to eliminate looping sine wave residue
+      int16_t zeroBuf[256 * 2] = {0}; // 1024 bytes (256 stereo frames)
+      size_t written = 0;
+      for (int i = 0; i < 48; i++) {
+        i2s_channel_write(tx_handle, zeroBuf, sizeof(zeroBuf), &written, 20);
+      }
+      // 2. Disable I2S TX channel immediately so hardware DMA stops cycling
+      i2s_channel_disable(tx_handle);
+    }
+#else
+    int16_t zeroBuf[256 * 2] = {0};
+    size_t written = 0;
+    for (int i = 0; i < 48; i++) {
+      i2s_write(I2S_PORT_NUM, zeroBuf, sizeof(zeroBuf), &written, 20);
+    }
+#endif
+  }
+
+  void stopTone() {
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -596,7 +624,7 @@ public:
       Serial.println(F(" bytes delivered to 8Ω speaker)"));
     }
 
-    silence(25);
+    stopAudio();
     // Restore default sample rate for standard chimes
     setSampleRate(I2S_SAMPLE_RATE);
     isPlaying = false;
@@ -617,7 +645,7 @@ public:
     playTone(880.00f, 100);  // High A5 note (100ms)
     silence(25);
     playTone(1200.00f, 150); // Crisp confirmation note (150ms)
-    silence(30);
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -628,7 +656,7 @@ public:
     playTone(587.33f, 180); // D5
     silence(40);
     playTone(880.00f, 280); // A5
-    silence(50);
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -651,7 +679,7 @@ public:
     }
 
     currentVolume = prevVol;
-    silence(50);
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -664,7 +692,7 @@ public:
     playTone(659.25f, 130); // E5
     silence(25);
     playTone(783.99f, 200); // G5
-    silence(40);
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -674,7 +702,7 @@ public:
     playTone(880.00f, 90);
     silence(30);
     playTone(587.33f, 150);
-    silence(40);
+    stopAudio();
   }
 
   // --------------------------------------------------------------------------
@@ -689,6 +717,7 @@ public:
     }
     silence(80);
     playAttentionChime();
+    stopAudio();
     Serial.println(F("✅ [I2S AUDIO] Diagnostic test finished. 8Ω speaker verified."));
   }
 };
