@@ -55,6 +55,10 @@
     #define M_PI 3.14159265358979323846
   #endif
 
+  #ifndef ESP_IDF_VERSION_VAL
+    #define ESP_IDF_VERSION_VAL(major, minor, patch) ((major << 16) | (minor << 8) | (patch))
+  #endif
+
   // --- Arduino Core Constants ---
   #ifndef OUTPUT
     #define OUTPUT 0x01
@@ -414,6 +418,8 @@
     int read() { return -1; }
     size_t read(uint8_t*, size_t) { return 0; }
     bool connected() { return false; }
+    void setTimeout(int) {}
+    void setTimeout(unsigned long) {}
     void stop() {}
   };
   class WiFiClientSecure : public WiFiClient { public: void setInsecure() {} };
