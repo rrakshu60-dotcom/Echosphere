@@ -313,20 +313,44 @@ def archive_announcement(
     )
 
 
-def _find_cached_audio_file(announcement_id: int, tag: str, chime: str | None = None) -> tuple[str | None, str | None, str | None]:
+def _find_cached_audio_file(
+    announcement_id: int,
+    tag: str,
+    chime: str | None = None,
+    include_chime: bool = True,
+    prefer_wav: bool = False,
+) -> tuple[str | None, str | None, str | None]:
     from app.services.tts_service import STATIC_AUDIO_DIR
     if not os.path.exists(STATIC_AUDIO_DIR):
         return None, None, None
 
     candidates = []
-    if chime:
-        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.mp3")
-        candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
-    candidates.append(f"announcement_{announcement_id}_{tag}.mp3")
-    candidates.append(f"announcement_{announcement_id}_{tag}.wav")
-    for c in ["urgent_academic", "events_sports", "emergency", "standard"]:
-        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
-        candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
+    # If WAV is preferred (e.g. ESP32 hardware streaming), prioritize WAV candidates FIRST
+    if prefer_wav:
+        if not include_chime:
+            candidates.append(f"announcement_{announcement_id}_{tag}_nochime.wav")
+            candidates.append(f"announcement_{announcement_id}_{tag}.wav")
+            candidates.append(f"announcement_{announcement_id}_{tag}_nochime.mp3")
+        if chime:
+            candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
+            candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.mp3")
+        candidates.append(f"announcement_{announcement_id}_{tag}.wav")
+        candidates.append(f"announcement_{announcement_id}_{tag}.mp3")
+        for c in ["urgent_academic", "events_sports", "emergency", "standard"]:
+            candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
+            candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
+    else:
+        if not include_chime:
+            candidates.append(f"announcement_{announcement_id}_{tag}_nochime.mp3")
+            candidates.append(f"announcement_{announcement_id}_{tag}_nochime.wav")
+        if chime:
+            candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.mp3")
+            candidates.append(f"announcement_{announcement_id}_{tag}_{chime}.wav")
+        candidates.append(f"announcement_{announcement_id}_{tag}.mp3")
+        candidates.append(f"announcement_{announcement_id}_{tag}.wav")
+        for c in ["urgent_academic", "events_sports", "emergency", "standard"]:
+            candidates.append(f"announcement_{announcement_id}_{tag}_{c}.mp3")
+            candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
 
     from app.services.tts_service import is_legacy_beep_file
 
@@ -499,7 +523,13 @@ def stream_announcement_audio_endpoint(
     if clean_lang != "en":
         tag += f"_{clean_lang}"
 
-    fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
+    fname, fpath, mtype = _find_cached_audio_file(
+        announcement_id,
+        tag,
+        chime,
+        include_chime=include_chime,
+        prefer_wav=(audio_format.lower() == "wav"),
+    )
     
     # If WAV is requested for ESP32 I2S playback, ensure WAV file format
     if audio_format.lower() == "wav" and fpath and fpath.endswith(".mp3"):

@@ -362,20 +362,7 @@ async def broadcast_announcement_to_speaker(
         }
 
 
-    # 1. Generate audio stream (gracefully fallback if TTS service encounters errors)
-    audio_full_url = ""
-    try:
-        audio_info = await generate_announcement_audio(
-            announcement_id,
-            f"{title}. {content}",
-            gender=speaker_voice or "female",
-        )
-        audio_full_url = f"{base_url}{audio_info['url_path']}"
-    except Exception as e:
-        logger.warning(f"Audio generation fallback for #{announcement_id}: {e}")
-        audio_full_url = f"{base_url}/static/audio_streams/announcement_{announcement_id}.wav"
-
-    # 2. Add/Get queue item (only if valid announcement exists in database)
+    # 1. Add/Get queue item (only if valid announcement exists in database)
     from app.models.announcement import Announcement
     announcement_exists = db.query(Announcement).filter(Announcement.id == announcement_id).first()
     queue_pos = 1
@@ -427,7 +414,10 @@ async def broadcast_announcement_to_speaker(
             db.refresh(existing_item)
             queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
 
-    # 3. Publish MQTT dispatch
+    # 2. Form robust streaming audio URL directly targeting 16-bit PCM WAV for ESP32 hardware streaming
+    audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
+
+    # 3. Publish MQTT dispatch and queue command for REST-polling nodes IMMEDIATELY (sub-millisecond latency!)
     topic = f"echosphere/dept/{department_code}/speakers/command"
     if zone and zone != "College-Wide":
         topic = f"echosphere/zone/{zone}/speakers/command"
@@ -438,6 +428,7 @@ async def broadcast_announcement_to_speaker(
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
         "announcement_id": announcement_id,
         "title": title,
+        "message": content,
         "audio_url": audio_full_url,
         "zone": zone,
         "volume": 100 if is_emergency else 85,
@@ -446,6 +437,23 @@ async def broadcast_announcement_to_speaker(
 
     publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=None, db=db)
+
+    # 4. Asynchronously pre-warm the audio stream so WAV file is generated while ESP32 connects and plays attention chime
+    try:
+        import threading
+        def _prewarm_bg():
+            try:
+                generate_announcement_audio_sync(
+                    announcement_id,
+                    f"{title}. {content}",
+                    gender=speaker_voice or "female",
+                    include_chime=False,
+                )
+            except Exception as bg_e:
+                logger.warning(f"Background audio pre-warm note: {bg_e}")
+        threading.Thread(target=_prewarm_bg, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Audio pre-warm dispatch note: {e}")
 
     return {
         "status": "success",
@@ -662,19 +670,10 @@ def enqueue_and_broadcast_announcement(
         queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
         current_status = str(getattr(existing_item, "status", "Queued"))
 
-    # 2. Generate TTS audio stream (MP3 / WAV)
-    # 2. Form robust streaming audio URL (always accessible directly by laptops and ESP32)
-    audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream"
-    try:
-        generate_announcement_audio_sync(
-            announcement_id,
-            f"{title}. {content}",
-            gender=speaker_voice or "female",
-        )
-    except Exception as e:
-        logger.warning(f"Audio pre-generation note: {e}")
+    # 2. Form robust streaming audio URL directly targeting 16-bit PCM WAV for ESP32 hardware streaming
+    audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
 
-    # 3. Form payload and dispatch if ready to play
+    # 3. Form payload and dispatch IMMEDIATELY if ready to play (sub-millisecond latency!)
     if target_mac:
         topic = f"echosphere/node/{target_mac}/command"
     elif is_emergency:
@@ -707,6 +706,23 @@ def enqueue_and_broadcast_announcement(
         logger.info(f"📢 [AUTO-PLAY] Announcement #{announcement_id} ('{title}') -> Immediately playing on {topic} (Node: {target_mac or 'ALL'})")
     else:
         logger.info(f"📋 [ENQUEUED] Announcement #{announcement_id} ('{title}') -> Standing by at queue position #{queue_pos} ({current_status})")
+
+    # 4. Asynchronously pre-warm the audio stream so WAV file is generated while ESP32 connects and plays attention chime
+    try:
+        import threading
+        def _prewarm_bg():
+            try:
+                generate_announcement_audio_sync(
+                    announcement_id,
+                    f"{title}. {content}",
+                    gender=speaker_voice or "female",
+                    include_chime=False,
+                )
+            except Exception as bg_e:
+                logger.warning(f"Background audio pre-warm note: {bg_e}")
+        threading.Thread(target=_prewarm_bg, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Audio pre-warm dispatch note: {e}")
 
     return {
         "status": "success",
