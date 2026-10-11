@@ -4,8 +4,47 @@ import gradio as gr
 import soundfile as sf
 import torch
 import numpy as np
+import os
 
-# 1. Pipeline caching
+# 1. Compatibility patch for Pydantic boolean schemas in Gradio Client
+try:
+    import gradio_client.utils
+    _orig_get_type = gradio_client.utils.get_type
+    def _patched_get_type(schema):
+        if not isinstance(schema, dict):
+            return "bool" if isinstance(schema, bool) else "any"
+        return _orig_get_type(schema)
+    gradio_client.utils.get_type = _patched_get_type
+
+    _orig_json_schema = getattr(gradio_client.utils, "_json_schema_to_python_type", None)
+    if _orig_json_schema is not None:
+        def _patched_json_schema(schema, defs=None):
+            if not isinstance(schema, dict):
+                return "bool" if isinstance(schema, bool) else "any"
+            return _orig_json_schema(schema, defs)
+        gradio_client.utils._json_schema_to_python_type = _patched_json_schema
+except Exception:
+    pass
+
+# 2. Compatibility patch for HfFolder
+try:
+    import huggingface_hub
+    if not hasattr(huggingface_hub, "HfFolder"):
+        class MockHfFolder:
+            @staticmethod
+            def get_token():
+                return os.getenv("HF_TOKEN", "")
+            @staticmethod
+            def save_token(token):
+                pass
+            @staticmethod
+            def delete_token():
+                pass
+        huggingface_hub.HfFolder = MockHfFolder
+except Exception:
+    pass
+
+# 3. Pipeline caching
 pipelines = {}
 
 def get_pipeline(lang_code="a"):
@@ -15,7 +54,7 @@ def get_pipeline(lang_code="a"):
         pipelines[lang_code] = KPipeline(lang_code=lang_code, device=device)
     return pipelines[lang_code]
 
-# 2. ZeroGPU Accelerated Function
+# 4. ZeroGPU Accelerated Function
 @spaces.GPU(duration=60)
 def generate_audio(text: str, voice: str = "af_heart", speed: float = 1.0):
     clean_voice = (voice or "af_heart").strip().lower()
@@ -63,4 +102,4 @@ demo = gr.Interface(
 )
 
 if __name__ == "__main__":
-    demo.queue().launch()
+    demo.queue().launch(server_name="0.0.0.0", server_port=7860)

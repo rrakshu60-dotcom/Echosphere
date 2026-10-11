@@ -7,8 +7,6 @@ scipy
 munch
 huggingface_hub<0.25.0
 gradio>=4.20.0
-fastapi>=0.110.0
-uvicorn[standard]>=0.28.0
-pydantic>=2.0.0
+pydantic<=2.10.6
 numpy>=1.26.0
 lameenc>=1.7.0
