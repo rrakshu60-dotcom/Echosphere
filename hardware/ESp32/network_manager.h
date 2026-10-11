@@ -57,21 +57,33 @@ private:
     executedCmdIndex = (executedCmdIndex + 1) % MAX_EXECUTED_CMDS;
   }
 
+  struct CompletedNoticeRecord {
+    int annId = 0;
+    unsigned long completedAt = 0;
+  };
   static const int MAX_COMPLETED_ANNS = 16;
-  int completedAnnouncementIds[MAX_COMPLETED_ANNS] = {0};
+  CompletedNoticeRecord completedAnnouncements[MAX_COMPLETED_ANNS];
   int completedAnnIndex = 0;
 
   bool isAnnouncementCompleted(int annId) const {
     if (annId <= 0) return false;
+    unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
-      if (completedAnnouncementIds[i] == annId) return true;
+      if (completedAnnouncements[i].annId == annId) {
+        // Cooldown of 45 seconds ensures the queue advances without duplicate immediate re-triggers,
+        // while allowing repeat schedules and break slot replays after 45 seconds.
+        if (now - completedAnnouncements[i].completedAt < 45000UL) {
+          return true;
+        }
+      }
     }
     return false;
   }
 
   void markAnnouncementCompleted(int annId) {
     if (annId <= 0) return;
-    completedAnnouncementIds[completedAnnIndex] = annId;
+    completedAnnouncements[completedAnnIndex].annId = annId;
+    completedAnnouncements[completedAnnIndex].completedAt = millis();
     completedAnnIndex = (completedAnnIndex + 1) % MAX_COMPLETED_ANNS;
     lastCompletedAnnouncementId = annId;
     lastCompletedAnnouncementTime = millis();
@@ -550,7 +562,12 @@ public:
     if (mp3FormatPos >= 0) {
       streamUrl = streamUrl.substring(0, mp3FormatPos) + "audio_format=wav" + streamUrl.substring(mp3FormatPos + 16);
     } else if (streamUrl.indexOf("audio_format=") < 0) {
-      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=wav&include_chime=false" : "?audio_format=wav&include_chime=false");
+      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&audio_format=wav" : "?audio_format=wav");
+    }
+
+    // Always enforce include_chime=false because ESP32 plays local attention chime directly
+    if (streamUrl.indexOf("include_chime=") < 0) {
+      streamUrl += (streamUrl.indexOf('?') >= 0 ? "&include_chime=false" : "?include_chime=false");
     }
 
     bool streamPlayed = false;
@@ -642,8 +659,9 @@ public:
       http.begin(plainClient, url);
     }
 
-    http.setTimeout(4000);
-    int httpCode = http.POST("");
+    http.setTimeout(8000);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.POST("{}");
     if (httpCode == 200) {
       Serial.println(F("✅ [QUEUE AUTO-ADVANCE] Server acknowledged completion. Queue advanced!"));
     }
