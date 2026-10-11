@@ -186,11 +186,17 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             active_content = re.sub(r'[*_#`]', '', active_content).strip()
             active_content = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', active_content, flags=re.IGNORECASE).strip()
             active_content = re.sub(r'\s+', ' ', active_content)[:240]
+            active_title = ann.title or "Campus Notice"
+            for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+                while active_title.upper().startswith(prefix):
+                    active_title = active_title[len(prefix):].strip()
+            active_title = re.sub(r'[*_#`]', '', active_title).strip() or ann.title
+
             active_dict = {
                 "is_playing": True,
                 "id": ann.id,
                 "queue_id": active_playing.id,
-                "title": ann.title,
+                "title": active_title,
                 "content": active_content,
                 "priority": p_val,
                 "department": dept_name,
@@ -199,7 +205,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav",
             }
 
-    # 2. Daily important announcements for idle display ticker (today's notices prioritized)
+    # 2. Daily important announcements for idle display ticker (strictly today's notices in IST)
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     now_ist = now_utc + timedelta(hours=5, minutes=30)
     start_of_today_ist = datetime(now_ist.year, now_ist.month, now_ist.day)
@@ -210,6 +216,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         AnnouncementStatus.SCHEDULED,
     ]
 
+    # Query exclusively notices created/scheduled for TODAY in campus IST timezone
     published_notices = (
         db.query(Announcement)
         .filter(
@@ -220,25 +227,6 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         .limit(10)
         .all()
     )
-
-    if not published_notices:
-        published_notices = (
-            db.query(Announcement)
-            .filter(Announcement.status.in_(active_statuses))
-            .order_by(Announcement.created_at.desc())
-            .limit(10)
-            .all()
-        )
-
-    # Fallback to any recent pending approval notice so display is not blank if awaiting verification
-    if not published_notices:
-        published_notices = (
-            db.query(Announcement)
-            .filter(Announcement.status == AnnouncementStatus.PENDING_APPROVAL)
-            .order_by(Announcement.created_at.desc())
-            .limit(10)
-            .all()
-        )
 
     def priority_sort_key(a: Announcement) -> int:
         p_str = (a.priority.value if hasattr(a.priority, "value") else str(a.priority)).upper()
@@ -285,9 +273,15 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
         summary_clean = re.sub(r'[*_#`]', '', summary_raw).strip()
         summary_clean = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', summary_clean, flags=re.IGNORECASE).strip()
         summary_clean = re.sub(r'\s+', ' ', summary_clean)[:240]
+        n_title = (n.title or "Campus Notice").strip()
+        for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
+            while n_title.upper().startswith(prefix):
+                n_title = n_title[len(prefix):].strip()
+        n_title = re.sub(r'[*_#`]', '', n_title).strip() or (n.title or "Campus Notice")
+
         daily_list.append({
             "id": n.id,
-            "title": n.title,
+            "title": n_title,
             "summary": summary_clean,
             "priority": p_str,
             "department": dept_name,
