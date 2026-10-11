@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/controllers/announcement_controller.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/echosphere_ai_controller.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
@@ -801,7 +801,7 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                     final providers = routerMetrics?["active_providers"] as Map<String, dynamic>?;
                                     final gemini = providers?["gemini"] as Map<String, dynamic>?;
                                     final cf = providers?["cloudflare"] as Map<String, dynamic>?;
-                                    final gemma = providers?["fine_tuned_gemma"] as Map<String, dynamic>?;
+                                    final campusModel = providers?["fine_tuned_gemma"] as Map<String, dynamic>?;
 
                                     final geminiLatency = (gemini?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 350.0;
                                     final cfLatency = (cf?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 290.0;
@@ -811,9 +811,9 @@ class _EchosphereAiState extends State<EchosphereAi> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '\u2022 Cloudflare Workers AI: ${cf?["model"] ?? "@cf/meta/llama-3.1-8b-instruct"} (${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          '\u2022 Google Gemini Tier: ${gemini?["model"] ?? "gemini-3.6-flash"} (${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA" : "Unset"})\n'
-                                          '\u2022 Fine-Tuned Gemma 2: ${gemma?["model"] ?? "RakshiRoxy/echosphere-campus-gemma-2b"}\n'
+                                          '\u2022 High-Speed Cloud Inference: ${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA (Active)" : "Unset"}\n'
+                                          '\u2022 Primary Intelligence Tier: ${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA (Active)" : "Unset"}\n'
+                                          '\u2022 Campus Specialized Model: ${campusModel?["configured"] == true ? "Operational" : "Ready"}\n'
                                           '\u2022 Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
                                           '\u2022 Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
                                           style: const TextStyle(fontSize: 11, height: 1.5),

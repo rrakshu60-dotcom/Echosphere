@@ -330,18 +330,18 @@ class TtsAudioService extends GetxService {
       duration.value = Duration.zero;
       voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
 
-      // When summary mode is active, make sure we have the Qwen summary
+      // When summary mode is active, make sure we have the AI summary
       if (readMode.value == 'summary' && (_activeSummary == null || _activeSummary!.trim().isEmpty)) {
         statusMessage.value = 'Generating AI Summary...';
         try {
           if (_activeContent != null && _activeContent!.trim().isNotEmpty) {
-            debugPrint('[TTS] Generating AI summary using Qwen model before synthesis...');
+            debugPrint('[TTS] Generating AI summary before synthesis...');
             _activeSummary = await _api.summarizeContent(_activeContent!);
           } else if (id > 0) {
             _activeSummary = await _api.summarizeAnnouncement(id);
           }
         } catch (e) {
-          debugPrint('[TTS] Failed to generate AI summary with Qwen: $e');
+          debugPrint('[TTS] Failed to generate AI summary: $e');
         }
       }
 
@@ -392,7 +392,7 @@ class TtsAudioService extends GetxService {
             final fullUrl = rawUrl.startsWith('http') ? rawUrl : '${_api.hostUrl}$rawUrl';
             if (!_isContaminatedVoice(fullUrl, selectedGender.value)) {
               streamUrl = fullUrl;
-              engine.value = meta['engine']?.toString() ?? 'Kokoro-82M';
+              engine.value = meta['engine']?.toString() ?? 'Neural Speech Engine';
               voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
               _urlCache[cacheKey] = streamUrl;
             }
@@ -420,7 +420,7 @@ class TtsAudioService extends GetxService {
 
           if (!isLegacyBeep && fullUrl.isNotEmpty && !_isContaminatedVoice(fullUrl, selectedGender.value)) {
             streamUrl = fullUrl;
-            engine.value = audioMeta['engine']?.toString() ?? 'Kokoro-82M';
+            engine.value = audioMeta['engine']?.toString() ?? 'Neural Speech Engine';
             voiceName.value = '${selectedAccent.value.capitalize} ${selectedGender.value.capitalize}';
             _urlCache[cacheKey] = streamUrl;
           }
