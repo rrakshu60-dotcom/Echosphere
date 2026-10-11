@@ -8,66 +8,34 @@ from typing import Any
 
 def is_emergency_announcement(ann: Any) -> bool:
     """
-    Universally detects whether an announcement represents an emergency,
-    disaster, or critical campus alert across all possible representations:
-    1. emergency_level in [EMERGENCY, CRITICAL]
-    2. priority in [EMERGENCY, CRITICAL]
-    3. Category name containing 'Emergency'
-    4. Title or description containing emergency / evacuation / danger keywords
+    Detects whether an announcement represents an active emergency, disaster,
+    or critical campus alert.
+    Requires explicit emergency designation (emergency_level or priority)
+    to prevent false emergency sirens and queue lockouts on standard notices.
     """
     if not ann:
         return False
 
-    # 1. Emergency Level check
+    # 1. Emergency Level check (Primary authority)
     em_level = getattr(ann, "emergency_level", None)
-    em_str = (getattr(em_level, "value", em_level) or "").upper()
+    em_str = (getattr(em_level, "value", em_level) or "").upper().strip()
     if "EMERG" in em_str or em_str == "CRITICAL":
         return True
 
     # 2. Priority check
     prio = getattr(ann, "priority", None)
-    prio_str = (getattr(prio, "value", prio) or "").upper()
+    prio_str = (getattr(prio, "value", prio) or "").upper().strip()
     if "EMERG" in prio_str or prio_str == "CRITICAL":
         return True
 
-    # 3. Category relation check
-    cat = getattr(ann, "category", None)
-    cat_name = getattr(cat, "name", "") if cat else ""
-    if "EMERG" in str(cat_name).upper():
-        return True
+    # If emergency_level is explicitly NORMAL or LOW, strictly enforce non-emergency
+    if em_str in ("NORMAL", "LOW") and prio_str not in ("EMERGENCY", "CRITICAL"):
+        return False
 
-    cat_id_name = str(getattr(ann, "category_name", "") or "")
-    if "EMERG" in cat_id_name.upper():
-        return True
-
-    # 4. Title & Description keyword analysis
-    title = str(getattr(ann, "title", "") or "").lower()
-    desc = str(getattr(ann, "description", "") or "").lower()
-    title_desc = f"{title} {desc}"
-
-    emergency_keywords = (
-        "emergency",
-        "earthquake",
-        "evacuat",
-        "fire alert",
-        "fire alarm",
-        "immediate evacuation",
-        "siren",
-        "lockdown",
-        "hazard",
-        "gas leak",
-        "chemical spill",
-        "flood",
-        "tsunami",
-        "active threat",
-        "disaster alert",
-        "drill",
-        "danger",
-        "tremor",
-        "cyclone",
-        "explosion",
-    )
-    if any(k in title_desc for k in emergency_keywords):
+    # 3. Explicit emergency tag in title (e.g. manual [EMERGENCY REPEAT] or [EMERGENCY OVERRIDE])
+    title = str(getattr(ann, "title", "") or "").upper()
+    if "[EMERGENCY" in title or "EMERGENCY OVERRIDE" in title or "! EMERGENCY" in title:
         return True
 
     return False
+

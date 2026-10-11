@@ -185,7 +185,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                     active_content = active_content[len(prefix):].strip()
             active_content = re.sub(r'[*_#`]', '', active_content).strip()
             active_content = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', active_content, flags=re.IGNORECASE).strip()
-            active_content = re.sub(r'\s+', ' ', active_content)[:240]
+            active_content = re.sub(r'\s+', ' ', active_content)[:1500]
             active_title = ann.title or "Campus Notice"
             for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
                 while active_title.upper().startswith(prefix):
@@ -202,7 +202,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
                 "target_node_mac": target_mac,
-                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav",
+                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav&include_chime=false",
             }
 
     # 2. Daily important announcements for idle display ticker (strictly today's notices in IST)
@@ -272,7 +272,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 summary_raw = summary_raw[len(prefix):].strip()
         summary_clean = re.sub(r'[*_#`]', '', summary_raw).strip()
         summary_clean = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', summary_clean, flags=re.IGNORECASE).strip()
-        summary_clean = re.sub(r'\s+', ' ', summary_clean)[:240]
+        summary_clean = re.sub(r'\s+', ' ', summary_clean)[:800]
         n_title = (n.title or "Campus Notice").strip()
         for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:"):
             while n_title.upper().startswith(prefix):

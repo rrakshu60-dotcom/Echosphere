@@ -70,8 +70,8 @@ private:
     unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
       if (completedAnnouncements[i].annId == annId) {
-        // Cooldown of 15 seconds ensures the queue advances without duplicate immediate re-triggers
-        if (now - completedAnnouncements[i].completedAt < 15000UL) {
+        // Cooldown of 45 seconds ensures the queue advances without duplicate immediate re-triggers
+        if (now - completedAnnouncements[i].completedAt < 45000UL) {
           return true;
         }
       }
@@ -430,7 +430,7 @@ public:
               if (cmdId.length() > 0) markCommandExecuted(cmdId);
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
-              if (aId > 0 && (!isBroadcasting || activeAnnouncementId != aId)) {
+              if (aId > 0 && !isAnnouncementCompleted(aId) && (!isBroadcasting || activeAnnouncementId != aId)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
                 targetQId = cmd["queue_id"].as<int>();
@@ -620,14 +620,9 @@ public:
       displayMgr.setActiveNotice(notice, effectiveDuration);
     }
 
-    // 2. Play physical attention chime or emergency siren through MAX98357A first!
-    if (priority.equalsIgnoreCase("EMERGENCY")) {
-      audioMgr.playEmergencySiren();
-    } else {
-      audioMgr.playAttentionChime();
-    }
-
-    // 3. High-Fidelity Speech Audio Stream over HTTPS via Native I2S
+    // 2. High-Fidelity Speech Audio Stream over HTTPS via Native I2S
+    // Note: Chime/Siren is triggered seamlessly via preChimeCallback the moment
+    // the stream is connected and verified, guaranteeing 0.0s dead silence between chime and speech!
     String streamUrl = customAudioUrl;
     if (streamUrl.length() == 0 && annId > 0) {
       streamUrl = serverUrl + "/api/v1/announcements/" + String(annId) + "/audio/stream?audio_format=wav&include_chime=false";
@@ -655,19 +650,31 @@ public:
       Serial.print(F("🧠 [HEAP] Free heap before stream: "));
       Serial.println(ESP.getFreeHeap());
 
-      streamPlayed = audioMgr.playStream(streamUrl, [this]() {
-        displayMgr.renderEqualizerGraphic();
-        displayMgr.tickBroadcastCarousel();
-      });
+      streamPlayed = audioMgr.playStream(
+        streamUrl,
+        [this](float progress) {
+          displayMgr.renderEqualizerGraphic();
+          displayMgr.updateSubtitleProgress(progress);
+        },
+        [this, &priority]() {
+          if (priority.equalsIgnoreCase("EMERGENCY")) {
+            audioMgr.playEmergencySiren();
+          } else {
+            audioMgr.playAttentionChime();
+          }
+        }
+      );
 
       Serial.println(streamPlayed ? F("✅ [I2S STREAM] Notice speech playback completed successfully!") : F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
     }
 
-    // 4. Fallback melody if cloud speech streaming wasn't available
+    // 3. Fallback melody if cloud speech streaming wasn't available
     if (!streamPlayed && !priority.equalsIgnoreCase("EMERGENCY")) {
       Serial.println(F("ℹ️ [AUDIO FALLBACK] Playing campus broadcast melody..."));
+      audioMgr.playAttentionChime();
       audioMgr.playAnnouncementMelody();
     }
+
 
     // 5. Play completion chime after speech concludes
     audioMgr.playCompletionChime();

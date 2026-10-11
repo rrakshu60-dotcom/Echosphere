@@ -290,7 +290,7 @@ public:
   // Stream Lossless 16-Bit PCM WAV Audio Stream Directly to MAX98357A I2S
   // Supports HTTP & HTTPS with dynamic sample rate detection and tight buffering
   // --------------------------------------------------------------------------
-  bool playStream(const String& streamUrl, std::function<void()> visualizerCallback = {}) {
+  bool playStream(const String& streamUrl, std::function<void(float)> progressCallback = {}, std::function<void()> preChimeCallback = {}) {
     if (!isInitialized || streamUrl.length() == 0) return false;
 
     isPlaying = true;
@@ -454,6 +454,12 @@ public:
       return false;
     }
 
+    // Stream verified and ready! Sound physical attention chime or emergency siren now
+    // (Guarantees 0.0s dead silence between chime completion and speech start!)
+    if (preChimeCallback) {
+      preChimeCallback();
+    }
+
     if (sampleRate < 8000 || sampleRate > 96000) sampleRate = 24000;
     Serial.print(F("✅ [I2S AUDIO] Stream Format: "));
     Serial.print(sampleRate);
@@ -578,10 +584,11 @@ public:
       if (bytesRead > 0) {
         pushChunk(bytesRead);
 
-        // Animate visualizer at 6.6 fps (150ms) so SPI never starves the audio pipeline
-        if (visualizerCallback && (millis() - lastVizTime >= 150)) {
+        // Animate visualizer and subtitles at 6.6 fps (150ms)
+        if (progressCallback && (millis() - lastVizTime >= 150)) {
           lastVizTime = millis();
-          visualizerCallback();
+          float progress = (totalDataBytes > 0) ? ((float)totalBytesStreamed / (float)totalDataBytes) : 0.0f;
+          progressCallback(progress);
         }
 
         // Clean exit when all declared WAV data bytes have been delivered
@@ -633,7 +640,7 @@ public:
 
   // Legacy compatibility wrapper
   bool streamWavAudio(const String& streamUrl, std::function<void()> visualizerCallback = {}) {
-    return playStream(streamUrl, visualizerCallback);
+    return playStream(streamUrl, [visualizerCallback](float) { if (visualizerCallback) visualizerCallback(); }, {});
   }
 
   // --------------------------------------------------------------------------

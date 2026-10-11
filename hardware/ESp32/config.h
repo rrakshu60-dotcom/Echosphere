@@ -55,7 +55,7 @@
 #else
 #define NODE_NAME "ESP32 Smart Speaker & Live Display"
 #define NODE_MAC "D4:F3:2D:22:2A:CD"
-#define NODE_ZONE "Campus Main Corridor"
+#define NODE_ZONE "Campus Corridor"
 #define NODE_DEPARTMENT "College-Wide"
 #define NODE_DEFAULT_VOL 90
 #endif
