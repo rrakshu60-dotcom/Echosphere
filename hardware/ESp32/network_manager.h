@@ -159,6 +159,7 @@ public:
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+      WiFi.setSleep(false); // Disable Wi-Fi modem sleep to guarantee lowest latency and zero packet jitter for audio streaming!
       Serial.println();
       Serial.print(F("✅ [WIFI] Connected! Assigned IP: "));
       Serial.println(WiFi.localIP());
@@ -415,7 +416,7 @@ public:
             activeQueueId = 0;
             displayMgr.clearActiveNotice();
           }
-        } else if (respDoc["active_notice"].isNull() && !pendingBroadcastScheduled) {
+        } else if (!shouldTriggerBroadcast && respDoc["active_notice"].isNull() && !pendingBroadcastScheduled) {
           // Backend has no active notice: ensure node is never stuck on "NOW BROADCASTING"
           if (isBroadcasting || displayMgr.isBroadcasting() || displayMgr.getState() == STATE_PLAYING_ANNOUNCEMENT) {
             Serial.println(F("⏹️ [HEARTBEAT SYNC] Backend has no active notice. Exiting broadcast mode."));
@@ -594,6 +595,7 @@ public:
 
       streamPlayed = audioMgr.playStream(streamUrl, [this]() {
         displayMgr.renderEqualizerGraphic();
+        displayMgr.tickBroadcastCarousel();
       });
 
       Serial.println(streamPlayed ? F("✅ [I2S STREAM] Notice speech playback completed successfully!") : F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
@@ -629,6 +631,7 @@ public:
     // so viewers have ample time to read the notice title and text, then cleanly return to idle ticker!
     unsigned long dwellStart = millis();
     while (millis() - dwellStart < 4000UL) {
+      displayMgr.tickBroadcastCarousel();
       delay(50);
       yield();
     }
@@ -677,6 +680,8 @@ public:
     http.setTimeout(8000);
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.POST("{}");
+    Serial.print(F("⏩ [QUEUE AUTO-ADVANCE] Server HTTP code: "));
+    Serial.println(httpCode);
     if (httpCode == 200) {
       Serial.println(F("✅ [QUEUE AUTO-ADVANCE] Server acknowledged completion. Queue advanced!"));
     }
