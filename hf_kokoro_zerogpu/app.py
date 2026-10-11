@@ -8,7 +8,27 @@ from typing import Tuple, Optional
 from fastapi import FastAPI, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Fix for Gradio 4.x / huggingface_hub 1.0+ compatibility
+try:
+    import huggingface_hub
+    if not hasattr(huggingface_hub, "HfFolder"):
+        class MockHfFolder:
+            @staticmethod
+            def get_token():
+                return os.getenv("HF_TOKEN", "")
+            @staticmethod
+            def save_token(token):
+                pass
+            @staticmethod
+            def delete_token():
+                pass
+        huggingface_hub.HfFolder = MockHfFolder
+except Exception:
+    pass
+
 import gradio as gr
+
 
 # 1. ZeroGPU Safe Import & Decorator Wrapper
 try:
