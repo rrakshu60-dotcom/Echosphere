@@ -272,7 +272,7 @@ public:
 
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(15000); // 15s socket timeout
+    http.setTimeout(25000); // 25s timeout allows cloud ZeroGPU neural speech synthesis
 
     bool beginOk = false;
     if (isHttps) {
@@ -288,6 +288,8 @@ public:
     }
 
     http.addHeader("User-Agent", "EchoSphere-ESP32-Speaker/2.2");
+    http.addHeader("Accept-Encoding", "identity");
+    http.addHeader("Connection", "close");
 
     int httpCode = http.GET();
     if (httpCode != 200) {
@@ -306,7 +308,7 @@ public:
       return false;
     }
 
-    // 2. Parse WAV Header (RIFF format)
+    // 2. Parse WAV Header (RIFF WAVE format)
     uint8_t header[12];
     unsigned long startWait = millis();
     size_t headerBytesRead = 0;
@@ -316,8 +318,9 @@ public:
       else delay(2);
     }
 
-    if (headerBytesRead < 12 || header[0] != 'R' || header[1] != 'I' || header[2] != 'F' || header[3] != 'F') {
-      Serial.println(F("❌ [I2S AUDIO] Invalid RIFF header in stream response"));
+    if (headerBytesRead < 12 || header[0] != 'R' || header[1] != 'I' || header[2] != 'F' || header[3] != 'F' ||
+        header[8] != 'W' || header[9] != 'A' || header[10] != 'V' || header[11] != 'E') {
+      Serial.println(F("❌ [I2S AUDIO] Invalid RIFF WAVE header in stream response"));
       http.end();
       isPlaying = false;
       return false;
@@ -359,9 +362,10 @@ public:
                      ((uint32_t)fmtData[6] << 16) | ((uint32_t)fmtData[7] << 24);
         bitsPerSample = (uint16_t)fmtData[14] | ((uint16_t)fmtData[15] << 8);
 
-        // Skip extra header bytes if chunk > 16
+        // Skip extra header bytes if chunk > 16 (with RIFF word alignment padding)
         if (chunkSize > 16) {
           uint32_t toSkip = chunkSize - 16;
+          if (chunkSize % 2 != 0) toSkip++; // RIFF odd-byte alignment pad
           uint8_t skipBuf[64];
           while (toSkip > 0 && stream->connected() && (millis() - startWait < 8000)) {
             int r = stream->read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
@@ -377,8 +381,8 @@ public:
         break;
       }
       else {
-        // Skip unknown chunk
-        uint32_t toSkip = chunkSize;
+        // Skip unknown chunk (with RIFF word alignment padding)
+        uint32_t toSkip = (chunkSize % 2 != 0) ? (chunkSize + 1) : chunkSize;
         uint8_t skipBuf[64];
         while (toSkip > 0 && stream->connected() && (millis() - startWait < 8000)) {
           int r = stream->read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
