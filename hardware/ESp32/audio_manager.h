@@ -21,7 +21,7 @@
 
 #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   #define ECHOSPHERE_I2S_V5 1
-#elif defined(ESP_IDF_VERSION) && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0))
+#elif defined(ESP_IDF_VERSION) && defined(ESP_IDF_VERSION_VAL) && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0))
   #define ECHOSPHERE_I2S_V5 1
 #endif
 
