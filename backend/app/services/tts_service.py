@@ -149,31 +149,63 @@ def synthesize_remote_kokoro_api(
         if hf_token:
             headers["Authorization"] = f"Bearer {hf_token}"
 
-        resp = requests.post(target_url, json=payload, headers=headers, timeout=timeout)
-        if resp.status_code == 200 and len(resp.content) > 1024:
-            is_wav = resp.content[:4] == b"RIFF"
-            with open(output_path, "wb") as f:
-                f.write(resp.content)
-
-            # Ensure companion file exists for both ESP32 I2S WAV streaming and web MP3 streaming
-            if is_wav and output_path.endswith(".mp3"):
-                companion_wav = output_path[:-4] + ".wav"
-                with open(companion_wav, "wb") as f:
-                    f.write(resp.content)
-                convert_wav_to_mp3(companion_wav, output_path)
-            elif not is_wav and output_path.endswith(".wav"):
-                companion_mp3 = output_path[:-4] + ".mp3"
-                with open(companion_mp3, "wb") as f:
+        try:
+            resp = requests.post(target_url, json=payload, headers=headers, timeout=timeout)
+            if resp.status_code == 200 and len(resp.content) > 1024:
+                is_wav = resp.content[:4] == b"RIFF"
+                with open(output_path, "wb") as f:
                     f.write(resp.content)
 
-            logger.info(f"Kokoro-82M audio generated via remote worker: {output_path} ({len(resp.content)} bytes)")
-            return True
-        else:
-            logger.warning(f"Remote Kokoro worker returned status {resp.status_code}: {resp.text[:150]}")
-            return False
+                # Ensure companion file exists for both ESP32 I2S WAV streaming and web MP3 streaming
+                if is_wav and output_path.endswith(".mp3"):
+                    companion_wav = output_path[:-4] + ".wav"
+                    with open(companion_wav, "wb") as f:
+                        f.write(resp.content)
+                    convert_wav_to_mp3(companion_wav, output_path)
+                elif not is_wav and output_path.endswith(".wav"):
+                    companion_mp3 = output_path[:-4] + ".mp3"
+                    with open(companion_mp3, "wb") as f:
+                        f.write(resp.content)
+
+                logger.info(f"Kokoro-82M audio generated via remote worker: {output_path} ({len(resp.content)} bytes)")
+                return True
+        except Exception as http_err:
+            logger.debug(f"OpenAI endpoint call note: {http_err}")
+
+        # Fallback 2: Connect via Gradio Client (native Hugging Face ZeroGPU Gradio Space)
+        try:
+            from gradio_client import Client
+            import shutil
+            client = Client(api_url, hf_token=hf_token)
+            audio_path = client.predict(
+                clean,
+                voice or "af_heart",
+                1.0,
+                api_name="/synthesize"
+            )
+            if audio_path and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1024:
+                shutil.copy(audio_path, output_path)
+                with open(output_path, "rb") as f:
+                    sample_bytes = f.read(4)
+                is_wav = sample_bytes == b"RIFF"
+                if is_wav and output_path.endswith(".mp3"):
+                    companion_wav = output_path[:-4] + ".wav"
+                    shutil.copy(audio_path, companion_wav)
+                    convert_wav_to_mp3(companion_wav, output_path)
+                elif not is_wav and output_path.endswith(".wav"):
+                    companion_mp3 = output_path[:-4] + ".mp3"
+                    shutil.copy(audio_path, companion_mp3)
+
+                logger.info(f"Kokoro-82M audio generated via Gradio ZeroGPU worker: {output_path}")
+                return True
+        except Exception as g_err:
+            logger.debug(f"Gradio Space client error: {g_err}")
+
+        return False
     except Exception as e:
         logger.warning(f"Remote Kokoro worker connection error: {e}")
         return False
+
 
 
 VOICE_PROFILES = {
