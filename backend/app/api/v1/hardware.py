@@ -800,10 +800,14 @@ def reorder_speaker_queue_items(
 
 
 @router.post("/queue/{id}/action")
+@router.put("/queue/{id}/action")
+@router.post("/speaker-queue/{id}/action")
+@router.put("/speaker-queue/{id}/status")
+@router.post("/speaker-queue/{id}/status")
 def update_queue_action(
     id: int,
-    action: str,
-    request: Request,
+    action: str = "complete",
+    request: Request = None,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -813,7 +817,7 @@ def update_queue_action(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
-    base_url = str(request.base_url).rstrip("/")
+    base_url = str(request.base_url).rstrip("/") if request else "https://echosphere-backend-9lv8.onrender.com"
     act_clean = action.lower().strip()
 
     if act_clean == "complete":

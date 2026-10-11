@@ -297,6 +297,33 @@ public:
   DisplayState getState() const { return currentState; }
 
   // --------------------------------------------------------------------------
+  // Auto-Paging Carousel for Live Broadcast (Advances page every 3.5s)
+  // Can be called directly from audio streaming loops to keep LCD in sync!
+  // --------------------------------------------------------------------------
+  void tickBroadcastCarousel(unsigned long now = 0) {
+    if (!isNoticeActive || !isTftReady) return;
+    if (now == 0) now = millis();
+    if (now - lastBroadcastPageTime >= 3500) {
+      lastBroadcastPageTime = now;
+      String msg = activeNotice.summary.length() > 0 ? activeNotice.summary : activeNotice.title;
+      msg = sanitizeTitleText(msg);
+      String cleanTitle = sanitizeTitleText(activeNotice.title);
+      int titleLines = countWrappedLines(cleanTitle, 24);
+      int linesPerPage = (titleLines > 1) ? 4 : 5;
+      int totalLines = countWrappedLines(msg, 24);
+      int totalPages = (totalLines + linesPerPage - 1) / linesPerPage;
+      if (totalPages > 1) {
+        currentBroadcastPage = (currentBroadcastPage + 1) % totalPages;
+        renderPlayingContentCard();
+        Serial.print(F("📄 [LCD LIVE CAROUSEL] Rotated notice page: "));
+        Serial.print(currentBroadcastPage + 1);
+        Serial.print(F("/"));
+        Serial.println(totalPages);
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // Helper: Count total lines needed to word-wrap a given text string
   // --------------------------------------------------------------------------
   int countWrappedLines(const String& str, int maxCharsPerLine) const {
@@ -512,22 +539,7 @@ public:
     }
 
     // 3b. Synchronized Auto-Paging Carousel for Live Broadcast (Every 3.5s while active)
-    if (isNoticeActive && isTftReady) {
-      if (now - lastBroadcastPageTime >= 3500) {
-        lastBroadcastPageTime = now;
-        String msg = activeNotice.summary.length() > 0 ? activeNotice.summary : activeNotice.title;
-        msg = sanitizeTitleText(msg);
-        String cleanTitle = sanitizeTitleText(activeNotice.title);
-        int titleLines = countWrappedLines(cleanTitle, 24);
-        int linesPerPage = (titleLines > 1) ? 4 : 5;
-        int totalLines = countWrappedLines(msg, 24);
-        int totalPages = (totalLines + linesPerPage - 1) / linesPerPage;
-        if (totalPages > 1) {
-          currentBroadcastPage = (currentBroadcastPage + 1) % totalPages;
-          renderPlayingContentCard();
-        }
-      }
-    }
+    tickBroadcastCarousel(now);
 
     // 4. Smooth Rotation of Daily Notices (Paginated & Multi-Notice Rotation)
     // When idle and notices exist, smoothly displays notice pages every 4s, and rotates notices!
@@ -593,7 +605,6 @@ public:
     int eqMaxHeight = 16;
     int waveHeights[16] = {3, 8, 14, 16, 11, 5, 13, 15, 9, 12, 6, 14, 10, 4, 16, 7};
 
-    tft.startWrite();
     for (int i = 0; i < 16; i++) {
       int newH = waveHeights[(i + animFrame) % 16];
       int oldH = prevBarHeights[i];
@@ -613,14 +624,12 @@ public:
         prevBarHeights[i] = newH;
       }
     }
-    tft.endWrite();
     animFrame = (animFrame + 1) % 16;
   }
 
   void resetEqualizerGraphic() {
     if (!isTftReady) return;
     int eqBottom = 110;
-    tft.startWrite();
     for (int i = 0; i < 16; i++) {
       int oldH = prevBarHeights[i];
       int barX = 8 + (i * 9);
@@ -630,7 +639,6 @@ public:
         prevBarHeights[i] = 0;
       }
     }
-    tft.endWrite();
   }
 
 private:

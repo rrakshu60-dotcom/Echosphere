@@ -485,6 +485,24 @@ def send_node_control_command(
         "timestamp": utc_now().isoformat(),
     }
 
+    if announcement_id:
+        from app.models.announcement import Announcement
+        ann = db.query(Announcement).filter(Announcement.id == announcement_id).first()
+        if ann:
+            dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
+            p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
+            active_content = (ann.ai_summary or ann.description or "").strip()
+            active_title = (ann.title or "Campus Notice").strip()
+            words = len((active_title + " " + active_content).split())
+            dur_secs = max(15, int(words / 2.5))
+            payload["title"] = active_title
+            payload["content"] = active_content
+            payload["message"] = active_content
+            payload["priority"] = p_val
+            payload["department"] = dept_name
+            payload["duration_seconds"] = dur_secs
+            payload["audio_url"] = f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav"
+
     publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=str(node.mac_address) if getattr(node, "mac_address", None) else None, db=db)
 

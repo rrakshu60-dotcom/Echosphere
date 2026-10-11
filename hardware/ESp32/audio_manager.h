@@ -51,6 +51,8 @@ public:
 #ifdef ECHOSPHERE_I2S_V5
     if (tx_handle == nullptr) {
       i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+      chan_cfg.dma_desc_num = 24;  // 24 descriptors * 512 frames = 12,288 frames = 512ms buffer headroom!
+      chan_cfg.dma_frame_num = 512;
       esp_err_t err = i2s_new_channel(&chan_cfg, &tx_handle, NULL);
       if (err != ESP_OK) {
         Serial.print(F("❌ [I2S AUDIO] i2s_new_channel failed: "));
@@ -125,15 +127,32 @@ public:
     if (rate == currentSampleRate || rate < 8000 || rate > 96000) return;
 #ifdef ECHOSPHERE_I2S_V5
     if (tx_handle) {
-      i2s_channel_disable(tx_handle);
+      esp_err_t d_err = i2s_channel_disable(tx_handle);
       i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(rate);
-      i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg);
-      i2s_channel_enable(tx_handle);
+      esp_err_t c_err = i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg);
+      esp_err_t e_err = i2s_channel_enable(tx_handle);
+      Serial.print(F("🎛️ [I2S CLOCK] Reconfigured sample rate to "));
+      Serial.print(rate);
+      Serial.print(F("Hz (d:"));
+      Serial.print(d_err);
+      Serial.print(F(", c:"));
+      Serial.print(c_err);
+      Serial.print(F(", e:"));
+      Serial.print(e_err);
+      Serial.println(F(")"));
     }
 #else
     i2s_set_clk(I2S_PORT_NUM, rate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 #endif
     currentSampleRate = rate;
+
+    #if defined(PIN_I2S_SD) && (PIN_I2S_SD >= 0)
+      pinMode(PIN_I2S_SD, OUTPUT);
+      digitalWrite(PIN_I2S_SD, HIGH); // Keep MAX98357A amplifier active
+    #endif
+
+    delay(40); // 40ms continuous clock lock window for MAX98357A internal PLL
+    silence(15); // Prime I2S DMA pipeline with clean silence
   }
 
   void setVolume(int vol) {
@@ -170,7 +189,7 @@ public:
     float amplitude = (32767.0f * (currentVolume / 100.0f)) * 0.90f;
     unsigned long totalSamples = (I2S_SAMPLE_RATE * durationMs) / 1000UL;
 
-    int16_t sampleBuffer[BUFFER_SAMPLES_COUNT * 2]; // Stereo (Left + Right)
+    static int16_t sampleBuffer[BUFFER_SAMPLES_COUNT * 2]; // Stereo (Left + Right)
     float phase = 0.0f;
     float phaseIncrement = (2.0f * M_PI * frequency) / I2S_SAMPLE_RATE;
 
@@ -263,10 +282,10 @@ public:
     bool isHttps = streamUrl.startsWith("https://");
     if (isHttps) {
       secureClient.setInsecure(); // Skip certificate verification for low memory overhead
-      secureClient.setTimeout(25);
+      secureClient.setTimeout(25000); // 25s socket timeout (in milliseconds!)
       clientPtr = &secureClient;
     } else {
-      plainClient.setTimeout(20);
+      plainClient.setTimeout(20000); // 20s socket timeout (in milliseconds!)
       clientPtr = &plainClient;
     }
 
@@ -292,6 +311,9 @@ public:
     http.addHeader("Connection", "close");
 
     int httpCode = http.GET();
+    Serial.print(F("🌐 [I2S AUDIO] Cloud stream HTTP status: "));
+    Serial.println(httpCode);
+
     if (httpCode != 200) {
       Serial.print(F("❌ [I2S AUDIO] HTTP GET failed with code: "));
       Serial.println(httpCode);
@@ -299,6 +321,11 @@ public:
       isPlaying = false;
       return false;
     }
+
+    int contentLength = http.getSize();
+    Serial.print(F("📦 [I2S AUDIO] Stream Content-Length: "));
+    Serial.print(contentLength);
+    Serial.println(F(" bytes"));
 
     WiFiClient* stream = http.getStreamPtr();
     if (!stream) {
@@ -312,7 +339,7 @@ public:
     uint8_t header[12];
     unsigned long startWait = millis();
     size_t headerBytesRead = 0;
-    while (headerBytesRead < 12 && stream->connected() && (millis() - startWait < 8000)) {
+    while (headerBytesRead < 12 && (stream->connected() || stream->available()) && (millis() - startWait < 8000)) {
       int r = stream->read(header + headerBytesRead, 12 - headerBytesRead);
       if (r > 0) headerBytesRead += r;
       else delay(2);
@@ -333,10 +360,10 @@ public:
     uint32_t totalDataBytes = 0;
     bool foundData = false;
 
-    while (stream->connected() && (millis() - startWait < 8000)) {
+    while ((stream->connected() || stream->available()) && (millis() - startWait < 8000)) {
       uint8_t chunkHeader[8];
       size_t chRead = 0;
-      while (chRead < 8 && stream->connected() && (millis() - startWait < 8000)) {
+      while (chRead < 8 && (stream->connected() || stream->available()) && (millis() - startWait < 8000)) {
         int r = stream->read(chunkHeader + chRead, 8 - chRead);
         if (r > 0) chRead += r;
         else delay(2);
@@ -350,7 +377,7 @@ public:
       if (chunkHeader[0] == 'f' && chunkHeader[1] == 'm' && chunkHeader[2] == 't' && chunkHeader[3] == ' ') {
         uint8_t fmtData[16];
         size_t fmtRead = 0;
-        while (fmtRead < 16 && stream->connected() && (millis() - startWait < 8000)) {
+        while (fmtRead < 16 && (stream->connected() || stream->available()) && (millis() - startWait < 8000)) {
           int r = stream->read(fmtData + fmtRead, 16 - fmtRead);
           if (r > 0) fmtRead += r;
           else delay(2);
@@ -367,7 +394,7 @@ public:
           uint32_t toSkip = chunkSize - 16;
           if (chunkSize % 2 != 0) toSkip++; // RIFF odd-byte alignment pad
           uint8_t skipBuf[64];
-          while (toSkip > 0 && stream->connected() && (millis() - startWait < 8000)) {
+          while (toSkip > 0 && (stream->connected() || stream->available()) && (millis() - startWait < 8000)) {
             int r = stream->read(skipBuf, (int)min((uint32_t)sizeof(skipBuf), toSkip));
             if (r > 0) toSkip -= r;
             else delay(2);
@@ -411,76 +438,120 @@ public:
     // Dynamically lock hardware clock to stream rate
     setSampleRate(sampleRate);
 
-    // 3. Audio Streaming Loop
-    const int CHUNK_SAMPLES = 256;
-    int16_t rawChunk[CHUNK_SAMPLES * 2];
-    int16_t stereoChunk[CHUNK_SAMPLES * 2];
+    // 3. Audio Streaming Setup with Jitter Pre-Buffering & DMA Cushion
+    const int CHUNK_SAMPLES = 512; // 1024 bytes mono PCM per chunk (well-matched to network TCP/TLS MTU)
+    static uint8_t rawChunkBytes[CHUNK_SAMPLES * 4 + 4]; // Buffer for mono or stereo raw network bytes
+    static int16_t stereoChunk[CHUNK_SAMPLES * 2];
+
+    uint8_t oddCarryByte = 0;
+    bool hasOddCarry = false;
+
+    // Headroom factor 0.75: Prevents MAX98357A internal amplifier clipping distortion while maintaining robust, room-filling volume
+    float gainMultiplier = (currentVolume / 100.0f) * 0.75f;
 
     unsigned long lastDataTime = millis();
     unsigned long lastVizTime = millis();
     unsigned long totalBytesStreamed = 0;
     unsigned long streamStartTime = millis();
+    int chunkBytesTarget = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
 
-    while (stream->connected() || stream->available()) {
-      int bytesToRead = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
+    // Helper lambda to fetch up to targetLen bytes reliably from the network stream
+    auto fetchChunk = [&](int targetLen) -> int {
+      int gathered = 0;
+      if (hasOddCarry) {
+        rawChunkBytes[0] = oddCarryByte;
+        gathered = 1;
+        hasOddCarry = false;
+      }
+      unsigned long wStart = millis();
+      while (gathered < targetLen && (stream->connected() || stream->available())) {
+        int toRead = targetLen - gathered;
+        int r = stream->read(rawChunkBytes + gathered, toRead);
+        if (r > 0) {
+          gathered += r;
+          wStart = millis();
+        } else {
+          if (!stream->connected() && stream->available() <= 0) break;
+          if (millis() - wStart > 80) break; // 80ms socket pause tolerance
+          delay(1);
+          yield();
+        }
+      }
+      return gathered;
+    };
 
-      int bytesRead = stream->read((uint8_t*)rawChunk, bytesToRead);
+    // Helper lambda to process and push a gathered chunk directly to I2S DMA
+    auto pushChunk = [&](int bytesRead) {
+      if (bytesRead <= 0) return;
+      lastDataTime = millis();
+
+      // 100% Guaranteed 16-bit PCM word alignment:
+      // If an odd byte was read, save the dangling byte for the next chunk!
+      if (bytesRead % 2 != 0) {
+        oddCarryByte = rawChunkBytes[bytesRead - 1];
+        hasOddCarry = true;
+        bytesRead--;
+      }
+
+      totalBytesStreamed += bytesRead;
+      int samplesRead = bytesRead / 2;
+      int16_t* srcSamples = (int16_t*)rawChunkBytes;
+
+      if (channels == 1) {
+        for (int i = 0; i < samplesRead; i++) {
+          int16_t s = (int16_t)((float)srcSamples[i] * gainMultiplier);
+          stereoChunk[i * 2]     = s;
+          stereoChunk[i * 2 + 1] = s;
+        }
+        size_t written = 0;
+#ifdef ECHOSPHERE_I2S_V5
+        if (tx_handle) {
+          i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 500);
+        }
+#else
+        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
+#endif
+      } else {
+        for (int i = 0; i < samplesRead; i++) {
+          stereoChunk[i] = (int16_t)((float)srcSamples[i] * gainMultiplier);
+        }
+        size_t written = 0;
+#ifdef ECHOSPHERE_I2S_V5
+        if (tx_handle) {
+          i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 500);
+        }
+#else
+        i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
+#endif
+      }
+    };
+
+    // Pre-fill I2S DMA buffer with audio chunks before entering the main loop!
+    // This creates an unbreakable DMA cushion that eliminates network jitter and absorbs SPI redraw latency!
+    Serial.println(F("⚡ [I2S AUDIO] Pre-buffering audio into DMA pipeline..."));
+    int prefillChunks = 0;
+    while (prefillChunks < 8 && (stream->connected() || stream->available())) {
+      int n = fetchChunk(chunkBytesTarget);
+      if (n > 0) {
+        pushChunk(n);
+        prefillChunks++;
+      } else {
+        break;
+      }
+    }
+    Serial.print(F("✅ [I2S AUDIO] Pre-buffering complete: "));
+    Serial.print(totalBytesStreamed);
+    Serial.println(F(" bytes queued into DMA. Starting smooth playback!"));
+
+    // Main Streaming Loop
+    while (stream->connected() || stream->available() || hasOddCarry) {
+      int bytesRead = fetchChunk(chunkBytesTarget);
 
       if (bytesRead > 0) {
-        lastDataTime = millis();
+        pushChunk(bytesRead);
 
-        // 16-bit PCM word-alignment guard: ensure even number of bytes
-        if (bytesRead % 2 != 0) {
-          int extra = stream->read();
-          if (extra >= 0) {
-            ((uint8_t*)rawChunk)[bytesRead++] = (uint8_t)extra;
-          } else {
-            bytesRead--; // Drop dangling odd byte
-          }
-        }
-
-        totalBytesStreamed += bytesRead;
-        int samplesRead = bytesRead / 2;
-
-        // Scale volume and duplicate mono to stereo
-        if (channels == 1) {
-          for (int i = 0; i < samplesRead; i++) {
-            int16_t s = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-            stereoChunk[i * 2]     = s;
-            stereoChunk[i * 2 + 1] = s;
-          }
-          size_t written = 0;
-#ifdef ECHOSPHERE_I2S_V5
-          if (tx_handle) {
-            esp_err_t err = i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 100);
-            if (err != ESP_OK) {
-              i2s_channel_enable(tx_handle);
-              i2s_channel_write(tx_handle, stereoChunk, samplesRead * 4, &written, 100);
-            }
-          }
-#else
-          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 4, &written, portMAX_DELAY);
-#endif
-        } else {
-          for (int i = 0; i < samplesRead; i++) {
-            stereoChunk[i] = (int16_t)(((int32_t)rawChunk[i] * currentVolume) / 100);
-          }
-          size_t written = 0;
-#ifdef ECHOSPHERE_I2S_V5
-          if (tx_handle) {
-            esp_err_t err = i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 100);
-            if (err != ESP_OK) {
-              i2s_channel_enable(tx_handle);
-              i2s_channel_write(tx_handle, stereoChunk, samplesRead * 2, &written, 100);
-            }
-          }
-#else
-          i2s_write(I2S_PORT_NUM, stereoChunk, samplesRead * 2, &written, portMAX_DELAY);
-#endif
-        }
-
-        // Animate visualizer periodically
-        if (visualizerCallback && (millis() - lastVizTime >= 65)) {
+        // Animate visualizer at 6.6 fps (150ms) so SPI never starves the audio pipeline
+        if (visualizerCallback && (millis() - lastVizTime >= 150)) {
           lastVizTime = millis();
           visualizerCallback();
         }
@@ -496,16 +567,16 @@ public:
         if (!stream->connected() && stream->available() <= 0) {
           break; // Stream ended cleanly
         }
-        if (millis() - lastDataTime > 3000) {
-          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (3s without data)"));
+        if (millis() - lastDataTime > 4000) {
+          Serial.println(F("⚠️ [I2S AUDIO] Stream idle timeout (4s without data)"));
           break;
         }
         delay(2);
       }
 
-      // Safety timeout guard: max 45s per announcement stream
-      if (millis() - streamStartTime > 45000UL) {
-        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded 45s safety limit. Stopping."));
+      // Safety timeout guard: max 50s per announcement stream
+      if (millis() - streamStartTime > 50000UL) {
+        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded safety limit. Stopping."));
         break;
       }
 
