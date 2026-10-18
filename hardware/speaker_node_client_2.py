@@ -327,6 +327,108 @@ def download_and_play_stream(server_url: str, audio_url: str, volume: int = 90, 
 
 
 # -----------------------------------------------------------------------------
+# Real-Time Binary Live Microphone PA Player Subsystem (WinMM waveOut)
+# -----------------------------------------------------------------------------
+import ctypes
+
+class WAVEFORMATEX(ctypes.Structure):
+    _fields_ = [
+        ('wFormatTag', ctypes.c_ushort),
+        ('nChannels', ctypes.c_ushort),
+        ('nSamplesPerSec', ctypes.c_uint),
+        ('nAvgBytesPerSec', ctypes.c_uint),
+        ('nBlockAlign', ctypes.c_ushort),
+        ('wBitsPerSample', ctypes.c_ushort),
+        ('cbSize', ctypes.c_ushort),
+    ]
+
+class WAVEHDR(ctypes.Structure):
+    pass
+WAVEHDR._fields_ = [
+    ('lpData', ctypes.c_char_p),
+    ('dwBufferLength', ctypes.c_uint),
+    ('dwBytesRecorded', ctypes.c_uint),
+    ('dwUser', ctypes.c_void_p),
+    ('dwFlags', ctypes.c_uint),
+    ('dwLoops', ctypes.c_uint),
+    ('lpNext', ctypes.POINTER(WAVEHDR)),
+    ('reserved', ctypes.c_void_p),
+]
+
+class LiveMicPcmPlayer:
+    """Ultra-low latency streaming PCM audio player using native WinMM waveOut on Windows."""
+    def __init__(self, sample_rate: int = 16000, channels: int = 1, bits_per_sample: int = 16):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.bits_per_sample = bits_per_sample
+        self.hWaveOut = None
+        self._lock = threading.Lock()
+        self._is_open = False
+        self._active_buffers = []
+
+    def open(self) -> bool:
+        with self._lock:
+            if self._is_open:
+                return True
+            if sys.platform != "win32":
+                return False
+            try:
+                winmm = ctypes.windll.winmm
+                wfx = WAVEFORMATEX()
+                wfx.wFormatTag = 1 # WAVE_FORMAT_PCM
+                wfx.nChannels = self.channels
+                wfx.nSamplesPerSec = self.sample_rate
+                wfx.wBitsPerSample = self.bits_per_sample
+                wfx.nBlockAlign = (self.channels * self.bits_per_sample) // 8
+                wfx.nAvgBytesPerSec = self.sample_rate * wfx.nBlockAlign
+                wfx.cbSize = 0
+
+                h = ctypes.c_void_p()
+                res = winmm.waveOutOpen(ctypes.byref(h), -1, ctypes.byref(wfx), 0, 0, 0)
+                if res == 0:
+                    self.hWaveOut = h
+                    self._is_open = True
+                    return True
+            except Exception as e:
+                logger.debug(f"waveOutOpen error: {e}")
+        return False
+
+    def write_chunk(self, chunk_bytes: bytes):
+        if not self._is_open or not self.hWaveOut or not chunk_bytes:
+            return
+        with self._lock:
+            try:
+                winmm = ctypes.windll.winmm
+                hdr = WAVEHDR()
+                buf = ctypes.create_string_buffer(chunk_bytes)
+                hdr.lpData = ctypes.cast(buf, ctypes.c_char_p)
+                hdr.dwBufferLength = len(chunk_bytes)
+                hdr.dwFlags = 0
+                winmm.waveOutPrepareHeader(self.hWaveOut, ctypes.byref(hdr), ctypes.sizeof(hdr))
+                winmm.waveOutWrite(self.hWaveOut, ctypes.byref(hdr), ctypes.sizeof(hdr))
+                self._active_buffers.append((hdr, buf))
+                if len(self._active_buffers) > 80:
+                    self._active_buffers.pop(0)
+            except Exception as e:
+                logger.debug(f"waveOutWrite error: {e}")
+
+    def close(self):
+        with self._lock:
+            if not self._is_open:
+                return
+            try:
+                winmm = ctypes.windll.winmm
+                if self.hWaveOut:
+                    winmm.waveOutReset(self.hWaveOut)
+                    winmm.waveOutClose(self.hWaveOut)
+            except Exception:
+                pass
+            self.hWaveOut = None
+            self._is_open = False
+            self._active_buffers.clear()
+
+
+# -----------------------------------------------------------------------------
 # Speaker Node 2 Client Engine
 # -----------------------------------------------------------------------------
 class SpeakerNode2Client:
@@ -350,6 +452,9 @@ class SpeakerNode2Client:
         self._playback_lock = threading.Lock()
         self._current_stop_event: Optional[threading.Event] = None
         self._is_paused = False
+
+        # Live Real-Time Microphone PA Streaming Player
+        self.live_mic_player = LiveMicPcmPlayer(sample_rate=16000, channels=1, bits_per_sample=16)
 
     def print_banner(self):
         print("\n" + "═" * 70)
@@ -647,6 +752,71 @@ class SpeakerNode2Client:
             logger.info("✅ [DIAGNOSTIC COMPLETE] Self-test finished.")
             self.current_status = "ONLINE"
 
+    def _run_live_mic_listener(self):
+        """
+        Maintains a persistent, low-latency WebSocket connection to receive
+        real-time binary audio frames (16kHz 16-bit PCM) for Live Campus PA broadcasts.
+        """
+        import urllib.parse
+        try:
+            from websockets.sync.client import connect
+        except ImportError:
+            logger.warning("websockets package not found; live mic PA streaming disabled.")
+            return
+
+        ws_proto = "wss" if self.server_url.startswith("https") else "ws"
+        host = self.server_url.split("://", 1)[-1].rstrip("/")
+        params = urllib.parse.urlencode({
+            "mac_address": self.mac_address,
+            "zone": self.zone,
+            "dept": self.department,
+        })
+        ws_url = f"{ws_proto}://{host}/api/v1/ws/hardware/mic-listen?{params}"
+
+        while self.is_running:
+            try:
+                logger.info(f"🎙️ [LIVE PA] Connecting to live PA audio channel: {ws_url}")
+                with connect(ws_url, close_timeout=2) as ws:
+                    logger.info("✅ [LIVE PA] Connected! Armed for live corridor PA broadcast frames.")
+                    for message in ws:
+                        if not self.is_running:
+                            break
+                        if isinstance(message, bytes):
+                            self.live_mic_player.write_chunk(message)
+                        elif isinstance(message, str):
+                            try:
+                                data = json.loads(message)
+                                event = data.get("event")
+                                if event == "START_MIC_STREAM":
+                                    broadcaster = data.get("broadcaster", "Campus Admin")
+                                    target_z = data.get("zone", "College-Wide")
+                                    is_emerg = data.get("is_emergency", False)
+                                    logger.info(
+                                        f"🚨 [LIVE PA ACTIVE] {broadcaster} broadcasting to {target_z} (Emergency={is_emerg})"
+                                    )
+                                    # Preempt any active regular announcement
+                                    if self._current_stop_event:
+                                        self._current_stop_event.set()
+                                    self.current_status = "LIVE_BROADCAST"
+                                    if is_emerg:
+                                        play_emergency_siren()
+                                    else:
+                                        play_attention_chime()
+                                    self.live_mic_player.open()
+
+                                elif event == "STOP_MIC_STREAM":
+                                    dur = data.get("duration_seconds", 0)
+                                    logger.info(f"⏹️ [LIVE PA ENDED] Broadcast finished ({dur}s). Restoring queue.")
+                                    self.live_mic_player.close()
+                                    self.current_status = "ONLINE"
+                            except Exception:
+                                pass
+            except Exception as e:
+                self.live_mic_player.close()
+                if self.is_running:
+                    logger.debug(f"[LIVE PA] Listener reconnect note: {e}")
+                    time.sleep(3.5)
+
     def run(self):
         """Main service loop."""
         import atexit
@@ -655,10 +825,15 @@ class SpeakerNode2Client:
         self.print_banner()
         self.register()
 
+        # Start live microphone PA audio listener in a dedicated low-latency thread
+        mic_thread = threading.Thread(target=self._run_live_mic_listener, daemon=True)
+        mic_thread.start()
+
         def handle_exit(signum=None, frame=None):
             if self.is_running:
                 logger.info("Shutting down Node 2...")
                 self.is_running = False
+                self.live_mic_player.close()
                 self.send_offline()
 
         try:

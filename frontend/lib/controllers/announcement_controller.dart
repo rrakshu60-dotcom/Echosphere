@@ -822,19 +822,21 @@ class AnnouncementController extends GetxController {
     if (!Get.testMode) {
       try {
         final api = EchosphereApiService();
-        // Fetch public notices and approval queue concurrently in parallel
-        final results = await Future.wait([
-          api.getAnnouncements().catchError((err) {
-            debugPrint('Public announcements fetch notice: $err');
-            return <dynamic>[];
-          }),
-          api.getApprovalQueue().catchError((err) {
-            debugPrint('Approval queue fetch notice: $err');
-            return <dynamic>[];
-          }),
-        ]);
-        final publicData = results[0];
-        final queueData = results[1];
+        final auth = Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
+        final isStudent = (auth?.currentUser.value?.role ?? 'Student').toLowerCase() == 'student';
+
+        // Fetch public notices and approval queue (approval queue only for faculty/admin)
+        final List<dynamic> publicData = await api.getAnnouncements().catchError((err) {
+          debugPrint('Public announcements fetch notice: $err');
+          return <dynamic>[];
+        });
+
+        final List<dynamic> queueData = isStudent
+            ? <dynamic>[]
+            : await api.getApprovalQueue().catchError((err) {
+                debugPrint('Approval queue fetch notice: $err');
+                return <dynamic>[];
+              });
 
         final List<AnnouncementModel> fetched = [];
         if (publicData.isNotEmpty) {
@@ -951,6 +953,7 @@ class AnnouncementController extends GetxController {
     final authController = Get.find<AuthController>();
     final user = authController.currentUser.value;
     final userRole = user?.role ?? 'Student';
+    if (userRole == 'Student') return [];
     final userDept = (user?.department ?? '').trim().toLowerCase();
 
     final filtered = _rawAnnouncements.where((a) {
@@ -977,8 +980,9 @@ class AnnouncementController extends GetxController {
   List<AnnouncementModel> get mySubmissions {
     final authController = Get.find<AuthController>();
     final user = authController.currentUser.value;
+    final userRole = user?.role ?? 'Student';
+    if (userRole == 'Student') return [];
     final userName = (user?.fullName ?? '').trim().toLowerCase();
-    final userRole = user?.role ?? 'Teacher';
 
     if (userRole == 'Teacher' && userName.isNotEmpty) {
       final mine = _rawAnnouncements.where((a) {
@@ -1448,6 +1452,66 @@ class AnnouncementController extends GetxController {
           _persistedRejectedIds.map((e) => e.toString()).toList(),
         );
       } catch (_) {}
+      await fetchAnnouncements();
+      return false;
+    }
+  }
+
+  Future<bool> batchModerateAnnouncements({
+    required List<int> ids,
+    required String action,
+    String? remarks,
+  }) async {
+    if (ids.isEmpty) return true;
+    final normalizedAction = action.toUpperCase();
+
+    // 0ms Optimistic UI updates -- save original snapshots for rollback
+    final snapshots = <int, AnnouncementModel>{};
+    final now = DateTime.now();
+    for (final id in ids) {
+      final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+      if (idx != -1) {
+        snapshots[id] = _rawAnnouncements[idx];
+        final old = _rawAnnouncements[idx];
+        _rawAnnouncements[idx] = old.copyWith(
+          status: normalizedAction == 'APPROVE' ? 'PUBLISHED' : 'REJECTED',
+          remarks: remarks ?? (normalizedAction == 'APPROVE' ? 'Batch approved by Administrator' : 'Batch rejected'),
+          speakerStatus: normalizedAction == 'APPROVE' && old.deliverSpeaker ? 'Queued' : old.speakerStatus,
+          approvedAt: now,
+        );
+      }
+    }
+    _rawAnnouncements.refresh();
+    update();
+
+    try {
+      final res = await EchosphereApiService().batchModerateAnnouncements(
+        ids: ids,
+        action: normalizedAction,
+        remarks: remarks,
+      );
+      if (normalizedAction == 'APPROVE') {
+        for (final id in ids) {
+          await _recordApprovedNoticeId(id);
+        }
+      } else {
+        for (final id in ids) {
+          await _recordRejectedNoticeId(id);
+        }
+      }
+      await fetchAnnouncements();
+      return res['success'] == true;
+    } catch (e) {
+      debugPrint('Batch moderation API error: $e');
+      // Rollback optimistic updates on API failure
+      snapshots.forEach((id, original) {
+        final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
+        if (idx != -1) {
+          _rawAnnouncements[idx] = original;
+        }
+      });
+      _rawAnnouncements.refresh();
+      update();
       await fetchAnnouncements();
       return false;
     }

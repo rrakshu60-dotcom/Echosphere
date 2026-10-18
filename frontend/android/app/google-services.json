@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "655963122485",
-    "project_id": "echosphere-ryan7",
-    "storage_bucket": "echosphere-ryan7.firebasestorage.app"
+    "project_number": "808301080990",
+    "project_id": "echosphere-3bcc0",
+    "storage_bucket": "echosphere-3bcc0.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:655963122485:android:928a151d682058a33dba7c",
+        "mobilesdk_app_id": "1:808301080990:android:2bed6554aeca7090c1268f",
         "android_client_info": {
           "package_name": "com.roxy.echosphere"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyB5sGDX3VFXZn8Co4FaeODwQzqT3H1ifK0"
+          "current_key": "AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E"
         }
       ],
       "services": {

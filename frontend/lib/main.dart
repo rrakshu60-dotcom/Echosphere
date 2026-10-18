@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -18,6 +18,7 @@ import 'package:echosphere/screens/announcements/archive_page.dart';
 import 'package:echosphere/screens/notifications/notifications_page.dart';
 import 'package:echosphere/screens/profile/profile_page.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/fcm_push_service.dart';
 import 'package:echosphere/utils/external_font_loader.dart';
 import 'package:echosphere/utils/logger.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_splash_screen.dart';
@@ -82,6 +83,10 @@ void main(List<String> args) async {
         anonKey: 'sb_publishable_0h1jDPae3piItxkSaJEuqA_aUWgFuDe',
       );
     }, errorMessage: 'Failed to initialize Supabase');
+
+    await safeCall(() async {
+      await FcmPushService.instance.initialize();
+    }, errorMessage: 'Failed to initialize Firebase Push Notifications');
 
     await safeCall(() async {
       if (!kIsWeb && !Platform.isLinux) {

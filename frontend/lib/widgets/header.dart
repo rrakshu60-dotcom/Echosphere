@@ -1,4 +1,4 @@
-﻿import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/theme.dart';
 import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
@@ -109,7 +109,7 @@ class Header extends StatelessWidget {
               return const SizedBox.shrink();
             }
             final auth = Get.find<AuthController>();
-            if (auth.currentUser.value == null) {
+            if (auth.currentUser.value == null || auth.isStudent) {
               return const SizedBox.shrink();
             }
 

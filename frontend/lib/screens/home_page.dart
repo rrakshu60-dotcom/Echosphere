@@ -5,8 +5,8 @@ import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/screens/announcements/approval_queue_page.dart';
+import 'package:echosphere/screens/announcements/archive_page.dart';
 import 'package:echosphere/screens/announcements/create_announcement_dialog.dart';
-import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
 import 'package:echosphere/screens/home/home_dashboard_widgets.dart';
 import 'package:echosphere/screens/notifications/notifications_page.dart';
 import 'package:echosphere/screens/profile/profile_page.dart';
@@ -204,7 +204,7 @@ class _HomePageState extends State<HomePage> {
     if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondPage = const ApprovalQueuePage();
     } else {
-      secondPage = const SpeakerQueuePage();
+      secondPage = const ArchivePage();
     }
 
     return [
@@ -220,9 +220,9 @@ class _HomePageState extends State<HomePage> {
     final user = authController.currentUser.value;
     final role = user?.role ?? 'Student';
 
-    IconData secondSelectedIcon = Icons.podcasts_rounded;
-    IconData secondUnselectedIcon = Icons.podcasts_outlined;
-    String secondLabel = 'Broadcasts';
+    IconData secondSelectedIcon = Icons.inventory_2_rounded;
+    IconData secondUnselectedIcon = Icons.inventory_2_outlined;
+    String secondLabel = 'Archive';
 
     if (role == 'HoD' || role == 'Teacher' || role == 'Developer' || role == 'College Admin' || role == 'Principal' || role == 'Dev Admin') {
       secondSelectedIcon = Icons.fact_check_rounded;

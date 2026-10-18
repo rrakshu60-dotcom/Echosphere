@@ -61,8 +61,12 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     super.initState();
     _aiSummary = widget.announcement.aiSummary;
     _fetchCalendarEvent();
-    _fetchRepeatSchedule();
-    _fetchVipProtocol();
+    final auth = Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
+    final isStudent = (auth?.currentUser.value?.role ?? 'Student').toLowerCase() == 'student';
+    if (!isStudent) {
+      _fetchRepeatSchedule();
+      _fetchVipProtocol();
+    }
     // Pre-warm speech synthesis in background for zero-latency instant playback
     TtsAudioService.instance.prewarmAnnouncement(
       widget.announcement.id,
@@ -397,7 +401,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
         (announcement.status == 'SUBMITTED' || announcement.status == 'DRAFT' || announcement.status == 'PENDING_APPROVAL');
 
     final canDelete = userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer' || (userRole == 'HoD' && announcement.department == authController.currentUser.value?.department);
-    final canBroadcast = (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE' || announcement.status == 'SCHEDULED');
+    final canBroadcast = userRole != 'Student' && (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE' || announcement.status == 'SCHEDULED');
     final canArchive = (userRole == 'HoD' || userRole == 'College Admin' || userRole == 'Principal' || userRole == 'Dev Admin' || userRole == 'Developer') &&
         (announcement.status == 'APPROVED' || announcement.status == 'PUBLISHED' || announcement.status == 'ACTIVE');
 
@@ -1019,13 +1023,17 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Automated Repeat Broadcast Schedule Section
-                        _buildRepeatScheduleCard(theme),
-                        const SizedBox(height: 20),
+                        // Automated Repeat Broadcast Schedule Section (Non-Student Only)
+                        if (userRole != 'Student') ...[
+                          _buildRepeatScheduleCard(theme),
+                          const SizedBox(height: 20),
+                        ],
 
-                        // VIP Dignitary Protocol Section
-                        _buildVipProtocolCard(theme),
-                        const SizedBox(height: 20),
+                        // VIP Dignitary Protocol Section (Non-Student Only)
+                        if (userRole != 'Student') ...[
+                          _buildVipProtocolCard(theme),
+                          const SizedBox(height: 20),
+                        ],
 
                         // Audit Trail Section
                         EchoSphereContainer(
@@ -1641,6 +1649,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   Widget _buildRepeatScheduleCard(ThemeData theme) {
     final hasSchedule = _repeatSchedule != null;
     final isStudent = (Get.isRegistered<AuthController>() ? Get.find<AuthController>().currentUser.value?.role ?? 'Student' : 'Student').toLowerCase() == 'student';
+    if (isStudent) return const SizedBox.shrink();
     final selectedSlots = hasSchedule ? (_repeatSchedule!['selected_slots'] as List? ?? []) : [];
     final logs = hasSchedule ? (_repeatSchedule!['execution_logs'] as List? ?? []) : [];
     final scope = hasSchedule ? (_repeatSchedule!['target_scope'] ?? 'DEPARTMENT') : '';
@@ -1860,6 +1869,8 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   }
 
   Widget _buildVipProtocolCard(ThemeData theme) {
+    final isStudent = (Get.isRegistered<AuthController>() ? Get.find<AuthController>().currentUser.value?.role ?? 'Student' : 'Student').toLowerCase() == 'student';
+    if (isStudent) return const SizedBox.shrink();
     final hasVip = _vipProtocol != null;
     final guestName = hasVip ? (_vipProtocol!['guest_name'] ?? '') : '';
     final guestTitle = hasVip ? (_vipProtocol!['guest_title'] ?? '') : '';

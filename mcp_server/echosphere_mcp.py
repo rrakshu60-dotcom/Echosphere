@@ -26,7 +26,13 @@ BACKEND_DIR = WORKSPACE_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from mcp.server.mcpserver import MCPServer
+try:
+    from mcp.server.mcpserver import MCPServer
+except ImportError:
+    try:
+        from mcp.server import MCPServer
+    except ImportError:
+        from mcp.server.fastmcp import FastMCP as MCPServer
 
 # Initialize Master MCP Server
 mcp = MCPServer(
@@ -255,7 +261,9 @@ def echosphere_speaker_queue_control(
     
     # Try importing from backend
     try:
-        from app.db.database import SessionLocal
+        from app.db.database import SessionLocal, engine, Base
+        import app.models
+        Base.metadata.create_all(bind=engine)
         from app.models.speaker_queue import SpeakerQueue
         from app.models.announcement import Announcement
         
@@ -374,7 +382,9 @@ def echosphere_repeat_schedule_manager(
         }, indent=2)
 
     try:
-        from app.db.database import SessionLocal
+        from app.db.database import SessionLocal, engine, Base
+        import app.models
+        Base.metadata.create_all(bind=engine)
         from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
         
         with SessionLocal() as db:
@@ -385,9 +395,11 @@ def echosphere_repeat_schedule_manager(
                     out.append({
                         "id": s.id,
                         "announcement_id": s.announcement_id,
-                        "repeat_interval_min": s.repeat_interval_min,
-                        "max_repeats": s.max_repeats,
-                        "repeats_completed": getattr(s, "repeats_completed", 0),
+                        "repeat_mode": getattr(s, "repeat_mode", "INTERVAL"),
+                        "interval_minutes": getattr(s, "interval_minutes", getattr(s, "repeat_interval_min", 15)),
+                        "max_repeats": getattr(s, "max_repeats", 3),
+                        "play_on_publish": getattr(s, "play_on_publish", True),
+                        "total_played_count": getattr(s, "total_played_count", getattr(s, "repeats_completed", 0)),
                         "is_active": getattr(s, "is_active", True)
                     })
                 return json.dumps({
@@ -448,7 +460,9 @@ def echosphere_hardware_node_manager(
         return json.dumps(serial_info, indent=2)
 
     try:
-        from app.db.database import SessionLocal
+        from app.db.database import SessionLocal, engine, Base
+        import app.models
+        Base.metadata.create_all(bind=engine)
         from app.models.speaker_node import SpeakerNode
         from datetime import datetime, timezone
         

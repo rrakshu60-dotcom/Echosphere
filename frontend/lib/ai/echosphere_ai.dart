@@ -584,6 +584,42 @@ class _EchosphereAiState extends State<EchosphereAi> {
       title = 'Speaker Hardware Command';
       description = 'Dispatch hardware control to corridor nodes';
       buttonText = 'Dispatch Command';
+    } else if (actionName == 'set_speaker_volume') {
+      final vol = params['volume'] ?? 80;
+      final node = params['node_id'] ?? 'All Nodes';
+      iconData = Icons.volume_up_rounded;
+      accentColor = theme.colorScheme.primary;
+      title = 'Speaker Volume: $vol%';
+      description = 'Adjust output on $node to $vol%';
+      buttonText = 'Set Volume';
+    } else if (actionName == 'approve_notice') {
+      final annId = params['announcement_id'] ?? '';
+      iconData = Icons.check_circle_rounded;
+      accentColor = const Color(0xFF10B981);
+      title = 'Approve Notice #$annId';
+      description = 'Publish circular and queue for speaker broadcast';
+      buttonText = 'Confirm Approval';
+    } else if (actionName == 'reject_notice') {
+      final annId = params['announcement_id'] ?? '';
+      iconData = Icons.cancel_rounded;
+      accentColor = const Color(0xFFEF4444);
+      title = 'Reject Notice #$annId';
+      description = 'Decline submission: ${params['remarks'] ?? 'Revisions needed'}';
+      buttonText = 'Confirm Rejection';
+    } else if (actionName == 'delete_notice') {
+      final annId = params['announcement_id'] ?? '';
+      iconData = Icons.delete_forever_rounded;
+      accentColor = const Color(0xFFEF4444);
+      title = 'Delete Notice #$annId';
+      description = 'Permanently purge announcement from feed and database';
+      buttonText = 'Confirm Delete';
+    } else if (actionName == 'filter_notices') {
+      final cat = params['category'] ?? 'All';
+      iconData = Icons.filter_list_rounded;
+      accentColor = theme.colorScheme.primary;
+      title = 'Filter: $cat';
+      description = 'Show $cat notices in active feed';
+      buttonText = 'Apply Filter';
     }
 
     return Container(

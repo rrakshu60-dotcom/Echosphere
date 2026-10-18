@@ -1,6 +1,7 @@
-﻿import 'package:echosphere/constants/themes.dart';
+import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
@@ -15,6 +16,7 @@ import 'package:echosphere/utils/usn_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:dio/dio.dart';
 
 class UserManagementPage extends StatefulWidget {
   const UserManagementPage({super.key});
@@ -29,6 +31,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
   List<Map<String, dynamic>> users = [];
   bool isLoading = true;
+  String? errorMessage;
   String selectedRoleFilter = 'All';
   String searchQuery = '';
 
@@ -60,82 +63,37 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
   Future<void> _fetchUsers() async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
     try {
       final res = await EchosphereApiService().getUsers();
-      if (res.isNotEmpty) {
-        setState(() {
-          users = res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          isLoading = false;
-        });
-        return;
-      }
+      setState(() {
+        users = res.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        isLoading = false;
+        errorMessage = null;
+      });
     } catch (e) {
-      debugPrint('Live user fetch fallback: $e');
+      debugPrint('Live user fetch error: $e');
+      String msg = 'Unable to connect to the campus user service. Please verify server connectivity or administrator credentials.';
+      if (e is DioException) {
+        if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+          msg = 'Access Denied: You do not have administrative privileges to manage campus accounts.';
+        } else if (e.response?.data != null && e.response?.data is Map && (e.response?.data as Map)['detail'] != null) {
+          msg = (e.response?.data as Map)['detail'].toString();
+        } else if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError) {
+          msg = 'Connection failed: The backend server is unreachable. Please verify network connectivity or host status.';
+        }
+      }
+      setState(() {
+        users = [];
+        isLoading = false;
+        errorMessage = msg;
+      });
     }
-
-    // Seed mock user list for demonstration and offline resilience
-    setState(() {
-      users = [
-        {
-          'id': 1,
-          'full_name': 'Dev Admin',
-          'role': 'Dev Admin',
-          'official_email': 'rrakshu60@gmail.com',
-          'employee_id': 'ESDev01',
-          'department': 'Dev Operations',
-          'is_active': true,
-        },
-        {
-          'id': 2,
-          'full_name': 'College Admin (Primary)',
-          'role': 'College Admin',
-          'official_email': 'cadmin@echosphere.edu',
-          'employee_id': 'DBITADM001',
-          'department': 'Administration',
-          'is_active': true,
-        },
-        {
-          'id': 3,
-          'full_name': 'Dr. Principal',
-          'role': 'Principal',
-          'official_email': 'principal@echosphere.edu',
-          'employee_id': 'PRI001',
-          'department': 'Executive',
-          'is_active': true,
-        },
-        {
-          'id': 4,
-          'full_name': 'Dr. AIML HoD',
-          'role': 'HoD',
-          'official_email': 'hod.aiml@echosphere.edu',
-          'employee_id': 'HOD001',
-          'department': 'AIML',
-          'is_active': true,
-        },
-        {
-          'id': 5,
-          'full_name': 'Rakshitha S',
-          'role': 'Student',
-          'official_email': '1db23ci079@echosphere.edu',
-          'usn': '1DB23CI079',
-          'department': 'AIML',
-          'section': 'A',
-          'semester': 5,
-          'is_active': true,
-        },
-        {
-          'id': 6,
-          'full_name': 'Dr. B Kursheed',
-          'role': 'Teacher',
-          'official_email': 'b.kursheed@echosphere.edu',
-          'employee_id': 'DBITAIMLT022022',
-          'department': 'AIML',
-          'is_active': true,
-        },
-      ];
-      isLoading = false;
-    });
   }
 
   List<Map<String, dynamic>> get filteredUsers {
@@ -691,8 +649,85 @@ class _UserManagementPageState extends State<UserManagementPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = authController.currentUser.value;
-    final canManage = user != null && user.role != 'Student';
-    final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal' || user.role == 'HoD');
+    final isStudent = authController.isStudent;
+
+    if (isStudent || user == null) {
+      final canPop = ModalRoute.of(context)?.canPop ?? false;
+      return SubPagePopScope(
+        fallbackRoute: '/home',
+        child: Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: canPop ? const EchoSphereBackButton(fallbackRoute: '/home') : null,
+            title: const EchoSphereText(
+              text: 'Access Restricted',
+              size: 16,
+              variant: TextVariant.bold,
+            ),
+          ),
+          body: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: EchoSphereContainer(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.gpp_bad_rounded,
+                        size: 48,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const EchoSphereText(
+                      text: 'User Directory & Account Management',
+                      size: 16,
+                      variant: TextVariant.bold,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "I don't have the authority to display the administrative user directory and role management console. Please consult your college administrator.",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    EchoSphereButton(
+                      onTap: () {
+                        if (canPop) {
+                          Navigator.of(context).pop();
+                        } else {
+                          Get.offAllNamed('/home');
+                        }
+                      },
+                      child: const EchoSphereText(
+                        text: 'Return to Dashboard',
+                        size: 12,
+                        variant: TextVariant.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final canManage = user.role != 'Student';
+    final isAdminRole = (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal' || user.role == 'HoD');
 
     return SubPagePopScope(
       fallbackRoute: '/home',
@@ -883,7 +918,84 @@ class _UserManagementPageState extends State<UserManagementPage> {
             Expanded(
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : filteredUsers.isEmpty
+                  : errorMessage != null
+                      ? RefreshIndicator(
+                          onRefresh: _fetchUsers,
+                          child: SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                            child: Container(
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(18),
+                                    decoration: BoxDecoration(
+                                      color: (theme.brightness == Brightness.dark
+                                              ? EchoSpherePalette.darkDestructive
+                                              : EchoSpherePalette.lightDestructive)
+                                          .withOpacity(0.12),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: (theme.brightness == Brightness.dark
+                                                ? EchoSpherePalette.darkDestructive
+                                                : EchoSpherePalette.lightDestructive)
+                                            .withOpacity(0.25),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.cloud_off_rounded,
+                                      size: 42,
+                                      color: theme.brightness == Brightness.dark
+                                          ? EchoSpherePalette.darkDestructive
+                                          : EchoSpherePalette.lightDestructive,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
+                                  Text(
+                                    'Failed to Load Campus Users',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 380),
+                                    child: Text(
+                                      errorMessage!,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        height: 1.4,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.65),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  EchoSphereButton(
+                                    height: 42,
+                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                                    onTap: _fetchUsers,
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.refresh_rounded, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('Retry Connection', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : filteredUsers.isEmpty
                       ? Center(
                           child: Padding(
                             padding: const EdgeInsets.all(24.0),
