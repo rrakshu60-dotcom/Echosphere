@@ -494,13 +494,14 @@ class SpeakerQueueController extends GetxController {
         seenAnnouncementIds.add(annId);
 
         final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == annId || item['id'] == annId));
-        final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : 0;
+        final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : (q['current_round'] as int? ?? 0);
         final existingPlayedCount = existing?['played_count'] as int? ?? backendPlayedCount;
-        final existingRepeatRound = existing?['repeat_round'] as int? ?? (existingPlayedCount + 1);
-        final bool hasRepeatActive = q['has_repeat'] == true &&
-            q['repeat_schedule'] != null &&
-            q['repeat_schedule'] is Map &&
-            (q['repeat_schedule'] as Map)['is_active'] == true;
+        final backendRound = q['repeat_round'] as int?;
+        final currentRound = backendRound ?? (existing?['repeat_round'] as int? ?? (backendPlayedCount + 1));
+        final bool hasRepeatActive = q['has_repeat'] == true ||
+            (q['repeat_schedule'] != null &&
+             q['repeat_schedule'] is Map &&
+             (q['repeat_schedule'] as Map)['is_active'] == true);
         final maxReps = hasRepeatActive ? (q['max_repeats'] as int? ?? getNoticeMaxRepeats(q)) : 1;
 
         combined.add({
@@ -509,9 +510,13 @@ class SpeakerQueueController extends GetxController {
           'node_status': nodeStatus,
           'duration_seconds': q['duration_seconds'] ?? 15,
           'has_repeat': hasRepeatActive,
+          'is_repeat': q['is_repeat'] == true || (hasRepeatActive && currentRound > 1),
           'max_repeats': maxReps,
-          'played_count': existingPlayedCount,
-          'repeat_round': existingRepeatRound,
+          'played_count': backendPlayedCount > 0 ? backendPlayedCount : existingPlayedCount,
+          'repeat_round': currentRound,
+          'repeat_mode': q['repeat_mode'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['repeat_mode'] : 'INTERVAL'),
+          'interval_minutes': q['interval_minutes'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['interval_minutes'] : 15),
+          'next_repeat_at': q['next_repeat_at'] ?? q['scheduled_time'],
         });
       }
 
@@ -976,6 +981,20 @@ class SpeakerQueueController extends GetxController {
     if (queueItems.isEmpty) return;
     _playbackTimer?.cancel();
     await _onNoticePlaybackCompleted();
+  }
+
+  /// Manually triggers the next scheduled repeat broadcast round immediately
+  Future<void> triggerRepeatNow(int queueId) async {
+    try {
+      isLoading.value = true;
+      await _apiService.triggerQueueRepeatNow(queueId);
+      snackBar('Next repeat broadcast round initiated!');
+      await refreshQueue(silent: false);
+    } catch (e) {
+      errorSnackBar('Failed to trigger repeat round: ${e.toString().replaceAll("Exception: ", "")}');
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   /// Stops current playback

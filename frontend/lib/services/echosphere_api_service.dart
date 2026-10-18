@@ -386,6 +386,26 @@ class EchosphereApiService {
     }
   }
 
+  Future<Map<String, dynamic>> batchModerateAnnouncements({
+    required List<int> ids,
+    required String action,
+    String? remarks,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/announcements/batch-moderate',
+        data: {
+          'ids': ids,
+          'action': action,
+          if (remarks != null) 'remarks': remarks,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to batch moderate announcements.');
+    }
+  }
+
   Future<List<dynamic>> getApprovalQueue() async {
     const key = 'approval_queue';
     return _coalesce<List<dynamic>>(key, () async {
@@ -1102,7 +1122,7 @@ class EchosphereApiService {
       return response.data as List<dynamic>;
     } catch (e) {
       debugPrint('Error fetching users: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -1583,6 +1603,7 @@ class EchosphereApiService {
     required List<int> fileBytes,
     required String mimeType,
     required String filename,
+    String? rawText,
   }) async {
     try {
       final response = await _dio.post(
@@ -1591,6 +1612,7 @@ class EchosphereApiService {
           'file_base64': base64Encode(fileBytes),
           'mime_type': mimeType,
           'filename': filename,
+          if (rawText != null && rawText.isNotEmpty) 'raw_text': rawText,
         },
       );
       if (response.statusCode == 200 && response.data != null) {
@@ -1599,7 +1621,7 @@ class EchosphereApiService {
     } catch (e) {
       debugPrint('Document OCR API error: $e, using local fallback structurer');
     }
-    return _ocrDocumentFallback(filename);
+    return _ocrDocumentFallback(filename, rawText: rawText);
   }
 
   Map<String, dynamic> _voiceToNoticeFallback(String transcript) {
@@ -1664,7 +1686,72 @@ class EchosphereApiService {
     };
   }
 
-  Map<String, dynamic> _ocrDocumentFallback(String filename) {
+  Map<String, dynamic> _ocrDocumentFallback(String filename, {String? rawText}) {
+    if (rawText != null && rawText.trim().length >= 10) {
+      final text = rawText.trim();
+      final lower = text.toLowerCase();
+
+      // Ref No
+      final refMatch = RegExp(r'\b(Ref(?:erence)?\s*(?:No\.?)?[:\s]*[\w/-]+|Circular\s*No\.?[:\s]*[\w/-]+|No\.\s*[\w/-]+)\b', caseSensitive: false).firstMatch(text);
+      final refNo = refMatch != null ? refMatch.group(0)!.trim() : 'CIR/${DateTime.now().year}/${filename.hashCode.abs().toString().padLeft(6, '0').substring(0, 6)}';
+
+      // Category
+      String category = 'Academic';
+      if (RegExp(r'\b(exam|examination|test|midterm|hall ticket|cie)\b').hasMatch(lower)) {
+        category = 'Examination';
+      } else if (RegExp(r'\b(placement|interview|drive|internship)\b').hasMatch(lower)) {
+        category = 'Placement';
+      } else if (RegExp(r'\b(sport|sports|cricket|tournament|badminton)\b').hasMatch(lower)) {
+        category = 'Sports';
+      } else if (RegExp(r'\b(emergency|evacuate|rain|flood)\b').hasMatch(lower)) {
+        category = 'Emergency';
+      } else if (RegExp(r'\b(workshop|hackathon|seminar|fest)\b').hasMatch(lower)) {
+        category = 'Event';
+      }
+
+      // Priority
+      String priority = 'NORMAL';
+      if (RegExp(r'\b(emergency|evacuate|urgent|immediate)\b').hasMatch(lower)) {
+        priority = 'URGENT';
+      } else if (RegExp(r'\b(mandatory|deadline|hall ticket|fee payment|strict)\b').hasMatch(lower)) {
+        priority = 'HIGH';
+      }
+
+      // Audience
+      String audience = 'Entire College';
+      if (lower.contains('aiml')) {
+        audience = 'AIML Department';
+      } else if (lower.contains('cse')) {
+        audience = 'CSE Department';
+      } else if (lower.contains('ece')) {
+        audience = 'ECE Department';
+      } else if (lower.contains('1st year')) {
+        audience = '1st Year Students';
+      } else if (lower.contains('3rd year')) {
+        audience = '3rd Year Students';
+      } else if (lower.contains('faculty')) {
+        audience = 'Faculty Members';
+      }
+
+      // Title
+      final subMatch = RegExp(r'^(?:Sub(?:ject)?|Regarding|Notice regarding)[:\s]*(.+)$', caseSensitive: false, multiLine: true).firstMatch(text);
+      String title = subMatch != null ? subMatch.group(1)!.trim() : 'Official Circular: ${filename.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').replaceAll(RegExp(r'[_-]'), ' ')}';
+      if (!title.toLowerCase().contains('circular') && !title.toLowerCase().contains('notice')) {
+        title = '$title Circular';
+      }
+
+      return {
+        'title': title,
+        'content': text,
+        'suggested_category': category,
+        'suggested_priority': priority,
+        'suggested_audience': audience,
+        'reference_number': refNo,
+        'extracted_event': null,
+        'raw_text': text,
+      };
+    }
+
     final cleanName = filename.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').replaceAll(RegExp(r'[_-]'), ' ');
     final title = 'Official Circular: ${cleanName.capitalizeFirst ?? cleanName}';
     String category = 'Academic';
@@ -1781,6 +1868,15 @@ class EchosphereApiService {
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(e.response?.data?['detail'] ?? 'Failed to evaluate repeat schedules.');
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerQueueRepeatNow(int queueId) async {
+    try {
+      final response = await _dio.post('/hardware/queue/$queueId/trigger_repeat_now');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Failed to trigger repeat broadcast round.');
     }
   }
 

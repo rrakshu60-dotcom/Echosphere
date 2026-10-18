@@ -1,7 +1,8 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/screens/auth/login_screen.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/fcm_push_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -163,6 +164,34 @@ class AuthController extends GetxController {
     return annualPasswordResetCount.value < 5;
   }
 
+  // RBAC Role Helpers
+  bool get isStudent {
+    final role = (currentUser.value?.role ?? 'Student').trim().toLowerCase();
+    return role == 'student';
+  }
+
+  bool get isStaffOrFaculty {
+    return !isStudent && currentUser.value != null;
+  }
+
+  bool get canManageSpeakers {
+    if (isStudent || currentUser.value == null) return false;
+    final r = (currentUser.value?.role ?? '').trim().toLowerCase();
+    return r == 'hod' || r == 'college admin' || r == 'principal' || r == 'dev admin' || r == 'developer' || r == 'teacher';
+  }
+
+  bool get canModerateAnnouncements {
+    if (isStudent || currentUser.value == null) return false;
+    final r = (currentUser.value?.role ?? '').trim().toLowerCase();
+    return r == 'hod' || r == 'college admin' || r == 'principal' || r == 'dev admin' || r == 'developer';
+  }
+
+  bool get canManageUsers {
+    if (isStudent || currentUser.value == null) return false;
+    final r = (currentUser.value?.role ?? '').trim().toLowerCase();
+    return r == 'college admin' || r == 'principal' || r == 'dev admin' || r == 'developer';
+  }
+
   final RxMap<String, String> _customUserPasswords = <String, String>{}.obs;
 
   Future<void> _loadCustomPasswordsFromDisk() async {
@@ -259,6 +288,10 @@ class AuthController extends GetxController {
           token.value = data['token'] ?? '';
           isLoggedIn.value = true;
           EchosphereApiService().setAuthToken(token.value);
+          FcmPushService.instance.syncUserSubscriptions(
+            departmentCode: currentUser.value?.department,
+            role: currentUser.value?.role,
+          );
         }
       }
     } catch (e) {
@@ -489,6 +522,11 @@ class AuthController extends GetxController {
           isLoggedIn.value = true;
           await _saveSessionToDisk();
 
+          FcmPushService.instance.syncUserSubscriptions(
+            departmentCode: user.department,
+            role: user.role,
+          );
+
           await addAuditLog(
             username: user.fullName,
             role: user.role,
@@ -510,6 +548,11 @@ class AuthController extends GetxController {
         token.value = 'mock_jwt_token_${mockUser.role.toLowerCase()}';
         EchosphereApiService().setAuthToken(token.value);
         await _saveSessionToDisk();
+
+        FcmPushService.instance.syncUserSubscriptions(
+          departmentCode: mockUser.department,
+          role: mockUser.role,
+        );
 
         await addAuditLog(
           username: mockUser.fullName,
@@ -535,6 +578,13 @@ class AuthController extends GetxController {
   }
 
   void logout() async {
+    final prevUser = currentUser.value;
+    if (prevUser != null) {
+      FcmPushService.instance.unsubscribeUserSubscriptions(
+        departmentCode: prevUser.department,
+        role: prevUser.role,
+      );
+    }
     currentUser.value = null;
     isLoggedIn.value = false;
     token.value = '';

@@ -38,17 +38,24 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     final ids = selectedItemIds.toList();
     if (ids.isEmpty) return;
     setState(() => isBatchProcessing = true);
-    int successCount = 0;
-    for (final id in ids) {
-      final ok = await controller.approveAnnouncement(id, remarks: 'Batch approved by Administrator');
-      if (ok) successCount++;
-    }
+    final count = ids.length;
+    final success = await controller.batchModerateAnnouncements(
+      ids: ids,
+      action: 'APPROVE',
+      remarks: 'Batch approved by Administrator',
+    );
     setState(() {
       isBatchProcessing = false;
-      isBatchSelectMode = false;
-      selectedItemIds.clear();
+      if (success) {
+        isBatchSelectMode = false;
+        selectedItemIds.clear();
+      }
     });
-    snackBar('$successCount notice(s) approved and published to campus feed.');
+    if (success) {
+      snackBar('$count notice(s) approved and published to campus feed.');
+    } else {
+      errorSnackBar('Failed to complete batch approval. Please check connectivity and try again.');
+    }
   }
 
   void _showBatchRejectDialog(BuildContext context, AnnouncementController controller) {
@@ -121,17 +128,24 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
               Navigator.pop(ctx);
               setState(() => isBatchProcessing = true);
               final ids = selectedItemIds.toList();
-              int successCount = 0;
-              for (final id in ids) {
-                final ok = await controller.rejectAnnouncement(id, remarks: remarks);
-                if (ok) successCount++;
-              }
+              final count = ids.length;
+              final success = await controller.batchModerateAnnouncements(
+                ids: ids,
+                action: 'REJECT',
+                remarks: remarks,
+              );
               setState(() {
                 isBatchProcessing = false;
-                isBatchSelectMode = false;
-                selectedItemIds.clear();
+                if (success) {
+                  isBatchSelectMode = false;
+                  selectedItemIds.clear();
+                }
               });
-              snackBar('$successCount notice(s) rejected.');
+              if (success) {
+                snackBar('$count notice(s) rejected.');
+              } else {
+                errorSnackBar('Failed to complete batch rejection. Please check connectivity and try again.');
+              }
             },
             child: const Text('Reject Selected'),
           ),
@@ -313,6 +327,77 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
     final isTeacher = userRole == 'Teacher';
 
     final canPop = ModalRoute.of(context)?.canPop ?? false;
+
+    if (userRole == 'Student') {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: canPop ? const EchoSphereBackButton(fallbackRoute: '/home') : null,
+          title: const EchoSphereText(
+            text: 'Access Restricted',
+            size: 16,
+            variant: TextVariant.bold,
+          ),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: EchoSphereContainer(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.gpp_bad_rounded,
+                      size: 48,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const EchoSphereText(
+                    text: 'Approval Queue',
+                    size: 16,
+                    variant: TextVariant.bold,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "The Approval Queue is reserved for faculty, HoDs, and administrative authorities. Please consult your department advisor.",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  EchoSphereButton(
+                    onTap: () {
+                      if (canPop) {
+                        Navigator.of(context).pop();
+                      } else {
+                        Get.offAllNamed('/home');
+                      }
+                    },
+                    child: const EchoSphereText(
+                      text: 'Return to Dashboard',
+                      size: 12,
+                      variant: TextVariant.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(

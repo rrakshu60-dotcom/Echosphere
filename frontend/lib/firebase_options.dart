@@ -41,48 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyB8RXm2xTGEjcLN-CJGsuHAYsBMOts0hJ0',
-    appId: '1:655963122485:web:261af9e3f1d5cc643dba7c',
-    messagingSenderId: '655963122485',
-    projectId: 'echosphere-ryan7',
-    authDomain: 'echosphere-ryan7.firebaseapp.com',
-    storageBucket: 'echosphere-ryan7.firebasestorage.app',
-    measurementId: 'G-48E9LEBS4Y',
+    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
+    appId: '1:808301080990:web:2bed6554aeca7090c1268f',
+    messagingSenderId: '808301080990',
+    projectId: 'echosphere-3bcc0',
+    authDomain: 'echosphere-3bcc0.firebaseapp.com',
+    storageBucket: 'echosphere-3bcc0.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyB5sGDX3VFXZn8Co4FaeODwQzqT3H1ifK0',
-    appId: '1:655963122485:android:928a151d682058a33dba7c',
-    messagingSenderId: '655963122485',
-    projectId: 'echosphere-ryan7',
-    storageBucket: 'echosphere-ryan7.firebasestorage.app',
+    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
+    appId: '1:808301080990:android:2bed6554aeca7090c1268f',
+    messagingSenderId: '808301080990',
+    projectId: 'echosphere-3bcc0',
+    storageBucket: 'echosphere-3bcc0.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDU3YlOxo4l0KhgW2Mm1MjPG3T2e-4GY4E',
-    appId: '1:655963122485:ios:072917f2c716788e3dba7c',
-    messagingSenderId: '655963122485',
-    projectId: 'echosphere-ryan7',
-    storageBucket: 'echosphere-ryan7.firebasestorage.app',
+    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
+    appId: '1:808301080990:ios:2bed6554aeca7090c1268f',
+    messagingSenderId: '808301080990',
+    projectId: 'echosphere-3bcc0',
+    storageBucket: 'echosphere-3bcc0.firebasestorage.app',
     iosBundleId: 'com.roxy.echosphere',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDU3YlOxo4l0KhgW2Mm1MjPG3T2e-4GY4E',
-    appId: '1:655963122485:ios:072917f2c716788e3dba7c',
-    messagingSenderId: '655963122485',
-    projectId: 'echosphere-ryan7',
-    storageBucket: 'echosphere-ryan7.firebasestorage.app',
+    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
+    appId: '1:808301080990:ios:2bed6554aeca7090c1268f',
+    messagingSenderId: '808301080990',
+    projectId: 'echosphere-3bcc0',
+    storageBucket: 'echosphere-3bcc0.firebasestorage.app',
     iosBundleId: 'com.roxy.echosphere',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyB8RXm2xTGEjcLN-CJGsuHAYsBMOts0hJ0',
-    appId: '1:655963122485:web:b6088f5e63b0d4773dba7c',
-    messagingSenderId: '655963122485',
-    projectId: 'echosphere-ryan7',
-    authDomain: 'echosphere-ryan7.firebaseapp.com',
-    storageBucket: 'echosphere-ryan7.firebasestorage.app',
-    measurementId: 'G-64XCNKN5CG',
+    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
+    appId: '1:808301080990:web:2bed6554aeca7090c1268f',
+    messagingSenderId: '808301080990',
+    projectId: 'echosphere-3bcc0',
+    authDomain: 'echosphere-3bcc0.firebaseapp.com',
+    storageBucket: 'echosphere-3bcc0.firebasestorage.app',
   );
 }

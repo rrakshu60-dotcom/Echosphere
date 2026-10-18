@@ -4,6 +4,7 @@ import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
+import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
@@ -34,6 +35,81 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (authController.isStudent) {
+      final canPop = ModalRoute.of(context)?.canPop ?? false;
+      return SubPagePopScope(
+        fallbackRoute: '/home',
+        child: Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: canPop ? const EchoSphereBackButton(fallbackRoute: '/home') : null,
+            title: const EchoSphereText(
+              text: 'Access Restricted',
+              size: 16,
+              variant: TextVariant.bold,
+            ),
+          ),
+          body: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: EchoSphereContainer(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.gpp_bad_rounded,
+                        size: 48,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const EchoSphereText(
+                      text: 'Notice Management & Moderation',
+                      size: 16,
+                      variant: TextVariant.bold,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "I don't have the authority to display the administrative notice moderation console. Please consult your department office or system administrator for assistance.",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    EchoSphereButton(
+                      onTap: () {
+                        if (canPop) {
+                          Navigator.of(context).pop();
+                        } else {
+                          Get.offAllNamed('/home');
+                        }
+                      },
+                      child: const EchoSphereText(
+                        text: 'Return to Dashboard',
+                        size: 12,
+                        variant: TextVariant.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return SubPagePopScope(
       fallbackRoute: '/home',

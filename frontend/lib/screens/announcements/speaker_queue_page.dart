@@ -15,6 +15,7 @@ import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/widgets/custom_widgets/audio_waveform_visualizer.dart';
 import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
+import 'package:echosphere/widgets/custom_widgets/live_mic_broadcast_sheet.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
@@ -1200,6 +1201,26 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   ),
                   const SizedBox(width: 4),
                   EchoSphereButton(
+                    color: Colors.deepPurple,
+                    radius: 12,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    onTap: () => LiveMicBroadcastSheet.show(context),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.mic_rounded, size: 13, color: Colors.white),
+                        SizedBox(width: 4),
+                        EchoSphereText(
+                          text: 'LIVE MIC PA',
+                          size: 10,
+                          variant: TextVariant.bold,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  EchoSphereButton(
                     color: context.colors.primary,
                     radius: 12,
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1796,6 +1817,66 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
+                                      if (item['has_repeat'] == true ||
+                                          item['is_repeat'] == true ||
+                                          (item['repeat_round'] is int && (item['repeat_round'] as int) > 1)) ...[
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 4,
+                                          runSpacing: 4,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: context.colors.primary.opaque(0.12),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: context.colors.primary.opaque(0.25)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.repeat_rounded, size: 10, color: context.colors.primary),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    'Round ${item['repeat_round'] ?? 1}${(item['max_repeats'] is int && (item['max_repeats'] as int) > 0) ? " of ${item['max_repeats']}" : ""}${(item['repeat_mode'] == "INTERVAL" && (item['interval_minutes'] is int && (item['interval_minutes'] as int) > 0)) ? " (${item['interval_minutes']}m)" : ""}',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: context.colors.primary,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            if (item['next_repeat_at'] != null &&
+                                                item['next_repeat_at'].toString().isNotEmpty &&
+                                                item['next_repeat_at'].toString() != 'null')
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.withOpacity(0.12),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.timer_outlined, size: 10, color: Colors.amber),
+                                                    const SizedBox(width: 3),
+                                                    Text(
+                                                      'Next: ${_formatTime(item['next_repeat_at'], null)}',
+                                                      style: const TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.amber,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -1851,6 +1932,24 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                       ? null
                                       : () => _queueCtrl.reorderQueue(i, i + 1),
                                 ),
+                                if (!_isStudent &&
+                                    (item['has_repeat'] == true ||
+                                        item['is_repeat'] == true ||
+                                        (item['repeat_round'] is int && (item['repeat_round'] as int) > 0)))
+                                  IconButton(
+                                    visualDensity: VisualDensity.compact,
+                                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(Icons.fast_forward_rounded,
+                                        size: 16, color: context.colors.primary),
+                                    tooltip: 'Trigger Next Repeat Round Now',
+                                    onPressed: () {
+                                      final qId = item['id'] as int?;
+                                      if (qId != null) {
+                                        _queueCtrl.triggerRepeatNow(qId);
+                                      }
+                                    },
+                                  ),
                                 if (!_isStudent)
                                   IconButton(
                                     visualDensity: VisualDensity.compact,

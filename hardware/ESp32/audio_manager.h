@@ -644,6 +644,62 @@ public:
   }
 
   // --------------------------------------------------------------------------
+  // Live Campus PA Microphone Stream Ingestion (Direct DMA push for Live PA)
+  // Input: 16-bit signed PCM mono audio at 16kHz
+  // Converts mono to stereo on-the-fly and writes directly to I2S DMA with < 120ms latency!
+  // --------------------------------------------------------------------------
+  void beginLiveMicStream(int sampleRate = 16000) {
+    if (currentSampleRate != (uint32_t)sampleRate) {
+      setSampleRate(sampleRate);
+    }
+    isPlaying = true;
+    Serial.println(F("🎙️ [I2S AUDIO] Live Mic PA Stream mode armed (16kHz PCM mono -> stereo DMA)"));
+  }
+
+  void playLiveMicChunk(const uint8_t* pcmData, size_t len, int volumePercent = -1) {
+    if (!pcmData || len < 2) return;
+    if (currentSampleRate != 16000) {
+      setSampleRate(16000);
+    }
+    int vol = (volumePercent >= 0) ? volumePercent : currentVolume;
+    float gain = (float)constrain(vol, 0, 100) / 100.0f;
+
+    size_t samples = len / 2;
+    const int16_t* src = (const int16_t*)pcmData;
+    int16_t stereoBuf[256 * 2]; // 256 stereo frames = 1024 bytes
+
+    size_t processed = 0;
+    while (processed < samples) {
+      size_t batch = samples - processed;
+      if (batch > 256) batch = 256;
+
+      for (size_t i = 0; i < batch; i++) {
+        int16_t val = (int16_t)((float)src[processed + i] * gain);
+        stereoBuf[i * 2]     = val;
+        stereoBuf[i * 2 + 1] = val;
+      }
+
+      size_t written = 0;
+#ifdef ECHOSPHERE_I2S_V5
+      if (tx_handle) {
+        i2s_channel_write(tx_handle, stereoBuf, batch * 4, &written, 100);
+      }
+#else
+      i2s_write(I2S_PORT_NUM, stereoBuf, batch * 4, &written, 100 / portTICK_PERIOD_MS);
+#endif
+      processed += batch;
+    }
+    isPlaying = true;
+  }
+
+  void endLiveMicStream() {
+    stopAudio();
+    setSampleRate(I2S_SAMPLE_RATE);
+    isPlaying = false;
+    Serial.println(F("⏹️ [I2S AUDIO] Live Mic PA Stream completed, restored standard sample rate"));
+  }
+
+  // --------------------------------------------------------------------------
   // Startup Confirmation Beep (Plays immediately when ESP32 powers on)
   // Crisp power-on confirmation tone: 880Hz (A5, 100ms) -> 1200Hz (150ms)
   // --------------------------------------------------------------------------
