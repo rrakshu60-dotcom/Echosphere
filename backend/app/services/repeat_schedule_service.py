@@ -53,6 +53,15 @@ def get_current_ist_datetime() -> datetime:
         return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
 
+def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
+    """Safely normalizes any datetime to timezone-naive UTC to avoid TypeError comparisons."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 
 def configure_repeat_schedule(
     db: Session,
@@ -129,9 +138,9 @@ def configure_repeat_schedule(
             logger.warning(f"Could not pre-synthesize TTS audio during repeat configuration: {te}")
 
     # 4. Anti-Spam Validation: 48-hour event horizon and 2-day lifespan
-    event_dt = data.event_datetime if data.event_datetime is not None else None
-    start_dt = data.start_date if data.start_date is not None else None
-    end_dt = data.end_date if data.end_date is not None else None
+    event_dt = _normalize_dt(data.event_datetime) if data.event_datetime is not None else None
+    start_dt = _normalize_dt(data.start_date) if data.start_date is not None else None
+    end_dt = _normalize_dt(data.end_date) if data.end_date is not None else None
 
     # Retrieve existing schedule if update
     schedule = (
@@ -141,9 +150,9 @@ def configure_repeat_schedule(
     )
 
     if schedule:
-        event_dt = event_dt or schedule.event_datetime
-        start_dt = start_dt or schedule.start_date
-        end_dt = end_dt or schedule.end_date
+        event_dt = event_dt or _normalize_dt(schedule.event_datetime)
+        start_dt = start_dt or _normalize_dt(schedule.start_date)
+        end_dt = end_dt or _normalize_dt(schedule.end_date)
 
     if event_dt and start_dt:
         horizon_seconds = (event_dt - start_dt).total_seconds()
@@ -176,11 +185,32 @@ def configure_repeat_schedule(
                 detail=f"Target speaker node #{target_node_id} does not exist.",
             )
 
+    # Extract mode and interval parameters
+    rep_mode = getattr(data, "repeat_mode", None) or (schedule.repeat_mode if schedule else "INTERVAL")
+    rep_interval = getattr(data, "interval_minutes", None) or (schedule.interval_minutes if schedule else 15)
+    rep_max = getattr(data, "max_repeats", None) if getattr(data, "max_repeats", None) is not None else (schedule.max_repeats if schedule else 3)
+    rep_publish = getattr(data, "play_on_publish", None) if getattr(data, "play_on_publish", None) is not None else (schedule.play_on_publish if schedule else True)
+
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    # Calculate initial next_repeat_at
+    if rep_mode == "INTERVAL":
+        if rep_publish:
+            initial_next = now_utc + timedelta(minutes=rep_interval)
+        else:
+            initial_next = start_dt if (start_dt and start_dt > now_utc) else (now_utc + timedelta(minutes=rep_interval))
+    else:
+        initial_next = start_dt or now_utc
+
     # 6. Create or update record
     if not schedule:
         schedule = AnnouncementRepeatSchedule(
             announcement_id=announcement_id,
-            selected_slots=data.selected_slots or ["SHORT_BREAK", "LUNCH_BREAK"],
+            repeat_mode=rep_mode,
+            interval_minutes=rep_interval,
+            max_repeats=rep_max,
+            play_on_publish=rep_publish,
+            next_repeat_at=initial_next,
+            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK", "LUNCH_BREAK"]),
             custom_start_time=data.custom_start_time,
             custom_end_time=data.custom_end_time,
             target_scope=data.target_scope or "DEPARTMENT",
@@ -192,6 +222,15 @@ def configure_repeat_schedule(
         )
         db.add(schedule)
     else:
+        schedule.repeat_mode = rep_mode
+        schedule.interval_minutes = rep_interval
+        schedule.max_repeats = rep_max
+        schedule.play_on_publish = rep_publish
+        if getattr(data, "next_repeat_at", None) is not None:
+            schedule.next_repeat_at = data.next_repeat_at
+        elif not schedule.next_repeat_at:
+            schedule.next_repeat_at = initial_next
+
         if data.selected_slots is not None:
             schedule.selected_slots = data.selected_slots
         if data.custom_start_time is not None:
@@ -213,7 +252,50 @@ def configure_repeat_schedule(
 
     db.commit()
     db.refresh(schedule)
-    logger.info(f"🔁 Repeat schedule configured for Announcement #{announcement_id} (Slots: {schedule.selected_slots})")
+
+    # 7. Queue synchronization for Published notices
+    ann_status_val = getattr(announcement, "status", "")
+    ann_status_str = ann_status_val.value if hasattr(ann_status_val, "value") else str(ann_status_val)
+    if ann_status_str.upper() in ("PUBLISHED", "APPROVED"):
+        from app.models.speaker_queue import SpeakerQueue
+        active_q = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
+        if not active_q:
+            # Enqueue initial broadcast if play_on_publish, or schedule for future
+            if rep_publish:
+                enqueue_and_broadcast_announcement(
+                    db=db,
+                    announcement_id=announcement_id,
+                    title=announcement.title,
+                    content=announcement.description,
+                    department_code=announcement.creator.department.code if (announcement.creator and announcement.creator.department) else "ALL",
+                    zone="Departmental" if schedule.target_scope == "DEPARTMENT" else "College-Wide",
+                    is_emergency=False,
+                    speaker_node_id=schedule.target_node_id,
+                    speaker_voice=announcement.speaker_voice or "female",
+                )
+            else:
+                max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
+                new_q = SpeakerQueue(
+                    announcement_id=announcement_id,
+                    queue_position=max_pos + 1,
+                    status="Queued",
+                    scheduled_time=initial_next,
+                    played_at=None,
+                    duration_seconds=15,
+                )
+                db.add(new_q)
+                db.commit()
+        elif active_q.status == "Completed" and rep_publish and schedule.total_played_count < schedule.max_repeats:
+            # Re-activate queue for next scheduled repeat round
+            active_q.status = "Queued"
+            active_q.scheduled_time = initial_next
+            active_q.played_at = None
+            db.commit()
+
+    logger.info(
+        f"🔁 Repeat schedule configured for Announcement #{announcement_id} "
+        f"({schedule.repeat_mode} every {schedule.interval_minutes}m, max: {schedule.max_repeats}, next: {schedule.next_repeat_at})"
+    )
     return schedule
 
 
@@ -308,9 +390,9 @@ def get_notice_priority_info(ann: Announcement) -> tuple[int, int, str]:
     elif "LOW" in prio_str or any(
         w in combined for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing", "reminder"]
     ):
-        return 100, 1, "LOW"
+        return 100, 3, "LOW"
     else:  # NORMAL or MEDIUM (sports, volleyball, events, cultural, hackathons)
-        return 200, 2, "MEDIUM"
+        return 200, 3, "MEDIUM"
 
 
 def is_slot_active_at_time(
@@ -512,16 +594,78 @@ def evaluate_and_dispatch_repeat_slots(
             db.commit()
             continue
 
-        # Check which of the schedule's chosen slots match current time
+        prio_weight, default_reps, prio_tier = get_notice_priority_info(ann)
+        is_em = (prio_tier == "EMERGENCY")
+        if is_em:
+            has_active_emergency_scheduled = True
+
+        rep_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
+
+        # Case A: INTERVAL Repeat Mode
+        if rep_mode == "INTERVAL":
+            if has_active_emergency_scheduled and not is_em:
+                skipped.append({
+                    "announcement_id": sched.announcement_id,
+                    "slot": "INTERVAL",
+                    "reason": "Suppressed by active Emergency Broadcast Override",
+                })
+                continue
+
+            max_reps = getattr(sched, "max_repeats", 3) or 3
+            if max_reps > 0 and sched.total_played_count >= max_reps:
+                sched.is_active = False
+                db.commit()
+                continue
+
+            is_due = False
+            if sched.next_repeat_at:
+                if simulated_time_str or simulated_date_str:
+                    try:
+                        sim_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                        is_due = (sim_dt >= sched.next_repeat_at)
+                    except Exception:
+                        is_due = True
+                else:
+                    is_due = (utc_now >= sched.next_repeat_at)
+            else:
+                is_due = True
+
+            if not is_due:
+                continue
+
+            active_q = (
+                db.query(SpeakerQueue)
+                .filter(
+                    SpeakerQueue.announcement_id == sched.announcement_id,
+                    SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+                )
+                .first()
+            )
+            if active_q and active_q.status == "Playing":
+                curr_played_at = getattr(active_q, "played_at", None)
+                curr_dur = getattr(active_q, "duration_seconds", 15) or 15
+                if curr_played_at and (utc_now - curr_played_at).total_seconds() < curr_dur and not simulated_time_str:
+                    continue
+
+            candidates.append({
+                "sched": sched,
+                "ann": ann,
+                "slot_name": f"INTERVAL_{sched.interval_minutes}M",
+                "prefix_key": f"{sched.announcement_id}:INTERVAL:{date_str}",
+                "weight": prio_weight,
+                "max_repeats": max_reps,
+                "tier": prio_tier,
+                "times_played_today": sched.total_played_count,
+                "is_emergency": is_em,
+                "created_at": getattr(ann, "created_at", None) or datetime.min,
+            })
+            continue
+
+        # Case B: BREAK_SLOTS or CUSTOM Window Mode
         matched_slots = is_slot_active_at_time(sched, time_str, active_standard_slots)
 
         if not matched_slots:
             continue
-
-        prio_weight, max_repeats, prio_tier = get_notice_priority_info(ann)
-        is_em = (prio_tier == "EMERGENCY")
-        if is_em:
-            has_active_emergency_scheduled = True
 
         # If an emergency broadcast override is active, strictly skip and suppress all non-emergency notices!
         if has_active_emergency_scheduled and not is_em:
@@ -532,6 +676,8 @@ def evaluate_and_dispatch_repeat_slots(
                     "reason": "Suppressed by active Emergency Broadcast Override (e.g. Earthquake/Evacuation alert active)",
                 })
             continue
+
+        slot_max_repeats = 999999 if is_em else (sched.max_repeats if (sched.max_repeats is not None and sched.max_repeats > 0) else default_reps)
 
         for slot_name in matched_slots:
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
@@ -553,11 +699,11 @@ def evaluate_and_dispatch_repeat_slots(
             )
 
             # Check if repeat cap reached (emergency has cap 999999 so repeats whole break)
-            if times_played_today >= max_repeats:
+            if times_played_today >= slot_max_repeats:
                 skipped.append({
                     "announcement_id": sched.announcement_id,
                     "slot": slot_name,
-                    "reason": f"Max repeats ({times_played_today}/{max_repeats}) reached for {prio_tier} priority in this slot today",
+                    "reason": f"Max repeats ({times_played_today}/{slot_max_repeats}) reached for {prio_tier} priority in this slot today",
                 })
                 continue
 
@@ -605,7 +751,7 @@ def evaluate_and_dispatch_repeat_slots(
                 "slot_name": slot_name,
                 "prefix_key": prefix_key,
                 "weight": prio_weight,
-                "max_repeats": max_repeats,
+                "max_repeats": slot_max_repeats,
                 "tier": prio_tier,
                 "times_played_today": times_played_today,
                 "is_emergency": is_em,
@@ -702,6 +848,13 @@ def evaluate_and_dispatch_repeat_slots(
         )
         db.add(exec_log)
         sched.total_played_count += 1
+        sched.last_repeat_at = utc_now
+
+        if getattr(sched, "repeat_mode", "INTERVAL") == "INTERVAL":
+            sched.next_repeat_at = utc_now + timedelta(minutes=sched.interval_minutes)
+            if sched.max_repeats > 0 and sched.total_played_count >= sched.max_repeats:
+                sched.is_active = False
+
         db.commit()
 
         dispatched.append({

@@ -3,27 +3,44 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-ALLOWED_SLOTS = ["SHORT_BREAK", "LUNCH_BREAK", "EVENING_BREAK", "HOSTEL_WINDOW", "CUSTOM_WINDOW"]
+ALLOWED_MODES = ["INTERVAL", "BREAK_SLOTS", "CUSTOM"]
+ALLOWED_SLOTS = ["SHORT_BREAK", "LUNCH_BREAK", "EVENING_BREAK", "HOSTEL_WINDOW", "CUSTOM_WINDOW", "INTERVAL"]
 ALLOWED_SCOPES = ["DEPARTMENT", "COLLEGE_WIDE", "HOSTEL"]
 TIME_REGEX = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 class RepeatScheduleBase(BaseModel):
-    selected_slots: List[str]
+    repeat_mode: str = "INTERVAL"
+    interval_minutes: int = 15
+    max_repeats: int = 3
+    play_on_publish: bool = True
+    selected_slots: Optional[List[str]] = None
     custom_start_time: Optional[str] = None
     custom_end_time: Optional[str] = None
     target_scope: str = "DEPARTMENT"
     target_node_id: Optional[int] = None
-    event_datetime: datetime
-    start_date: datetime
-    end_date: datetime
+    event_datetime: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     force_enable_speaker: Optional[bool] = False
+    next_repeat_at: Optional[datetime] = None
+    last_repeat_at: Optional[datetime] = None
+
+    @field_validator("repeat_mode")
+    @classmethod
+    def validate_mode(cls, v: str):
+        normalized = v.upper().strip()
+        if normalized not in ALLOWED_MODES:
+            raise ValueError(f"Invalid repeat_mode '{v}'. Allowed modes: {ALLOWED_MODES}")
+        return normalized
 
     @field_validator("selected_slots")
     @classmethod
-    def validate_slots(cls, v: List[str]):
+    def validate_slots(cls, v: Optional[List[str]]):
+        if v is None:
+            return v
         if not v:
-            raise ValueError("At least one repeat slot must be selected.")
+            return []
         for slot in v:
             normalized = slot.upper().strip()
             if normalized not in ALLOWED_SLOTS:
@@ -38,7 +55,7 @@ class RepeatScheduleBase(BaseModel):
             raise ValueError(f"Invalid target scope '{v}'. Allowed scopes: {ALLOWED_SCOPES}")
         return normalized
 
-    @field_validator("start_date", "end_date", "event_datetime", mode="before")
+    @field_validator("start_date", "end_date", "event_datetime", "next_repeat_at", "last_repeat_at", mode="before")
     @classmethod
     def normalize_datetimes(cls, v):
         if isinstance(v, str):
@@ -59,7 +76,6 @@ class RepeatScheduleBase(BaseModel):
             if not val:
                 return val
             val = val.strip()
-            # Match 12-hour format e.g. "9:30 PM", "9:30pm", "02:15 AM", "12:00 PM"
             m = re.match(r"^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$", val)
             if m:
                 h, mn, meridian = int(m.group(1)), int(m.group(2)), m.group(3).upper()
@@ -69,13 +85,31 @@ class RepeatScheduleBase(BaseModel):
                     elif meridian == "AM" and h == 12:
                         h = 0
                     return f"{h:02d}:{mn:02d}"
-            # Match single-digit 24-hour hour like "9:00" -> "09:00"
             if re.match(r"^\d:[0-5]\d$", val):
                 return "0" + val
             return val
 
-        # 1. Custom time validation & auto-completion
-        if "CUSTOM_WINDOW" in self.selected_slots:
+        # 1. Mode and Slots defaulting
+        if self.selected_slots and any(s in ["SHORT_BREAK", "LUNCH_BREAK", "EVENING_BREAK", "HOSTEL_WINDOW"] for s in self.selected_slots):
+            self.repeat_mode = "BREAK_SLOTS"
+        elif self.selected_slots and self.selected_slots == ["CUSTOM_WINDOW"]:
+            self.repeat_mode = "CUSTOM"
+        elif self.repeat_mode == "INTERVAL":
+            if not self.selected_slots:
+                self.selected_slots = ["INTERVAL"]
+            if self.interval_minutes < 1:
+                self.interval_minutes = 15
+            if self.max_repeats < 0:
+                self.max_repeats = 3
+        elif self.repeat_mode == "BREAK_SLOTS":
+            if not self.selected_slots:
+                self.selected_slots = ["SHORT_BREAK", "LUNCH_BREAK"]
+        elif self.repeat_mode == "CUSTOM":
+            if not self.selected_slots:
+                self.selected_slots = ["CUSTOM_WINDOW"]
+
+        # 2. Custom time validation & auto-completion
+        if self.selected_slots and "CUSTOM_WINDOW" in self.selected_slots:
             if not self.custom_start_time:
                 raise ValueError("custom_start_time (HH:MM or HH:MM AM/PM) is required when CUSTOM_WINDOW is selected.")
             start_str = _normalize_time_str(self.custom_start_time)
@@ -84,7 +118,6 @@ class RepeatScheduleBase(BaseModel):
             self.custom_start_time = start_str
 
             if not self.custom_end_time:
-                # Default end time to +30 minutes if omitted
                 sh, sm = map(int, start_str.split(":"))
                 end_m = (sh * 60 + sm + 30) % (24 * 60)
                 self.custom_end_time = f"{end_m // 60:02d}:{end_m % 60:02d}"
@@ -96,17 +129,25 @@ class RepeatScheduleBase(BaseModel):
                     raise ValueError("custom_start_time must be earlier than custom_end_time.")
                 self.custom_end_time = end_str
 
-        # 2. Date order
+        # 3. Date defaults and order
+        from datetime import timedelta
+        now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        if self.start_date is None:
+            self.start_date = now_dt
+        if self.end_date is None:
+            self.end_date = self.start_date + timedelta(hours=24)
+        if self.event_datetime is None:
+            self.event_datetime = self.end_date
+
         if self.end_date < self.start_date:
             raise ValueError("end_date cannot be earlier than start_date.")
 
-        # 3. Maximum lifespan: Strictly 1 to 2 days (48 hours max)
+        # 4. Maximum lifespan: Strictly 1 to 2 days (48 hours max)
         duration_seconds = (self.end_date - self.start_date).total_seconds()
-        if duration_seconds > (2 * 86400 + 300):  # 48 hours (+5 min tolerance)
+        if duration_seconds > (2 * 86400 + 300):
             raise ValueError("Repeat schedule lifespan cannot exceed 2 days (48 hours).")
 
-        # 4. Anti-spam horizon: cannot schedule repeats days before the event
-        # Repeat start must be within 48 hours of the event datetime
+        # 5. Anti-spam horizon: cannot schedule repeats days before the event
         horizon_seconds = (self.event_datetime - self.start_date).total_seconds()
         if horizon_seconds > (48 * 3600 + 300):
             raise ValueError("Repeat schedule can only begin within 48 hours prior to the event date.")
@@ -119,6 +160,10 @@ class RepeatScheduleCreate(RepeatScheduleBase):
 
 
 class RepeatScheduleUpdate(BaseModel):
+    repeat_mode: Optional[str] = None
+    interval_minutes: Optional[int] = None
+    max_repeats: Optional[int] = None
+    play_on_publish: Optional[bool] = None
     selected_slots: Optional[List[str]] = None
     custom_start_time: Optional[str] = None
     custom_end_time: Optional[str] = None
@@ -129,13 +174,25 @@ class RepeatScheduleUpdate(BaseModel):
     end_date: Optional[datetime] = None
     is_active: Optional[bool] = None
     force_enable_speaker: Optional[bool] = False
+    next_repeat_at: Optional[datetime] = None
+    last_repeat_at: Optional[datetime] = None
+
+    @field_validator("repeat_mode")
+    @classmethod
+    def validate_mode(cls, v: Optional[str]):
+        if v is not None:
+            normalized = v.upper().strip()
+            if normalized not in ALLOWED_MODES:
+                raise ValueError(f"Invalid repeat_mode '{v}'. Allowed modes: {ALLOWED_MODES}")
+            return normalized
+        return v
 
     @field_validator("selected_slots")
     @classmethod
     def validate_slots(cls, v: Optional[List[str]]):
         if v is not None:
             if not v:
-                raise ValueError("At least one repeat slot must be selected.")
+                return []
             for slot in v:
                 normalized = slot.upper().strip()
                 if normalized not in ALLOWED_SLOTS:
@@ -168,6 +225,10 @@ class RepeatScheduleResponse(BaseModel):
 
     id: int
     announcement_id: int
+    repeat_mode: str = "INTERVAL"
+    interval_minutes: int = 15
+    max_repeats: int = 3
+    play_on_publish: bool = True
     selected_slots: List[str]
     custom_start_time: Optional[str] = None
     custom_end_time: Optional[str] = None
@@ -178,4 +239,7 @@ class RepeatScheduleResponse(BaseModel):
     end_date: datetime
     is_active: bool
     total_played_count: int
+    next_repeat_at: Optional[datetime] = None
+    last_repeat_at: Optional[datetime] = None
     logs: List[RepeatSlotLogResponse] = []
+

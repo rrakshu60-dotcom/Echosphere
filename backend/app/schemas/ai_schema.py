@@ -280,6 +280,7 @@ class DocumentOcrRequest(BaseModel):
     file_base64: str
     mime_type: Optional[str] = "image/jpeg"
     filename: Optional[str] = "circular.jpg"
+    raw_text: Optional[str] = None
 
 
 class DocumentOcrResponse(BaseModel):

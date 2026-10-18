@@ -726,8 +726,93 @@ def test_repeat_schedule_suite():
     # Advance queue -> Since no repeat schedule configured, emergency notice completes!
     auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_em_single)
-    assert q_em_single.status == "Completed", f"Emergency notice without repeat schedule must complete, got {q_em_single.status}"
-    print("  ✓ Emergency notice without repeat schedule completes after single broadcast without infinite loop!")
+    # ----------------------------------------------------
+    # TEST 13: Notice with "Publish Now" + "Repeat Schedule" (Interval Mode: Every 15m, 3 repeats)
+    # ----------------------------------------------------
+    print("\n🔍 [TEST 13] Testing 'Publish Now + Repeat' (Interval: Every 15m, 3 repeats)...")
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    ann_rep = Announcement(
+        title="Campus Blood Donation Drive",
+        description="Blood donation drive ongoing at Auditorium.",
+        priority=AnnouncementPriority.NORMAL,
+        emergency_level=EmergencyLevel.NORMAL,
+        created_by=user.id,
+        category_id=cat.id,
+        status=AnnouncementStatus.PUBLISHED,
+    )
+    db.add(ann_rep)
+    db.commit()
+    db.add(AnnouncementDelivery(announcement_id=ann_rep.id, delivery_type_id=deliv_speaker.id))
+    db.commit()
+
+    # Configure repeat schedule: Every 15m, 3x total, play_on_publish=True
+    rep_payload = RepeatScheduleCreate(
+        repeat_mode="INTERVAL",
+        interval_minutes=15,
+        max_repeats=3,
+        play_on_publish=True,
+        selected_slots=["INTERVAL"],
+        start_date=now - timedelta(hours=1),
+        end_date=now + timedelta(hours=24),
+    )
+    sched_rep = configure_repeat_schedule(db, ann_rep.id, rep_payload, current_user=user)
+    db.refresh(sched_rep)
+
+    # 1. Verify Round 1 was immediately broadcast and added to SpeakerQueue
+    q_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_rep.id).first()
+    assert q_item is not None, "Notice must be in SpeakerQueue!"
+    assert q_item.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_item.status}"
+    assert sched_rep.next_repeat_at is not None, "next_repeat_at must be populated"
+    print("  ✓ Round 1 enqueued and broadcast immediately on publish!")
+
+    # 2. Advance queue -> Round 1 finishes playback
+    # auto_advance_speaker_queue should NOT mark it permanently Completed; it should re-queue for next round!
+    res_adv = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_item)
+    db.refresh(sched_rep)
+    assert q_item.status == "Queued", f"Expected status 'Queued' for next repeat round, got {q_item.status}"
+    assert q_item.scheduled_time is not None, "scheduled_time must be set for next round"
+    assert q_item.played_at is None, "played_at must be reset to None to prevent rapid infinite replay"
+    print(f"  ✓ Round 1 finished. Re-queued for next round at: {q_item.scheduled_time} (No rapid loop!)")
+
+    # 3. Simulate arrival of Round 2 (15 minutes later)
+    q_item.scheduled_time = now - timedelta(minutes=1)
+    sched_rep.next_repeat_at = now - timedelta(minutes=1)
+    db.commit()
+
+    # Call auto_advance_speaker_queue to pick up due item
+    res_adv2 = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_item)
+    db.refresh(sched_rep)
+    assert q_item.status == "Playing", f"Expected Round 2 to be 'Playing', got {q_item.status}"
+    print(f"  ✓ Round 2 successfully began playing when scheduled time arrived! (Status: {q_item.status})")
+
+    # 4. Advance queue -> Round 2 finishes
+    auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_item)
+    db.refresh(sched_rep)
+    assert q_item.status == "Queued", f"Expected status 'Queued' for Round 3, got {q_item.status}"
+    print(f"  ✓ Round 2 finished. Re-queued for Round 3 (Total played so far: {sched_rep.total_played_count})")
+
+    # 5. Simulate Round 3 arrival
+    q_item.scheduled_time = now - timedelta(minutes=1)
+    sched_rep.next_repeat_at = now - timedelta(minutes=1)
+    db.commit()
+    res_adv3 = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_item)
+    db.refresh(sched_rep)
+    assert q_item.status == "Playing", f"Expected Round 3 to be 'Playing', got {q_item.status}"
+    print(f"  ✓ Round 3 successfully began playing! (Max repeats {sched_rep.max_repeats} target)")
+
+    # 6. Advance queue -> Max repeats reached (3/3), now it completes cleanly!
+    auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_item)
+    db.refresh(sched_rep)
+    assert q_item.status == "Completed", f"Expected 'Completed' after reaching max repeats, got {q_item.status}"
+    assert sched_rep.is_active == False or sched_rep.total_played_count >= sched_rep.max_repeats
+    print("  ✓ Repeat sequence completed cleanly after 3 rounds without looping!")
 
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")

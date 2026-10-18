@@ -424,35 +424,55 @@ class AIService:
         target_role: str = "STUDENT",
         department: Optional[str] = None
     ) -> Dict[str, str]:
-        """Draft a formal institutional announcement circular using the 4-tier model hierarchy."""
+        """
+        Draft an official college circular using the multi-tier AI engine.
+        Tier 1 (Priority 1): Local Fine-Tuned Campus LLM (Qwen 2.5 3B / Gemma 2B via ModelRouter).
+        Tier 2 (Alternates): Cloudflare LLaMA 3.1 8B, Google Gemini Flash.
+        Tier 3 (Local Offline Fallback): Campus ML Engine (Grounded, zero hallucination).
+        """
         clean_topic = topic.strip()
-        dept_str = f" - {department} Department" if department else ""
+        ml_engine = CampusMLEngine.get_instance()
+        router = ModelRouter.get_instance()
 
         prompt = (
-            f"Draft an official, highly professional college circular on: '{clean_topic}'.\n"
-            f"Category: {category}, Target Audience: {target_role}, Department: {department or 'College-Wide'}.\n"
+            f"Draft an official college circular for the following topic: '{clean_topic}'.\n"
+            f"Target Audience: {target_role}, Department: {department or 'College-Wide'}, Category: {category}.\n"
+            f"RULES:\n"
+            f"1. Expand ONLY the given topic without inventing fake deadlines, candidate rules, or unstated requirements.\n"
+            f"2. EchoSphere is the communication app, NOT the institution. The authority is the College Administration or Principal's Office.\n"
+            f"3. Correct typos (e.g. 'principle' -> 'Principal'). If about death/bereavement, use solemn condolence phrasing.\n"
             f"Return strictly valid JSON with keys: 'title', 'content', 'suggested_priority', 'suggested_category'."
         )
-        sys_inst = "You are an official college administrative secretary drafting notices. Return strictly valid JSON."
+        sys_inst = (
+            "You are an official college administrative secretary. "
+            "EchoSphere is the campus mobile app, not the college. "
+            "Only draft based strictly on the facts given. Do not invent fake guidelines or deadlines. "
+            "Return strictly valid JSON: {\"title\": \"...\", \"content\": \"...\", \"suggested_priority\": \"NORMAL|HIGH|EMERGENCY\", \"suggested_category\": \"...\"}"
+        )
 
-        router = ModelRouter.get_instance()
         raw_res = None
 
-        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
-        if router.fine_tuned_qwen.is_configured():
+        # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
+        if router.fine_tuned_gemma.is_configured():
             try:
-                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=6.0, max_new_tokens=180)
+                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                raw_res = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=220)
+            except Exception as e:
+                logger.debug(f"[Gemma draft attempt]: {e}")
+
+        if not raw_res and router.fine_tuned_qwen.is_configured():
+            try:
+                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=8.0, max_new_tokens=220)
             except Exception as e:
                 logger.debug(f"[Qwen draft attempt]: {e}")
 
-        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        # TIER 2 (Alternates): Cloudflare LLaMA & Google Gemini
         if not raw_res and router.cloudflare_provider.is_configured():
             try:
                 raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
             except Exception as e:
                 logger.debug(f"[Cloudflare draft attempt]: {e}")
 
-        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
         if not raw_res:
             try:
                 raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
@@ -479,79 +499,64 @@ class AIService:
                             "suggested_priority": prio,
                             "suggested_category": cat
                         }
-                elif len(raw_res.strip()) > 60:
-                    lines = [l.strip() for l in raw_res.strip().split('\n') if l.strip()]
-                    title_candidate = f"Notice: {clean_topic.title()}"
-                    for line in lines[:5]:
-                        if any(k in line.lower() for k in ["subject:", "title:", "circular:"]):
-                            title_candidate = re.sub(r'(?i)^(subject|title|circular)\s*:\s*', '', line).strip(' *#')
-                            break
-                    ml_engine = CampusMLEngine.get_instance()
-                    class_res = ml_engine.predict_category_and_priority(clean_topic, raw_res)
-                    return {
-                        "title": title_candidate[:120],
-                        "content": sanitize_ai_markdown(raw_res),
-                        "suggested_priority": class_res["priority"],
-                        "suggested_category": category if category and category != "Academics" else class_res["category"]
-                    }
             except Exception as e:
                 logger.debug(f"Failed parsing LLM draft JSON: {e}")
 
-        # Tier 4: Campus ML Engine drafting fallback
-        ml_engine = CampusMLEngine.get_instance()
-        class_res = ml_engine.predict_category_and_priority(clean_topic, clean_topic)
-        final_cat = category if category and category != "Academics" else class_res["category"]
-
-        title = f"Notice: {clean_topic.title()}"
-        content = (
-            f"OFFICIAL CIRCULAR{dept_str.upper()}\n\n"
-            f"This is to formally notify all concerned {target_role.lower()}s regarding: {clean_topic}.\n\n"
-            f"Key Instructions & Guidelines:\n"
-            f"1. All target candidates must review the published requirements and adhere strictly to all deadlines.\n"
-            f"2. For further details, circular documents and updates are maintained on the EchoSphere departmental portal.\n"
-            f"3. For questions or exceptions, please contact the Department Office or Administrative Coordinator.\n\n"
-            f"Issued By Authority:\nEchoSphere Institutional Administration"
-        )
-
-        return {
-            "title": title,
-            "content": sanitize_ai_markdown(content),
-            "suggested_priority": class_res["priority"],
-            "suggested_category": final_cat
-        }
+        # TIER 3: Local Campus ML Engine Fallback (Grounded, Context-Aware)
+        return ml_engine.draft_announcement_structured(clean_topic, category=category, audience=target_role, department=department)
 
     @staticmethod
-    def expand_text(text: str, category: str = "Academics") -> str:
-        """Expand a brief memo into an official institutional circular using the 4-tier model hierarchy."""
+    def expand_text(text: str, category: str = "Academics", department: Optional[str] = None) -> str:
+        """
+        Expand a brief memo into an official institutional circular using the multi-tier AI engine.
+        Tier 1 (Priority 1): Local/Cloud Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5 via ModelRouter).
+        Tier 2 (Alternates): Cloudflare LLaMA 3.1 8B, Google Gemini Flash.
+        Tier 3 (Local Offline Fallback): Campus ML Engine (Grounded, zero hallucination).
+        """
         clean = text.strip()
         if not clean:
             return ""
 
-        prompt = (
-            f"Expand this brief note into a formal, structured official college announcement circular:\n\n"
-            f"'{clean}'\n\n"
-            f"Include an appropriate announcement title header, context details, and clear student/staff instructions."
-        )
-        sys_inst = "You are an AI for official college circulars. Expand short bullet points into polite, clear, formal announcements. Output only the circular text."
-
+        ml_engine = CampusMLEngine.get_instance()
         router = ModelRouter.get_instance()
+
+        prompt = (
+            f"Expand this brief note into a formal official college announcement circular without adding superficial or fake data:\n\n"
+            f"'{clean}'\n\n"
+            f"RULES:\n"
+            f"1. Expand ONLY the facts given. DO NOT invent fake deadlines, venues, or candidate instructions.\n"
+            f"2. EchoSphere is the campus mobile app, not the college. The issuing authority is the College Administration.\n"
+            f"3. Correct typos (e.g. 'principle' -> 'Principal'). Refine the language into professional, dignified institutional English."
+        )
+        sys_inst = (
+            "You are an AI for official college circulars. "
+            "Expand the note into a clear, formal announcement based strictly on the provided text. "
+            "Do NOT add fake deadlines, candidate requirements, or fabricated instructions. Output only the circular text."
+        )
+
         expanded: Optional[str] = None
 
-        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
-        if router.fine_tuned_qwen.is_configured():
+        # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
+        if router.fine_tuned_gemma.is_configured():
             try:
-                expanded = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=5.0, max_new_tokens=160)
+                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                expanded = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=180)
+            except Exception as e:
+                logger.debug(f"[Gemma expand attempt]: {e}")
+
+        if not expanded and router.fine_tuned_qwen.is_configured():
+            try:
+                expanded = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=8.0, max_new_tokens=180)
             except Exception as e:
                 logger.debug(f"[Qwen expand attempt]: {e}")
 
-        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        # TIER 2 (Alternates): Cloudflare LLaMA & Google Gemini
         if not expanded and router.cloudflare_provider.is_configured():
             try:
                 expanded = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
             except Exception as e:
                 logger.debug(f"[Cloudflare expand attempt]: {e}")
 
-        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
         if not expanded:
             try:
                 expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
@@ -561,27 +566,17 @@ class AIService:
         if expanded and len(expanded.strip()) >= 30:
             return sanitize_ai_markdown(expanded.strip())
 
-        # Tier 4: Campus ML Engine Circular Expander
-        try:
-            from app.services.echosphere_ml_engine import CampusMLEngine
-            expanded_campus = CampusMLEngine.get_instance().expand_announcement(clean, category=category)
-            if expanded_campus and len(expanded_campus.strip()) >= 30:
-                return sanitize_ai_markdown(expanded_campus)
-        except Exception as ce:
-            logger.debug(f"[Campus ML expand attempt]: {ce}")
-
-        # Tier 5: Structured Institutional Fallback Template
-        fallback_text = (
-            f"Official Announcement Circular ({category.upper()}):\n\n"
-            f"This is to formally notify all concerned students and faculty members regarding: {clean}.\n\n"
-            f"Please take note of this update, adhere strictly to all published guidelines, and monitor the EchoSphere portal for detailed schedules and venue notices.\n"
-            f"For questions or clarifications, please consult your Department Office or Faculty Advisor."
-        )
-        return sanitize_ai_markdown(fallback_text)
+        # TIER 3: Local Campus ML Engine Fallback (Grounded, Context-Aware)
+        return ml_engine.expand_announcement(clean, category=category, department=department)
 
     @staticmethod
     def check_grammar(text: str) -> Dict[str, Any]:
-        """Check grammar, spelling, and institutional tone using the 4-tier model hierarchy."""
+        """
+        Check grammar, spelling, and institutional tone using the multi-tier AI engine.
+        Tier 1 (Priority 1): Local/Cloud Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5 via ModelRouter).
+        Tier 2 (Alternates): Cloudflare LLaMA 3.1 8B, Google Gemini Flash.
+        Tier 3 (Local Offline Fallback): Campus ML Engine Grammar & Tone Polisher.
+        """
         clean = text.strip()
         if not clean:
             return {"original": text, "corrected_text": text, "improvements": []}
@@ -595,21 +590,27 @@ class AIService:
         router = ModelRouter.get_instance()
         raw_res: Optional[str] = None
 
-        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
-        if router.fine_tuned_qwen.is_configured():
+        # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
+        if router.fine_tuned_gemma.is_configured():
             try:
-                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=5.0, max_new_tokens=150)
+                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                raw_res = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=160)
+            except Exception as e:
+                logger.debug(f"[Gemma grammar attempt]: {e}")
+
+        if not raw_res and router.fine_tuned_qwen.is_configured():
+            try:
+                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=8.0, max_new_tokens=160)
             except Exception as e:
                 logger.debug(f"[Qwen grammar attempt]: {e}")
 
-        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B
+        # TIER 2 (Alternates): Cloudflare & Gemini
         if not raw_res and router.cloudflare_provider.is_configured():
             try:
                 raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
             except Exception as e:
                 logger.debug(f"[Cloudflare grammar attempt]: {e}")
 
-        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
         if not raw_res:
             try:
                 raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
@@ -634,28 +635,13 @@ class AIService:
             except Exception as e:
                 logger.debug(f"Failed parsing LLM grammar JSON: {e}")
 
-        # Tier 4: Campus ML Engine Grammar & Tone Polisher
-        try:
-            from app.services.echosphere_ml_engine import CampusMLEngine
-            return CampusMLEngine.get_instance().polish_grammar_and_tone(clean)
-        except Exception as ce:
-            logger.debug(f"[Campus ML grammar attempt]: {ce}")
-
-        # Tier 5: Rule-based fallback
-        corrected = clean[0].upper() + clean[1:]
-        if not corrected.endswith(('.', '!', '?')):
-            corrected += '.'
-
-        improvements = []
-        if not clean[0].isupper():
-            improvements.append("Capitalized initial sentence letter.")
-        if not clean.endswith(('.', '!', '?')):
-            improvements.append("Added terminal punctuation.")
-
+        # TIER 3: Local Campus ML Engine Fallback
+        from app.services.echosphere_ml_engine import CampusMLEngine
+        campus_res = CampusMLEngine.get_instance().polish_grammar_and_tone(clean)
         return {
             "original": text,
-            "corrected_text": corrected,
-            "improvements": improvements or ["Verified professional tone and structure."]
+            "corrected_text": sanitize_ai_markdown(campus_res.get("corrected_text", clean)),
+            "improvements": campus_res.get("improvements", ["Applied standardized institutional casing and punctuation."])
         }
 
     @staticmethod
@@ -812,32 +798,45 @@ class AIService:
 
     @staticmethod
     def summarize(content: str) -> str:
-        """Summarize announcement into 1 concise sentence using Qwen 2.5 3B with campus distillation fallback."""
+        """
+        Summarize announcement into 1 concise sentence using the multi-tier AI engine.
+        Tier 1: Campus ML Engine Semantic Summarizer (Priority 1 - Local, instant).
+        Alternates: Local Fine-Tuned Qwen 2.5 3B, Cloudflare LLaMA 3.1, Google Gemini, Campus Distillation.
+        """
         clean = content.strip()
         if not clean:
             return "No content provided."
 
+        # Tier 1: Campus ML Engine Semantic Summarizer (Priority 1)
+        try:
+            from app.services.echosphere_ml_engine import CampusMLEngine
+            campus_summary = CampusMLEngine.get_instance().summarize_announcement(clean)
+            if campus_summary and len(campus_summary.strip()) >= 10:
+                clean_sum = sanitize_ai_markdown(campus_summary.strip())
+                clean_sum = re.sub(r'^(summary|executive summary|in summary)\s*[:\-–]\s*', '', clean_sum, flags=re.IGNORECASE).strip(' "\'')
+                return clean_sum
+        except Exception as ce:
+            logger.debug(f"[Campus ML summarize attempt]: {ce}")
+
+        # Tier 2 & Alternates: Generative LLMs
         prompt = f"Summarize this college circular in 1 clear, concise institutional sentence:\n\n'{clean}'"
         sys_inst = "You are a concise campus editorial AI. Summarize the circular in 1 clear institutional sentence."
 
         router = ModelRouter.get_instance()
         summary: Optional[str] = None
 
-        # Tier 1: Local Fine-Tuned Qwen 2.5 3B (GPU Port 8009)
         if router.fine_tuned_qwen.is_configured():
             try:
                 summary = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=4.0, max_new_tokens=60)
             except Exception as e:
                 logger.debug(f"[Qwen summarize attempt]: {e}")
 
-        # Tier 2: Cloudflare Workers AI LLaMA 3.1 8B / Qwen
         if not summary and router.cloudflare_provider.is_configured():
             try:
                 summary = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=4.0)
             except Exception as e:
                 logger.debug(f"[Cloudflare summarize attempt]: {e}")
 
-        # Tier 3: Google Gemini API (Gemini 2.5 / 2.0 Flash)
         if not summary:
             try:
                 summary, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
@@ -851,18 +850,7 @@ class AIService:
             if len(clean_sum.split()) <= 30:
                 return clean_sum
 
-        # Tier 4: Campus ML Engine Semantic Summarizer
-        try:
-            from app.services.echosphere_ml_engine import CampusMLEngine
-            campus_summary = CampusMLEngine.get_instance().summarize_announcement(clean)
-            if campus_summary and len(campus_summary.strip()) >= 10:
-                clean_sum = sanitize_ai_markdown(campus_summary.strip())
-                clean_sum = re.sub(r'^(summary|executive summary|in summary)\s*[:\-–]\s*', '', clean_sum, flags=re.IGNORECASE).strip(' "\'')
-                return clean_sum
-        except Exception as ce:
-            logger.debug(f"[Campus ML summarize attempt]: {ce}")
-
-        # Tier 5: Precision Campus Distillation Fallback (guaranteed concise 1-sentence)
+        # Tier 3: Precision Campus Distillation Fallback (guaranteed concise 1-sentence)
         return sanitize_ai_markdown(AIService.distill_qwen_campus_summary(clean))
 
     summarize_content = summarize

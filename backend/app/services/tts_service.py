@@ -1,9 +1,11 @@
 import os
 import re
+import time
 import wave
 import asyncio
 import logging
 import hashlib
+import threading
 import concurrent.futures
 from typing import Tuple, Dict, Any, Optional
 
@@ -113,11 +115,93 @@ def clean_text_for_speech(text: str) -> str:
 TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
-KOKORO_API_URL = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
+KOKORO_API_URL = os.getenv("KOKORO_API_URL", "https://rakshiroxy-echosphere-tts.hf.space").strip().rstrip("/")
 
 _cached_gradio_client = None
 _cached_gradio_url = None
 _openai_endpoint_supported = None
+_kokoro_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="KokoroZeroGPU")
+
+_keepalive_thread: Optional[threading.Thread] = None
+_keepalive_stop_event = threading.Event()
+_last_keepalive_ping_time: Optional[float] = None
+_last_keepalive_status: Optional[str] = None
+
+
+def ping_zerogpu_worker() -> bool:
+    """
+    Sends a fast, lightweight HTTP GET probe to the Kokoro Hugging Face Space.
+    Prevents ZeroGPU container from spinning down after 15 minutes of inactivity.
+    """
+    global _last_keepalive_ping_time, _last_keepalive_status
+    api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
+    if not api_url:
+        return False
+
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    headers = {"User-Agent": "EchoSphere-ZeroGPU-KeepAlive/2.2"}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+
+    try:
+        import requests
+        # Probe lightweight endpoints: /health, /config, /info, or root /
+        for endpoint in ["/health", "/config", "/info", ""]:
+            probe_url = f"{api_url}{endpoint}"
+            try:
+                resp = requests.get(probe_url, headers=headers, timeout=5.0)
+                _last_keepalive_ping_time = time.time()
+                if resp.status_code in (200, 302, 307):
+                    _last_keepalive_status = f"HTTP {resp.status_code} ({endpoint or '/'})"
+                    logger.info(f"ZeroGPU keep-alive ping successful: {probe_url} (HTTP {resp.status_code})")
+                    return True
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f"ZeroGPU keep-alive ping note: {e}")
+        _last_keepalive_status = f"Error: {e}"
+    return False
+
+
+def _zerogpu_keepalive_loop():
+    """
+    Background daemon loop that executes every 9 minutes (540s)
+    to keep Hugging Face ZeroGPU Spaces perpetually awake and eliminate cold starts.
+    """
+    logger.info("EchoSphere ZeroGPU Keep-Alive Daemon started (9-minute interval).")
+    time.sleep(10)
+    ping_zerogpu_worker()
+
+    while not _keepalive_stop_event.is_set():
+        for _ in range(108):
+            if _keepalive_stop_event.is_set():
+                return
+            time.sleep(5)
+        ping_zerogpu_worker()
+
+
+def start_zerogpu_keepalive_daemon():
+    """Starts the background ZeroGPU warm-up daemon if not already running."""
+    global _keepalive_thread
+    if _keepalive_thread is None or not _keepalive_thread.is_alive():
+        _keepalive_thread = threading.Thread(
+            target=_zerogpu_keepalive_loop,
+            daemon=True,
+            name="ZeroGPUKeepAliveDaemon",
+        )
+        _keepalive_thread.start()
+
+
+def get_zerogpu_health_status() -> dict:
+    """Returns diagnostics for the ZeroGPU keep-alive daemon and Kokoro worker."""
+    api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
+    return {
+        "kokoro_api_url": api_url or None,
+        "keepalive_daemon_active": bool(_keepalive_thread and _keepalive_thread.is_alive()),
+        "last_ping_time": _last_keepalive_ping_time,
+        "last_ping_status": _last_keepalive_status,
+        "fast_fallback_timeout_sec": 4.0,
+    }
 
 
 def synthesize_remote_kokoro_api(
@@ -125,16 +209,17 @@ def synthesize_remote_kokoro_api(
     voice: str = "af_heart",
     output_path: str = "",
     response_format: str = "mp3",
-    timeout: float = 8.0,
+    timeout: float = 4.0,
 ) -> bool:
     """
     Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces)
     via OpenAI-compatible /v1/audio/speech endpoint or native Gradio ZeroGPU space with client caching.
+    Enforces a strict 4.0s timeout to instantly drop down to Edge-TTS fallback if ZeroGPU is sleeping/cold-starting.
     Guarantees companion WAV and MP3 files exist on disk for instant ESP32 I2S and web streaming.
     """
     global _cached_gradio_client, _cached_gradio_url, _openai_endpoint_supported
 
-    api_url = os.getenv("KOKORO_API_URL", "").strip().rstrip("/")
+    api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
     if not api_url:
         return False
 
@@ -142,10 +227,10 @@ def synthesize_remote_kokoro_api(
     if not clean:
         clean = "Attention. Official campus announcement broadcast."
 
-    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
 
     # Fast Probe: Only try OpenAI endpoint if not previously discovered to be unsupported
-    if _openai_endpoint_supported is not False:
+    if _openai_endpoint_supported is None or _openai_endpoint_supported:
         try:
             import requests
             target_url = f"{api_url}/v1/audio/speech"
@@ -159,7 +244,7 @@ def synthesize_remote_kokoro_api(
             if hf_token:
                 headers["Authorization"] = f"Bearer {hf_token}"
 
-            resp = requests.post(target_url, json=payload, headers=headers, timeout=2.5)
+            resp = requests.post(target_url, json=payload, headers=headers, timeout=min(2.0, timeout))
             if resp.status_code == 200 and len(resp.content) > 1024:
                 _openai_endpoint_supported = True
                 is_wav = resp.content[:4] == b"RIFF"
@@ -184,23 +269,48 @@ def synthesize_remote_kokoro_api(
             logger.debug(f"OpenAI endpoint call note: {http_err}")
 
     # Fallback 2: Connect via Gradio Client (native Hugging Face ZeroGPU Gradio Space with persistent client cache)
+    # Strict 4.0s timeout ensures zero blocking during ZeroGPU cold-starts, immediately falling back to Edge-TTS.
     try:
         from gradio_client import Client
         import shutil
 
-        if _cached_gradio_client is None or _cached_gradio_url != api_url:
-            try:
-                _cached_gradio_client = Client(api_url, token=hf_token)
-            except TypeError:
-                _cached_gradio_client = Client(api_url, hf_token=hf_token)
-            _cached_gradio_url = api_url
+        # Patch gradio_client schema parsing for Gradio 5 boolean schemas if needed
+        try:
+            from gradio_client import utils as client_utils
+            orig_schema_type = getattr(client_utils, "_json_schema_to_python_type", None)
+            if orig_schema_type and not getattr(client_utils, "_echosphere_patched", False):
+                def _safe_schema_type(schema):
+                    if schema is True or schema is False or not isinstance(schema, dict):
+                        return Any
+                    return orig_schema_type(schema)
+                client_utils._json_schema_to_python_type = _safe_schema_type
+                client_utils._echosphere_patched = True
+        except Exception:
+            pass
 
-        audio_path = _cached_gradio_client.predict(
-            clean,
-            voice or "af_heart",
-            1.0,
-            api_name="/synthesize",
-        )
+        def _execute_gradio_inference():
+            global _cached_gradio_client, _cached_gradio_url
+            if _cached_gradio_client is None or _cached_gradio_url != api_url:
+                client_kwargs = {"token": hf_token} if hf_token else {}
+                try:
+                    _cached_gradio_client = Client(api_url, **client_kwargs)
+                except TypeError:
+                    legacy_kwargs = {"hf_token": hf_token} if hf_token else {}
+                    _cached_gradio_client = Client(api_url, **legacy_kwargs)
+                _cached_gradio_url = api_url
+
+            return _cached_gradio_client.predict(
+                clean,
+                voice or "af_heart",
+                1.0,
+                api_name="/synthesize",
+            )
+
+        future = _kokoro_executor.submit(_execute_gradio_inference)
+        audio_path = future.result(timeout=timeout)
+        if isinstance(audio_path, dict):
+            audio_path = audio_path.get("path")
+
         if audio_path and os.path.exists(audio_path) and os.path.getsize(audio_path) > 1024:
             with open(audio_path, "rb") as f:
                 sample_bytes = f.read(4)
@@ -237,6 +347,12 @@ def synthesize_remote_kokoro_api(
 
             logger.info(f"Kokoro-82M audio generated via Gradio ZeroGPU worker: {output_path}")
             return True
+    except concurrent.futures.TimeoutError:
+        logger.warning(
+            f"Kokoro ZeroGPU remote worker latency exceeded {timeout}s cutoff (Space cold-starting or queuing). "
+            f"Immediately falling back to Edge-TTS neural engine."
+        )
+        return False
     except Exception as g_err:
         logger.debug(f"Gradio Space client error: {g_err}")
         _cached_gradio_client = None
@@ -477,6 +593,46 @@ def is_kokoro_available() -> bool:
         return False
 
 
+def _format_audio_result(
+    file_name: str,
+    file_path: str,
+    audio_type: str,
+    engine: str,
+    voice: str,
+    chime: Optional[str] = None,
+    duration_sec: Optional[float] = None,
+) -> dict:
+    """
+    Persists synthesized audio to Hugging Face Datasets Git LFS CDN and returns
+    both permanent Cloudflare raw CDN URL and local static fallback path.
+    """
+    public_url = f"/static/audio_streams/{file_name}"
+    cdn_url = None
+    try:
+        from app.services.cloud_storage_service import CloudStorageService
+        upload_info = CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
+        public_url = upload_info.get("public_url") or public_url
+        cdn_url = upload_info.get("cdn_url")
+    except Exception as e:
+        logger.debug(f"Cloud storage upload error: {e}")
+
+    res = {
+        "file_name": file_name,
+        "file_path": file_path,
+        "url_path": f"/static/audio_streams/{file_name}",
+        "public_url": public_url,
+        "cdn_url": cdn_url,
+        "type": audio_type,
+        "engine": engine,
+        "voice": voice,
+    }
+    if chime is not None:
+        res["chime"] = chime
+    if duration_sec is not None:
+        res["duration_sec"] = duration_sec
+    return res
+
+
 def generate_announcement_audio_sync(
     announcement_id: int,
     text: str,
@@ -524,7 +680,16 @@ def generate_announcement_audio_sync(
     mp3_filepath = os.path.join(STATIC_AUDIO_DIR, mp3_filename)
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
 
-    # 1. Check WAV cache (and purge legacy beep files if encountered)
+    # 1. Restore from Hugging Face Git LFS CDN if container local disk was wiped
+    try:
+        from app.services.cloud_storage_service import CloudStorageService
+        if not os.path.exists(wav_filepath) and not os.path.exists(mp3_filepath):
+            CloudStorageService.restore_file_from_cdn_if_missing(mp3_filename, folder="audio_streams")
+            CloudStorageService.restore_file_from_cdn_if_missing(wav_filename, folder="audio_streams")
+    except Exception:
+        pass
+
+    # Check WAV cache (and purge legacy beep files if encountered)
     if os.path.exists(wav_filepath):
         if is_legacy_beep_file(wav_filepath):
             logger.info(f"Purging legacy 16kHz beep file: {wav_filepath}")
@@ -533,37 +698,34 @@ def generate_announcement_audio_sync(
             except Exception:
                 pass
         elif os.path.getsize(wav_filepath) > 1024:
-            return {
-                "file_name": wav_filename,
-                "file_path": wav_filepath,
-                "url_path": f"/static/audio_streams/{wav_filename}",
-                "type": "wav",
-                "engine": f"Neural Speech ({voice_name} - Cached)",
-                "voice": voice_name,
-                "chime": selected_chime if include_chime else "none",
-            }
+            return _format_audio_result(
+                file_name=wav_filename,
+                file_path=wav_filepath,
+                audio_type="wav",
+                engine=f"Neural Speech ({voice_name} - Cached)",
+                voice=voice_name,
+                chime=selected_chime if include_chime else "none",
+            )
 
-    # 2. Check MP3 cache
+    # Check MP3 cache
     if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
-        return {
-            "file_name": mp3_filename,
-            "file_path": mp3_filepath,
-            "url_path": f"/static/audio_streams/{mp3_filename}",
-            "type": "mp3",
-            "engine": f"Neural Speech ({voice_name} - Cached)",
-            "voice": voice_name,
-            "chime": selected_chime if include_chime else "none",
-        }
+        return _format_audio_result(
+            file_name=mp3_filename,
+            file_path=mp3_filepath,
+            audio_type="mp3",
+            engine=f"Neural Speech ({voice_name} - Cached)",
+            voice=voice_name,
+            chime=selected_chime if include_chime else "none",
+        )
     if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 4096:
-        return {
-            "file_name": wav_filename,
-            "file_path": wav_filepath,
-            "url_path": f"/static/audio_streams/{wav_filename}",
-            "type": "wav",
-            "engine": f"Kokoro-82M ({voice_name} - Cached)",
-            "voice": voice_name,
-            "chime": selected_chime if include_chime else "none",
-        }
+        return _format_audio_result(
+            file_name=wav_filename,
+            file_path=wav_filepath,
+            audio_type="wav",
+            engine=f"Kokoro-82M ({voice_name} - Cached)",
+            voice=voice_name,
+            chime=selected_chime if include_chime else "none",
+        )
 
     speech_text = clean_text_for_speech(text)
     if not speech_text:
@@ -574,18 +736,20 @@ def generate_announcement_audio_sync(
         # 1A. Dedicated Remote Kokoro-82M Worker (Hugging Face Spaces with 16GB RAM)
         if KOKORO_API_URL:
             # Generate high-fidelity WAV & MP3 companions for streaming to ESP32 and web clients
-            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav"):
+            # Strict 4.0s timeout: If ZeroGPU is cold/sleeping, immediately drops to Edge-TTS neural engine
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=4.0):
                 if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
                     convert_wav_to_mp3(wav_filepath, mp3_filepath)
-                return {
-                    "file_name": mp3_filename if os.path.exists(mp3_filepath) else wav_filename,
-                    "file_path": mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath,
-                    "url_path": f"/static/audio_streams/{mp3_filename if os.path.exists(mp3_filepath) else wav_filename}",
-                    "type": "mp3" if os.path.exists(mp3_filepath) else "wav",
-                    "engine": f"Kokoro-82M Neural ({voice_name})",
-                    "voice": voice_name,
-                    "chime": selected_chime if include_chime else "none",
-                }
+                chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename
+                chosen_fp = mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath
+                return _format_audio_result(
+                    file_name=chosen_fn,
+                    file_path=chosen_fp,
+                    audio_type="mp3" if os.path.exists(mp3_filepath) else "wav",
+                    engine=f"Kokoro-82M Neural ({voice_name})",
+                    voice=voice_name,
+                    chime=selected_chime if include_chime else "none",
+                )
 
         # 1B. Local Kokoro-ONNX / PyTorch Pipeline
         kok_onnx = get_kokoro_onnx()
@@ -613,16 +777,17 @@ def generate_announcement_audio_sync(
                     import gc
                     gc.collect()
 
-                    return {
-                        "file_name": mp3_filename if has_mp3 else wav_filename,
-                        "file_path": mp3_filepath if has_mp3 else wav_filepath,
-                        "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else wav_filename}",
-                        "type": "mp3" if has_mp3 else "wav",
-                        "engine": f"Kokoro-82M INT8 ({voice_name})",
-                        "voice": voice_name,
-                        "duration_sec": duration,
-                        "chime": selected_chime if include_chime else "none",
-                    }
+                    chosen_fn = mp3_filename if has_mp3 else wav_filename
+                    chosen_fp = mp3_filepath if has_mp3 else wav_filepath
+                    return _format_audio_result(
+                        file_name=chosen_fn,
+                        file_path=chosen_fp,
+                        audio_type="mp3" if has_mp3 else "wav",
+                        engine=f"Kokoro-82M INT8 ({voice_name})",
+                        voice=voice_name,
+                        duration_sec=duration,
+                        chime=selected_chime if include_chime else "none",
+                    )
             except Exception as k_err:
                 logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying PyTorch pipeline...")
 
@@ -646,16 +811,15 @@ def generate_announcement_audio_sync(
                     sf.write(wav_filepath, combined, 24000)
                     duration = round(len(combined) / 24000.0, 2)
                     logger.info(f"Kokoro-82M offline audio generated: {wav_filepath}")
-                    return {
-                        "file_name": wav_filename,
-                        "file_path": wav_filepath,
-                        "url_path": f"/static/audio_streams/{wav_filename}",
-                        "type": "wav",
-                        "engine": f"Kokoro-82M ({voice_name})",
-                        "voice": voice_name,
-                        "duration_sec": duration,
-                        "chime": selected_chime if include_chime else "none",
-                    }
+                    return _format_audio_result(
+                        file_name=wav_filename,
+                        file_path=wav_filepath,
+                        audio_type="wav",
+                        engine=f"Kokoro-82M ({voice_name})",
+                        voice=voice_name,
+                        duration_sec=duration,
+                        chime=selected_chime if include_chime else "none",
+                    )
         except Exception as k_err:
             logger.debug(f"Kokoro-82M attempt failed: {k_err}. Falling back to Edge-TTS.")
 
@@ -678,15 +842,14 @@ def generate_announcement_audio_sync(
             except Exception:
                 pass
             logger.info(f"Edge-TTS neural audio generated ({voice_name}): {mp3_filepath}")
-            return {
-                "file_name": mp3_filename,
-                "file_path": mp3_filepath,
-                "url_path": f"/static/audio_streams/{mp3_filename}",
-                "type": "mp3",
-                "engine": f"Neural Cloud ({voice_name})",
-                "voice": voice_name,
-                "chime": selected_chime if include_chime else "none",
-            }
+            return _format_audio_result(
+                file_name=mp3_filename,
+                file_path=mp3_filepath,
+                audio_type="mp3",
+                engine=f"Neural Cloud ({voice_name})",
+                voice=voice_name,
+                chime=selected_chime if include_chime else "none",
+            )
     except Exception as edge_err:
         logger.debug(f"Edge-TTS attempt failed: {edge_err}. Trying gTTS fallback...")
 
@@ -697,15 +860,14 @@ def generate_announcement_audio_sync(
         tts.save(mp3_filepath)
         if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
             logger.info(f"gTTS audio stream generated: {mp3_filepath}")
-            return {
-                "file_name": mp3_filename,
-                "file_path": mp3_filepath,
-                "url_path": f"/static/audio_streams/{mp3_filename}",
-                "type": "mp3",
-                "engine": "gTTS (Cloud)",
-                "voice": "Standard English",
-                "chime": selected_chime if include_chime else "none",
-            }
+            return _format_audio_result(
+                file_name=mp3_filename,
+                file_path=mp3_filepath,
+                audio_type="mp3",
+                engine="gTTS (Cloud)",
+                voice="Standard English",
+                chime=selected_chime if include_chime else "none",
+            )
     except Exception as g_err:
         logger.debug(f"gTTS attempt failed: {g_err}. Trying offline pyttsx3 speech...")
 
@@ -718,15 +880,14 @@ def generate_announcement_audio_sync(
                 if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
                     os.replace(temp_wav, wav_filepath)
             logger.info(f"pyttsx3 offline speech audio generated: {wav_filepath}")
-            return {
-                "file_name": wav_filename,
-                "file_path": wav_filepath,
-                "url_path": f"/static/audio_streams/{wav_filename}",
-                "type": "wav",
-                "engine": "Offline Speech (pyttsx3)",
-                "voice": f"{gender.capitalize()} Offline",
-                "chime": selected_chime if include_chime else "none",
-            }
+            return _format_audio_result(
+                file_name=wav_filename,
+                file_path=wav_filepath,
+                audio_type="wav",
+                engine="Offline Speech (pyttsx3)",
+                voice=f"{gender.capitalize()} Offline",
+                chime=selected_chime if include_chime else "none",
+            )
     except Exception as p_err:
         logger.error(f"pyttsx3 offline synthesis error: {p_err}")
 
@@ -736,15 +897,16 @@ def generate_announcement_audio_sync(
         fallback_wav = get_or_create_chime_wav(selected_chime)
         if os.path.exists(fallback_wav) and os.path.getsize(fallback_wav) > 1024:
             has_mp3 = convert_wav_to_mp3(fallback_wav, mp3_filepath)
-            return {
-                "file_name": mp3_filename if has_mp3 else os.path.basename(fallback_wav),
-                "file_path": mp3_filepath if has_mp3 else fallback_wav,
-                "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else os.path.basename(fallback_wav)}",
-                "type": "mp3" if has_mp3 else "wav",
-                "engine": f"Campus Notice Chime ({selected_chime})",
-                "voice": "Institutional Chime",
-                "chime": selected_chime,
-            }
+            chosen_fn = mp3_filename if has_mp3 else os.path.basename(fallback_wav)
+            chosen_fp = mp3_filepath if has_mp3 else fallback_wav
+            return _format_audio_result(
+                file_name=chosen_fn,
+                file_path=chosen_fp,
+                audio_type="mp3" if has_mp3 else "wav",
+                engine=f"Campus Notice Chime ({selected_chime})",
+                voice="Institutional Chime",
+                chime=selected_chime,
+            )
     except Exception as chime_fallback_err:
         logger.error(f"Chime fallback error: {chime_fallback_err}")
 
@@ -795,6 +957,15 @@ def synthesize_text_audio(
     wav_filepath = os.path.join(STATIC_AUDIO_DIR, wav_filename)
     mp3_filepath = os.path.join(STATIC_AUDIO_DIR, mp3_filename)
 
+    # 1. Restore from Hugging Face Git LFS CDN if container local disk was wiped
+    try:
+        from app.services.cloud_storage_service import CloudStorageService
+        if not os.path.exists(wav_filepath) and not os.path.exists(mp3_filepath):
+            CloudStorageService.restore_file_from_cdn_if_missing(mp3_filename, folder="audio_streams")
+            CloudStorageService.restore_file_from_cdn_if_missing(wav_filename, folder="audio_streams")
+    except Exception:
+        pass
+
     # 1. Check WAV cache
     if os.path.exists(wav_filepath):
         if is_legacy_beep_file(wav_filepath):
@@ -803,39 +974,36 @@ def synthesize_text_audio(
             except Exception:
                 pass
         elif os.path.getsize(wav_filepath) > 1024:
-            return {
-                "file_name": wav_filename,
-                "file_path": wav_filepath,
-                "url_path": f"/static/audio_streams/{wav_filename}",
-                "type": "wav",
-                "engine": f"Neural Speech ({voice_name} - Cached)",
-                "voice": voice_name,
-            }
+            return _format_audio_result(
+                file_name=wav_filename,
+                file_path=wav_filepath,
+                audio_type="wav",
+                engine=f"Neural Speech ({voice_name} - Cached)",
+                voice=voice_name,
+            )
 
     # 2. Check MP3 cache
     if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
-        return {
-            "file_name": mp3_filename,
-            "file_path": mp3_filepath,
-            "url_path": f"/static/audio_streams/{mp3_filename}",
-            "type": "mp3",
-            "engine": f"Neural Speech ({voice_name} - Cached)",
-            "voice": voice_name,
-        }
+        return _format_audio_result(
+            file_name=mp3_filename,
+            file_path=mp3_filepath,
+            audio_type="mp3",
+            engine=f"Neural Speech ({voice_name} - Cached)",
+            voice=voice_name,
+        )
 
     # Tier 1: Kokoro Neural Engine (Remote AI Worker, ONNX, or PyTorch pipeline)
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
         # 1A. Dedicated Remote Kokoro-82M Worker
         if KOKORO_API_URL:
-            if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3"):
-                return {
-                    "file_name": mp3_filename,
-                    "file_path": mp3_filepath,
-                    "url_path": f"/static/audio_streams/{mp3_filename}",
-                    "type": "mp3",
-                    "engine": f"Kokoro-82M Neural ({voice_name})",
-                    "voice": voice_name,
-                }
+            if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3", timeout=4.0):
+                return _format_audio_result(
+                    file_name=mp3_filename,
+                    file_path=mp3_filepath,
+                    audio_type="mp3",
+                    engine=f"Kokoro-82M Neural ({voice_name})",
+                    voice=voice_name,
+                )
 
         # 1B. Local Kokoro-ONNX / PyTorch Pipeline
         kok_onnx = get_kokoro_onnx()
@@ -848,15 +1016,16 @@ def synthesize_text_audio(
                     sf.write(wav_filepath, samples, sample_rate)
                     duration = round(len(samples) / float(sample_rate), 2)
                     has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
-                    return {
-                        "file_name": mp3_filename if has_mp3 else wav_filename,
-                        "file_path": mp3_filepath if has_mp3 else wav_filepath,
-                        "url_path": f"/static/audio_streams/{mp3_filename if has_mp3 else wav_filename}",
-                        "type": "mp3" if has_mp3 else "wav",
-                        "engine": f"Kokoro-82M INT8 ({voice_name})",
-                        "voice": voice_name,
-                        "duration_sec": duration,
-                    }
+                    chosen_fn = mp3_filename if has_mp3 else wav_filename
+                    chosen_fp = mp3_filepath if has_mp3 else wav_filepath
+                    return _format_audio_result(
+                        file_name=chosen_fn,
+                        file_path=chosen_fp,
+                        audio_type="mp3" if has_mp3 else "wav",
+                        engine=f"Kokoro-82M INT8 ({voice_name})",
+                        voice=voice_name,
+                        duration_sec=duration,
+                    )
             except Exception as k_err:
                 logger.debug(f"Kokoro-ONNX text synthesis note: {k_err}")
 
@@ -872,15 +1041,14 @@ def synthesize_text_audio(
                     combined = np.concatenate(audio_segments)
                     sf.write(wav_filepath, combined, 24000)
                     duration = round(len(combined) / 24000.0, 2)
-                    return {
-                        "file_name": wav_filename,
-                        "file_path": wav_filepath,
-                        "url_path": f"/static/audio_streams/{wav_filename}",
-                        "type": "wav",
-                        "engine": f"Kokoro-82M ({voice_name})",
-                        "voice": voice_name,
-                        "duration_sec": duration,
-                    }
+                    return _format_audio_result(
+                        file_name=wav_filename,
+                        file_path=wav_filepath,
+                        audio_type="wav",
+                        engine=f"Kokoro-82M ({voice_name})",
+                        voice=voice_name,
+                        duration_sec=duration,
+                    )
         except Exception as k_err:
             logger.debug(f"Kokoro text synthesis fallback: {k_err}")
 
@@ -895,14 +1063,13 @@ def synthesize_text_audio(
         run_coroutine_sync(_run_edge(), timeout=25.0)
 
         if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
-            return {
-                "file_name": mp3_filename,
-                "file_path": mp3_filepath,
-                "url_path": f"/static/audio_streams/{mp3_filename}",
-                "type": "mp3",
-                "engine": f"Edge-TTS ({voice_name})",
-                "voice": voice_name,
-            }
+            return _format_audio_result(
+                file_name=mp3_filename,
+                file_path=mp3_filepath,
+                audio_type="mp3",
+                engine=f"Edge-TTS ({voice_name})",
+                voice=voice_name,
+            )
     except Exception as e_err:
         logger.debug(f"Edge-TTS text synthesis failed: {e_err}")
 
@@ -912,14 +1079,13 @@ def synthesize_text_audio(
         tts = gTTS(text=clean_text, lang="en", slow=False)
         tts.save(mp3_filepath)
         if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
-            return {
-                "file_name": mp3_filename,
-                "file_path": mp3_filepath,
-                "url_path": f"/static/audio_streams/{mp3_filename}",
-                "type": "mp3",
-                "engine": "gTTS (Cloud)",
-                "voice": "Standard English",
-            }
+            return _format_audio_result(
+                file_name=mp3_filename,
+                file_path=mp3_filepath,
+                audio_type="mp3",
+                engine="gTTS (Cloud)",
+                voice="Standard English",
+            )
     except Exception as g_err:
         logger.debug(f"gTTS text synthesis failed: {g_err}")
 
@@ -927,14 +1093,13 @@ def synthesize_text_audio(
     try:
         ok = generate_offline_speech_pyttsx3(wav_filepath, clean_text, gender=gender)
         if ok:
-            return {
-                "file_name": wav_filename,
-                "file_path": wav_filepath,
-                "url_path": f"/static/audio_streams/{wav_filename}",
-                "type": "wav",
-                "engine": "Offline Speech (pyttsx3)",
-                "voice": f"{gender.capitalize()} Offline",
-            }
+            return _format_audio_result(
+                file_name=wav_filename,
+                file_path=wav_filepath,
+                audio_type="wav",
+                engine="Offline Speech (pyttsx3)",
+                voice=f"{gender.capitalize()} Offline",
+            )
     except Exception as p_err:
         logger.error(f"pyttsx3 arbitrary text synthesis failed: {p_err}")
 

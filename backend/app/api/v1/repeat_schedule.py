@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, get_optional_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.repeat_schedule import (
@@ -30,7 +30,7 @@ def set_announcement_repeat_schedule(
     announcement_id: int,
     data: RepeatScheduleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     Configures, activates, or retrofits a repeat broadcast schedule for an announcement.
@@ -55,7 +55,7 @@ def patch_announcement_repeat_schedule(
     announcement_id: int,
     data: RepeatScheduleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     Partially updates an existing announcement repeat schedule.
@@ -101,7 +101,7 @@ def get_announcement_repeat_schedule(
 def remove_announcement_repeat_schedule(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     Removes or deactivates the repeat broadcast schedule for an announcement.

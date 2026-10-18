@@ -27,7 +27,7 @@ from typing import Optional, Any
 
 from app.models.announcement_approval import AnnouncementApproval
 from app.repositories.announcement_approval_repository import create_approval
-from app.schemas.announcement import AnnouncementApprovalRequest
+from app.schemas.announcement import AnnouncementApprovalRequest, BatchModerateRequest
 
 from app.services.audit_log_service import create_audit_log_service
 from app.core.websocket_manager import ws_manager
@@ -119,6 +119,31 @@ def dispatch_announcement_notifications_and_deliveries(
                 logger.info(f"Generated {len(new_notifications)} notifications for announcement id={announcement.id}")
         except Exception as e:
             logger.warning(f"Error generating notifications for announcement {announcement.id}: {e}")
+
+        # 3. Dispatch native device Push Notifications via Firebase Cloud Messaging (FCM)
+        if deliver_push or str(announcement.priority).upper() in ("URGENT", "EMERGENCY"):
+            try:
+                from app.services.firebase_push_service import firebase_push_service
+                dept_code = None
+                if getattr(announcement, "department", None):
+                    dept_code = getattr(announcement.department, "code", None)
+
+                cat_name = getattr(announcement.category, "name", "General") if getattr(announcement, "category", None) else "General"
+
+                push_results = firebase_push_service.send_announcement_push(
+                    announcement_id=announcement.id,
+                    title=announcement.title,
+                    description=announcement.description or "",
+                    target_audience=target_audience,
+                    department_code=dept_code,
+                    category=cat_name,
+                    priority=str(announcement.priority),
+                    audio_url=getattr(announcement, "audio_url", None),
+                )
+                logger.info(f"Dispatched FCM push notifications for announcement #{announcement.id}: {push_results}")
+            except Exception as ex:
+                logger.warning(f"Error dispatching FCM push notifications for announcement #{announcement.id}: {ex}")
+
 
 
 def create_announcement_service(
@@ -742,8 +767,190 @@ def reject_announcement_service(
         logger.warning(f"WebSocket broadcast error on rejection: {e}")
 
     return {"message": "Announcement rejected successfully."}
+ 
+ 
+def batch_moderate_service(
+    db: Session,
+    request: BatchModerateRequest,
+    current_user: User,
+) -> dict[str, Any]:
+    action = request.action.strip().upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Action must be either 'APPROVE' or 'REJECT'.",
+        )
+    if not request.ids:
+        return {
+            "success": True,
+            "action": action,
+            "processed_count": 0,
+            "affected_ids": [],
+            "failed_ids": [],
+            "message": "No announcements supplied for batch moderation."
+        }
 
+    user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    affected_ids = []
+    failed_ids = []
+    approved_announcements = []
 
+    try:
+        now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        remarks_text = request.remarks or f"Batch {action.lower()}ed by Administrator"
+
+        for ann_id in request.ids:
+            announcement = get_announcement_by_id(db, ann_id)
+            if not announcement:
+                failed_ids.append(ann_id)
+                continue
+
+            # Must be pending or draft or submitted
+            if announcement.status not in (
+                AnnouncementStatus.PENDING_APPROVAL,
+                AnnouncementStatus.DRAFT,
+                "SUBMITTED",
+                "PENDING_APPROVAL",
+                "DRAFT",
+                "Pending Approval",
+            ):
+                failed_ids.append(ann_id)
+                continue
+
+            # HoD permission checks
+            if user_role == "HoD":
+                creator_dept_id = announcement.creator.department_id if announcement.creator else None
+                if creator_dept_id and current_user.department_id and creator_dept_id != current_user.department_id:
+                    failed_ids.append(ann_id)
+                    continue
+                target = (announcement.target_audience or "").lower()
+                if "entire" in target or "all" in target or "institution" in target:
+                    failed_ids.append(ann_id)
+                    continue
+
+            if action == "APPROVE":
+                approval = AnnouncementApproval(
+                    announcement_id=announcement.id,
+                    approver_id=current_user.id,
+                    status="Approved",
+                    remarks=remarks_text,
+                    approved_at=now_dt,
+                )
+                db.add(approval)
+                setattr(announcement, "status", AnnouncementStatus.PUBLISHED)
+                db.add(announcement)
+                create_audit_log_service(
+                    db=db,
+                    user_id=current_user.id,
+                    action="BATCH_APPROVE_ANNOUNCEMENT",
+                    entity="ANNOUNCEMENT",
+                    entity_id=announcement.id,
+                    description=f"Batch approved announcement: {announcement.title}",
+                )
+                affected_ids.append(announcement.id)
+                approved_announcements.append(announcement)
+
+            elif action == "REJECT":
+                approval = AnnouncementApproval(
+                    announcement_id=announcement.id,
+                    approver_id=current_user.id,
+                    status="Rejected",
+                    remarks=remarks_text,
+                    approved_at=now_dt,
+                )
+                db.add(approval)
+                setattr(announcement, "status", AnnouncementStatus.REJECTED)
+                db.add(announcement)
+                create_audit_log_service(
+                    db=db,
+                    user_id=current_user.id,
+                    action="BATCH_REJECT_ANNOUNCEMENT",
+                    entity="ANNOUNCEMENT",
+                    entity_id=announcement.id,
+                    description=f"Batch rejected announcement: {announcement.title}",
+                )
+                affected_ids.append(announcement.id)
+
+        # Atomic commit for the entire batch transaction
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during atomic batch moderation transaction: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Atomic batch moderation transaction failed: {str(e)}",
+        )
+
+    # Post-transaction dispatches (Deliveries, WebSocket, Audio Pre-warming)
+    if action == "APPROVE":
+        for ann in approved_announcements:
+            try:
+                db.refresh(ann)
+                has_spk = False
+                from app.core.emergency_utils import is_emergency_announcement
+                is_emerg = is_emergency_announcement(ann)
+                has_spk = is_emerg
+                if not has_spk and ann.deliveries:
+                    for deliv in ann.deliveries:
+                        if deliv.delivery_type and "speaker" in deliv.delivery_type.name.lower():
+                            has_spk = True
+                            break
+
+                dept_code = "ALL"
+                if ann.creator and hasattr(ann.creator, 'department') and ann.creator.department:
+                    dept_code = ann.creator.department.code
+                elif hasattr(current_user, 'department') and current_user.department:
+                    dept_code = current_user.department.code
+
+                if has_spk:
+                    from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+                    enqueue_and_broadcast_announcement(
+                        db=db,
+                        announcement_id=ann.id,
+                        title=ann.title,
+                        content=ann.description,
+                        department_code=dept_code,
+                        zone="College-Wide",
+                        is_emergency=is_emerg,
+                        speaker_voice=ann.speaker_voice or "female",
+                    )
+
+                dispatch_announcement_notifications_and_deliveries(
+                    db=db,
+                    announcement=ann,
+                    deliver_in_app=True,
+                    deliver_push=True,
+                    deliver_speaker=has_spk,
+                    current_user=current_user,
+                )
+            except Exception as ex:
+                logger.warning(f"Batch post-approval broadcast warning on ID #{ann.id}: {ex}")
+
+    # WebSocket broadcast for real-time live feed updates
+    try:
+        ws_manager.broadcast_sync({
+            "event": "BATCH_ANNOUNCEMENTS_MODERATED",
+            "action": action,
+            "affected_ids": affected_ids,
+            "processed_count": len(affected_ids),
+            "approver_name": current_user.full_name,
+            "remarks": remarks_text,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast error on batch moderation: {e}")
+
+    return {
+        "success": True,
+        "action": action,
+        "processed_count": len(affected_ids),
+        "affected_ids": affected_ids,
+        "failed_ids": failed_ids,
+        "message": f"Successfully {action.lower()}ed {len(affected_ids)} announcement(s)."
+    }
+ 
+ 
 def publish_announcement_service(
     db: Session,
     announcement_id: int,

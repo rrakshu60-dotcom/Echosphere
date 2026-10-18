@@ -299,12 +299,28 @@ class SmartIntakeService:
         cls,
         file_base64: str,
         mime_type: str = "image/jpeg",
-        filename: str = "circular.jpg"
+        filename: str = "circular.jpg",
+        raw_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Extracts structured circular information from an image or PDF document.
+        Tiers:
+        1. Gemini Vision (if API key is active and online)
+        2. Local RapidOCR & pypdf (100% Free, zero tokens, zero limits, runs offline on CPU)
+        3. Deterministic template fallback (if file has no text/corrupt)
         """
-        # Tier 1: Gemini Vision / Multimodal Document Understanding
+        file_bytes = b""
+        try:
+            file_bytes = base64.b64decode(file_base64)
+        except Exception:
+            file_bytes = b""
+
+        # Extract real text using 100% Free local offline engines if not already provided
+        extracted_text = (raw_text or "").strip()
+        if not extracted_text and file_bytes:
+            extracted_text = cls._extract_text_from_document_bytes(file_bytes, mime_type, filename)
+
+        # Tier 1: Gemini Vision / Multimodal Document Understanding (if valid API key configured)
         key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
         if key and key != "YOUR_ACTUAL_GEMINI_API_KEY":
             try:
@@ -350,33 +366,272 @@ class SmartIntakeService:
                         parsed = cls._parse_json_response(text)
                         if parsed and "title" in parsed and "content" in parsed:
                             parsed["content"] = sanitize_ai_markdown(parsed["content"])
+                            if not parsed.get("raw_text") and extracted_text:
+                                parsed["raw_text"] = extracted_text[:3000]
                             logger.info(f"[Document OCR] Successfully parsed document via Gemini Vision: {parsed.get('title')}")
                             return parsed
             except Exception as e:
                 logger.debug(f"[Document OCR] Gemini Vision error: {e}")
 
-        # Tier 2: Deterministic Document Extraction Fallback
+        # Tier 2: 100% Free Local Offline OCR & Heuristic Structurer (No API, No Limits)
+        if extracted_text and len(extracted_text) >= 10:
+            return cls._structure_extracted_circular_text(extracted_text, filename)
+
+        # Tier 3: Deterministic Document Extraction Fallback
         return cls._deterministic_ocr_to_notice(file_base64, filename)
+
+    @classmethod
+    def _extract_text_from_document_bytes(cls, file_bytes: bytes, mime_type: str, filename: str) -> str:
+        """
+        Extracts raw textual content from document bytes using 100% free, local on-device engines:
+        - PDF documents: pypdf native text stream extraction (< 50ms)
+        - Images/Photos: RapidOCR ONNX CPU neural OCR engine (~0.8s)
+        """
+        is_pdf = (
+            "pdf" in mime_type.lower()
+            or filename.lower().endswith(".pdf")
+            or file_bytes[:4] == b"%PDF"
+        )
+
+        # 1. PDF Text Extraction via pypdf
+        if is_pdf:
+            try:
+                import io
+                import pypdf
+                pdf_reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+                pages_text = []
+                for idx, page in enumerate(pdf_reader.pages):
+                    txt = page.extract_text()
+                    if txt and txt.strip():
+                        pages_text.append(txt.strip())
+                if pages_text:
+                    full_text = "\n\n".join(pages_text)
+                    logger.info(f"[Document OCR] Extracted {len(full_text)} chars from {len(pages_text)} PDF page(s) via pypdf.")
+                    return full_text
+            except Exception as pdf_err:
+                logger.debug(f"[Document OCR] pypdf extraction note: {pdf_err}")
+
+        # 2. Image OCR via RapidOCR (ONNX CPU)
+        try:
+            import io
+            import numpy as np
+            from PIL import Image
+            from rapidocr_onnxruntime import RapidOCR
+
+            img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+            max_dim = 1800
+            if max(img.size) > max_dim:
+                img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+            ocr_engine = RapidOCR()
+            result, _ = ocr_engine(np.array(img))
+            if result:
+                lines = [r[1].strip() for r in result if r and len(r) > 1 and r[1] and r[1].strip()]
+                if lines:
+                    extracted_text = "\n".join(lines).strip()
+                    logger.info(f"[Document OCR] RapidOCR extracted {len(lines)} line(s) ({len(extracted_text)} chars) from image.")
+                    return extracted_text
+        except Exception as ocr_err:
+            logger.debug(f"[Document OCR] RapidOCR engine note: {ocr_err}")
+
+        # 3. Fallback: string heuristic from raw decoded bytes
+        try:
+            ascii_text = file_bytes.decode('utf-8', errors='ignore')
+            clean_lines = [line.strip() for line in ascii_text.splitlines() if len(line.strip()) > 3]
+            if len(clean_lines) >= 3:
+                return "\n".join(clean_lines[:30])
+        except Exception:
+            pass
+
+        return ""
+
+    @classmethod
+    def _structure_extracted_circular_text(cls, raw_text: str, filename: str) -> Dict[str, Any]:
+        """
+        Parses raw extracted OCR text into a formal, broadcast-ready institutional circular
+        with accurate Reference Number, Subject, Category, Priority, Audience, Dates, and Deadlines.
+        100% Free, zero tokens, zero limits, zero external APIs.
+        """
+        lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+        lower_text = raw_text.lower()
+
+        # 1. Reference Number Detection
+        ref_match = re.search(
+            r'\b(Ref(?:erence)?\s*(?:No\.?)?[:\s]*[\w/-]+|Circular\s*No\.?[:\s]*[\w/-]+|No\.\s*[\w/-]+)\b',
+            raw_text,
+            re.IGNORECASE,
+        )
+        if ref_match:
+            ref_no = ref_match.group(0).strip()
+        else:
+            ref_no = f"CIR/{datetime.date.today().year}/{filename[:8].upper()}"
+
+        # 2. Date Detection
+        # 2. Date Detection (Circular issue date vs event dates)
+        date_header_match = re.search(
+            r'Date[:\s]*(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(?:\d{2,4})?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+            raw_text,
+            re.IGNORECASE,
+        )
+        circular_date = date_header_match.group(1).strip() if date_header_match else datetime.date.today().strftime('%d %B %Y')
+
+        # 3. Subject / Title Extraction
+        subject_line = None
+        for line in lines:
+            sub_m = re.match(r'^(?:Sub(?:ject)?|Regarding|Notice regarding)[:\s]*(.+)$', line, re.IGNORECASE)
+            if sub_m:
+                candidate = sub_m.group(1).strip()
+                if len(candidate) > 4:
+                    subject_line = candidate
+                    break
+
+        if not subject_line:
+            for line in lines:
+                l_lower = line.lower()
+                if any(noise in l_lower for noise in ["college of", "university", "bengaluru", "department of", "ref no", "date:", "p.o. box", "autonomous"]):
+                    continue
+                if len(line) > 10 and not line.isupper():
+                    subject_line = line
+                    break
+                elif len(line) > 8 and "circular" not in l_lower:
+                    subject_line = line
+                    break
+
+        if not subject_line:
+            clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
+            subject_line = f"Official Circular: {clean_name}"
+
+        subject_line = subject_line.strip(". -:")
+        if not subject_line.endswith(("Notice", "Circular", "Update", "Schedule", "Timetable", "Guidelines")):
+            title = f"{subject_line} Circular"
+        else:
+            title = subject_line
+
+        # 4. Category Classification
+        category = "Academic"
+        if re.search(r'\b(exam|examination|test|ia|cie|midterm|hall ticket|reval|grade|marksheet)\b', lower_text):
+            category = "Examination"
+        elif re.search(r'\b(placement|interview|drive|package|ctc|lpa|internship|recruit|shortlist)\b', lower_text):
+            category = "Placement"
+        elif re.search(r'\b(emergency|evacuate|rain|flood|cyclone|red alert|danger|fire drill)\b', lower_text):
+            category = "Emergency"
+        elif re.search(r'\b(sport|sports|cricket|football|tournament|badminton|athletics|selection|trials)\b', lower_text):
+            category = "Sports"
+        elif re.search(r'\b(workshop|hackathon|seminar|fest|symposium|conference|cultural)\b', lower_text):
+            category = "Event"
+        elif re.search(r'\b(maintenance|canteen|bus|transport|hostel|library|fee|payment)\b', lower_text):
+            category = "Administrative"
+
+        # 5. Priority Classification
+        priority = "NORMAL"
+        if any(w in lower_text for w in ["emergency", "evacuate", "immediate", "urgent", "red alert", "cancelled", "postponed"]):
+            priority = "URGENT"
+        elif any(w in lower_text for w in ["strict", "mandatory", "deadline", "penalty", "hall ticket", "fee payment", "last date", "cie"]):
+            priority = "HIGH"
+
+        # 6. Audience Detection
+        audience = "Entire College"
+        if "aiml" in lower_text:
+            audience = "AIML Department"
+        elif "cse" in lower_text or "computer science" in lower_text:
+            audience = "CSE Department"
+        elif "ece" in lower_text or "electronics" in lower_text:
+            audience = "ECE Department"
+        elif "mech" in lower_text:
+            audience = "Mechanical Department"
+        elif "civil" in lower_text:
+            audience = "Civil Department"
+        elif "1st year" in lower_text or "first year" in lower_text:
+            audience = "1st Year Students"
+        elif "2nd year" in lower_text or "second year" in lower_text:
+            audience = "2nd Year Students"
+        elif "3rd year" in lower_text or "third year" in lower_text or "5th sem" in lower_text or "6th sem" in lower_text:
+            audience = "3rd Year Students"
+        elif "4th year" in lower_text or "final year" in lower_text or "7th sem" in lower_text or "8th sem" in lower_text:
+            audience = "4th Year Students"
+        elif "faculty" in lower_text or "professors" in lower_text or "teachers" in lower_text:
+            audience = "Faculty Members"
+
+        # 7. Venue, Time & Event Detection
+        venue_match = re.search(r'\b(Room\s*\d+|Auditorium|Seminar Hall|Turing Lab|Lab\s*\d*|Ground|Sports Complex|Library)\b', raw_text, re.IGNORECASE)
+        venue = venue_match.group(0).title() if venue_match else None
+
+        time_match = re.search(r'\b(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))\b', raw_text)
+        event_time = time_match.group(0).upper() if time_match else None
+
+        body_date_match = re.search(
+            r'(?:from|on|commence(?:s)?\s*(?:from)?|held\s*on|deadline|scheduled\s*(?:for)?)\s*(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(?:\d{2,4})?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+            raw_text,
+            re.IGNORECASE,
+        )
+        if body_date_match:
+            event_date = body_date_match.group(1).strip()
+        else:
+            all_dates = re.findall(
+                r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(?:\d{2,4})?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b',
+                raw_text,
+                re.IGNORECASE,
+            )
+            other_dates = [d for d in all_dates if d.strip().lower() != circular_date.lower()]
+            event_date = other_dates[0] if other_dates else (all_dates[0] if all_dates else None)
+
+        # 8. Build Key Bullet Points from actual text
+        bullets = []
+        if event_date or event_time:
+            timing_str = f"{event_date} {f'at {event_time}' if event_time else ''}".strip()
+            bullets.append(f"- Timing / Schedule: {timing_str}")
+        if venue:
+            bullets.append(f"- Venue / Location: {venue}")
+
+        for line in lines:
+            line_l = line.lower()
+            if any(k in line_l for k in ["mandatory", "must report", "hall ticket", "fees", "fee", "penalty", "deadline", "last date", "instructions", "eligibility"]):
+                if not any(b.endswith(line) for b in bullets) and len(line) < 140:
+                    clean_clause = line.lstrip("-*• ").strip()
+                    if clean_clause and not clean_clause.startswith(("-", "*")):
+                        bullets.append(f"- {clean_clause}")
+
+        if not bullets:
+            bullets.append("- Please refer to the attached official institutional circular for complete schedule and instructions.")
+        bullets.append(f"- All concerned {audience.lower()} are required to strictly comply with the guidelines.")
+
+        content = (
+            f"Reference: {ref_no}\n"
+            f"Date: {circular_date}\n\n"
+            f"Subject: {title}\n\n"
+            f"This is to officially notify all {audience} regarding the matters set forth in official circular {ref_no}.\n\n"
+            f"Key Instructions & Guidelines:\n" + "\n".join(bullets) + "\n\n"
+            f"By Order,\nOffice of the Principal / Dean Academics"
+        )
+
+        extracted_event = None
+        if event_date or venue:
+            extracted_event = {
+                "title": title,
+                "location": venue or "Campus Premises",
+                "date": event_date,
+                "time": event_time,
+                "action_required": f"Attend {title}",
+            }
+
+        return {
+            "title": title,
+            "content": content,
+            "suggested_category": category,
+            "suggested_priority": priority,
+            "suggested_audience": audience,
+            "reference_number": ref_no,
+            "extracted_event": extracted_event,
+            "raw_text": raw_text[:3000],
+        }
 
     @classmethod
     def _deterministic_ocr_to_notice(cls, file_base64: str, filename: str) -> Dict[str, Any]:
         """
-        Deterministic fallback when multimodal LLMs are offline.
+        Deterministic fallback when multimodal LLMs and local OCR extract zero lines.
         Inspects embedded text or generates institutional template structure.
         """
-        raw_text = ""
-        try:
-            # Try to decode any UTF-8 text strings inside decoded bytes (e.g. from text or PDF text streams)
-            decoded = base64.b64decode(file_base64)
-            ascii_text = decoded.decode('utf-8', errors='ignore')
-            clean_lines = [line.strip() for line in ascii_text.splitlines() if len(line.strip()) > 3]
-            raw_text = "\n".join(clean_lines[:30])
-        except Exception:
-            raw_text = ""
-
-        ref_match = re.search(r'\b(Ref(?:erence)?\s*(?:No\.?)?[:\s]*[\w/-]+|Circular\s*No\.?[:\s]*[\w/-]+)\b', raw_text, re.IGNORECASE)
-        ref_no = ref_match.group(0) if ref_match else f"CIR/{datetime.date.today().year}/{filename[:8].upper()}"
-
+        ref_no = f"CIR/{datetime.date.today().year}/{filename[:8].upper()}"
         clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
 
         title = f"Official Circular: {clean_name}" if "circular" not in clean_name.lower() else clean_name
@@ -407,7 +662,7 @@ class SmartIntakeService:
             "suggested_audience": "Entire College",
             "reference_number": ref_no,
             "extracted_event": None,
-            "raw_text": raw_text[:500] if raw_text else None,
+            "raw_text": None,
         }
 
     @staticmethod

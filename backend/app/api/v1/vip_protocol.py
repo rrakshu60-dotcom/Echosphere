@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, get_optional_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
 from app.models.announcement import Announcement
 from app.models.announcement_vip_protocol import AnnouncementVipProtocol
@@ -53,7 +53,7 @@ def get_vip_protocol(
 def trigger_vip_analysis(
     announcement_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     Executes AI entity extraction on the announcement to detect Chief Guest details,
@@ -78,7 +78,7 @@ def update_vip_protocol(
     announcement_id: int,
     data: VipProtocolUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     Allows coordinators to review, edit pronunciation, or adjust the spoken PA script.
@@ -117,7 +117,7 @@ def trigger_arrival_fanfare(
     announcement_id: int,
     payload: VipArrivalTriggerRequest = VipArrivalTriggerRequest(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
     On-Demand Live Trigger: Fast-tracks arrival fanfare announcement into

@@ -1,6 +1,6 @@
 import os
-from fastapi import APIRouter, Depends, Request, HTTPException, status, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Request, HTTPException, status, Query, UploadFile, File
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import (
@@ -14,6 +14,8 @@ from app.schemas.announcement import (
     AnnouncementCreate,
     AnnouncementResponse,
     AnnouncementUpdate,
+    BatchModerateRequest,
+    BatchModerateResponse,
 )
 from app.schemas.ai_schema import (
     AnnouncementTranslationRequest,
@@ -31,6 +33,7 @@ from app.schemas.ai_schema import (
 )
 from app.services.announcement_service import (
     approve_announcement_service,
+    batch_moderate_service,
     create_announcement_service,
     delete_announcement_service,
     get_all_announcements_service,
@@ -271,6 +274,34 @@ def reject_announcement(
     )
 
 
+@router.post(
+    "/batch-moderate",
+    response_model=BatchModerateResponse,
+)
+def batch_moderate_announcements(
+    request: BatchModerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(
+            "Dev Admin",
+            "Developer",
+            "College Admin",
+            "Principal",
+            "HoD",
+        )
+    ),
+):
+    """
+    Atomic transaction endpoint for batch approving or rejecting announcements.
+    All valid IDs are processed in a single DB commit block, ensuring consistent state.
+    """
+    return batch_moderate_service(
+        db=db,
+        request=request,
+        current_user=current_user,
+    )
+
+
 @router.post("/{announcement_id}/publish")
 def publish_announcement(
     announcement_id: int,
@@ -353,9 +384,14 @@ def _find_cached_audio_file(
             candidates.append(f"announcement_{announcement_id}_{tag}_{c}.wav")
 
     from app.services.tts_service import is_legacy_beep_file
+    from app.services.cloud_storage_service import CloudStorageService
 
     for filename in candidates:
         filepath = os.path.join(STATIC_AUDIO_DIR, filename)
+        if not os.path.exists(filepath):
+            restored = CloudStorageService.restore_file_from_cdn_if_missing(filename, folder="audio_streams")
+            if restored and os.path.exists(restored):
+                filepath = restored
         if os.path.exists(filepath):
             if is_legacy_beep_file(filepath):
                 try:
@@ -406,6 +442,7 @@ def get_announcement_audio_endpoint(
     from app.services.tts_service import generate_announcement_audio_sync
     from app.services.ai_service import AIService
     from app.services.chime_service import resolve_contextual_chime
+    from app.services.cloud_storage_service import CloudStorageService
 
     notice = get_announcement_by_id(db, announcement_id)
     if not gender:
@@ -423,9 +460,12 @@ def get_announcement_audio_endpoint(
 
     fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
     if fname and fpath:
+        public_url = CloudStorageService.get_public_url("audio_streams", fname)
+        if not public_url.startswith("http"):
+            public_url = f"{base_url}{public_url}"
         return {
             "status": "ready",
-            "audio_url": f"{base_url}/static/audio_streams/{fname}",
+            "audio_url": public_url,
             "file_name": fname,
             "engine": "Neural Speech (Cached)",
             "type": "wav" if fname.endswith(".wav") else "mp3",
@@ -482,9 +522,12 @@ def get_announcement_audio_endpoint(
             "type": "wav",
             "duration_sec": 3.0,
         }
+    audio_url = res.get("public_url")
+    if not audio_url or not audio_url.startswith("http"):
+        audio_url = f"{base_url}{res['url_path']}"
     return {
         "status": "ready",
-        "audio_url": f"{base_url}{res['url_path']}",
+        "audio_url": audio_url,
         "file_name": res["file_name"],
         "engine": res.get("engine", "Kokoro-82M"),
         "voice": res.get("voice"),
@@ -901,4 +944,56 @@ def ocr_document_endpoint(
         file_base64=request.file_base64,
         mime_type=request.mime_type or "image/jpeg",
         filename=request.filename or "circular.jpg",
+        raw_text=request.raw_text,
     )
+
+
+@router.post("/attachments/upload")
+async def upload_attachment_file(
+    file: UploadFile = File(...),
+):
+    """
+    Circular Attachment Cloud Storage Uploader.
+    Uploads institutional circulars, scanned orders, images, or PDFs to Hugging Face Datasets CDN.
+    Guarantees 100% free, unlimited, permanent storage with direct raw Cloudflare CDN URLs.
+    """
+    from app.services.cloud_storage_service import CloudStorageService
+
+    content = await file.read()
+    filename = file.filename or "attachment.bin"
+    res = CloudStorageService.upload_bytes(content, filename=filename, folder="attachments")
+
+    return {
+        "status": "success",
+        "file_name": res["file_name"],
+        "file_url": res["public_url"],
+        "cdn_url": res.get("cdn_url"),
+        "local_url": res["local_url"],
+        "size_bytes": len(content),
+        "mime_type": file.content_type or "application/octet-stream",
+        "storage_mode": res.get("storage_mode", "local_static"),
+    }
+
+
+@router.get("/attachments/{filename}")
+def get_attachment_file(filename: str):
+    """
+    Retrieves or streams a circular attachment document.
+    If container disk was wiped during sleep/restart, automatically restores from CDN.
+    """
+    from app.services.cloud_storage_service import CloudStorageService, STATIC_DIR
+
+    static_file = os.path.join(STATIC_DIR, "attachments", filename)
+    if not os.path.exists(static_file):
+        restored = CloudStorageService.restore_file_from_cdn_if_missing(filename, folder="attachments")
+        if restored and os.path.exists(restored):
+            static_file = restored
+
+    if os.path.exists(static_file):
+        return FileResponse(static_file, filename=filename)
+
+    cdn_url = CloudStorageService.get_public_url("attachments", filename)
+    if cdn_url.startswith("http"):
+        return RedirectResponse(url=cdn_url)
+
+    raise HTTPException(status_code=404, detail="Attachment not found.")

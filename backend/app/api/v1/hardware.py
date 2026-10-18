@@ -379,7 +379,7 @@ async def trigger_speaker_broadcast(
     request_in: SpeakerBroadcastRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     node = get_speaker_node_by_id(db, id)
     if not node:
@@ -408,7 +408,7 @@ async def trigger_emergency_override(
     override_in: EmergencyOverrideRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     try:
         base_url = str(request.base_url).rstrip("/")
@@ -653,10 +653,16 @@ def fetch_speaker_queue(
         if sched and sched.is_active:
             prio_weight, max_reps_val, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
             has_repeat_active = True
-            max_repeats = max_reps_val
+            max_repeats = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else max_reps_val
             sched_dict = {
                 "id": sched.id,
                 "announcement_id": sched.announcement_id,
+                "repeat_mode": getattr(sched, "repeat_mode", "INTERVAL"),
+                "interval_minutes": getattr(sched, "interval_minutes", 15),
+                "max_repeats": sched.max_repeats,
+                "play_on_publish": getattr(sched, "play_on_publish", True),
+                "next_repeat_at": sched.next_repeat_at.isoformat() if sched.next_repeat_at else None,
+                "last_repeat_at": sched.last_repeat_at.isoformat() if sched.last_repeat_at else None,
                 "selected_slots": sched.selected_slots,
                 "custom_start_time": sched.custom_start_time,
                 "custom_end_time": sched.custom_end_time,
@@ -667,6 +673,9 @@ def fetch_speaker_queue(
             }
         else:
             prio_tier = (ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)) if ann else "NORMAL"
+
+        repeat_round = (sched.total_played_count + 1) if sched else 1
+        next_rep_iso = sched.next_repeat_at.isoformat() if (sched and sched.next_repeat_at) else (item.scheduled_time.isoformat() if item.scheduled_time else None)
 
         result.append({
             "id": item.id,
@@ -690,7 +699,13 @@ def fetch_speaker_queue(
             "speaker_node_zone": node_zone,
             "repeat_schedule": sched_dict,
             "has_repeat": has_repeat_active,
+            "is_repeat": has_repeat_active and getattr(sched, "total_played_count", 0) > 0,
+            "repeat_mode": getattr(sched, "repeat_mode", "INTERVAL") if sched else None,
+            "repeat_round": repeat_round,
+            "current_round": getattr(sched, "total_played_count", 0) if sched else 0,
             "max_repeats": max_repeats,
+            "interval_minutes": getattr(sched, "interval_minutes", 15) if sched else None,
+            "next_repeat_at": next_rep_iso,
         })
     return result
 
@@ -700,7 +715,7 @@ def enqueue_speaker_announcement(
     enqueue_in: EnqueueAnnouncementRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     ann = get_announcement_by_id(db, enqueue_in.announcement_id)
     req_title = enqueue_in.title
@@ -789,7 +804,7 @@ def enqueue_speaker_announcement(
 def reorder_speaker_queue_items(
     reorder_in: ReorderQueueRequest,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     updated_items = reorder_speaker_queue(db=db, ordered_ids=reorder_in.queue_ids)
     return {
@@ -806,10 +821,10 @@ def reorder_speaker_queue_items(
 @router.post("/speaker-queue/{id}/status")
 def update_queue_action(
     id: int,
+    request: Request,
     action: str = "complete",
-    request: Request = None,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
     if not item:
@@ -817,7 +832,7 @@ def update_queue_action(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
-    base_url = str(request.base_url).rstrip("/") if request else "https://echosphere-backend-9lv8.onrender.com"
+    base_url = str(request.base_url).rstrip("/")
     act_clean = action.lower().strip()
 
     if act_clean == "complete":
@@ -845,6 +860,7 @@ def update_queue_action(
 
         ist_now = get_current_ist_datetime()
         time_str = ist_now.strftime("%H:%M")
+        date_str = ist_now.strftime("%Y-%m-%d")
         active_slots = get_active_break_slots(time_str)
         matched = is_slot_active_at_time(sched, time_str, active_slots) if sched else []
         is_slot_active = bool(matched)
@@ -860,12 +876,37 @@ def update_queue_action(
             db.commit()
             return {"status": "success", "queue_id": item.id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
 
-        if is_slot_active and sched and sched.total_played_count < max_reps_limit:
-            # Re-queue at the back of queue so all notices in this slot rotate up to max_reps_limit
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+        rep_mode = getattr(sched, "repeat_mode", "INTERVAL") if sched else "INTERVAL"
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        has_repeats_left = False
+        next_rep_time = None
+        slot_name = "REPEAT_INTERVAL"
+
+        if sched and sched.is_active:
+            max_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else 3
+            if max_limit <= 0:
+                max_limit = 999999
+
             sched.total_played_count += 1
-            slot_name = matched[0] if matched else "REPEAT_SLOT"
-            date_str = ist_now.strftime("%Y-%m-%d")
+            sched.last_repeat_at = now
+
+            if sched.total_played_count < max_limit:
+                if rep_mode == "INTERVAL":
+                    interval_m = getattr(sched, "interval_minutes", 15) or 15
+                    next_rep_time = now + timedelta(minutes=interval_m)
+                    sched.next_repeat_at = next_rep_time
+                    has_repeats_left = True
+                    slot_name = f"INTERVAL_{interval_m}M"
+                else:
+                    matched = is_slot_active_at_time(sched, time_str, active_slots)
+                    if matched:
+                        next_rep_time = now + timedelta(seconds=30)
+                        sched.next_repeat_at = next_rep_time
+                        has_repeats_left = True
+                        slot_name = matched[0]
+            else:
+                sched.is_active = False
+
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
             exec_log = RepeatSlotExecutionLog(
                 schedule_id=sched.id,
@@ -874,13 +915,15 @@ def update_queue_action(
                 played_at=now,
             )
             db.add(exec_log)
+
+        if has_repeats_left and next_rep_time:
             max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
             item.status = "Queued"
+            item.scheduled_time = next_rep_time
             item.queue_position = max_pos + 1
             item.played_at = None
             new_status = "Queued"
         else:
-            # No repeat schedule, slot ended, or max repeats reached -> mark completed!
             item.status = "Completed"
             new_status = "Completed"
 
@@ -890,7 +933,7 @@ def update_queue_action(
         from app.services.hardware_speaker_service import auto_advance_speaker_queue
         adv_res = None
         try:
-            adv_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
+            adv_res = auto_advance_speaker_queue(db, force_advance=False, base_url=base_url)
         except Exception:
             pass
 
@@ -899,6 +942,7 @@ def update_queue_action(
             "queue_id": item.id,
             "action": action,
             "new_status": new_status,
+            "next_repeat_at": next_rep_time.isoformat() if next_rep_time else None,
             "auto_advance": adv_res,
         }
 
@@ -952,6 +996,35 @@ def advance_speaker_queue_endpoint(
     return {
         "status": "success",
         "details": advance_res,
+    }
+
+
+@router.post("/queue/{queue_id}/trigger_repeat_now", summary="Force Play Next Repeat Round Immediately")
+def trigger_repeat_round_now(
+    queue_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    from app.models.speaker_queue import SpeakerQueue
+    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == queue_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    base_url = str(request.base_url).rstrip("/")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    item.scheduled_time = now
+    if item.status in ("Completed", "Paused"):
+        item.status = "Queued"
+    db.commit()
+    db.refresh(item)
+
+    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    adv_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
+    return {
+        "status": "success",
+        "message": f"Repeat broadcast triggered immediately for Announcement #{item.announcement_id}",
+        "auto_advance": adv_res,
     }
 
 

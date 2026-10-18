@@ -10,6 +10,12 @@ backend/.env
 !frontend/.env
 !*.env.example
 
+# Firebase Admin Service Account Keys (NEVER COMMIT PRIVATE KEYS)
+*firebase-adminsdk*.json
+serviceAccountKey*.json
+**/serviceAccountKey*.json
+**/*firebase-adminsdk*.json
+
 # IDE & Editor
 .vscode/
 .idea/

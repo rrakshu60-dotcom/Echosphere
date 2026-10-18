@@ -2,13 +2,41 @@ import os
 import uuid
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional, Set, cast
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def utc_now() -> datetime:
     """Returns timezone-naive UTC datetime for database compatibility without deprecation warnings."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
+    """Safely normalizes any datetime to timezone-naive UTC to avoid TypeError comparisons."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _is_time_due(t: Optional[datetime], cutoff: datetime) -> bool:
+    """Returns True if t is None or t <= cutoff in safe normalized UTC."""
+    if t is None:
+        return True
+    t_n = _normalize_dt(t)
+    c_n = _normalize_dt(cutoff)
+    return t_n is not None and c_n is not None and t_n <= c_n
+
+
+def _is_future_time(t: Optional[datetime], ref: datetime) -> bool:
+    """Returns True if t is in the future relative to ref in safe normalized UTC."""
+    if t is None:
+        return False
+    t_n = _normalize_dt(t)
+    r_n = _normalize_dt(ref)
+    return t_n is not None and r_n is not None and t_n > r_n
 
 
 import paho.mqtt.client as mqtt
@@ -52,21 +80,31 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
     payload["command_id"] = cmd_id
     ann_id = payload.get("announcement_id")
     cmd_type = payload.get("command")
+    is_repeat = bool(payload.get("is_repeat") or (payload.get("repeat_round", 1) > 1) or payload.get("force_dispatch"))
 
-    # In-memory deduplication for PLAY commands
+    # In-memory deduplication for PLAY commands: allow repeat rounds to dispatch cleanly
     if ann_id and cmd_type in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
-        if not target_mac or target_mac.upper() == "ALL":
-            for c in _BROADCAST_COMMANDS:
-                if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
-                    logger.info(f"Duplicate command for announcement #{ann_id} already in memory broadcast queue.")
-                    return
-        else:
-            key = target_mac.upper()
-            if key in _PENDING_COMMANDS:
-                for c in _PENDING_COMMANDS[key]:
+        if not is_repeat:
+            if not target_mac or target_mac.upper() == "ALL":
+                for c in _BROADCAST_COMMANDS:
                     if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
-                        logger.info(f"Duplicate command for announcement #{ann_id} already in node queue {key}.")
+                        logger.info(f"Duplicate command for announcement #{ann_id} already in memory broadcast queue.")
                         return
+            else:
+                key = target_mac.upper()
+                if key in _PENDING_COMMANDS:
+                    for c in _PENDING_COMMANDS[key]:
+                        if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
+                            logger.info(f"Duplicate command for announcement #{ann_id} already in node queue {key}.")
+                            return
+        else:
+            # Prune older command for this announcement so hardware immediately processes the new repeat round
+            if not target_mac or target_mac.upper() == "ALL":
+                _BROADCAST_COMMANDS = [c for c in _BROADCAST_COMMANDS if c.get("announcement_id") != ann_id]
+            else:
+                key = target_mac.upper()
+                if key in _PENDING_COMMANDS:
+                    _PENDING_COMMANDS[key] = [c for c in _PENDING_COMMANDS[key] if c.get("announcement_id") != ann_id]
 
     # 1. In-memory queue
     if not target_mac or target_mac.upper() == "ALL":
@@ -117,8 +155,11 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
                     try:
                         p_data = json.loads(getattr(ec, "payload_json", "{}"))
                         if p_data.get("announcement_id") == ann_id:
-                            logger.info(f"SpeakerCommand for announcement #{ann_id} already PENDING (Cmd #{ec.id}). Skipping duplicate.")
-                            return
+                            if not is_repeat:
+                                logger.info(f"SpeakerCommand for announcement #{ann_id} already PENDING (Cmd #{ec.id}). Skipping duplicate.")
+                                return
+                            else:
+                                ec.status = "SUPERSEDED"
                     except Exception:
                         pass
 
@@ -445,14 +486,25 @@ async def broadcast_announcement_to_speaker(
     if is_emergency:
         topic = "echosphere/speakers/all/emergency"
 
+    from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+    sched_rec = db.query(AnnouncementRepeatSchedule).filter(
+        AnnouncementRepeatSchedule.announcement_id == announcement_id,
+        AnnouncementRepeatSchedule.is_active == True,
+    ).first()
+    rep_round = (sched_rec.total_played_count + 1) if sched_rec else 1
+    is_rep = bool(sched_rec is not None and sched_rec.total_played_count > 0)
+
     payload = {
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
+        "command_id": f"cmd_ann_{announcement_id}_rep_{rep_round}_{int(time.time()*1000)}",
         "announcement_id": announcement_id,
         "title": title,
         "message": content,
         "audio_url": audio_full_url,
         "zone": zone,
         "volume": 100 if is_emergency else 85,
+        "is_repeat": is_rep,
+        "repeat_round": rep_round,
         "timestamp": utc_now().isoformat(),
     }
 
@@ -588,7 +640,7 @@ def enqueue_and_broadcast_announcement(
     # Add / update SpeakerQueue table
     existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
-    is_future_scheduled = scheduled_time is not None and scheduled_time > now
+    is_future_scheduled = _is_future_time(scheduled_time, now)
     active_status = getattr(active_playing, "status", None) if active_playing else None
     existing_status = getattr(existing_item, "status", None) if existing_item else None
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
@@ -807,8 +859,24 @@ def dispatch_queue_action_to_speakers(
             except Exception as e:
                 logger.warning(f"Audio pre-generation on queue play: {e}")
 
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == ann_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
+            .first()
+        ) if ann_id else None
+
+        repeat_round = (getattr(sched, "total_played_count", 0) + 1) if sched else 1
+        is_repeat = bool(sched is not None and getattr(sched, "total_played_count", 0) > 0)
+        max_reps = getattr(sched, "max_repeats", 1) or 1
+        cmd_uid = f"cmd_ann_{ann_id}_rep_{repeat_round}_{int(time.time()*1000)}"
+
         payload = {
             "command": "PLAY_ANNOUNCEMENT",
+            "command_id": cmd_uid,
             "announcement_id": ann_id,
             "queue_id": queue_item.id,
             "speaker_node_id": queue_item.speaker_node_id,
@@ -819,6 +887,9 @@ def dispatch_queue_action_to_speakers(
             "volume": 85,
             "duration": getattr(queue_item, "duration_seconds", 15) or 15,
             "duration_seconds": getattr(queue_item, "duration_seconds", 15) or 15,
+            "is_repeat": is_repeat,
+            "repeat_round": repeat_round,
+            "max_repeats": max_reps,
             "timestamp": utc_now().isoformat(),
         }
     elif action_lower == "pause":
@@ -1087,6 +1158,7 @@ def auto_advance_speaker_queue(
                 get_current_ist_datetime,
                 get_active_break_slots,
                 is_slot_active_at_time,
+                get_notice_priority_info,
             )
             from app.models.announcement_repeat_schedule import (
                 AnnouncementRepeatSchedule,
@@ -1107,21 +1179,40 @@ def auto_advance_speaker_queue(
                 .first()
             ) if current_playing.announcement_id else None
 
-            is_slot_active = False
-            matched = []
+            has_repeats_remaining = False
+            next_repeat_time = None
+            slot_name = "REPEAT_INTERVAL"
+
             if sched:
-                matched = is_slot_active_at_time(sched, time_str, active_slots)
-                if matched:
-                    is_slot_active = True
+                repeat_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
+                prio_weight, default_prio_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+                max_reps_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else default_prio_limit
+                if max_reps_limit <= 0:
+                    max_reps_limit = 999999
 
-            from app.services.repeat_schedule_service import get_notice_priority_info
-            prio_weight, max_reps_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-
-            if is_slot_active and sched and sched.total_played_count < max_reps_limit:
-                # Notice is within its active repeating time window and has repeats remaining:
-                # Re-queue at the back of the queue so notices in the slot rotate up to max_reps_limit
                 sched.total_played_count += 1
-                slot_name = matched[0] if matched else "REPEAT_SLOT"
+                sched.last_repeat_at = now
+
+                if sched.total_played_count < max_reps_limit:
+                    if repeat_mode == "INTERVAL":
+                        interval_m = getattr(sched, "interval_minutes", 15) or 15
+                        next_repeat_time = now + timedelta(minutes=interval_m)
+                        sched.next_repeat_at = next_repeat_time
+                        has_repeats_remaining = True
+                        slot_name = f"INTERVAL_{interval_m}M"
+                    else:
+                        # BREAK_SLOTS or CUSTOM mode
+                        matched = is_slot_active_at_time(sched, time_str, active_slots)
+                        if matched:
+                            next_repeat_time = now + timedelta(seconds=BROADCAST_GAP_SECONDS + 20)
+                            sched.next_repeat_at = next_repeat_time
+                            has_repeats_remaining = True
+                            slot_name = matched[0]
+                        else:
+                            has_repeats_remaining = False
+                else:
+                    sched.is_active = False
+
                 prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
                 exec_log = RepeatSlotExecutionLog(
                     schedule_id=sched.id,
@@ -1130,17 +1221,24 @@ def auto_advance_speaker_queue(
                     played_at=now,
                 )
                 db.add(exec_log)
+
+            if has_repeats_remaining and next_repeat_time:
                 max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
                 current_playing.status = "Queued"
+                current_playing.scheduled_time = next_repeat_time
                 current_playing.queue_position = max_pos + 1
                 current_playing.played_at = None
                 db.commit()
-                logger.info(f"🔁 Announcement #{current_playing.announcement_id} re-queued for slot rotation in {slot_name} (Play count: {sched.total_played_count}/{max_reps_limit}).")
+                logger.info(
+                    f"🔁 Announcement #{current_playing.announcement_id} repeat round scheduled "
+                    f"(Round {sched.total_played_count + 1}/{sched.max_repeats} at {next_repeat_time.strftime('%H:%M:%S')} UTC)."
+                )
             else:
-                # Schedule ended, max repeats reached, or no repeat configured -> mark completed
                 current_playing.status = "Completed"
+                if sched and getattr(sched, "total_played_count", 0) >= (getattr(sched, "max_repeats", 3) or 3):
+                    sched.is_active = False
                 db.commit()
-                logger.info(f"Speaker queue item #{current_playing.id} completed playback and cleared from queue.")
+                logger.info(f"Speaker queue item #{current_playing.id} completed playback and marked Completed.")
 
             should_advance = True
     elif not should_advance:
@@ -1148,8 +1246,6 @@ def auto_advance_speaker_queue(
             should_advance = True
         else:
             # When idle/stopped, advance for emergency preemption or scheduled announcements whose scheduled_time arrived
-            from datetime import timedelta
-
             queued_items = (
                 db.query(SpeakerQueue)
                 .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
@@ -1160,7 +1256,7 @@ def auto_advance_speaker_queue(
                 should_advance = True
             else:
                 scheduled_due = any(
-                    q.scheduled_time is None or q.scheduled_time <= (now + timedelta(seconds=15))
+                    _is_time_due(q.scheduled_time, now + timedelta(seconds=15))
                     for q in queued_items
                 )
                 if scheduled_due:
@@ -1203,7 +1299,7 @@ def auto_advance_speaker_queue(
     # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
     if not next_item:
         next_item = next(
-            (q for q in queued_all if q.scheduled_time is None or q.scheduled_time <= now),
+            (q for q in queued_all if _is_time_due(q.scheduled_time, now)),
             None
         )
 
@@ -1230,15 +1326,16 @@ def auto_advance_speaker_queue(
         base_url=base_url,
     )
 
-    # Update the item immediately after next_item to 'Next in Queue' for clear UI distinction
-    subsequent_item = (
+    # Update the item immediately after next_item to 'Next in Queue' if it is ready to play (not future scheduled)
+    subsequent_items = (
         db.query(SpeakerQueue)
         .filter(SpeakerQueue.status == "Queued", SpeakerQueue.id != next_item.id)
         .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
-        .first()
+        .all()
     )
-    if subsequent_item:
-        setattr(subsequent_item, "status", "Next in Queue")
+    ready_subsequent = next((s for s in subsequent_items if not _is_future_time(s.scheduled_time, now)), None)
+    if ready_subsequent:
+        setattr(ready_subsequent, "status", "Next in Queue")
         db.commit()
 
     logger.info(f"Speaker queue automatically advanced to item #{next_item.id} ('{next_item.announcement.title if next_item.announcement else 'Announcement'}').")
