@@ -3,10 +3,10 @@
     "echosphere-guardian-mcp": {
       "command": "python",
       "args": [
-        "c:/echosphere v2.2/mcp_server/echosphere_mcp.py"
+        "d:/MP/Echosphere/mcp_server/echosphere_mcp.py"
       ],
       "env": {
-        "PYTHONPATH": "c:/echosphere v2.2/backend"
+        "PYTHONPATH": "d:/MP/Echosphere/backend"
       }
     }
   }
