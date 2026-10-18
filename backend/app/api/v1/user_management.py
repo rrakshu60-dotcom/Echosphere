@@ -16,7 +16,7 @@ def list_users(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 250,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
     db: Session = Depends(get_db),
 ):
     users = UserManagementService.list_users(
@@ -80,7 +80,7 @@ def create_user(
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_detail(
     user_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
     db: Session = Depends(get_db),
 ):
     user = UserManagementService.get_user_by_id(db=db, user_id=user_id)

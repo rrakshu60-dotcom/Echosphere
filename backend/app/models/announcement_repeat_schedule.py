@@ -59,6 +59,46 @@ class AnnouncementRepeatSchedule(TimestampMixin, Base):
         nullable=True,
     )
 
+    # Repeat Mode: "INTERVAL", "BREAK_SLOTS", "CUSTOM"
+    repeat_mode = Column(
+        String(20),
+        nullable=False,
+        default="INTERVAL",
+    )
+
+    # Interval in minutes for INTERVAL mode (e.g. 5, 10, 15, 30, 60)
+    interval_minutes = Column(
+        Integer,
+        nullable=False,
+        default=15,
+    )
+
+    # Maximum repeat broadcasts (e.g. 1, 2, 3, 5, 10; 0 for unlimited until end_date)
+    max_repeats = Column(
+        Integer,
+        nullable=False,
+        default=3,
+    )
+
+    # Whether the notice should play immediately on publish before repeating
+    play_on_publish = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    # Next scheduled repeat execution time
+    next_repeat_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    # Last time a repeat broadcast was executed
+    last_repeat_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
     # Event date for 48h horizon verification
     event_datetime = Column(
         DateTime,

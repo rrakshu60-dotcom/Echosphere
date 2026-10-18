@@ -36,6 +36,12 @@ try:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_summary TEXT;"))
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS speaker_voice VARCHAR(20) DEFAULT 'female';"))
             conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_node_id INTEGER;"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS repeat_mode VARCHAR(20) DEFAULT 'INTERVAL';"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS interval_minutes INTEGER DEFAULT 15;"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS max_repeats INTEGER DEFAULT 3;"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS play_on_publish BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS next_repeat_at TIMESTAMP WITHOUT TIME ZONE;"))
+            conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS last_repeat_at TIMESTAMP WITHOUT TIME ZONE;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
             conn.commit()
@@ -50,6 +56,25 @@ try:
                 conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
+
+            # Repeat schedules table migration for SQLite
+            try:
+                sched_res = conn.execute(text("PRAGMA table_info(announcement_repeat_schedules);")).fetchall()
+                sched_cols = [r[1] for r in sched_res]
+                if "repeat_mode" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN repeat_mode VARCHAR(20) DEFAULT 'INTERVAL';"))
+                if "interval_minutes" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN interval_minutes INTEGER DEFAULT 15;"))
+                if "max_repeats" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN max_repeats INTEGER DEFAULT 3;"))
+                if "play_on_publish" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN play_on_publish BOOLEAN DEFAULT 1;"))
+                if "next_repeat_at" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN next_repeat_at DATETIME;"))
+                if "last_repeat_at" not in sched_cols:
+                    conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN last_repeat_at DATETIME;"))
+            except Exception:
+                pass
             conn.commit()
 except Exception as exc:
     print(f"Startup migration note: {exc}")
@@ -161,6 +186,11 @@ async def lifespan(app: FastAPI):
     t.start()
     t2 = threading.Thread(target=_prewarm_recent_announcements, daemon=True, name="AudioPrewarmDaemon")
     t2.start()
+    try:
+        from app.services.tts_service import start_zerogpu_keepalive_daemon
+        start_zerogpu_keepalive_daemon()
+    except Exception as exc:
+        print(f"ZeroGPU keep-alive startup note: {exc}")
     yield
 
 
@@ -310,6 +340,11 @@ def diagnostic_tts(run_test: bool = False):
     diag["kokoro_api_url_configured"] = bool(os.getenv("KOKORO_API_URL"))
     diag["is_render"] = bool(os.getenv("RENDER") or os.getenv("IS_RENDER"))
     diag["local_kokoro_allowed_on_render"] = os.getenv("ENABLE_LOCAL_KOKORO_ON_RENDER", "false").lower() == "true"
+    try:
+        from app.services.tts_service import get_zerogpu_health_status
+        diag["zerogpu_worker"] = get_zerogpu_health_status()
+    except Exception:
+        pass
 
     if run_test:
         try:

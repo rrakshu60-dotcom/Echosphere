@@ -169,7 +169,7 @@ def ai_summarize(req: AiSummarizeRequest):
         summary = AIService.summarize(content=req.content)
         return AiSummarizeResponse(
             summary=summary,
-            model_used="Fine-Tuned Qwen 2.5 3B (Local Campus Model)"
+            model_used="EchoSphere Campus ML Engine (Local)"
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

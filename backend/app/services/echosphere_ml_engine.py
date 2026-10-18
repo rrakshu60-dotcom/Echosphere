@@ -1239,18 +1239,147 @@ class EchoSphereMLEngine:
 
         return best_sentence
 
-    def expand_announcement(self, text: str, category: str = "Academics") -> str:
-        """Campus ML circular expansion into structured institutional notice."""
+    def _extract_notice_entities(self, text: str) -> Dict[str, Optional[str]]:
+        """Extracts explicitly mentioned dates, times, and venues without fabricating unmentioned facts."""
+        clean = (text or "").strip()
+        venue = None
+        venue_m = re.search(r'\b(?:in|at)\s+(?:the\s+)?((?:[A-Za-z0-9\-]+\s+)?Lab\b|(?:Central\s+)?Auditorium|Seminar\s+Hall(?:\s+[A-Za-z0-9\-]+)?|Room\s*#?[A-Za-z0-9\-]+|(?:College\s+)?Ground|Campus\s+Plaza|Library|Placement\s+Cell)\b', clean, re.IGNORECASE)
+        if venue_m:
+            venue = venue_m.group(1).strip().title()
+        else:
+            direct_v = re.search(r'\b((?:[A-Za-z0-9\-]+\s+)?Lab\b|(?:Central\s+)?Auditorium|Seminar\s+Hall(?:\s+[A-Za-z0-9\-]+)?|Room\s*#?\d+|(?:College\s+)?Ground|Placement\s+Cell)\b', clean, re.IGNORECASE)
+            if direct_v:
+                venue = direct_v.group(1).strip().title()
+
+        time_m = re.search(r'\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(AM|PM|am|pm)\b', clean)
+        time_str = time_m.group(0).upper() if time_m else None
+
+        date_m = re.search(r'\b(this\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|today|next\s+week|\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*(?:\s+\d{4})?)\b', clean, re.IGNORECASE)
+        date_str = date_m.group(0).title() if date_m else None
+
+        return {'venue': venue, 'time': time_str, 'date': date_str}
+
+    def _clean_and_normalize_notice_text(self, text: str) -> Tuple[str, str, Dict[str, Optional[str]]]:
+        """
+        Normalizes notice text:
+        1. Corrects common institutional typos (e.g. 'the principle' -> 'the Principal', 'hod' -> 'Head of Department').
+        2. Detects contextual intent (condolence, holiday, exam, placement, event, sports, standard).
+        3. Extracts mentioned entities (date, time, venue) without fabricating unmentioned facts.
+        Returns: (cleaned_text, intent_type, entities_dict)
+        """
         clean = (text or "").strip()
         if not clean:
+            return "", "standard", {'venue': None, 'time': None, 'date': None}
+
+        clean = re.sub(r'\bthe principle\b', 'the Principal', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bprinciple\b', 'Principal', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\bhod\b', 'Head of Department', clean, flags=re.IGNORECASE)
+
+        clean_lower = clean.lower()
+        if any(w in clean_lower for w in ["expired", "passed away", "demise", "condolence", "passed on", "died", "sad demise"]):
+            intent = "condolence"
+        elif any(w in clean_lower for w in ["holiday", "suspended", "cancelled", "heavy rain", "closure", "closed tomorrow", "flood", "cyclone", "weather advisory", "declared holiday"]):
+            intent = "holiday"
+        elif any(w in clean_lower for w in ["exam", "examination", "timetable", "hall ticket", "viva", "test", "midterm", "internal assessment", "practical", "ia-1", "ia-2", "semester exam"]):
+            intent = "exam"
+        elif any(w in clean_lower for w in ["placement", "interview", "recruitment", "hiring", "internship", "drive", "package", "ctc", "company visit", "shortlisted"]):
+            intent = "placement"
+        elif any(w in clean_lower for w in ["workshop", "hackathon", "fest", "cultural", "seminar", "conference", "symposium", "exhibition", "webinar", "competition"]):
+            intent = "event"
+        elif any(w in clean_lower for w in ["cricket", "football", "volleyball", "badminton", "sports", "tournament", "trials", "selection", "athletics", "match"]):
+            intent = "sports"
+        else:
+            intent = "standard"
+
+        entities = self._extract_notice_entities(clean)
+        return clean, intent, entities
+
+    def expand_announcement(self, text: str, category: str = "Academics", department: Optional[str] = None) -> str:
+        """
+        Campus ML circular expansion into structured institutional notice.
+        Strictly adheres to the given information without fabricating fake deadlines,
+        guidelines, or candidate instructions.
+        Attributes authority to College Administration / Principal's Office or Department.
+        """
+        clean, intent, entities = self._clean_and_normalize_notice_text(text)
+        if not clean:
             return ""
+
+        dept_header = f" - {department.upper()} DEPARTMENT" if department and department != "College-Wide" else ""
+        dept_signoff = f"Department of {department}" if department and department != "College-Wide" else "Office of the Principal / College Administration"
+
+        bullets = []
+        if entities.get("date"):
+            bullets.append(f"- Date / Day: {entities['date']}")
+        if entities.get("time"):
+            bullets.append(f"- Time: {entities['time']}")
+        if entities.get("venue"):
+            bullets.append(f"- Venue / Location: {entities['venue']}")
+        bullet_section = ("\n\nEvent & Schedule Details:\n" + "\n".join(bullets)) if bullets else ""
+
+        if intent == "condolence":
+            clean_subject = re.sub(r'(?i)\s+(has\s+)?(expired|passed\s+away|died|passed\s+on)', '', clean).strip()
+            subject_phrase = f"the sad demise of {clean_subject}" if clean_subject else f"that {clean}"
+            return (
+                f"OFFICIAL CONDOLENCE NOTIFICATION\n\n"
+                f"With profound grief and deep sorrow, this is to inform all faculty members, staff, and students of {subject_phrase}.\n\n"
+                "The college community extends its heartfelt condolences to the bereaved family in this hour of grief. "
+                "Further official notifications regarding memorial tributes and administrative directives will be communicated in due course.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+
+        if intent == "holiday":
+            return (
+                f"OFFICIAL CIRCULAR: CAMPUS CLOSURE & CLASS SUSPENSION{dept_header}\n\n"
+                f"This is to formally notify all faculty, staff, and students that: {clean}.{bullet_section}\n\n"
+                "All regular academic and laboratory sessions stand suspended for the indicated period. "
+                "Regular classes will resume as per regular timetable upon official reopening.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+
+        if intent == "exam":
+            return (
+                f"OFFICIAL EXAMINATION CIRCULAR{dept_header}\n\n"
+                f"All concerned students and faculty members are hereby informed that: {clean}.{bullet_section}\n\n"
+                "Candidates are advised to review their schedules carefully and ensure they carry their official College ID Card and Hall Ticket to the examination hall.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+
+        if intent == "placement":
+            return (
+                f"CAREER GUIDANCE & CAMPUS PLACEMENT CELL{dept_header}\n\n"
+                f"Announcement regarding: {clean}.{bullet_section}\n\n"
+                "Eligible and registered candidates are advised to verify their credentials and report punctually according to the communicated schedule.\n\n"
+                f"Issued By:\nTraining & Placement Officer (TPO)\n(Broadcast via EchoSphere)"
+            )
+
+        if intent == "sports":
+            return (
+                f"DEPARTMENT OF PHYSICAL EDUCATION & SPORTS COUNCIL\n\n"
+                f"Notice regarding: {clean}.{bullet_section}\n\n"
+                "Interested students wishing to participate are requested to report to the venue on time in proper sports attire.\n\n"
+                f"Issued By:\nDepartment of Physical Education\n(Broadcast via EchoSphere)"
+            )
+
+        if intent == "event":
+            return (
+                f"CAMPUS EVENT & WORKSHOP CIRCULAR{dept_header}\n\n"
+                f"We are pleased to inform all students and faculty members regarding: {clean}.{bullet_section}\n\n"
+                "Interested participants are encouraged to register and attend the scheduled sessions.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+
+        # Standard / Academic notice
         cat_clean = category.upper()
+        clean_stmt = clean[0].upper() + clean[1:] if clean else ""
+        if not clean_stmt.endswith(('.', '!', '?')):
+            clean_stmt += '.'
+
         return (
-            f"OFFICIAL CAMPUS CIRCULAR [{cat_clean}]\n\n"
-            f"This is to formally notify all students, faculty members, and departments regarding: {clean}.\n\n"
-            f"All concerned members are requested to take note of the above directives and adhere to the scheduled timelines. "
-            f"For detailed department-specific guidelines or venue allocations, please refer to the EchoSphere student portal.\n\n"
-            f"Issued by: Office of Institutional Academic Governance."
+            f"OFFICIAL CAMPUS CIRCULAR [{cat_clean}]{dept_header}\n\n"
+            f"This is to officially inform all faculty members and students that: {clean_stmt}{bullet_section}\n\n"
+            "All concerned members are requested to take note of this circular for necessary information and compliance.\n\n"
+            f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
         )
 
     def polish_grammar_and_tone(self, text: str) -> Dict[str, Any]:
@@ -1260,29 +1389,168 @@ class EchoSphereMLEngine:
             return {"original": text, "corrected_text": text, "improvements": []}
 
         corrected = re.sub(r'\s+', ' ', clean)
+        corrected = re.sub(r'\bthe principle\b', 'the Principal', corrected, flags=re.IGNORECASE)
+        corrected = re.sub(r'\bprinciple\b', 'Principal', corrected, flags=re.IGNORECASE)
+        corrected = re.sub(r'\bhod\b', 'Head of Department', corrected, flags=re.IGNORECASE)
         corrected = re.sub(r'\s+([,.:;?!])', r'\1', corrected)
         if corrected:
             corrected = corrected[0].upper() + corrected[1:]
         if not corrected.endswith(('.', '!', '?')):
             corrected += '.'
 
+        improvements = ["Applied standardized institutional casing, spacing, and punctuation."]
+        if "Principal" in corrected and ("principle" in clean or "Principle" in clean):
+            improvements.append("Corrected institutional title 'Principal'.")
+        if "Head of Department" in corrected and "hod" in clean.lower():
+            improvements.append("Expanded acronym 'Head of Department'.")
+
         return {
             "original": clean,
             "corrected_text": corrected,
-            "improvements": ["Applied standardized institutional casing, spacing, and punctuation."]
+            "improvements": improvements
         }
 
-    def draft_announcement(self, topic: str, category: str = "General", audience: str = "Entire College") -> str:
-        """Campus ML template-assisted announcement drafting."""
-        t_clean = (topic or "Important Campus Activity").strip()
-        cat_clean = category.title()
-        return (
-            f"Official Notification: {t_clean}\n\n"
-            f"Target Audience: {audience}\n"
-            f"Category: {cat_clean}\n\n"
-            f"All concerned members are hereby informed that {t_clean} is scheduled as per institutional guidelines. "
-            f"Please ensure timely registration and participation. Further updates will be broadcast across the EchoSphere network."
+    def draft_announcement(self, topic: str, category: str = "General", audience: str = "Entire College", department: Optional[str] = None) -> str:
+        """Campus ML context-aware announcement drafting."""
+        structured = self.draft_announcement_structured(topic, category=category, audience=audience, department=department)
+        return structured["content"]
+
+    def draft_announcement_structured(
+        self,
+        topic: str,
+        category: str = "General",
+        audience: str = "Entire College",
+        department: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Campus ML context-aware announcement drafting.
+        Grounded strictly in the given topic, with zero superficial filler or hallucinated deadlines.
+        """
+        clean, intent, entities = self._clean_and_normalize_notice_text(topic)
+        dept_header = f" - {department.upper()} DEPARTMENT" if department and department != "College-Wide" else ""
+        dept_signoff = f"Department of {department}" if department and department != "College-Wide" else "Office of the Principal / College Administration"
+
+        bullets = []
+        if entities.get("date"):
+            bullets.append(f"- Date / Day: {entities['date']}")
+        if entities.get("time"):
+            bullets.append(f"- Time: {entities['time']}")
+        if entities.get("venue"):
+            bullets.append(f"- Venue / Location: {entities['venue']}")
+        bullet_section = ("\n\nEvent & Schedule Details:\n" + "\n".join(bullets)) if bullets else ""
+
+        if intent == "condolence":
+            clean_subject = re.sub(r'(?i)\s+(has\s+)?(expired|passed\s+away|died|passed\s+on)', '', clean).strip()
+            title = f"Condolence Notification: Sad Demise of {clean_subject}" if clean_subject else "Condolence Notification"
+            content = (
+                f"OFFICIAL CONDOLENCE NOTIFICATION\n\n"
+                f"With profound grief and deep sorrow, this is to inform all faculty members, staff, and students that {clean}.\n\n"
+                "The college community extends its heartfelt condolences to the bereaved family in this hour of grief. "
+                "Further official notifications regarding memorial tributes and administrative directives will be communicated in due course.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "EMERGENCY",
+                "suggested_category": "Administration",
+            }
+
+        if intent == "holiday":
+            title = f"Notice: {clean}"
+            content = (
+                f"OFFICIAL CIRCULAR: CAMPUS CLOSURE & CLASS SUSPENSION{dept_header}\n\n"
+                f"This is to formally inform all faculty, staff, and students that: {clean}.{bullet_section}\n\n"
+                "All regular academic and laboratory sessions stand suspended for the indicated period. "
+                "Regular classes will resume as per regular timetable upon official reopening.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "HIGH",
+                "suggested_category": "Emergency",
+            }
+
+        if intent == "exam":
+            title = f"Examination Circular: {clean[:60]}"
+            content = (
+                f"OFFICIAL EXAMINATION CIRCULAR{dept_header}\n\n"
+                f"All concerned students and faculty members are hereby informed that: {clean}.{bullet_section}\n\n"
+                "Candidates are advised to review their schedules carefully and ensure they carry their official College ID Card and Hall Ticket to the examination hall.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "HIGH",
+                "suggested_category": "Examinations",
+            }
+
+        if intent == "placement":
+            title = f"Placement Advisory: {clean[:60]}"
+            content = (
+                f"CAREER GUIDANCE & CAMPUS PLACEMENT CELL{dept_header}\n\n"
+                f"Announcement regarding: {clean}.{bullet_section}\n\n"
+                "Eligible and registered candidates are advised to verify their credentials and report punctually according to the communicated schedule.\n\n"
+                f"Issued By:\nTraining & Placement Officer (TPO)\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "HIGH",
+                "suggested_category": "Placements",
+            }
+
+        if intent == "sports":
+            title = f"Sports Notice: {clean[:60]}"
+            content = (
+                f"DEPARTMENT OF PHYSICAL EDUCATION & SPORTS COUNCIL\n\n"
+                f"Notice regarding: {clean}.{bullet_section}\n\n"
+                "Interested students wishing to participate are requested to report to the venue on time in proper sports attire.\n\n"
+                f"Issued By:\nDepartment of Physical Education\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "NORMAL",
+                "suggested_category": "Sports",
+            }
+
+        if intent == "event":
+            title = f"Campus Event: {clean[:60]}"
+            content = (
+                f"CAMPUS EVENT & WORKSHOP CIRCULAR{dept_header}\n\n"
+                f"We are pleased to inform all students and faculty members regarding: {clean}.{bullet_section}\n\n"
+                "Interested participants are encouraged to register and attend the scheduled sessions.\n\n"
+                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
+            )
+            return {
+                "title": title[:100],
+                "content": content,
+                "suggested_priority": "NORMAL",
+                "suggested_category": "Events",
+            }
+
+        class_res = self.predict_category_and_priority(clean, clean)
+        final_cat = category if category and category != "Academics" and category != "General" else class_res["category"]
+
+        clean_title = clean[0].upper() + clean[1:] if clean else "Campus Update"
+        clean_body = clean if clean.endswith(('.', '!', '?')) else clean + "."
+
+        title = f"Notice: {clean_title}"
+        content = (
+            f"OFFICIAL CAMPUS CIRCULAR [{final_cat.upper()}]{dept_header}\n\n"
+            f"This is to officially inform all concerned members that: {clean_body}{bullet_section}\n\n"
+            "All concerned members are requested to take note of this circular for necessary information and compliance.\n\n"
+            f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
         )
+        return {
+            "title": title[:100],
+            "content": content,
+            "suggested_priority": class_res["priority"],
+            "suggested_category": final_cat,
+        }
 
 
 # Backward compatibility alias

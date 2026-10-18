@@ -151,3 +151,18 @@ class AnnouncementResponse(BaseModel):
 
 class AnnouncementApprovalRequest(BaseModel):
     remarks: Optional[str] = None
+
+
+class BatchModerateRequest(BaseModel):
+    ids: list[int]
+    action: str  # "APPROVE" | "REJECT"
+    remarks: Optional[str] = "Batch moderated by Administrator"
+
+
+class BatchModerateResponse(BaseModel):
+    success: bool
+    action: str
+    processed_count: int
+    affected_ids: list[int]
+    failed_ids: list[int] = []
+    message: str

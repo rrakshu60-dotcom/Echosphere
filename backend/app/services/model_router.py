@@ -244,6 +244,126 @@ class GemmaActionEngine:
                 "model_used": "Gemma Action Engine (Local)"
             }
 
+        # 6. Speaker Volume Adjustment (RBAC Protected)
+        import re
+        vol_m = re.search(r'(?:set\s+(?:the\s+)?(?:volume\s+of\s+)?([a-zA-Z0-9\s_-]+?)\s+(?:volume\s+)?to\s+(\d{1,3})%?|set\s+volume\s+to\s+(\d{1,3})%?|volume\s+(\d{1,3})%?)', q)
+        mute_m = re.search(r'mute\s+(?:the\s+)?([a-zA-Z0-9\s_-]+)', q)
+        if mute_m:
+            if is_student:
+                return {
+                    "matched": True,
+                    "action": "access_denied",
+                    "category_badge": "Access Restricted",
+                    "response": "Speaker volume adjustment is restricted to campus staff and administrators.",
+                    "suggested_actions": ["Browse Notices"],
+                    "model_used": "Gemma Action Engine (Local)"
+                }
+            node = mute_m.group(1).strip().title()
+            return {
+                "matched": True,
+                "action": "set_speaker_volume",
+                "navigation_target": "nav:hardware:speakers",
+                "category_badge": "Speaker Hardware",
+                "response": f"Muting audio on **{node}** (Volume 0%).",
+                "suggested_actions": ["View Speaker Queue", "Unmute Speakers"],
+                "copilot_action": {"action": "set_speaker_volume", "parameters": {"node_id": node, "volume": 0}},
+                "model_used": "Gemma Action Engine (Local)"
+            }
+
+        if vol_m:
+            if is_student:
+                return {
+                    "matched": True,
+                    "action": "access_denied",
+                    "category_badge": "Access Restricted",
+                    "response": "Speaker volume adjustment is restricted to campus staff and administrators.",
+                    "suggested_actions": ["Browse Notices"],
+                    "model_used": "Gemma Action Engine (Local)"
+                }
+            vol_val = int(vol_m.group(2) or vol_m.group(3) or vol_m.group(4) or 80)
+            vol_val = max(0, min(100, vol_val))
+            node = (vol_m.group(1) or "All Nodes").strip().title() if vol_m.group(2) else "All Nodes"
+            return {
+                "matched": True,
+                "action": "set_speaker_volume",
+                "navigation_target": "nav:hardware:speakers",
+                "category_badge": "Speaker Hardware",
+                "response": f"Setting speaker volume for **{node}** to **{vol_val}%**.",
+                "suggested_actions": ["View Speaker Queue", "Node Status"],
+                "copilot_action": {"action": "set_speaker_volume", "parameters": {"node_id": node, "volume": vol_val}},
+                "model_used": "Gemma Action Engine (Local)"
+            }
+
+        # 7. Notice Moderation: Approve, Reject, Delete (RBAC Protected)
+        app_m = re.search(r'\bapprove\s+(?:notice|announcement|circular)?\s*#?(\d+)\b', q)
+        if app_m:
+            if is_student:
+                return {
+                    "matched": True,
+                    "action": "access_denied",
+                    "category_badge": "Access Restricted",
+                    "response": "Notice approval is strictly restricted to faculty coordinators, HoDs, and administrators.",
+                    "suggested_actions": ["Browse Active Notices"],
+                    "model_used": "Gemma Action Engine (Local)"
+                }
+            ann_id = int(app_m.group(1))
+            return {
+                "matched": True,
+                "action": "approve_notice",
+                "navigation_target": "nav:announcements:approvals",
+                "category_badge": "Notice Moderation",
+                "response": f"Approving circular **#{ann_id}** for campus publication.",
+                "suggested_actions": ["View Approvals", "View Feed"],
+                "copilot_action": {"action": "approve_notice", "parameters": {"announcement_id": ann_id, "remarks": "Approved via EchoSphere Copilot"}},
+                "model_used": "Gemma Action Engine (Local)"
+            }
+
+        rej_m = re.search(r'\breject\s+(?:notice|announcement|circular)?\s*#?(\d+)\b', q)
+        if rej_m:
+            if is_student:
+                return {
+                    "matched": True,
+                    "action": "access_denied",
+                    "category_badge": "Access Restricted",
+                    "response": "Notice rejection is restricted to faculty coordinators and administrators.",
+                    "suggested_actions": ["Browse Active Notices"],
+                    "model_used": "Gemma Action Engine (Local)"
+                }
+            ann_id = int(rej_m.group(1))
+            return {
+                "matched": True,
+                "action": "reject_notice",
+                "navigation_target": "nav:announcements:approvals",
+                "category_badge": "Notice Moderation",
+                "response": f"Rejecting announcement **#{ann_id}**.",
+                "suggested_actions": ["Review Approvals"],
+                "copilot_action": {"action": "reject_notice", "parameters": {"announcement_id": ann_id, "remarks": "Rejected via EchoSphere Copilot"}},
+                "model_used": "Gemma Action Engine (Local)"
+            }
+
+        del_m = re.search(r'\bdelete\s+(?:notice|announcement|circular)?\s*#?(\d+)\b', q)
+        if del_m:
+            if is_student:
+                return {
+                    "matched": True,
+                    "action": "access_denied",
+                    "category_badge": "Access Restricted",
+                    "response": "Deleting circulars is restricted to administrators and notice authors.",
+                    "suggested_actions": ["Browse Active Notices"],
+                    "model_used": "Gemma Action Engine (Local)"
+                }
+            ann_id = int(del_m.group(1))
+            return {
+                "matched": True,
+                "action": "delete_notice",
+                "navigation_target": "nav:announcements:management",
+                "category_badge": "Notice Management",
+                "response": f"Deleting announcement **#{ann_id}** from campus database.",
+                "suggested_actions": ["Browse Active Notices"],
+                "copilot_action": {"action": "delete_notice", "parameters": {"announcement_id": ann_id}},
+                "model_used": "Gemma Action Engine (Local)"
+            }
+
         return None
 
 
@@ -262,19 +382,38 @@ class FineTunedGemmaProvider:
         old_adapter = os.path.join(base_ml_dir, "output_gemma_campus_model", "final_adapter")
         self.adapter_path = adapter_path or (new_adapter if os.path.isdir(new_adapter) else (old_adapter if os.path.isdir(old_adapter) else new_adapter))
         self.model_id = "google/gemma-2-2b-it"
-        self.endpoint = "http://127.0.0.1:8008/generate"
-        self.health_url = "http://127.0.0.1:8008/health"
+        raw_endpoint = os.getenv("GEMMA_API_URL", os.getenv("CAMPUS_LLM_API_URL", "https://rakshiroxy-echosphere-tts.hf.space/generate")).strip().rstrip("/")
+        if not raw_endpoint.endswith("/generate"):
+            self.endpoint = f"{raw_endpoint}/generate"
+        else:
+            self.endpoint = raw_endpoint
+        self.health_url = self.endpoint.rsplit("/generate", 1)[0] + "/health"
         self._spawn_attempted = False
         self._model = None
         self._tokenizer = None
         self._loaded = False
+        self._cached_client = None
+
+    @property
+    def is_remote(self) -> bool:
+        return "127.0.0.1" not in self.endpoint and "localhost" not in self.endpoint
 
     def is_configured(self) -> bool:
-        return os.path.isdir(self.adapter_path) or USE_FINE_TUNED_GEMMA
+        return self.is_remote or os.path.isdir(self.adapter_path) or USE_FINE_TUNED_GEMMA
+
+    def _find_python_interpreter(self) -> Optional[str]:
+        candidates = [
+            os.getenv("LOCAL_LLM_PYTHON", "").strip(),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "gemma_training", ".venv", "Scripts", "python.exe"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "qwen_training", ".venv", "Scripts", "python.exe"),
+            r"C:\Users\Rakshitha\AppData\Local\Programs\Python\Python312\python.exe",
+            sys.executable,
+        ]
+        return next((p for p in candidates if p and os.path.isfile(p)), None)
 
     def _ensure_service_running(self):
-        """Probe the GPU inference server, and auto-spawn if not currently running."""
-        if self._spawn_attempted:
+        """Probe the GPU inference server, and auto-spawn if running locally."""
+        if self.is_remote or self._spawn_attempted:
             return
         try:
             resp = requests.get(self.health_url, timeout=0.6)
@@ -285,15 +424,12 @@ class FineTunedGemmaProvider:
 
         self._spawn_attempted = True
         try:
-            venv_python = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "ml", "gemma_training", ".venv", "Scripts", "python.exe"
-            )
+            venv_python = self._find_python_interpreter()
             serve_script = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                 "ml", "gemma_training", "serve_gemma.py"
             )
-            if os.path.isfile(venv_python) and os.path.isfile(serve_script):
+            if venv_python and os.path.isfile(serve_script):
                 import subprocess
                 subprocess.Popen(
                     [venv_python, serve_script],
@@ -306,35 +442,85 @@ class FineTunedGemmaProvider:
         except Exception as e:
             logger.debug(f"Failed to auto-spawn Gemma microservice: {e}")
 
-    def generate(self, prompt: str, timeout: float = 3.5) -> Optional[str]:
-        # 1. Fast health check to port 8008 first (at most 250ms)
-        try:
-            h_resp = requests.get(self.health_url, timeout=0.25)
-            if h_resp.status_code != 200:
-                self._ensure_service_running()
-                return None
-            h_data = h_resp.json()
-            if h_data.get("status") != "ready":
-                return None
-        except Exception:
-            self._ensure_service_running()
-            return None
+    def generate(self, prompt: str, system_instruction: str = "", timeout: Optional[float] = None, max_new_tokens: int = 256) -> Optional[str]:
+        effective_timeout = timeout or (18.0 if self.is_remote else 6.0)
+        now = time.time()
+        if not hasattr(self, "_last_healthy_time"):
+            self._last_healthy_time = 0.0
 
-        # 2. Query local GPU inference microservice on port 8008 with tight timeout
+        full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
+
+        # 1. Primary for Remote Cloud: Direct Gradio Client on ZeroGPU Space
+        if self.is_remote:
+            try:
+                import gradio_client
+                # Patch gradio_client schema parsing for Gradio 5 boolean schemas if needed
+                from gradio_client import utils as client_utils
+                orig_schema_type = getattr(client_utils, "_json_schema_to_python_type", None)
+                if orig_schema_type and not getattr(client_utils, "_echosphere_patched", False):
+                    def _safe_schema_type(schema):
+                        if schema is True or schema is False or not isinstance(schema, dict):
+                            return Any
+                        return orig_schema_type(schema)
+                    client_utils._json_schema_to_python_type = _safe_schema_type
+                    client_utils._echosphere_patched = True
+
+                space_url = self.endpoint.rsplit("/generate", 1)[0]
+                if self._cached_client is None:
+                    client_kwargs = {"token": hf_token} if hf_token else {}
+                    try:
+                        self._cached_client = gradio_client.Client(space_url, **client_kwargs)
+                    except TypeError:
+                        legacy_kwargs = {"hf_token": hf_token} if hf_token else {}
+                        self._cached_client = gradio_client.Client(space_url, **legacy_kwargs)
+
+                res = self._cached_client.predict(
+                    prompt=full_prompt,
+                    max_new_tokens=max_new_tokens,
+                    temperature=0.3,
+                    api_name="/generate"
+                )
+                if res and isinstance(res, str) and not res.startswith("EchoSphere Campus Model error:"):
+                    self._last_healthy_time = time.time()
+                    return res.strip()
+            except Exception as ge:
+                logger.debug(f"Gradio client generation note: {ge}")
+
+        # 2. Local GPU or HTTP endpoint
+        if (now - self._last_healthy_time) > 15.0:
+            try:
+                check_timeout = 2.0 if self.is_remote else 0.4
+                h_resp = requests.get(self.health_url, timeout=check_timeout)
+                if h_resp.status_code == 200:
+                    self._last_healthy_time = time.time()
+                elif not self.is_remote:
+                    self._ensure_service_running()
+                    return None
+            except Exception:
+                if not self.is_remote:
+                    self._ensure_service_running()
+                    return None
+
+        headers = {"Content-Type": "application/json"}
+        if self.is_remote and hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
+
         try:
             resp = requests.post(
                 self.endpoint,
-                json={"prompt": prompt, "max_new_tokens": 256, "temperature": 0.3},
-                timeout=timeout
+                headers=headers,
+                json={"prompt": full_prompt, "max_new_tokens": max_new_tokens, "temperature": 0.3},
+                timeout=effective_timeout
             )
             if resp.status_code == 200:
                 data = resp.json()
                 text = data.get("text", "")
                 if text:
+                    self._last_healthy_time = time.time()
                     return text.strip()
         except requests.exceptions.Timeout:
-            logger.warning(f"Gemma microservice query timed out after {timeout}s.")
-            return None
+            logger.warning(f"Gemma microservice query timed out after {effective_timeout}s.")
         except Exception as e:
             logger.debug(f"Gemma microservice request failed: {e}")
 
@@ -354,16 +540,34 @@ class FineTunedQwenProvider:
         )
         self.adapter_path = adapter_path or os.path.join(base_ml_dir, "output_qwen_model", "final_adapter")
         self.model_id = "Qwen/Qwen2.5-3B-Instruct"
-        self.endpoint = "http://127.0.0.1:8009/generate"
-        self.health_url = "http://127.0.0.1:8009/health"
+        raw_endpoint = os.getenv("QWEN_API_URL", os.getenv("CAMPUS_LLM_API_URL", "http://127.0.0.1:8009")).strip().rstrip("/")
+        if not raw_endpoint.endswith("/generate"):
+            self.endpoint = f"{raw_endpoint}/generate"
+        else:
+            self.endpoint = raw_endpoint
+        self.health_url = self.endpoint.rsplit("/generate", 1)[0] + "/health"
         self._spawn_attempted = False
         self._last_healthy_time: float = 0.0
+
+    @property
+    def is_remote(self) -> bool:
+        return "127.0.0.1" not in self.endpoint and "localhost" not in self.endpoint
 
     def is_configured(self) -> bool:
         return True
 
+    def _find_python_interpreter(self) -> Optional[str]:
+        candidates = [
+            os.getenv("LOCAL_LLM_PYTHON", "").strip(),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "gemma_training", ".venv", "Scripts", "python.exe"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "qwen_training", ".venv", "Scripts", "python.exe"),
+            r"C:\Users\Rakshitha\AppData\Local\Programs\Python\Python312\python.exe",
+            sys.executable,
+        ]
+        return next((p for p in candidates if p and os.path.isfile(p)), None)
+
     def _ensure_service_running(self):
-        if self._spawn_attempted:
+        if self.is_remote or self._spawn_attempted:
             return
         try:
             resp = requests.get(self.health_url, timeout=0.6)
@@ -375,15 +579,12 @@ class FineTunedQwenProvider:
 
         self._spawn_attempted = True
         try:
-            venv_python = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "ml", "gemma_training", ".venv", "Scripts", "python.exe"
-            )
+            venv_python = self._find_python_interpreter()
             serve_script = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                 "ml", "qwen_training", "serve_qwen.py"
             )
-            if os.path.isfile(venv_python) and os.path.isfile(serve_script):
+            if venv_python and os.path.isfile(serve_script):
                 import subprocess
                 subprocess.Popen(
                     [venv_python, serve_script],
@@ -633,7 +834,9 @@ class ModelRouter:
             "gemini": ProviderStats("Google Gemini"),
             "cloudflare": ProviderStats("Cloudflare LLaMA"),
             "gemma": ProviderStats("Gemma Action Engine"),
-            "fine_tuned_gemma": ProviderStats("Fine-Tuned Gemma 2 (Local GPU)"),
+            "fine_tuned_gemma": ProviderStats(
+                "Fine-Tuned Campus Gemma (ZeroGPU Cloud)" if self.fine_tuned_gemma.is_remote else "Fine-Tuned Gemma 2 (Local GPU)"
+            ),
             "campus_ml": ProviderStats("Campus ML Engine"),
         }
 
@@ -658,26 +861,29 @@ class ModelRouter:
 
         # 1. Action dictionary from GemmaActionEngine
         if raw_action:
-            act = raw_action.get("action")
-            target = raw_action.get("navigation_target")
-            if act == "navigate" and target:
-                if "speaker" in target:
-                    extracted_action = {"action": "navigate", "parameters": {"screen": "speaker_queue"}}
-                elif "profile:security" in target:
-                    extracted_action = {"action": "navigate", "parameters": {"screen": "security_preferences"}}
-                elif "profile" in target:
-                    extracted_action = {"action": "navigate", "parameters": {"screen": "profile"}}
-                elif "filter:" in target:
+            if raw_action.get("copilot_action"):
+                extracted_action = raw_action["copilot_action"]
+            else:
+                act = raw_action.get("action")
+                target = raw_action.get("navigation_target")
+                if act == "navigate" and target:
+                    if "speaker" in target:
+                        extracted_action = {"action": "navigate", "parameters": {"screen": "speaker_queue"}}
+                    elif "profile:security" in target:
+                        extracted_action = {"action": "navigate", "parameters": {"screen": "security_preferences"}}
+                    elif "profile" in target:
+                        extracted_action = {"action": "navigate", "parameters": {"screen": "profile"}}
+                    elif "filter:" in target:
+                        cat = target.split(":")[-1]
+                        extracted_action = {"action": "filter_notices", "parameters": {"category": cat}}
+                elif act == "create_notice":
+                    extracted_action = {"action": "create_announcement_draft", "parameters": {}}
+                elif act == "theme" and target:
+                    mode = target.split(":")[-1] if ":" in target else "toggle"
+                    extracted_action = {"action": "toggle_theme", "parameters": {"mode": mode}}
+                elif act == "filter" and target:
                     cat = target.split(":")[-1]
-                    extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
-            elif act == "create_notice":
-                extracted_action = {"action": "create_announcement_draft", "parameters": {}}
-            elif act == "theme" and target:
-                mode = target.split(":")[-1] if ":" in target else "toggle"
-                extracted_action = {"action": "toggle_theme", "parameters": {"mode": mode}}
-            elif act == "filter" and target:
-                cat = target.split(":")[-1]
-                extracted_action = {"action": "navigate", "parameters": {"screen": "notices", "filter_category": cat}}
+                    extracted_action = {"action": "filter_notices", "parameters": {"category": cat}}
 
         # 2. Check for embedded [[ACTION:name:params]] tag in text
         import re
