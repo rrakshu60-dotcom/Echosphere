@@ -21,6 +21,8 @@ serviceAccountKey*.json
 .idea/
 *.swp
 *.tmp
+scratch/
+**/scratch/
 .DS_Store
 Thumbs.db
 *.log
