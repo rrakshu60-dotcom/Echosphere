@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-/// Interactive dialog to configure, modify, view logs, test, and remove
-/// automated repeat announcement broadcasts for speaker queue playback.
+/// Minimal and user-friendly dialog to configure automated repeat announcement
+/// broadcasts using campus break schedules and custom time windows.
 class RepeatScheduleDialog extends StatefulWidget {
   final int? announcementId;
   final String? announcementTitle;
@@ -51,14 +51,42 @@ class RepeatScheduleDialog extends StatefulWidget {
 }
 
 class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
-  String _repeatMode = 'INTERVAL'; // 'INTERVAL' or 'BREAK_SLOTS'
-  int _intervalMinutes = 15;
-  int _maxRepeats = 3;
-  bool _playOnPublish = true;
+  // Preset Campus Break Windows
+  static const List<Map<String, dynamic>> _breakWindows = [
+    {
+      'key': 'SHORT_BREAK',
+      'title': 'Short Break',
+      'time': '11:00 AM – 11:15 AM',
+      'duration': '15 mins',
+      'icon': Icons.coffee_rounded,
+    },
+    {
+      'key': 'LUNCH_BREAK',
+      'title': 'Lunch Break',
+      'time': '1:15 PM – 2:00 PM',
+      'duration': '45 mins',
+      'icon': Icons.restaurant_rounded,
+    },
+    {
+      'key': 'EVENING_BREAK',
+      'title': 'Evening Break',
+      'time': '4:30 PM – 5:30 PM',
+      'duration': '1 hour',
+      'icon': Icons.wb_twilight_rounded,
+    },
+    {
+      'key': 'HOSTEL_WINDOW',
+      'title': 'Hostel Window',
+      'time': '7:30 PM – 9:00 PM',
+      'duration': '1 hr 30 mins',
+      'icon': Icons.night_shelter_rounded,
+    },
+  ];
+
   final Set<String> _selectedSlots = {'SHORT_BREAK'};
-  String _selectedScope = 'DEPARTMENT';
   late final TextEditingController _customStartCtrl;
   late final TextEditingController _customEndCtrl;
+  bool _playOnPublish = true;
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -93,46 +121,27 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
 
   void _applyScheduleData(Map<String, dynamic> data) {
     _loadedSchedule = data;
-    if (data['repeat_mode'] != null) {
-      final rm = data['repeat_mode'].toString().toUpperCase();
-      if (rm == 'INTERVAL' || rm == 'BREAK_SLOTS') {
-        _repeatMode = rm;
-      }
-    } else if (data['selected_slots'] != null) {
-      final slots = (data['selected_slots'] as List?)?.map((e) => e.toString()).toList();
-      if (slots != null && slots.contains('INTERVAL')) {
-        _repeatMode = 'INTERVAL';
-      } else {
-        _repeatMode = 'BREAK_SLOTS';
-      }
-    }
 
-    if (data['interval_minutes'] != null) {
-      _intervalMinutes = int.tryParse(data['interval_minutes'].toString()) ?? 15;
-    }
-    if (data['max_repeats'] != null) {
-      _maxRepeats = int.tryParse(data['max_repeats'].toString()) ?? 3;
-    }
-    if (data['play_on_publish'] != null) {
-      _playOnPublish = data['play_on_publish'] == true || data['play_on_publish'].toString().toLowerCase() == 'true';
-    }
-
-    final slots = (data['selected_slots'] as List?)?.map((e) => e.toString()).toList();
+    final slots = (data['selected_slots'] as List?)?.map((e) => e.toString().toUpperCase()).toList();
     if (slots != null && slots.isNotEmpty) {
       _selectedSlots.clear();
       _selectedSlots.addAll(slots.where((s) => s != 'INTERVAL'));
-      if (_selectedSlots.isEmpty) {
-        _selectedSlots.add('SHORT_BREAK');
-      }
     }
-    if (data['target_scope'] != null) {
-      _selectedScope = data['target_scope'].toString();
-    }
-    if (data['custom_start_time'] != null) {
+
+    if (data['custom_start_time'] != null && data['custom_start_time'].toString().isNotEmpty) {
       _customStartCtrl.text = data['custom_start_time'].toString();
+      _selectedSlots.add('CUSTOM_WINDOW');
     }
-    if (data['custom_end_time'] != null) {
+    if (data['custom_end_time'] != null && data['custom_end_time'].toString().isNotEmpty) {
       _customEndCtrl.text = data['custom_end_time'].toString();
+    }
+
+    if (_selectedSlots.isEmpty) {
+      _selectedSlots.add('SHORT_BREAK');
+    }
+
+    if (data['play_on_publish'] != null) {
+      _playOnPublish = data['play_on_publish'] == true || data['play_on_publish'].toString().toLowerCase() == 'true';
     }
   }
 
@@ -154,8 +163,79 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     }
   }
 
+  String _normalizeTime(String raw) {
+    var s = raw.trim();
+    final m12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$').firstMatch(s);
+    if (m12 != null) {
+      var h = int.parse(m12.group(1)!);
+      final m = int.parse(m12.group(2)!);
+      final mer = m12.group(3)!.toUpperCase();
+      if (h >= 1 && h <= 12) {
+        if (mer == 'PM' && h != 12) h += 12;
+        if (mer == 'AM' && h == 12) h = 0;
+        return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+      }
+    }
+    if (RegExp(r'^\d:[0-5]\d$').hasMatch(s)) {
+      return '0$s';
+    }
+    return s;
+  }
+
+  String _format12Hour(String hhmm) {
+    final norm = _normalizeTime(hhmm);
+    final parts = norm.split(':');
+    if (parts.length != 2) return hhmm;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return hhmm;
+    final mer = h >= 12 ? 'PM' : 'AM';
+    final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '$h12:${m.toString().padLeft(2, '0')} $mer';
+  }
+
+  Map<String, dynamic> _calculateCustomWindowDuration(String startRaw, String endRaw) {
+    final startNorm = _normalizeTime(startRaw);
+    final endNorm = _normalizeTime(endRaw);
+    final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+    if (!timeRegex.hasMatch(startNorm) || !timeRegex.hasMatch(endNorm)) {
+      return {'isValid': false, 'message': 'Please enter valid times (e.g. 10:00 AM or 10:00)'};
+    }
+
+    final sp = startNorm.split(':').map(int.parse).toList();
+    final ep = endNorm.split(':').map(int.parse).toList();
+    int startMins = sp[0] * 60 + sp[1];
+    int endMins = ep[0] * 60 + ep[1];
+
+    if (endMins <= startMins) {
+      return {'isValid': false, 'message': 'End time must be later than start time'};
+    }
+
+    final diff = endMins - startMins;
+    final hrs = diff ~/ 60;
+    final mins = diff % 60;
+
+    String durationStr;
+    if (hrs > 0 && mins > 0) {
+      durationStr = '$hrs hr $mins mins';
+    } else if (hrs > 0) {
+      durationStr = '$hrs hr${hrs > 1 ? "s" : ""}';
+    } else {
+      durationStr = '$mins mins';
+    }
+
+    final displayRange = '${_format12Hour(startNorm)} – ${_format12Hour(endNorm)}';
+    return {
+      'isValid': true,
+      'duration': durationStr,
+      'totalMinutes': diff,
+      'displayRange': displayRange,
+      'message': 'Repeat Window: $displayRange ($durationStr)',
+    };
+  }
+
   Future<void> _pickTime({required bool isStart}) async {
-    final currentStr = isStart ? _customStartCtrl.text : _customEndCtrl.text;
+    final currentStr = _normalizeTime(isStart ? _customStartCtrl.text : _customEndCtrl.text);
     TimeOfDay initial = const TimeOfDay(hour: 10, minute: 0);
     try {
       final parts = currentStr.split(':');
@@ -167,7 +247,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
-      helpText: isStart ? 'Select Custom Window Start Time' : 'Select Custom Window End Time',
+      helpText: isStart ? 'Select Repeat Window Start Time' : 'Select Repeat Window End Time',
     );
 
     if (picked != null && mounted) {
@@ -176,6 +256,12 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
       setState(() {
         if (isStart) {
           _customStartCtrl.text = '$h:$m';
+          // Auto-adjust end time if it falls behind or equals start
+          final curEnd = _normalizeTime(_customEndCtrl.text);
+          if (curEnd.isEmpty || curEnd.compareTo('$h:$m') <= 0) {
+            final endHour = (picked.hour + 1) % 24;
+            _customEndCtrl.text = '${endHour.toString().padLeft(2, '0')}:$m';
+          }
         } else {
           _customEndCtrl.text = '$h:$m';
         }
@@ -189,93 +275,43 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
       return;
     }
 
-    final now = DateTime.now();
-    Map<String, dynamic> payload;
+    if (_selectedSlots.isEmpty) {
+      errorSnackBar('Please select at least one break schedule or custom time window.');
+      return;
+    }
 
-    if (_repeatMode == 'INTERVAL') {
-      payload = <String, dynamic>{
-        'repeat_mode': 'INTERVAL',
-        'interval_minutes': _intervalMinutes,
-        'max_repeats': _maxRepeats,
-        'play_on_publish': _playOnPublish,
-        'selected_slots': ['INTERVAL'],
-        'target_scope': _selectedScope,
-        'event_datetime': now.add(const Duration(hours: 24)).toUtc().toIso8601String(),
-        'start_date': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
-        'end_date': now.add(const Duration(hours: 48)).toUtc().toIso8601String(),
-        'force_enable_speaker': true,
-      };
-    } else {
-      if (_selectedSlots.isEmpty) {
-        errorSnackBar('Please select at least one campus break window.');
+    final now = DateTime.now();
+    String? normStart;
+    String? normEnd;
+
+    if (_selectedSlots.contains('CUSTOM_WINDOW')) {
+      normStart = _normalizeTime(_customStartCtrl.text);
+      normEnd = _normalizeTime(_customEndCtrl.text);
+      final rangeInfo = _calculateCustomWindowDuration(normStart, normEnd);
+      if (rangeInfo['isValid'] != true) {
+        errorSnackBar(rangeInfo['message'] as String? ?? 'Invalid custom time window');
         return;
       }
-
-      if (_selectedSlots.contains('CUSTOM_WINDOW')) {
-        String normalizeTime(String raw) {
-          var s = raw.trim();
-          final m12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*([AaPp][Mm])$').firstMatch(s);
-          if (m12 != null) {
-            var h = int.parse(m12.group(1)!);
-            final m = int.parse(m12.group(2)!);
-            final mer = m12.group(3)!.toUpperCase();
-            if (h >= 1 && h <= 12) {
-              if (mer == 'PM' && h != 12) h += 12;
-              if (mer == 'AM' && h == 12) h = 0;
-              return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-            }
-          }
-          if (RegExp(r'^\d:[0-5]\d$').hasMatch(s)) {
-            return '0$s';
-          }
-          return s;
-        }
-
-        String start = normalizeTime(_customStartCtrl.text);
-        String end = normalizeTime(_customEndCtrl.text);
-        _customStartCtrl.text = start;
-        _customEndCtrl.text = end;
-
-        final timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
-        if (!timeRegex.hasMatch(start)) {
-          errorSnackBar('Please enter or pick valid time (e.g. 10:30 or 10:30 AM).');
-          return;
-        }
-        if (end.isEmpty) {
-          final parts = start.split(':');
-          final sh = int.parse(parts[0]);
-          final sm = int.parse(parts[1]);
-          final em = (sm + 30) % 60;
-          final eh = (sh + ((sm + 30) ~/ 60)) % 24;
-          end = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
-          _customEndCtrl.text = end;
-        } else if (!timeRegex.hasMatch(end)) {
-          errorSnackBar('Please enter valid time (e.g. 11:00 or 11:00 AM) for end time.');
-          return;
-        }
-        if (start.compareTo(end) >= 0) {
-          errorSnackBar('Custom Window start time must be before end time.');
-          return;
-        }
-      }
-
-      payload = <String, dynamic>{
-        'repeat_mode': 'BREAK_SLOTS',
-        'interval_minutes': 0,
-        'max_repeats': _selectedSlots.length * 3 + (_playOnPublish ? 1 : 0),
-        'play_on_publish': _playOnPublish,
-        'selected_slots': _selectedSlots.toList(),
-        'target_scope': _selectedScope,
-        'event_datetime': now.add(const Duration(hours: 24)).toUtc().toIso8601String(),
-        'start_date': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
-        'end_date': now.add(const Duration(hours: 48)).toUtc().toIso8601String(),
-        'force_enable_speaker': true,
-        if (_selectedSlots.contains('CUSTOM_WINDOW')) ...{
-          'custom_start_time': _customStartCtrl.text.trim(),
-          'custom_end_time': _customEndCtrl.text.trim(),
-        },
-      };
+      _customStartCtrl.text = normStart;
+      _customEndCtrl.text = normEnd;
     }
+
+    final payload = <String, dynamic>{
+      'repeat_mode': 'BREAK_SLOTS',
+      'interval_minutes': 0,
+      'max_repeats': _selectedSlots.length * 5 + (_playOnPublish ? 1 : 0),
+      'play_on_publish': _playOnPublish,
+      'selected_slots': _selectedSlots.toList(),
+      'target_scope': 'COLLEGE_WIDE',
+      'event_datetime': now.add(const Duration(hours: 24)).toUtc().toIso8601String(),
+      'start_date': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(),
+      'end_date': now.add(const Duration(hours: 48)).toUtc().toIso8601String(),
+      'force_enable_speaker': true,
+      if (_selectedSlots.contains('CUSTOM_WINDOW') && normStart != null && normEnd != null) ...{
+        'custom_start_time': normStart,
+        'custom_end_time': normEnd,
+      },
+    };
 
     if (widget.announcementId != null) {
       setState(() => _isSaving = true);
@@ -340,7 +376,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
         final expiredCount = resultInfo is Map ? (resultInfo['expired_ttl_count'] ?? 0) : 0;
         final activeSlots = resultInfo is Map ? (resultInfo['active_slots'] as List? ?? []) : [];
         final slotLabel = activeSlots.isNotEmpty ? activeSlots.join(', ') : 'Outside Acoustic Windows';
-        snackBar('Evaluation complete! Slot: $slotLabel \u2022 Dispatched: $enqueuedCount \u2022 Expired (TTL): $expiredCount');
+        snackBar('Evaluation complete! Slot: $slotLabel \u2022 Dispatched: $enqueuedCount \u2022 Expired: $expiredCount');
         _fetchSchedule();
       }
     } catch (e) {
@@ -357,12 +393,15 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
     final isActive = hasExistingSchedule && (_loadedSchedule!['is_active'] ?? true);
     final logs = hasExistingSchedule ? (_loadedSchedule!['execution_logs'] as List? ?? []) : [];
 
+    final hasCustom = _selectedSlots.contains('CUSTOM_WINDOW');
+    final customRangeInfo = hasCustom ? _calculateCustomWindowDuration(_customStartCtrl.text, _customEndCtrl.text) : null;
+
     return Dialog(
       backgroundColor: context.colors.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 650),
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -386,7 +425,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const EchoSphereText(
-                          text: 'Repeat Broadcast Schedule',
+                          text: 'Repeat Broadcast',
                           size: 15,
                           variant: TextVariant.bold,
                         ),
@@ -397,6 +436,12 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                             color: context.colors.onSurface.opaque(0.65),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          )
+                        else
+                          EchoSphereText(
+                            text: 'Replay automatically across campus speakers',
+                            size: 11,
+                            color: context.colors.onSurface.opaque(0.65),
                           ),
                       ],
                     ),
@@ -434,7 +479,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                 color: _isStudent
                                     ? Colors.blue.withOpacity(0.08)
                                     : hasExistingSchedule
-                                        ? (isActive ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1))
+                                        ? (isActive ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.08))
                                         : context.colors.primary.opaque(0.08),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
@@ -452,7 +497,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                         ? Icons.info_outline_rounded
                                         : hasExistingSchedule
                                             ? (isActive ? Icons.check_circle_rounded : Icons.pause_circle_rounded)
-                                            : Icons.info_outline_rounded,
+                                            : Icons.repeat_on_rounded,
                                     size: 16,
                                     color: _isStudent
                                         ? Colors.blue
@@ -464,12 +509,12 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                   Expanded(
                                     child: EchoSphereText(
                                       text: _isStudent
-                                          ? 'View-Only Mode: You are viewing this schedule as a student. Broadcast timing updates require faculty or administrative privileges.'
+                                          ? 'View-Only Mode: You are viewing this schedule as a student.'
                                           : hasExistingSchedule
                                               ? (isActive
-                                                  ? 'Active: Rebroadcasts during designated campus break windows. Total Dispatched: ${_loadedSchedule?['total_played_count'] ?? 0} time(s).'
+                                                  ? 'Active Repeat Schedule \u2022 Total Dispatched: ${_loadedSchedule?['total_played_count'] ?? 0} time(s).'
                                                   : 'Inactive: Schedule is currently paused.')
-                                              : 'Select campus break windows to automatically repeat this voice broadcast.',
+                                              : 'Choose campus break windows or set a custom time window to replay this voice notice.',
                                       size: 11,
                                       color: context.colors.onSurface.opaque(0.85),
                                     ),
@@ -477,348 +522,330 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 14),
 
-                            // Strategy Mode Switcher
+                            // SECTION 1: BREAK SCHEDULES PRESETS
                             const EchoSphereText(
-                              text: 'Repeat Strategy',
+                              text: 'Campus Break Schedules',
                               size: 12,
                               variant: TextVariant.bold,
                             ),
                             const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                ChoiceChip(
-                                  avatar: const Icon(Icons.timer_outlined, size: 14),
-                                  label: const Text('Every X Minutes', style: TextStyle(fontSize: 11)),
-                                  selected: _repeatMode == 'INTERVAL',
-                                  onSelected: (val) {
-                                    if (val) setState(() => _repeatMode = 'INTERVAL');
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _breakWindows.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 6),
+                              itemBuilder: (ctx, idx) {
+                                final bw = _breakWindows[idx];
+                                final key = bw['key'] as String;
+                                final isSelected = _selectedSlots.contains(key);
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    setState(() {
+                                      if (isSelected) {
+                                        _selectedSlots.remove(key);
+                                      } else {
+                                        _selectedSlots.add(key);
+                                      }
+                                    });
                                   },
-                                ),
-                                ChoiceChip(
-                                  avatar: const Icon(Icons.schedule_rounded, size: 14),
-                                  label: const Text('Campus Break Windows', style: TextStyle(fontSize: 11)),
-                                  selected: _repeatMode == 'BREAK_SLOTS',
-                                  onSelected: (val) {
-                                    if (val) setState(() => _repeatMode = 'BREAK_SLOTS');
-                                  },
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-
-                            // MODE 1: INTERVAL
-                            if (_repeatMode == 'INTERVAL') ...[
-                              const EchoSphereText(
-                                text: 'Repeat Frequency',
-                                size: 12,
-                                variant: TextVariant.bold,
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [5, 10, 15, 30, 60].map((mins) {
-                                  return ChoiceChip(
-                                    label: Text('$mins min', style: const TextStyle(fontSize: 11)),
-                                    selected: _intervalMinutes == mins,
-                                    onSelected: (sel) {
-                                      if (sel) setState(() => _intervalMinutes = mins);
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 12),
-                              const EchoSphereText(
-                                text: 'Maximum Replays',
-                                size: 12,
-                                variant: TextVariant.bold,
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  {'label': '1 Repeat', 'val': 1},
-                                  {'label': '2 Repeats', 'val': 2},
-                                  {'label': '3 Repeats', 'val': 3},
-                                  {'label': '5 Repeats', 'val': 5},
-                                  {'label': 'Unlimited', 'val': 0},
-                                ].map((opt) {
-                                  final val = opt['val'] as int;
-                                  return ChoiceChip(
-                                    label: Text(opt['label'] as String, style: const TextStyle(fontSize: 11)),
-                                    selected: _maxRepeats == val,
-                                    onSelected: (sel) {
-                                      if (sel) setState(() => _maxRepeats = val);
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 10),
-                              CheckboxListTile(
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                                title: const Text(
-                                  'Broadcast immediately upon publish, then repeat every X min',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                                value: _playOnPublish,
-                                onChanged: (v) => setState(() => _playOnPublish = v ?? true),
-                                controlAffinity: ListTileControlAffinity.leading,
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: context.colors.primary.opaque(0.06),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: context.colors.primary.opaque(0.2)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.autorenew_rounded, size: 15, color: context.colors.primary),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Replays every $_intervalMinutes minutes${_maxRepeats > 0 ? " up to $_maxRepeats times" : " indefinitely until cancelled"}. Fully queued and synchronized with campus speakers.',
-                                        style: TextStyle(fontSize: 10, color: context.colors.primary, fontWeight: FontWeight.w600),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? context.colors.primary.opaque(0.1)
+                                          : context.colors.surfaceContainer.opaque(0.3),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? context.colors.primary
+                                            : context.colors.outline.opaque(0.15),
+                                        width: isSelected ? 1.5 : 1.0,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ],
-
-                            // MODE 2: CAMPUS BREAK WINDOWS
-                            if (_repeatMode == 'BREAK_SLOTS') ...[
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.volume_off_rounded, size: 14, color: Colors.amber),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: EchoSphereText(
-                                        text: 'Lecture Silence Protected: Unplayed repeat notices automatically expire at slot cutoff (TTL) to prevent academic interruption.',
-                                        size: 10,
-                                        color: context.colors.onSurface.opaque(0.8),
-                                      ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          bw['icon'] as IconData,
+                                          size: 18,
+                                          color: isSelected ? context.colors.primary : context.colors.onSurface.opaque(0.6),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                bw['title'] as String,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                                  color: isSelected ? context.colors.primary : null,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${bw['time']} \u2022 ${bw['duration']}',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: context.colors.onSurface.opaque(0.65),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Checkbox(
+                                          value: isSelected,
+                                          onChanged: (val) {
+                                            setState(() {
+                                              if (val == true) {
+                                                _selectedSlots.add(key);
+                                              } else {
+                                                _selectedSlots.remove(key);
+                                              }
+                                            });
+                                          },
+                                          activeColor: context.colors.primary,
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const EchoSphereText(
-                                text: 'Campus Acoustic Windows',
-                                size: 12,
-                                variant: TextVariant.bold,
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  FilterChip(
-                                    avatar: const Icon(Icons.coffee_rounded, size: 14),
-                                    label: const Text('Short Break (11:00 AM)', style: TextStyle(fontSize: 11)),
-                                    selected: _selectedSlots.contains('SHORT_BREAK'),
-                                    onSelected: (val) {
-                                      setState(() {
-                                        if (val) {
-                                          _selectedSlots.add('SHORT_BREAK');
-                                        } else {
-                                          _selectedSlots.remove('SHORT_BREAK');
-                                        }
-                                      });
-                                    },
                                   ),
-                                  FilterChip(
-                                    avatar: const Icon(Icons.restaurant_rounded, size: 14),
-                                    label: const Text('Lunch Break (1:15 PM)', style: TextStyle(fontSize: 11)),
-                                    selected: _selectedSlots.contains('LUNCH_BREAK'),
-                                    onSelected: (val) {
-                                      setState(() {
-                                        if (val) {
-                                          _selectedSlots.add('LUNCH_BREAK');
-                                        } else {
-                                          _selectedSlots.remove('LUNCH_BREAK');
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  FilterChip(
-                                    avatar: const Icon(Icons.wb_twilight_rounded, size: 14),
-                                    label: const Text('Evening Break (4:30 PM)', style: TextStyle(fontSize: 11)),
-                                    selected: _selectedSlots.contains('EVENING_BREAK'),
-                                    onSelected: (val) {
-                                      setState(() {
-                                        if (val) {
-                                          _selectedSlots.add('EVENING_BREAK');
-                                        } else {
-                                          _selectedSlots.remove('EVENING_BREAK');
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  FilterChip(
-                                    avatar: const Icon(Icons.night_shelter_rounded, size: 14),
-                                    label: const Text('Hostel Window (7:30 PM)', style: TextStyle(fontSize: 11)),
-                                    selected: _selectedSlots.contains('HOSTEL_WINDOW'),
-                                    onSelected: (val) {
-                                      setState(() {
-                                        if (val) {
-                                          _selectedSlots.add('HOSTEL_WINDOW');
-                                        } else {
-                                          _selectedSlots.remove('HOSTEL_WINDOW');
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  FilterChip(
-                                    avatar: const Icon(Icons.access_time_rounded, size: 14),
-                                    label: const Text('Custom Window', style: TextStyle(fontSize: 11)),
-                                    selected: _selectedSlots.contains('CUSTOM_WINDOW'),
-                                    onSelected: (val) {
-                                      setState(() {
-                                        if (val) {
-                                          _selectedSlots.add('CUSTOM_WINDOW');
-                                        } else {
-                                          _selectedSlots.remove('CUSTOM_WINDOW');
-                                        }
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-
-                              // Custom Window Time Fields
-                              if (_selectedSlots.contains('CUSTOM_WINDOW')) ...[
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: context.colors.surfaceContainer.opaque(0.5),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: context.colors.outline.opaque(0.15)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const EchoSphereText(
-                                        text: 'Custom Time Window (24-Hour Format)',
-                                        size: 11,
-                                        variant: TextVariant.bold,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: InkWell(
-                                              onTap: () => _pickTime(isStart: true),
-                                              child: AbsorbPointer(
-                                                child: TextField(
-                                                  controller: _customStartCtrl,
-                                                  decoration: const InputDecoration(
-                                                    labelText: 'Start Time',
-                                                    hintText: '10:00',
-                                                    isDense: true,
-                                                    suffixIcon: Icon(Icons.schedule_rounded, size: 16),
-                                                    border: OutlineInputBorder(),
-                                                  ),
-                                                  style: const TextStyle(fontSize: 12),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: InkWell(
-                                              onTap: () => _pickTime(isStart: false),
-                                              child: AbsorbPointer(
-                                                child: TextField(
-                                                  controller: _customEndCtrl,
-                                                  decoration: const InputDecoration(
-                                                    labelText: 'End Time',
-                                                    hintText: '11:00',
-                                                    isDense: true,
-                                                    suffixIcon: Icon(Icons.schedule_rounded, size: 16),
-                                                    border: OutlineInputBorder(),
-                                                  ),
-                                                  style: const TextStyle(fontSize: 12),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ],
-
-                            const SizedBox(height: 16),
-
-                            // Target Scope Dropdown
-                            const EchoSphereText(
-                              text: 'Target Speaker Scope',
-                              size: 12,
-                              variant: TextVariant.bold,
-                            ),
-                            const SizedBox(height: 6),
-                            DropdownButtonFormField<String>(
-                              value: _selectedScope,
-                              decoration: InputDecoration(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'DEPARTMENT',
-                                  child: Text('Department Nodes Only', style: TextStyle(fontSize: 12)),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'COLLEGE_WIDE',
-                                  child: Text('College-Wide (All Nodes)', style: TextStyle(fontSize: 12)),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'HOSTEL',
-                                  child: Text('Hostel & Common Areas', style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) setState(() => _selectedScope = val);
+                                );
                               },
                             ),
 
                             const SizedBox(height: 12),
-                            // Horizon & Lifespan hint
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(Icons.security_rounded, size: 14, color: context.colors.primary),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: EchoSphereText(
-                                    text: 'Automated repeat broadcasts remain active for up to 48 hours to ensure fresh campus communications.',
-                                    size: 10,
-                                    color: context.colors.onSurface.opaque(0.6),
+
+                            // SECTION 2: CUSTOM TIME WINDOW
+                            InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                setState(() {
+                                  if (hasCustom) {
+                                    _selectedSlots.remove('CUSTOM_WINDOW');
+                                  } else {
+                                    _selectedSlots.add('CUSTOM_WINDOW');
+                                  }
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: hasCustom
+                                      ? context.colors.primary.opaque(0.1)
+                                      : context.colors.surfaceContainer.opaque(0.3),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: hasCustom
+                                        ? context.colors.primary
+                                        : context.colors.outline.opaque(0.15),
+                                    width: hasCustom ? 1.5 : 1.0,
                                   ),
                                 ),
-                              ],
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.access_time_filled_rounded,
+                                      size: 18,
+                                      color: hasCustom ? context.colors.primary : context.colors.onSurface.opaque(0.6),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Custom Time Window',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: hasCustom ? FontWeight.bold : FontWeight.w600,
+                                              color: hasCustom ? context.colors.primary : null,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Define a custom start and end time range for repeats',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: context.colors.onSurface.opaque(0.65),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Checkbox(
+                                      value: hasCustom,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          if (val == true) {
+                                            _selectedSlots.add('CUSTOM_WINDOW');
+                                          } else {
+                                            _selectedSlots.remove('CUSTOM_WINDOW');
+                                          }
+                                        });
+                                      },
+                                      activeColor: context.colors.primary,
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            // CUSTOM TIME WINDOW INPUTS & LIVE CALCULATED RANGE
+                            if (hasCustom) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: context.colors.surfaceContainer.opaque(0.4),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: context.colors.primary.opaque(0.25)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const EchoSphereText(
+                                      text: 'Set Repeat Window (Start \u2013 End)',
+                                      size: 11,
+                                      variant: TextVariant.bold,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: InkWell(
+                                            onTap: () => _pickTime(isStart: true),
+                                            child: AbsorbPointer(
+                                              child: TextField(
+                                                controller: _customStartCtrl,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Start Time',
+                                                  hintText: '10:00',
+                                                  isDense: true,
+                                                  suffixIcon: const Icon(Icons.schedule_rounded, size: 16),
+                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                                ),
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: InkWell(
+                                            onTap: () => _pickTime(isStart: false),
+                                            child: AbsorbPointer(
+                                              child: TextField(
+                                                controller: _customEndCtrl,
+                                                decoration: InputDecoration(
+                                                  labelText: 'End Time',
+                                                  hintText: '11:00',
+                                                  isDense: true,
+                                                  suffixIcon: const Icon(Icons.schedule_rounded, size: 16),
+                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                                ),
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    // DYNAMIC CALCULATED TIME RANGE BADGE
+                                    if (customRangeInfo != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                        decoration: BoxDecoration(
+                                          color: customRangeInfo['isValid'] == true
+                                              ? context.colors.primary.opaque(0.08)
+                                              : Colors.orange.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: customRangeInfo['isValid'] == true
+                                                ? context.colors.primary.opaque(0.3)
+                                                : Colors.orange.withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              customRangeInfo['isValid'] == true
+                                                  ? Icons.timelapse_rounded
+                                                  : Icons.warning_amber_rounded,
+                                              size: 15,
+                                              color: customRangeInfo['isValid'] == true
+                                                  ? context.colors.primary
+                                                  : Colors.orange,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                customRangeInfo['isValid'] == true
+                                                    ? 'Calculated Repeat Window: ${customRangeInfo['displayRange']} \u2022 ${customRangeInfo['duration']}'
+                                                    : '${customRangeInfo['message']}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: customRangeInfo['isValid'] == true
+                                                      ? context.colors.primary
+                                                      : Colors.orange.shade800,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            const SizedBox(height: 12),
+
+                            // SECTION 3: PLAY ON PUBLISH TOGGLE
+                            InkWell(
+                              onTap: () => setState(() => _playOnPublish = !_playOnPublish),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: _playOnPublish,
+                                      onChanged: (v) => setState(() => _playOnPublish = v ?? true),
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                      activeColor: context.colors.primary,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Broadcast immediately on publish',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                          Text(
+                                            'Notice plays once immediately upon publishing, then repeats during selected windows',
+                                            style: TextStyle(fontSize: 10, color: context.colors.onSurface.opaque(0.6)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
 
                             // Execution Logs (if any)
                             if (logs.isNotEmpty) ...[
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 14),
                               const EchoSphereText(
                                 text: 'Recent Repeat Executions',
                                 size: 12,
@@ -826,7 +853,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                               ),
                               const SizedBox(height: 6),
                               Container(
-                                constraints: const BoxConstraints(maxHeight: 110),
+                                constraints: const BoxConstraints(maxHeight: 90),
                                 decoration: BoxDecoration(
                                   color: context.colors.surfaceContainer.opaque(0.3),
                                   borderRadius: BorderRadius.circular(10),
@@ -843,7 +870,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                         ? DateFormat('MMM dd, hh:mm a').format(DateTime.tryParse(time.toString()) ?? DateTime.now())
                                         : '';
                                     return Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       child: Row(
                                         children: [
                                           const Icon(Icons.check_circle_outline_rounded, size: 12, color: Colors.green),
@@ -864,9 +891,9 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                               ),
                             ],
 
-                            // Test Trigger Action (Testing & Validation)
+                            // Test Trigger Action (Testing & Validation for Faculty/Admin)
                             if (!_isStudent && widget.announcementId != null) ...[
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 12),
                               OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -876,7 +903,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                 onPressed: _isTestingSlot ? null : _handleTestTrigger,
                                 icon: _isTestingSlot
                                     ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : Icon(Icons.play_circle_outline_rounded, size: 16, color: context.colors.primary),
+                                    : Icon(Icons.play_circle_outline_rounded, size: 15, color: context.colors.primary),
                                 label: EchoSphereText(
                                   text: _isTestingSlot ? 'Evaluating Break Slot...' : 'Test Slot Evaluation Now',
                                   size: 11,
@@ -890,7 +917,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                       ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Divider(height: 1, color: context.colors.outline.opaque(0.12)),
               const SizedBox(height: 12),
 
@@ -908,7 +935,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                       TextButton.icon(
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.redAccent,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
                         onPressed: (_isDeleting || _isSaving) ? null : _handleDelete,
                         icon: _isDeleting
