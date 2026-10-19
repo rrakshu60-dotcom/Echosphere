@@ -625,16 +625,35 @@ def enqueue_and_broadcast_announcement(
         else:
             speaker_node_id = None
 
-    words = len((title + " " + content).split())
-    dur_secs = max(18, int(words / 2.2) + 6)
+    words = len((str(title) + " " + str(content)).split())
+    dur_secs = max(4, int(words / 2.5) + 2)
+    clean_v = (speaker_voice or "female").lower()
+    tag = f"american_{clean_v}"
+    try:
+        from app.api.v1.announcement import _find_cached_audio_file
+        cached_fn, cached_fp, _ = _find_cached_audio_file(
+            announcement_id,
+            tag,
+            include_chime=False,
+            prefer_wav=True,
+        )
+        if cached_fp and os.path.exists(cached_fp) and cached_fp.endswith(".wav"):
+            import wave
+            with wave.open(cached_fp, "rb") as wf:
+                real_d = int(wf.getnframes() / wf.getframerate())
+                if real_d > 0:
+                    dur_secs = real_d + 1
+    except Exception:
+        pass
+
     now = utc_now()
 
     # 1. Clean up any finished 'Playing' items whose playback duration has elapsed
     stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
     for sp in stale_playing:
         sp_played_at = getattr(sp, "played_at", None)
-        sp_dur = getattr(sp, "duration_seconds", 15) or 15
-        if sp_played_at is None or (now - sp_played_at).total_seconds() >= (sp_dur + 2):
+        sp_dur = getattr(sp, "duration_seconds", 4) or 4
+        if sp_played_at is None or (now - sp_played_at).total_seconds() >= (sp_dur + 1):
             setattr(sp, "status", "Completed")
             db.commit()
 
@@ -643,14 +662,14 @@ def enqueue_and_broadcast_announcement(
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
     is_future_scheduled = _is_future_time(scheduled_time, now)
 
-    # If the queue has an active playing non-emergency item that has already played for at least 6s or elapsed duration:
+    # If the queue has an active playing non-emergency item that has completed real duration:
     if active_playing and not is_future_scheduled:
         active_ann = getattr(active_playing, "announcement", None)
         is_active_em = is_emergency_announcement(active_ann)
         if not is_active_em:
             sp_played_at = getattr(active_playing, "played_at", None)
-            sp_dur = getattr(active_playing, "duration_seconds", 15) or 15
-            if sp_played_at is None or (now - sp_played_at).total_seconds() >= min(sp_dur, 6):
+            sp_dur = getattr(active_playing, "duration_seconds", 4) or 4
+            if sp_played_at is None or (now - sp_played_at).total_seconds() >= sp_dur:
                 setattr(active_playing, "status", "Completed")
                 db.commit()
                 active_playing = None
@@ -967,7 +986,7 @@ def dispatch_queue_action_to_speakers(
     }
 
 
-BROADCAST_GAP_SECONDS = 15
+BROADCAST_GAP_SECONDS = 4
 
 
 def auto_advance_speaker_queue(
@@ -1115,8 +1134,20 @@ def auto_advance_speaker_queue(
     if current_playing:
         ann = getattr(current_playing, "announcement", None)
         is_curr_emerg = is_emergency_announcement(ann)
-        curr_dur = getattr(current_playing, "duration_seconds", 15) or 15
-        curr_dur = max(20, int(curr_dur) + 8)
+        curr_dur = getattr(current_playing, "duration_seconds", 4) or 4
+        if current_playing.announcement_id:
+            try:
+                from app.api.v1.announcement import _find_cached_audio_file
+                _, real_fp, _ = _find_cached_audio_file(current_playing.announcement_id, "american_female", include_chime=False, prefer_wav=True)
+                if real_fp and os.path.exists(real_fp) and real_fp.endswith(".wav"):
+                    import wave
+                    with wave.open(real_fp, "rb") as wf:
+                        real_secs = int(wf.getnframes() / wf.getframerate())
+                        if real_secs > 0:
+                            curr_dur = real_secs
+            except Exception:
+                pass
+        curr_dur = max(3, int(curr_dur) + 1)
         curr_played_at = getattr(current_playing, "played_at", None)
 
         if not curr_played_at:
@@ -1288,7 +1319,7 @@ def auto_advance_speaker_queue(
                 should_advance = True
             else:
                 scheduled_due = any(
-                    _is_time_due(q.scheduled_time, now + timedelta(seconds=15))
+                    _is_time_due(q.scheduled_time, now + timedelta(seconds=BROADCAST_GAP_SECONDS + 2))
                     for q in queued_items
                 )
                 if scheduled_due:
@@ -1328,10 +1359,10 @@ def auto_advance_speaker_queue(
         None
     )
 
-    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now (+15s grace)
+    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
     if not next_item:
         next_item = next(
-            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=15))),
+            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=BROADCAST_GAP_SECONDS + 2))),
             None
         )
 
@@ -1343,10 +1374,10 @@ def auto_advance_speaker_queue(
     if next_item.announcement and str(getattr(next_item.announcement, "status", "")).upper() in ("SCHEDULED", "APPROVED", "SUBMITTED"):
         from app.core.enums.announcement import AnnouncementStatus
         setattr(next_item.announcement, "status", AnnouncementStatus.PUBLISHED)
-    if not getattr(next_item, "duration_seconds", None) or next_item.duration_seconds < 15:
+    if not getattr(next_item, "duration_seconds", None) or next_item.duration_seconds < 4:
         ann = getattr(next_item, "announcement", None)
         words = len(((getattr(ann, "title", "") or '') + ' ' + (getattr(ann, "description", "") or '')).split())
-        setattr(next_item, "duration_seconds", max(15, int(words / 2.5) + 3))
+        setattr(next_item, "duration_seconds", max(4, int(words / 2.5) + 1))
     db.commit()
     db.refresh(next_item)
 

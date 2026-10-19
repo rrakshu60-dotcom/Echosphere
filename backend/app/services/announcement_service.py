@@ -282,18 +282,21 @@ def create_announcement_service(
             if sched_obj and not getattr(sched_obj, 'play_on_publish', True) and not broadcast_sched_time:
                 broadcast_sched_time = sched_obj.next_repeat_at
 
-            enqueue_and_broadcast_announcement(
-                db=db,
-                announcement_id=created_announcement.id,
-                title=created_announcement.title,
-                content=created_announcement.description,
-                department_code=dept_code,
-                zone="College-Wide",
-                is_emergency=is_emerg,
-                speaker_node_id=getattr(request, 'speaker_node_id', None),
-                scheduled_time=broadcast_sched_time,
-                speaker_voice=created_announcement.speaker_voice or "female",
-            )
+            from app.models.speaker_queue import SpeakerQueue
+            already_in_q = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == created_announcement.id).first()
+            if not already_in_q:
+                enqueue_and_broadcast_announcement(
+                    db=db,
+                    announcement_id=created_announcement.id,
+                    title=created_announcement.title,
+                    content=created_announcement.description,
+                    department_code=dept_code,
+                    zone="College-Wide",
+                    is_emergency=is_emerg,
+                    speaker_node_id=getattr(request, 'speaker_node_id', None),
+                    scheduled_time=broadcast_sched_time,
+                    speaker_voice=created_announcement.speaker_voice or "female",
+                )
         except Exception as e:
             logger.warning(f"Auto-broadcast error on announcement creation: {e}")
 

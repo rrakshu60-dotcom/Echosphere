@@ -62,7 +62,7 @@ def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
     return dt
 
 
-BROADCAST_GAP_SECONDS = 15
+BROADCAST_GAP_SECONDS = 4
 
 SLOT_BOUNDS = {
     "SHORT_BREAK": (SHORT_BREAK_START, SHORT_BREAK_END),
@@ -271,7 +271,7 @@ def get_next_slot_datetime(
             slot_max_repeats = 999999 if prio_tier == "EMERGENCY" else (sched.max_repeats if (sched.max_repeats and sched.max_repeats > 0) else default_reps)
 
             if times_played_in_slot < slot_max_repeats:
-                candidate_repeat = from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS + 20)
+                candidate_repeat = from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS)
                 if candidate_repeat + timedelta(seconds=15) <= slot_end_today:
                     candidates.append((candidate_repeat, slot_name))
                 else:

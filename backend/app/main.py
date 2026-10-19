@@ -128,14 +128,14 @@ def _speaker_and_repeat_daemon():
     tick_count = 0
     while True:
         try:
-            time.sleep(3)
+            time.sleep(2)
             tick_count += 1
             with SessionLocal() as db_session:
-                # 1. Real-time speaker queue progression & scheduled time triggers (every 3s)
+                # 1. Real-time speaker queue progression & scheduled time triggers (every 2s)
                 auto_advance_speaker_queue(db_session)
 
-                # 2. Campus acoustic window repeat schedules (evaluated every ~9s = 3 ticks)
-                if tick_count % 3 == 0:
+                # 2. Campus acoustic window repeat schedules (evaluated every ~4s = 2 ticks)
+                if tick_count % 2 == 0:
                     evaluate_and_dispatch_repeat_slots(db_session)
         except Exception:
             time.sleep(1)
