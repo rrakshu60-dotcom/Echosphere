@@ -11,6 +11,7 @@ from app.schemas.repeat_schedule import (
     RepeatScheduleUpdate,
 )
 from app.services.repeat_schedule_service import (
+    calculate_time_window_duration,
     configure_repeat_schedule,
     delete_repeat_schedule,
     evaluate_and_dispatch_repeat_slots,
@@ -113,6 +114,22 @@ def remove_announcement_repeat_schedule(
             detail=f"No repeat schedule found for Announcement #{announcement_id}.",
         )
     return {"status": "success", "message": f"Repeat schedule for Announcement #{announcement_id} removed."}
+
+
+@router.get(
+    "/repeat-schedules/calculate-window",
+    summary="Calculate Duration and Time Range for a Custom Window",
+    status_code=status.HTTP_200_OK,
+)
+def calculate_window_preview(
+    start_time: str = Query(..., description="Start time in HH:MM format (24-hour, e.g. 10:00)"),
+    end_time: str = Query(..., description="End time in HH:MM format (24-hour, e.g. 11:30)"),
+):
+    """
+    Computes duration in minutes, 12-hour formatted time range, and summary
+    for any custom start/end time window.
+    """
+    return calculate_time_window_duration(start_time, end_time)
 
 
 @router.post(
@@ -227,4 +244,5 @@ def trigger_slot_check(
         "status": "success",
         "result": result,
     }
+
 

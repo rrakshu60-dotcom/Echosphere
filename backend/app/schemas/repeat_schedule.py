@@ -10,14 +10,14 @@ TIME_REGEX = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 class RepeatScheduleBase(BaseModel):
-    repeat_mode: str = "INTERVAL"
-    interval_minutes: int = 15
-    max_repeats: int = 3
+    repeat_mode: str = "BREAK_SLOTS"
+    interval_minutes: int = 0
+    max_repeats: int = 15
     play_on_publish: bool = True
-    selected_slots: Optional[List[str]] = None
+    selected_slots: Optional[List[str]] = ["SHORT_BREAK"]
     custom_start_time: Optional[str] = None
     custom_end_time: Optional[str] = None
-    target_scope: str = "DEPARTMENT"
+    target_scope: str = "COLLEGE_WIDE"
     target_node_id: Optional[int] = None
     event_datetime: Optional[datetime] = None
     start_date: Optional[datetime] = None
@@ -225,14 +225,14 @@ class RepeatScheduleResponse(BaseModel):
 
     id: int
     announcement_id: int
-    repeat_mode: str = "INTERVAL"
-    interval_minutes: int = 15
-    max_repeats: int = 3
+    repeat_mode: str = "BREAK_SLOTS"
+    interval_minutes: int = 0
+    max_repeats: int = 15
     play_on_publish: bool = True
     selected_slots: List[str]
     custom_start_time: Optional[str] = None
     custom_end_time: Optional[str] = None
-    target_scope: str
+    target_scope: str = "COLLEGE_WIDE"
     target_node_id: Optional[int] = None
     event_datetime: datetime
     start_date: datetime
@@ -241,5 +241,10 @@ class RepeatScheduleResponse(BaseModel):
     total_played_count: int
     next_repeat_at: Optional[datetime] = None
     last_repeat_at: Optional[datetime] = None
+    calculated_time_range: Optional[str] = None
+    calculated_duration_minutes: Optional[int] = None
+    calculated_duration_str: Optional[str] = None
+    time_windows_summary: Optional[str] = None
     logs: List[RepeatSlotLogResponse] = []
+
 
