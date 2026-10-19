@@ -746,27 +746,9 @@ def generate_announcement_audio_sync(
     if not speech_text:
         speech_text = "Attention. Official campus announcement broadcast."
 
-    # Tier 1: Try Kokoro Neural Engine (Remote AI Worker, ONNX, or PyTorch pipeline)
+    # Tier 1: Try Kokoro Neural Engine (Local ONNX first for zero-network instantaneous synthesis)
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
-        # 1A. Dedicated Remote Kokoro-82M Worker (Hugging Face Spaces with 16GB RAM)
-        if KOKORO_API_URL:
-            # Generate high-fidelity WAV & MP3 companions for streaming to ESP32 and web clients
-            # Strict 4.0s timeout: If ZeroGPU is cold/sleeping, immediately drops to Edge-TTS neural engine
-            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=4.0):
-                if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
-                    convert_wav_to_mp3(wav_filepath, mp3_filepath)
-                chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename
-                chosen_fp = mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath
-                return _format_audio_result(
-                    file_name=chosen_fn,
-                    file_path=chosen_fp,
-                    audio_type="mp3" if os.path.exists(mp3_filepath) else "wav",
-                    engine=f"Kokoro-82M Neural ({voice_name})",
-                    voice=voice_name,
-                    chime=selected_chime if include_chime else "none",
-                )
-
-        # 1B. Local Kokoro-ONNX / PyTorch Pipeline
+        # 1A. Local Kokoro-ONNX Pipeline (Sub-second local inference, 100% offline & reliable)
         kok_onnx = get_kokoro_onnx()
         if kok_onnx is not None:
             try:
@@ -785,7 +767,7 @@ def generate_announcement_audio_sync(
 
                     sf.write(wav_filepath, combined, sample_rate)
                     duration = round(len(combined) / float(sample_rate), 2)
-                    logger.info(f"Kokoro-ONNX neural audio generated: {wav_filepath}")
+                    logger.info(f"Kokoro-ONNX neural audio generated: {wav_filepath} ({duration}s)")
 
                     # Automatically encode MP3 for low-bandwidth streaming to ESP32 / web
                     has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
@@ -804,7 +786,23 @@ def generate_announcement_audio_sync(
                         chime=selected_chime if include_chime else "none",
                     )
             except Exception as k_err:
-                logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying PyTorch pipeline...")
+                logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying remote worker...")
+
+        # 1B. Dedicated Remote Kokoro-82M Worker (Only when local ONNX not present)
+        if KOKORO_API_URL and os.getenv("ENABLE_REMOTE_KOKORO", "false").lower() == "true":
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=2.5):
+                if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
+                    convert_wav_to_mp3(wav_filepath, mp3_filepath)
+                chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename
+                chosen_fp = mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath
+                return _format_audio_result(
+                    file_name=chosen_fn,
+                    file_path=chosen_fp,
+                    audio_type="mp3" if os.path.exists(mp3_filepath) else "wav",
+                    engine=f"Kokoro-82M Neural ({voice_name})",
+                    voice=voice_name,
+                    chime=selected_chime if include_chime else "none",
+                )
 
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
