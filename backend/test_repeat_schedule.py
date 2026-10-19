@@ -893,6 +893,38 @@ def test_repeat_schedule_suite():
     assert sched_cw.is_active == True
     print(f"  ✓ Repeat broadcast finished. Re-queued for next repeat within slot at: {q_cw.scheduled_time}")
 
+    # =======================================================
+    # TEST 15: Time Window Duration Calculation & Model Properties
+    # =======================================================
+    print("\n🔍 [TEST 15] Testing Minimal Time Window Duration & Model Properties...")
+    from app.services.repeat_schedule_service import calculate_time_window_duration
+    from app.schemas.repeat_schedule import RepeatScheduleResponse
+
+    # 1. Direct function calculation
+    calc_1 = calculate_time_window_duration("10:00", "11:30")
+    assert calc_1["duration_minutes"] == 90, f"Expected 90m, got {calc_1['duration_minutes']}"
+    assert calc_1["duration_str"] == "1 hr 30 mins", f"Expected '1 hr 30 mins', got {calc_1['duration_str']}"
+    assert calc_1["display_range"] == "10:00 AM – 11:30 AM"
+    print(f"  ✓ Direct calculation: {calc_1['display_range']} -> {calc_1['duration_str']} ({calc_1['duration_minutes']} mins)")
+
+    calc_2 = calculate_time_window_duration("13:15", "14:00")
+    assert calc_2["duration_minutes"] == 45, f"Expected 45m, got {calc_2['duration_minutes']}"
+    assert calc_2["duration_str"] == "45 mins", f"Expected '45 mins', got {calc_2['duration_str']}"
+    print(f"  ✓ Direct calculation: {calc_2['display_range']} -> {calc_2['duration_str']}")
+
+    # 2. Model property evaluation
+    assert sched_cw.calculated_duration_minutes == 30, f"Expected 30m, got {sched_cw.calculated_duration_minutes}"
+    assert "30 mins" in sched_cw.calculated_duration_str
+    assert "PM" in sched_cw.calculated_time_range
+    print(f"  ✓ Model property evaluation: {sched_cw.calculated_time_range} -> {sched_cw.calculated_duration_str}")
+
+    # 3. Pydantic RepeatScheduleResponse serialization
+    resp = RepeatScheduleResponse.model_validate(sched_cw)
+    assert resp.calculated_duration_minutes == 30
+    assert resp.calculated_duration_str == "30 mins"
+    assert resp.repeat_mode in ("BREAK_SLOTS", "CUSTOM")
+    print(f"  ✓ Pydantic Response serialization: mode={resp.repeat_mode}, duration={resp.calculated_duration_str}, range={resp.calculated_time_range}, summary={resp.time_windows_summary}")
+
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
     print("=======================================================\n")
@@ -900,3 +932,4 @@ def test_repeat_schedule_suite():
 
 if __name__ == "__main__":
     test_repeat_schedule_suite()
+

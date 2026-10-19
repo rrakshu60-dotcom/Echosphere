@@ -50,7 +50,7 @@ class AnnouncementRepeatSchedule(TimestampMixin, Base):
     target_scope = Column(
         String(30),
         nullable=False,
-        default="DEPARTMENT",
+        default="COLLEGE_WIDE",
     )
 
     target_node_id = Column(
@@ -59,25 +59,25 @@ class AnnouncementRepeatSchedule(TimestampMixin, Base):
         nullable=True,
     )
 
-    # Repeat Mode: "INTERVAL", "BREAK_SLOTS", "CUSTOM"
+    # Repeat Mode: "BREAK_SLOTS", "CUSTOM", "INTERVAL"
     repeat_mode = Column(
         String(20),
         nullable=False,
-        default="INTERVAL",
+        default="BREAK_SLOTS",
     )
 
-    # Interval in minutes for INTERVAL mode (e.g. 5, 10, 15, 30, 60)
+    # Interval in minutes for legacy INTERVAL mode (0 for BREAK_SLOTS)
     interval_minutes = Column(
         Integer,
         nullable=False,
-        default=15,
+        default=0,
     )
 
-    # Maximum repeat broadcasts (e.g. 1, 2, 3, 5, 10; 0 for unlimited until end_date)
+    # Maximum repeat broadcasts
     max_repeats = Column(
         Integer,
         nullable=False,
-        default=3,
+        default=15,
     )
 
     # Whether the notice should play immediately on publish before repeating
@@ -143,6 +143,32 @@ class AnnouncementRepeatSchedule(TimestampMixin, Base):
         back_populates="schedule",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def calculated_time_range(self):
+        if self.custom_start_time and self.custom_end_time:
+            from app.services.repeat_schedule_service import calculate_time_window_duration
+            return calculate_time_window_duration(self.custom_start_time, self.custom_end_time).get("display_range")
+        return None
+
+    @property
+    def calculated_duration_minutes(self):
+        if self.custom_start_time and self.custom_end_time:
+            from app.services.repeat_schedule_service import calculate_time_window_duration
+            return calculate_time_window_duration(self.custom_start_time, self.custom_end_time).get("duration_minutes")
+        return None
+
+    @property
+    def calculated_duration_str(self):
+        if self.custom_start_time and self.custom_end_time:
+            from app.services.repeat_schedule_service import calculate_time_window_duration
+            return calculate_time_window_duration(self.custom_start_time, self.custom_end_time).get("duration_str")
+        return None
+
+    @property
+    def time_windows_summary(self):
+        from app.services.repeat_schedule_service import get_schedule_time_summary
+        return get_schedule_time_summary(self).get("summary", "")
 
 
 class RepeatSlotExecutionLog(TimestampMixin, Base):

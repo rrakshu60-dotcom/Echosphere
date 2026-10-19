@@ -71,6 +71,96 @@ SLOT_BOUNDS = {
     "HOSTEL_WINDOW": (HOSTEL_WINDOW_START, HOSTEL_WINDOW_END),
 }
 
+SLOT_LABELS = {
+    "SHORT_BREAK": "Short Break (11:00 AM – 11:15 AM)",
+    "LUNCH_BREAK": "Lunch Break (1:15 PM – 2:00 PM)",
+    "EVENING_BREAK": "Evening Break (4:30 PM – 5:30 PM)",
+    "HOSTEL_WINDOW": "Hostel Window (7:30 PM – 9:00 PM)",
+}
+
+SLOT_DURATIONS = {
+    "SHORT_BREAK": 15,
+    "LUNCH_BREAK": 45,
+    "EVENING_BREAK": 60,
+    "HOSTEL_WINDOW": 90,
+}
+
+
+def calculate_time_window_duration(start_hhmm: Optional[str], end_hhmm: Optional[str]) -> Dict[str, Any]:
+    """Calculates duration in minutes and a formatted 12-hour display string for a time window."""
+    if not start_hhmm or not end_hhmm:
+        return {
+            "duration_minutes": 0,
+            "duration_str": "",
+            "display_range": "",
+            "formatted_summary": "",
+        }
+    try:
+        sh, sm = map(int, start_hhmm.strip().split(":"))
+        eh, em = map(int, end_hhmm.strip().split(":"))
+        start_mins = sh * 60 + sm
+        end_mins = eh * 60 + em
+        diff_mins = end_mins - start_mins
+        if diff_mins < 0:
+            diff_mins += 24 * 60
+
+        hrs = diff_mins // 60
+        mins = diff_mins % 60
+        parts = []
+        if hrs > 0:
+            parts.append(f"{hrs} hr" if hrs == 1 else f"{hrs} hrs")
+        if mins > 0:
+            parts.append(f"{mins} mins")
+        dur_str = " ".join(parts) if parts else "0 mins"
+
+        def _fmt12(h: int, m: int) -> str:
+            mer = "PM" if h >= 12 else "AM"
+            h12 = 12 if h in (0, 12) else (h - 12 if h > 12 else h)
+            return f"{h12}:{m:02d} {mer}"
+
+        display_range = f"{_fmt12(sh, sm)} – {_fmt12(eh, em)}"
+        return {
+            "duration_minutes": diff_mins,
+            "duration_str": dur_str,
+            "display_range": display_range,
+            "formatted_summary": f"Custom Window: {display_range} ({dur_str})",
+        }
+    except Exception:
+        return {
+            "duration_minutes": 0,
+            "duration_str": "",
+            "display_range": f"{start_hhmm} – {end_hhmm}",
+            "formatted_summary": f"Custom Window: {start_hhmm} – {end_hhmm}",
+        }
+
+
+def get_schedule_time_summary(sched: Any) -> Dict[str, Any]:
+    """Computes aggregate time range and duration summary across all selected break slots and custom window."""
+    if not sched:
+        return {"summary": "", "total_duration_minutes": 0}
+
+    slots = getattr(sched, "selected_slots", None) or []
+    summaries = []
+    total_minutes = 0
+
+    for slot in slots:
+        if slot in SLOT_LABELS:
+            summaries.append(SLOT_LABELS[slot])
+            total_minutes += SLOT_DURATIONS.get(slot, 0)
+        elif slot == "CUSTOM_WINDOW":
+            c_start = getattr(sched, "custom_start_time", None)
+            c_end = getattr(sched, "custom_end_time", None)
+            c_info = calculate_time_window_duration(c_start, c_end)
+            if c_info.get("formatted_summary"):
+                summaries.append(c_info["formatted_summary"])
+                total_minutes += c_info.get("duration_minutes", 0)
+
+    return {
+        "summary": ", ".join(summaries) if summaries else "Standard Campus Break Schedule",
+        "total_duration_minutes": total_minutes,
+    }
+
+
 
 def _ist_to_utc_naive(dt_ist: datetime) -> datetime:
     """Converts an IST datetime (naive or aware) to a naive UTC datetime."""
@@ -336,16 +426,26 @@ def configure_repeat_schedule(
             )
 
     # Extract mode and interval parameters
-    rep_mode = getattr(data, "repeat_mode", None) or (schedule.repeat_mode if schedule else "INTERVAL")
-    rep_interval = getattr(data, "interval_minutes", None) or (schedule.interval_minutes if schedule else 15)
-    rep_max = getattr(data, "max_repeats", None) if getattr(data, "max_repeats", None) is not None else (schedule.max_repeats if schedule else 3)
+    rep_mode = getattr(data, "repeat_mode", None) or (schedule.repeat_mode if schedule else "BREAK_SLOTS")
+    rep_interval = getattr(data, "interval_minutes", None) or (schedule.interval_minutes if schedule else 0)
+    rep_max = getattr(data, "max_repeats", None) if getattr(data, "max_repeats", None) is not None else (schedule.max_repeats if schedule else 15)
     rep_publish = getattr(data, "play_on_publish", None) if getattr(data, "play_on_publish", None) is not None else (schedule.play_on_publish if schedule else True)
 
-    # For BREAK_SLOTS mode, ensure rep_max does not choke repeat broadcasts
+    # For BREAK_SLOTS / CUSTOM_WINDOW mode, ensure rep_max has ample capacity to rotate throughout the time window
     if rep_mode != "INTERVAL":
-        slots_len = len(data.selected_slots or (schedule.selected_slots if schedule else []) or ["SHORT_BREAK"])
-        if rep_max is not None and rep_max <= slots_len:
-            rep_max = max(slots_len * 3 + (1 if rep_publish else 0), 3)
+        active_slots = data.selected_slots or (schedule.selected_slots if schedule else []) or ["SHORT_BREAK"]
+        slots_len = len(active_slots)
+        custom_duration = 0
+        c_start = getattr(data, "custom_start_time", None) or (schedule.custom_start_time if schedule else None)
+        c_end = getattr(data, "custom_end_time", None) or (schedule.custom_end_time if schedule else None)
+        if "CUSTOM_WINDOW" in active_slots or (c_start and c_end):
+            c_info = calculate_time_window_duration(c_start, c_end)
+            custom_duration = c_info.get("duration_minutes", 0)
+
+        # Allocate sufficient repeat rotation capacity (at least 5 per preset break + 1 per 5 mins of custom window, min 10)
+        calculated_cap = max(slots_len * 5 + (custom_duration // 5) + (1 if rep_publish else 0), 10)
+        if rep_max is None or rep_max < calculated_cap:
+            rep_max = calculated_cap
 
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     ist_now = get_current_ist_datetime()
@@ -360,7 +460,7 @@ def configure_repeat_schedule(
         # Build mock/temp schedule to calculate next upcoming slot occurrence
         calc_sched = schedule or AnnouncementRepeatSchedule(
             announcement_id=announcement_id,
-            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK", "LUNCH_BREAK"]),
+            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK"]),
             custom_start_time=data.custom_start_time,
             custom_end_time=data.custom_end_time,
             start_date=start_dt,
@@ -386,10 +486,10 @@ def configure_repeat_schedule(
             max_repeats=rep_max,
             play_on_publish=rep_publish,
             next_repeat_at=initial_next,
-            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK", "LUNCH_BREAK"]),
+            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK"]),
             custom_start_time=data.custom_start_time,
             custom_end_time=data.custom_end_time,
-            target_scope=data.target_scope or "DEPARTMENT",
+            target_scope=data.target_scope or (schedule.target_scope if schedule else "COLLEGE_WIDE"),
             target_node_id=target_node_id,
             event_datetime=event_dt,
             start_date=start_dt,
@@ -782,7 +882,7 @@ def evaluate_and_dispatch_repeat_slots(
         if is_em:
             has_active_emergency_scheduled = True
 
-        rep_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
+        rep_mode = getattr(sched, "repeat_mode", "BREAK_SLOTS") or "BREAK_SLOTS"
 
         # Case A: INTERVAL Repeat Mode
         if rep_mode == "INTERVAL":
