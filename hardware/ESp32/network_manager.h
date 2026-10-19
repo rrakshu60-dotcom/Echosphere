@@ -70,8 +70,8 @@ private:
     unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
       if (completedAnnouncements[i].annId == annId) {
-        // Cooldown of 45 seconds ensures the queue advances without duplicate immediate re-triggers
-        if (now - completedAnnouncements[i].completedAt < 45000UL) {
+        // Cooldown of 3 seconds prevents double-polling within a single loop while allowing rapid repeats
+        if (now - completedAnnouncements[i].completedAt < 3000UL) {
           return true;
         }
       }
@@ -494,7 +494,7 @@ public:
         // This guarantees the display leaves idle mode instantly upon push,
         // and renders the active notice before audio streaming begins.
         if (shouldTriggerBroadcast) {
-          int effectiveDuration = targetDuration > 0 ? max(targetDuration, 15) : 15;
+          int effectiveDuration = targetDuration > 0 ? max(targetDuration, 4) : 4;
           DisplayNotice notice;
           notice.id = targetAnnId;
           notice.title = targetTitle;
@@ -600,8 +600,8 @@ public:
     activeQueueId = qId;
     isBroadcasting = true;
 
-    // Minimum 15 seconds or requested duration so notice card is readable
-    int effectiveDuration = durationSec > 0 ? max(durationSec, 15) : 15;
+    // Minimum 4 seconds or requested duration so notice card is readable
+    int effectiveDuration = durationSec > 0 ? max(durationSec, 4) : 4;
     if (millis() + (effectiveDuration * 1000UL) > activePlaybackEndTime) {
       activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
     }

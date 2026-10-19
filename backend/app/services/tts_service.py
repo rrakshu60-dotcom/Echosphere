@@ -623,13 +623,19 @@ def _format_audio_result(
     """
     public_url = f"/static/audio_streams/{file_name}"
     cdn_url = None
+    # Asynchronously upload to Hugging Face Git LFS in background so playback is never blocked
     try:
+        import threading
         from app.services.cloud_storage_service import CloudStorageService
-        upload_info = CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
-        public_url = upload_info.get("public_url") or public_url
-        cdn_url = upload_info.get("cdn_url")
+        def _bg_upload():
+            try:
+                CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
+            except Exception as e:
+                logger.debug(f"Async cloud storage upload note: {e}")
+                
+        threading.Thread(target=_bg_upload, daemon=True).start()
     except Exception as e:
-        logger.debug(f"Cloud storage upload error: {e}")
+        logger.debug(f"Cloud storage upload dispatcher note: {e}")
 
     res = {
         "file_name": file_name,
