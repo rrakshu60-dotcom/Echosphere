@@ -1149,7 +1149,7 @@ class AnnouncementController extends GetxController {
     final words = ('$title $description').split(' ').length;
     final durSecs = (words / 2.5).round().clamp(10, 60);
 
-    final effectiveDeliverSpeaker = deliverSpeaker || repeatSchedule != null;
+    final effectiveDeliverSpeaker = deliverSpeaker || isScheduleLater || repeatSchedule != null;
     final newNotice = AnnouncementModel(
       id: newId,
       title: title,
@@ -1193,7 +1193,7 @@ class AnnouncementController extends GetxController {
           priority: priority == 'EMERGENCY' ? 'High' : priority,
           emergencyLevel: priority == 'EMERGENCY' ? 'Emergency' : 'Normal',
           scheduledAt: isScheduleLater && scheduledDateTime != null
-              ? scheduledDateTime.toIso8601String()
+              ? scheduledDateTime.toUtc().toIso8601String()
               : null,
           deliverSpeaker: effectiveDeliverSpeaker,
           deliverInApp: deliverInApp,
@@ -1201,6 +1201,7 @@ class AnnouncementController extends GetxController {
           speakerVoice: speakerVoice,
           targetAudience: targetAudience,
           speakerNodeId: speakerNodeId,
+          repeatSchedule: repeatSchedule,
         );
         final rawBackendId = res['id'];
         backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');

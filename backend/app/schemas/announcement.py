@@ -25,6 +25,7 @@ class AnnouncementCreate(BaseModel):
     target_audience: Optional[str] = None
     speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = "female"
+    repeat_schedule: Optional[Any] = None
 
     @model_validator(mode="before")
     @classmethod

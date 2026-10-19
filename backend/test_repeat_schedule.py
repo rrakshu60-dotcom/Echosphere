@@ -814,6 +814,85 @@ def test_repeat_schedule_suite():
     assert sched_rep.is_active == False or sched_rep.total_played_count >= sched_rep.max_repeats
     print("  ✓ Repeat sequence completed cleanly after 3 rounds without looping!")
 
+    # ----------------------------------------------------
+    # TEST 14: "Publish Now" + "Repeat Schedule" (Break Slots / Custom Window Mode)
+    # Notice plays immediately on publish, finishes, and must be re-queued for scheduled repeat time!
+    # When scheduled repeat time arrives, it must play repeatedly as scheduled!
+    # ----------------------------------------------------
+    print("\n🔍 [TEST 14] Testing 'Publish Now + Custom Window / Break Slot Repeat'...")
+    db.query(SpeakerQueue).delete()
+    db.commit()
+
+    ist_now = get_current_ist_datetime()
+    cw_start = (ist_now + timedelta(minutes=20)).strftime("%H:%M")
+    cw_end = (ist_now + timedelta(minutes=50)).strftime("%H:%M")
+
+    ann_cw = Announcement(
+        title="Placement Cell Workshop Notice",
+        description="Resume building workshop starting at 2 PM.",
+        priority=AnnouncementPriority.NORMAL,
+        emergency_level=EmergencyLevel.NORMAL,
+        created_by=user.id,
+        category_id=cat.id,
+        status=AnnouncementStatus.PUBLISHED,
+    )
+    db.add(ann_cw)
+    db.commit()
+    db.add(AnnouncementDelivery(announcement_id=ann_cw.id, delivery_type_id=deliv_speaker.id))
+    db.commit()
+
+    rep_payload_cw = RepeatScheduleCreate(
+        repeat_mode="BREAK_SLOTS",
+        selected_slots=["CUSTOM_WINDOW"],
+        custom_start_time=cw_start,
+        custom_end_time=cw_end,
+        play_on_publish=True,
+        max_repeats=3,
+        start_date=now - timedelta(hours=1),
+        end_date=now + timedelta(hours=24),
+    )
+    sched_cw = configure_repeat_schedule(db, ann_cw.id, rep_payload_cw, current_user=user)
+    db.refresh(sched_cw)
+
+    # 1. Verify Round 1 was enqueued and started playing immediately on publish
+    q_cw = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_cw.id).first()
+    assert q_cw is not None, "Notice must be enqueued immediately in SpeakerQueue!"
+    assert q_cw.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_cw.status}"
+    print(f"  ✓ Initial publish broadcast enqueued immediately (Status: {q_cw.status})")
+
+    # 2. Advance queue -> Initial playback finishes (outside custom window)
+    # It must NOT complete; it must be re-queued with scheduled_time pointing to cw_start!
+    res_adv_cw1 = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_cw)
+    db.refresh(sched_cw)
+    assert q_cw.status == "Queued", f"Expected 'Queued' for upcoming slot, got {q_cw.status}"
+    assert q_cw.scheduled_time is not None, "scheduled_time must be set to upcoming custom window"
+    assert q_cw.played_at is None, "played_at must be reset to None"
+    assert sched_cw.is_active == True, "Schedule must remain active for upcoming repeat window!"
+    print(f"  ✓ Initial playback finished outside slot. Successfully re-queued for slot at: {q_cw.scheduled_time}")
+
+    # 3. Simulate arrival of Custom Window start time
+    q_cw.scheduled_time = now - timedelta(minutes=1)
+    sched_cw.next_repeat_at = now - timedelta(minutes=1)
+    db.commit()
+
+    # Call auto_advance_speaker_queue: Queue advances and starts playing the repeat broadcast!
+    res_adv_cw2 = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_cw)
+    db.refresh(sched_cw)
+    assert q_cw.status == "Playing", f"Expected status 'Playing' when slot arrived, got {q_cw.status}"
+    print(f"  ✓ Custom Window start arrived: Item advanced to 'Playing' for repeated broadcast!")
+
+    # 4. Advance queue during active slot
+    # When this repeat broadcast finishes, it should re-queue for the next repeat within window (with 15s gap)
+    res_adv_cw3 = auto_advance_speaker_queue(db, force_advance=True)
+    db.refresh(q_cw)
+    db.refresh(sched_cw)
+    assert q_cw.status == "Queued", f"Expected 'Queued' for next intra-slot repeat, got {q_cw.status}"
+    assert q_cw.scheduled_time is not None
+    assert sched_cw.is_active == True
+    print(f"  ✓ Repeat broadcast finished. Re-queued for next repeat within slot at: {q_cw.scheduled_time}")
+
     print("\n=======================================================")
     print("  ✅ ALL REPEAT SCHEDULE TESTS PASSED SUCCESSFULLY!")
     print("=======================================================\n")

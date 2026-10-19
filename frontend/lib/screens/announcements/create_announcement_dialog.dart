@@ -40,7 +40,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
   bool deliverInApp = true;
   bool deliverPush = true;
-  bool deliverSpeaker = false;
+  bool deliverSpeaker = true;
   String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];
@@ -1461,6 +1461,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           final now = DateTime.now();
           if (repeatMode == 'INTERVAL') {
             repeatData = {
+              'is_active': true,
               'repeat_mode': 'INTERVAL',
               'interval_minutes': repeatIntervalMinutes,
               'max_repeats': repeatMaxRepeats,
@@ -1526,9 +1527,10 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               }
             }
             repeatData = {
+              'is_active': true,
               'repeat_mode': 'BREAK_SLOTS',
               'interval_minutes': 0,
-              'max_repeats': repeatSlots.length,
+              'max_repeats': repeatSlots.length * 3 + (!isScheduleLater && repeatPlayOnPublish ? 1 : 0),
               'play_on_publish': !isScheduleLater && repeatPlayOnPublish,
               'selected_slots': repeatSlots.toList(),
               'target_scope': repeatScope,
@@ -1578,7 +1580,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           targetAudience: selectedAudience,
           isScheduleLater: isScheduleLater,
           scheduledDateTime: scheduledDateTime,
-          deliverSpeaker: deliverSpeaker || repeatData != null,
+          deliverSpeaker: deliverSpeaker || isScheduleLater || repeatData != null,
           deliverInApp: deliverInApp,
           deliverPush: deliverPush,
           speakerVoice: speakerVoice,

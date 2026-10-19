@@ -130,12 +130,17 @@ _last_keepalive_status: Optional[str] = None
 
 def ping_zerogpu_worker() -> bool:
     """
-    Sends a fast, lightweight HTTP GET probe to the Kokoro Hugging Face Space.
-    Prevents ZeroGPU container from spinning down after 15 minutes of inactivity.
+    Sends a fast, lightweight HTTP GET probe to Hugging Face ZeroGPU Spaces (TTS & Gemma LLM).
+    Prevents ZeroGPU containers from spinning down after 15 minutes of inactivity.
     """
     global _last_keepalive_ping_time, _last_keepalive_status
-    api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
-    if not api_url:
+    tts_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
+    llm_url = (os.getenv("GEMMA_API_URL") or os.getenv("CAMPUS_LLM_API_URL") or "").strip().rstrip("/")
+    if llm_url.endswith("/generate"):
+        llm_url = llm_url.rsplit("/generate", 1)[0].rstrip("/")
+
+    target_urls = set(filter(None, [tts_url, llm_url]))
+    if not target_urls:
         return False
 
     hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
@@ -143,24 +148,34 @@ def ping_zerogpu_worker() -> bool:
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token}"
 
+    any_success = False
+    status_notes = []
+
     try:
         import requests
-        # Probe lightweight endpoints: /health, /config, /info, or root /
-        for endpoint in ["/health", "/config", "/info", ""]:
-            probe_url = f"{api_url}{endpoint}"
-            try:
-                resp = requests.get(probe_url, headers=headers, timeout=5.0)
-                _last_keepalive_ping_time = time.time()
-                if resp.status_code in (200, 302, 307):
-                    _last_keepalive_status = f"HTTP {resp.status_code} ({endpoint or '/'})"
-                    logger.info(f"ZeroGPU keep-alive ping successful: {probe_url} (HTTP {resp.status_code})")
-                    return True
-            except Exception:
-                continue
+        for api_url in target_urls:
+            space_success = False
+            for endpoint in ["/health", "/config", "/info", ""]:
+                probe_url = f"{api_url}{endpoint}"
+                try:
+                    resp = requests.get(probe_url, headers=headers, timeout=4.0)
+                    if resp.status_code in (200, 302, 307):
+                        _last_keepalive_ping_time = time.time()
+                        status_notes.append(f"{api_url}: HTTP {resp.status_code}")
+                        logger.info(f"ZeroGPU keep-alive ping successful: {probe_url} (HTTP {resp.status_code})")
+                        space_success = True
+                        any_success = True
+                        break
+                except Exception:
+                    continue
+            if not space_success:
+                status_notes.append(f"{api_url}: unreachable")
+        if status_notes:
+            _last_keepalive_status = " | ".join(status_notes)
     except Exception as e:
         logger.debug(f"ZeroGPU keep-alive ping note: {e}")
         _last_keepalive_status = f"Error: {e}"
-    return False
+    return any_success
 
 
 def _zerogpu_keepalive_loop():

@@ -455,7 +455,7 @@ class AIService:
         # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
         if router.fine_tuned_gemma.is_configured():
             try:
-                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                gemma_timeout = float(os.getenv("AI_DRAFT_TIMEOUT", "4.5" if router.fine_tuned_gemma.is_remote else "8.0"))
                 raw_res = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=220)
             except Exception as e:
                 logger.debug(f"[Gemma draft attempt]: {e}")
@@ -480,30 +480,91 @@ class AIService:
                 logger.debug(f"[Gemini draft attempt]: {e}")
 
         if raw_res:
-            try:
-                cleaned_raw = re.sub(r'^```(?:json)?\s*', '', raw_res.strip(), flags=re.MULTILINE)
-                cleaned_raw = re.sub(r'```$', '', cleaned_raw.strip())
-                json_match = re.search(r'\{[\s\S]*\}', cleaned_raw)
-                if json_match:
-                    parsed = json.loads(json_match.group())
-                    title = parsed.get("title", f"Notice: {clean_topic.title()}")
-                    content = parsed.get("content", "")
-                    prio = str(parsed.get("suggested_priority", "NORMAL")).upper()
-                    if prio not in ["NORMAL", "HIGH", "EMERGENCY"]:
-                        prio = "NORMAL"
-                    cat = parsed.get("suggested_category", category or "Academics")
-                    if content:
-                        return {
-                            "title": title,
-                            "content": sanitize_ai_markdown(content),
-                            "suggested_priority": prio,
-                            "suggested_category": cat
-                        }
-            except Exception as e:
-                logger.debug(f"Failed parsing LLM draft JSON: {e}")
+            parsed_draft = AIService._parse_draft_response(raw_res, default_topic=clean_topic, default_category=category or "Academics")
+            if parsed_draft:
+                return parsed_draft
 
         # TIER 3: Local Campus ML Engine Fallback (Grounded, Context-Aware)
         return ml_engine.draft_announcement_structured(clean_topic, category=category, audience=target_role, department=department)
+
+    @staticmethod
+    def _parse_draft_response(raw_text: str, default_topic: str = "", default_category: str = "Academics") -> Optional[Dict[str, str]]:
+        """
+        Robustly parses LLM draft output into structured circular components:
+        1. Strips markdown fences (```json ... ```).
+        2. Tries standard json.loads with strict=False (allows unescaped control characters/newlines).
+        3. If JSON syntax errors occur (e.g. unescaped inner quotes in content), extracts fields via regex.
+        4. Cleans any rogue action tokens (e.g. [ACTION:...] / [ENTER:...]).
+        5. Falls back to plain markdown body if formatted without JSON wrapper.
+        """
+        if not raw_text or not raw_text.strip():
+            return None
+
+        cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r'```$', '', cleaned.strip())
+
+        # Strategy 1: Standard & strict=False JSON parsing
+        json_match = re.search(r'\{[\s\S]*\}', cleaned)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group(), strict=False)
+                if isinstance(parsed, dict) and parsed.get("content"):
+                    prio = str(parsed.get("suggested_priority", "NORMAL")).upper()
+                    if prio not in ["NORMAL", "HIGH", "EMERGENCY"]:
+                        prio = "NORMAL"
+                    raw_content = str(parsed.get("content", "")).strip()
+                    raw_content = re.sub(r'\[(?:ENTER|ACTION):\{.*?\}\]', '', raw_content)
+                    raw_content = re.sub(r'\[\[(?:ACTION|NAVIGATE):.*?\]\]', '', raw_content).strip()
+                    if len(raw_content) > 30:
+                        return {
+                            "title": str(parsed.get("title", f"Notice: {default_topic.title()}")).strip(),
+                            "content": sanitize_ai_markdown(raw_content),
+                            "suggested_priority": prio,
+                            "suggested_category": str(parsed.get("suggested_category", default_category)).strip()
+                        }
+            except Exception:
+                pass
+
+        # Strategy 2: Robust Regex Field Extraction (handles unescaped inner quotes and formatting defects)
+        title_m = re.search(r'"title"\s*:\s*"([^"\r\n]+)"', cleaned)
+        content_m = re.search(r'"content"\s*:\s*"(.*?)(?:"\s*,\s*"suggested_|\s*"[ \t]*\n\s*\})', cleaned, re.DOTALL)
+        if not content_m:
+            content_m = re.search(r'"content"\s*:\s*"([\s\S]*?)"\s*\}', cleaned)
+
+        prio_m = re.search(r'"suggested_priority"\s*:\s*"([A-Za-z]+)"', cleaned)
+        cat_m = re.search(r'"suggested_category"\s*:\s*"([^"\r\n]+)"', cleaned)
+
+        title = title_m.group(1).strip() if title_m else f"Notice: {default_topic.title()}"
+        prio = prio_m.group(1).strip().upper() if prio_m else "NORMAL"
+        cat = cat_m.group(1).strip() if cat_m else default_category
+
+        if content_m:
+            content = content_m.group(1).strip()
+            content = content.replace('\\"', '"').replace('\\n', '\n')
+            content = re.sub(r'\[(?:ENTER|ACTION):\{.*?\}\]', '', content)
+            content = re.sub(r'\[\[(?:ACTION|NAVIGATE):.*?\]\]', '', content).strip()
+            if len(content) > 30:
+                return {
+                    "title": title,
+                    "content": sanitize_ai_markdown(content),
+                    "suggested_priority": prio if prio in ["NORMAL", "HIGH", "EMERGENCY"] else "NORMAL",
+                    "suggested_category": cat
+                }
+
+        # Strategy 3: Plain markdown body fallback if LLM generated structured notice directly without JSON
+        lines = [line for line in cleaned.split('\n') if not line.strip().startswith(('```', '{', '}', '"title"', '"content"'))]
+        body = "\n".join(lines).strip()
+        body = re.sub(r'\[(?:ENTER|ACTION):\{.*?\}\]', '', body)
+        body = re.sub(r'\[\[(?:ACTION|NAVIGATE):.*?\]\]', '', body).strip()
+        if len(body) > 40:
+            return {
+                "title": f"Notice: {default_topic.title()}",
+                "content": sanitize_ai_markdown(body),
+                "suggested_priority": prio if prio in ["NORMAL", "HIGH", "EMERGENCY"] else "NORMAL",
+                "suggested_category": cat
+            }
+
+        return None
 
     @staticmethod
     def expand_text(text: str, category: str = "Academics", department: Optional[str] = None) -> str:
@@ -539,7 +600,7 @@ class AIService:
         # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
         if router.fine_tuned_gemma.is_configured():
             try:
-                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                gemma_timeout = float(os.getenv("AI_EXPAND_TIMEOUT", "3.8" if router.fine_tuned_gemma.is_remote else "8.0"))
                 expanded = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=180)
             except Exception as e:
                 logger.debug(f"[Gemma expand attempt]: {e}")
@@ -593,7 +654,7 @@ class AIService:
         # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
         if router.fine_tuned_gemma.is_configured():
             try:
-                gemma_timeout = 20.0 if router.fine_tuned_gemma.is_remote else 8.0
+                gemma_timeout = float(os.getenv("AI_GRAMMAR_TIMEOUT", "3.5" if router.fine_tuned_gemma.is_remote else "8.0"))
                 raw_res = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=160)
             except Exception as e:
                 logger.debug(f"[Gemma grammar attempt]: {e}")
@@ -623,7 +684,7 @@ class AIService:
                 cleaned_raw = re.sub(r'```$', '', cleaned_raw.strip())
                 json_match = re.search(r'\{[\s\S]*\}', cleaned_raw)
                 if json_match:
-                    parsed = json.loads(json_match.group())
+                    parsed = json.loads(json_match.group(), strict=False)
                     corrected = parsed.get("corrected_text", clean)
                     improvs = parsed.get("improvements", ["Corrected syntax and institutional tone."])
                     if corrected:

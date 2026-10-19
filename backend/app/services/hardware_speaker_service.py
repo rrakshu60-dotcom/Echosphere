@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.models.speaker_node import SpeakerNode
 from app.models.speaker_queue import SpeakerQueue
+from app.core.emergency_utils import is_emergency_announcement
 from app.repositories.hardware_repository import (
     get_all_speaker_nodes,
     get_speaker_node_by_id,
@@ -641,6 +642,23 @@ def enqueue_and_broadcast_announcement(
     existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
     is_future_scheduled = _is_future_time(scheduled_time, now)
+
+    # If the queue has an active playing non-emergency item that has already played for at least 6s or elapsed duration:
+    if active_playing and not is_future_scheduled:
+        active_ann = getattr(active_playing, "announcement", None)
+        is_active_em = is_emergency_announcement(active_ann)
+        if not is_active_em:
+            sp_played_at = getattr(active_playing, "played_at", None)
+            sp_dur = getattr(active_playing, "duration_seconds", 15) or 15
+            if sp_played_at is None or (now - sp_played_at).total_seconds() >= min(sp_dur, 6):
+                setattr(active_playing, "status", "Completed")
+                db.commit()
+                active_playing = None
+
+    active_items_count = db.query(SpeakerQueue).filter(
+        SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"])
+    ).count()
+
     active_status = getattr(active_playing, "status", None) if active_playing else None
     existing_status = getattr(existing_item, "status", None) if existing_item else None
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
@@ -650,6 +668,7 @@ def enqueue_and_broadcast_announcement(
         or (active_playing is None)
         or (existing_status == "Playing")
         or (active_ann_id == announcement_id)
+        or (active_items_count == 0)
     )
 
     if is_emergency:
@@ -667,12 +686,11 @@ def enqueue_and_broadcast_announcement(
 
     active_item = existing_item
     if not existing_item:
-        max_pos = db.query(SpeakerQueue).count()
-        item_status = "Playing" if should_play else ("Next in Queue" if max_pos == 0 and not is_future_scheduled else "Queued")
+        item_status = "Playing" if should_play else ("Next in Queue" if active_items_count == 0 and not is_future_scheduled else "Queued")
         queue_item = cast(Any, SpeakerQueue)(
             announcement_id=announcement_id,
             speaker_node_id=speaker_node_id,
-            queue_position=1 if is_emergency else max_pos + 1,
+            queue_position=1 if is_emergency or should_play else active_items_count + 1,
             status=item_status,
             scheduled_time=scheduled_time or now,
             played_at=now if should_play else None,
@@ -707,16 +725,15 @@ def enqueue_and_broadcast_announcement(
 
         if speaker_node_id:
             setattr(existing_item, "speaker_node_id", speaker_node_id)
-        max_pos = db.query(SpeakerQueue).count()
         if should_play:
             setattr(existing_item, "status", "Playing")
             setattr(existing_item, "played_at", now)
-            setattr(existing_item, "queue_position", 1 if is_emergency else max_pos + 1)
+            setattr(existing_item, "queue_position", 1)
         else:
-            item_status = "Next in Queue" if max_pos == 0 and not is_future_scheduled else "Queued"
+            item_status = "Next in Queue" if active_items_count == 0 and not is_future_scheduled else "Queued"
             setattr(existing_item, "status", item_status)
             setattr(existing_item, "played_at", None)
-            setattr(existing_item, "queue_position", 1 if is_emergency else max_pos + 1)
+            setattr(existing_item, "queue_position", active_items_count + 1)
             setattr(existing_item, "scheduled_time", scheduled_time or now)
 
         setattr(existing_item, "duration_seconds", dur_secs)
@@ -998,13 +1015,13 @@ def auto_advance_speaker_queue(
         db.commit()
 
         # Check emergency notice queue item
-        emerg_q = (
+        emerg_q: Any = (
             db.query(SpeakerQueue)
             .filter(SpeakerQueue.announcement_id == emerg_ann.id)
             .first()
         )
 
-        if emerg_q and emerg_q.status == "Playing":
+        if emerg_q and getattr(emerg_q, "status", None) == "Playing":
             curr_played_at = getattr(emerg_q, "played_at", None)
             curr_dur = getattr(emerg_q, "duration_seconds", 15) or 15
             elapsed = (now - curr_played_at).total_seconds() if curr_played_at else curr_dur
@@ -1186,32 +1203,45 @@ def auto_advance_speaker_queue(
             if sched:
                 repeat_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
                 prio_weight, default_prio_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-                max_reps_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else default_prio_limit
-                if max_reps_limit <= 0:
-                    max_reps_limit = 999999
 
                 sched.total_played_count += 1
                 sched.last_repeat_at = now
 
-                if sched.total_played_count < max_reps_limit:
-                    if repeat_mode == "INTERVAL":
+                if repeat_mode == "INTERVAL":
+                    max_reps_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else default_prio_limit
+                    if max_reps_limit <= 0:
+                        max_reps_limit = 999999
+
+                    if sched.total_played_count < max_reps_limit:
                         interval_m = getattr(sched, "interval_minutes", 15) or 15
                         next_repeat_time = now + timedelta(minutes=interval_m)
-                        sched.next_repeat_at = next_repeat_time
-                        has_repeats_remaining = True
-                        slot_name = f"INTERVAL_{interval_m}M"
-                    else:
-                        # BREAK_SLOTS or CUSTOM mode
-                        matched = is_slot_active_at_time(sched, time_str, active_slots)
-                        if matched:
-                            next_repeat_time = now + timedelta(seconds=BROADCAST_GAP_SECONDS + 20)
+                        if sched.end_date and next_repeat_time > sched.end_date:
+                            has_repeats_remaining = False
+                            sched.is_active = False
+                        else:
                             sched.next_repeat_at = next_repeat_time
                             has_repeats_remaining = True
-                            slot_name = matched[0]
-                        else:
-                            has_repeats_remaining = False
+                            slot_name = f"INTERVAL_{interval_m}M"
+                    else:
+                        has_repeats_remaining = False
+                        sched.is_active = False
                 else:
-                    sched.is_active = False
+                    # BREAK_SLOTS or CUSTOM mode
+                    matched = is_slot_active_at_time(sched, time_str, active_slots)
+                    if matched:
+                        slot_name = matched[0]
+                    else:
+                        slot_name = "PUBLISH_NOW"
+
+                    from app.services.repeat_schedule_service import get_next_slot_datetime
+                    next_slot_dt, matched_slot_name = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
+                    if next_slot_dt is not None:
+                        has_repeats_remaining = True
+                        next_repeat_time = next_slot_dt
+                        sched.next_repeat_at = next_repeat_time
+                    else:
+                        has_repeats_remaining = False
+                        sched.is_active = False
 
                 prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
                 exec_log = RepeatSlotExecutionLog(
@@ -1228,14 +1258,16 @@ def auto_advance_speaker_queue(
                 current_playing.scheduled_time = next_repeat_time
                 current_playing.queue_position = max_pos + 1
                 current_playing.played_at = None
+                if sched:
+                    sched.is_active = True
                 db.commit()
                 logger.info(
                     f"🔁 Announcement #{current_playing.announcement_id} repeat round scheduled "
-                    f"(Round {sched.total_played_count + 1}/{sched.max_repeats} at {next_repeat_time.strftime('%H:%M:%S')} UTC)."
+                    f"(Round {sched.total_played_count + 1} at {next_repeat_time.strftime('%H:%M:%S')} UTC)."
                 )
             else:
                 current_playing.status = "Completed"
-                if sched and getattr(sched, "total_played_count", 0) >= (getattr(sched, "max_repeats", 3) or 3):
+                if sched:
                     sched.is_active = False
                 db.commit()
                 logger.info(f"Speaker queue item #{current_playing.id} completed playback and marked Completed.")
@@ -1296,10 +1328,10 @@ def auto_advance_speaker_queue(
         None
     )
 
-    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
+    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now (+15s grace)
     if not next_item:
         next_item = next(
-            (q for q in queued_all if _is_time_due(q.scheduled_time, now)),
+            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=15))),
             None
         )
 
