@@ -243,6 +243,25 @@ def create_announcement_service(
     deliver_push = getattr(request, 'deliver_push', True)
     target_audience = getattr(request, 'target_audience', None)
 
+    # Configure repeat schedule immediately if provided
+    repeat_sched_data = getattr(request, 'repeat_schedule', None)
+    sched_obj = None
+    if repeat_sched_data:
+        try:
+            from app.services.repeat_schedule_service import configure_repeat_schedule
+            from app.schemas.repeat_schedule import RepeatScheduleCreate
+            sched_create = repeat_sched_data if isinstance(repeat_sched_data, RepeatScheduleCreate) else RepeatScheduleCreate(**repeat_sched_data)
+            sched_obj = configure_repeat_schedule(
+                db=db,
+                announcement_id=created_announcement.id,
+                data=sched_create,
+                current_user=current_user,
+            )
+            created_announcement.deliver_speaker = True
+            deliver_speaker = True
+        except Exception as e:
+            logger.warning(f"Error configuring repeat schedule on announcement creation: {e}")
+
     dispatch_announcement_notifications_and_deliveries(
         db=db,
         announcement=created_announcement,
@@ -259,6 +278,10 @@ def create_announcement_service(
         try:
             from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
             dept_code = current_user.department.code if (hasattr(current_user, 'department') and current_user.department) else "ALL"
+            broadcast_sched_time = created_announcement.scheduled_at
+            if sched_obj and not getattr(sched_obj, 'play_on_publish', True) and not broadcast_sched_time:
+                broadcast_sched_time = sched_obj.next_repeat_at
+
             enqueue_and_broadcast_announcement(
                 db=db,
                 announcement_id=created_announcement.id,
@@ -268,7 +291,7 @@ def create_announcement_service(
                 zone="College-Wide",
                 is_emergency=is_emerg,
                 speaker_node_id=getattr(request, 'speaker_node_id', None),
-                scheduled_time=created_announcement.scheduled_at,
+                scheduled_time=broadcast_sched_time,
                 speaker_voice=created_announcement.speaker_voice or "female",
             )
         except Exception as e:
@@ -596,11 +619,14 @@ def approve_announcement_service(
         approval,
     )
 
+    is_future_sched = bool(announcement.scheduled_at and announcement.scheduled_at > datetime.now(timezone.utc).replace(tzinfo=None))
+    target_status = AnnouncementStatus.SCHEDULED if is_future_sched else AnnouncementStatus.PUBLISHED
+
     updated_announcement = update_announcement(
         db,
         announcement,
         AnnouncementUpdate(
-            status=AnnouncementStatus.PUBLISHED,
+            status=target_status,
         ),
     )
 
@@ -644,6 +670,7 @@ def approve_announcement_service(
                 department_code=dept_code,
                 zone="College-Wide",
                 is_emergency=is_emerg,
+                scheduled_time=updated_announcement.scheduled_at,
                 speaker_voice=updated_announcement.speaker_voice or "female",
             )
     except Exception as e:

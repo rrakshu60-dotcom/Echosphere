@@ -14,6 +14,7 @@ Features:
 """
 
 import os
+import sys
 import re
 import time
 import json
@@ -367,6 +368,10 @@ class GemmaActionEngine:
         return None
 
 
+# Persistent worker pool for remote Hugging Face queries (avoids blocking shutdown on timeout)
+_GEMMA_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="GemmaZeroGPUWorker")
+
+
 class FineTunedGemmaProvider:
     """
     Local / Fine-Tuned Gemma 2 2B-IT Provider.
@@ -443,7 +448,8 @@ class FineTunedGemmaProvider:
             logger.debug(f"Failed to auto-spawn Gemma microservice: {e}")
 
     def generate(self, prompt: str, system_instruction: str = "", timeout: Optional[float] = None, max_new_tokens: int = 256) -> Optional[str]:
-        effective_timeout = timeout or (18.0 if self.is_remote else 6.0)
+        default_remote_timeout = float(os.getenv("ZEROGPU_FAST_TIMEOUT", "4.0"))
+        effective_timeout = timeout if timeout is not None else (default_remote_timeout if self.is_remote else 6.0)
         now = time.time()
         if not hasattr(self, "_last_healthy_time"):
             self._last_healthy_time = 0.0
@@ -451,9 +457,9 @@ class FineTunedGemmaProvider:
         full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
         hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
 
-        # 1. Primary for Remote Cloud: Direct Gradio Client on ZeroGPU Space
+        # 1. Primary for Remote Cloud: Direct Gradio Client on ZeroGPU Space with strict timeout cutoff
         if self.is_remote:
-            try:
+            def _execute_remote_gradio():
                 import gradio_client
                 # Patch gradio_client schema parsing for Gradio 5 boolean schemas if needed
                 from gradio_client import utils as client_utils
@@ -475,22 +481,31 @@ class FineTunedGemmaProvider:
                         legacy_kwargs = {"hf_token": hf_token} if hf_token else {}
                         self._cached_client = gradio_client.Client(space_url, **legacy_kwargs)
 
-                res = self._cached_client.predict(
+                return self._cached_client.predict(
                     prompt=full_prompt,
                     max_new_tokens=max_new_tokens,
                     temperature=0.3,
                     api_name="/generate"
                 )
-                if res and isinstance(res, str) and not res.startswith("EchoSphere Campus Model error:"):
+
+            from concurrent.futures import TimeoutError as FutureTimeoutError
+            try:
+                future = _GEMMA_EXECUTOR.submit(_execute_remote_gradio)
+                res = future.result(timeout=effective_timeout)
+                if res and isinstance(res, str) and not res.startswith("EchoSphere Campus Model error:") and not res.startswith("Error:"):
                     self._last_healthy_time = time.time()
                     return res.strip()
+            except FutureTimeoutError:
+                logger.warning(f"[ZeroGPU Gemma] Remote prediction exceeded {effective_timeout:.1f}s threshold. Triggering fast failover.")
+                return None
             except Exception as ge:
                 logger.debug(f"Gradio client generation note: {ge}")
+                return None
 
         # 2. Local GPU or HTTP endpoint
         if (now - self._last_healthy_time) > 15.0:
             try:
-                check_timeout = 2.0 if self.is_remote else 0.4
+                check_timeout = 0.4
                 h_resp = requests.get(self.health_url, timeout=check_timeout)
                 if h_resp.status_code == 200:
                     self._last_healthy_time = time.time()
@@ -503,9 +518,6 @@ class FineTunedGemmaProvider:
                     return None
 
         headers = {"Content-Type": "application/json"}
-        if self.is_remote and hf_token:
-            headers["Authorization"] = f"Bearer {hf_token}"
-
         try:
             resp = requests.post(
                 self.endpoint,

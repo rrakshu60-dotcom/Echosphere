@@ -27,7 +27,7 @@ except Exception:
     pass
 
 from kokoro import KPipeline
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
@@ -56,19 +56,32 @@ def get_llm():
             _llm_tokenizer.pad_token = _llm_tokenizer.eos_token
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[EchoSphere LLM] Loading base model on {device}...")
-        base_model = AutoModelForCausalLM.from_pretrained(
-            BASE_MODEL_ID,
-            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-            token=HF_TOKEN,
-        )
+        print(f"[EchoSphere LLM] Loading base model on {device} (4-bit NF4 if CUDA)...")
         if torch.cuda.is_available():
-            base_model = base_model.to("cuda")
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+            )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                BASE_MODEL_ID,
+                quantization_config=bnb_config,
+                device_map="auto",
+                torch_dtype=torch.bfloat16,
+                token=HF_TOKEN,
+            )
+        else:
+            base_model = AutoModelForCausalLM.from_pretrained(
+                BASE_MODEL_ID,
+                torch_dtype=torch.float32,
+                token=HF_TOKEN,
+            )
 
         print(f"[EchoSphere LLM] Loading adapter {ADAPTER_ID}...")
         _llm_model = PeftModel.from_pretrained(base_model, ADAPTER_ID, token=HF_TOKEN)
         _llm_model.eval()
-        print("[EchoSphere LLM] Model loaded and ready!")
+        print("[EchoSphere LLM] Model loaded in 4-bit NF4 and ready!")
     return _llm_model, _llm_tokenizer
 
 @spaces.GPU(duration=60)

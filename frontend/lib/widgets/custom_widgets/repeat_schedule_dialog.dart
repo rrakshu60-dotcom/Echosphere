@@ -262,7 +262,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
       payload = <String, dynamic>{
         'repeat_mode': 'BREAK_SLOTS',
         'interval_minutes': 0,
-        'max_repeats': _selectedSlots.length,
+        'max_repeats': _selectedSlots.length * 3 + (_playOnPublish ? 1 : 0),
         'play_on_publish': _playOnPublish,
         'selected_slots': _selectedSlots.toList(),
         'target_scope': _selectedScope,

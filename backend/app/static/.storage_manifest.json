@@ -14,5 +14,9 @@
   "audio_streams/announcement_5_american_female_nochime.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_5_american_female_nochime.wav",
   "audio_streams/announcement_6_american_female_nochime.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_6_american_female_nochime.wav",
   "audio_streams/announcement_1_british_female_ceremonial.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_1_british_female_ceremonial.wav",
-  "audio_streams/announcement_999_american_female_standard.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_999_american_female_standard.wav"
+  "audio_streams/announcement_999_american_female_standard.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_999_american_female_standard.wav",
+  "audio_streams/announcement_11_american_female_nochime.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_11_american_female_nochime.wav",
+  "audio_streams/announcement_2_american_female_standard.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_2_american_female_standard.wav",
+  "audio_streams/announcement_1_american_female_nochime.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_1_american_female_nochime.wav",
+  "audio_streams/announcement_3_american_female_standard.wav": "https://huggingface.co/datasets/RakshiRoxy/echosphere-assets/resolve/main/audio_streams/announcement_3_american_female_standard.wav"
 }

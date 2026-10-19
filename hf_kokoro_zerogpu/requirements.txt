@@ -10,3 +10,4 @@ munch
 huggingface_hub
 numpy>=1.26.0
 spaces
+bitsandbytes>=0.43.0

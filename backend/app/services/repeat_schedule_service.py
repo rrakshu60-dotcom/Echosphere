@@ -62,6 +62,156 @@ def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
     return dt
 
 
+BROADCAST_GAP_SECONDS = 15
+
+SLOT_BOUNDS = {
+    "SHORT_BREAK": (SHORT_BREAK_START, SHORT_BREAK_END),
+    "LUNCH_BREAK": (LUNCH_BREAK_START, LUNCH_BREAK_END),
+    "EVENING_BREAK": (EVENING_BREAK_START, EVENING_BREAK_END),
+    "HOSTEL_WINDOW": (HOSTEL_WINDOW_START, HOSTEL_WINDOW_END),
+}
+
+
+def _ist_to_utc_naive(dt_ist: datetime) -> datetime:
+    """Converts an IST datetime (naive or aware) to a naive UTC datetime."""
+    if dt_ist.tzinfo is not None:
+        return dt_ist.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt_ist - timedelta(hours=5, minutes=30)
+
+
+def _utc_to_ist_naive(dt_utc: datetime) -> datetime:
+    """Converts a UTC datetime (naive or aware) to a naive IST datetime."""
+    if dt_utc.tzinfo is not None:
+        try:
+            from zoneinfo import ZoneInfo
+            return dt_utc.astimezone(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+        except Exception:
+            return dt_utc.astimezone(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
+    return dt_utc + timedelta(hours=5, minutes=30)
+
+
+def get_next_slot_datetime(
+    sched: Any,
+    from_ist_dt: Optional[datetime] = None,
+    db: Optional[Session] = None,
+) -> tuple[Optional[datetime], Optional[str]]:
+    """
+    Computes the exact next upcoming repeat datetime for a BREAK_SLOTS or CUSTOM schedule.
+    Returns: (next_repeat_datetime_utc_naive, matched_slot_name) or (None, None) if schedule concluded.
+    """
+    if not sched:
+        return None, None
+
+    if from_ist_dt is None:
+        from_ist_dt = get_current_ist_datetime()
+    if from_ist_dt.tzinfo is not None:
+        from_ist_dt = from_ist_dt.replace(tzinfo=None)
+
+    # Determine schedule end date in IST
+    sched_end_ist: Optional[datetime] = None
+    if getattr(sched, "end_date", None):
+        end_naive = _normalize_dt(sched.end_date)
+        if end_naive:
+            sched_end_ist = _utc_to_ist_naive(end_naive)
+
+    if sched_end_ist and from_ist_dt > sched_end_ist:
+        return None, None
+
+    candidates: List[tuple[datetime, str]] = []
+    slots = [s for s in (getattr(sched, "selected_slots", None) or []) if s != "INTERVAL"]
+    if not slots and getattr(sched, "custom_start_time", None):
+        slots = ["CUSTOM_WINDOW"]
+
+    for slot_name in slots:
+        start_hhmm = None
+        end_hhmm = None
+
+        if slot_name in SLOT_BOUNDS:
+            start_hhmm, end_hhmm = SLOT_BOUNDS[slot_name]
+        elif slot_name == "CUSTOM_WINDOW":
+            start_hhmm = (getattr(sched, "custom_start_time", None) or "").strip()
+            end_hhmm = (getattr(sched, "custom_end_time", None) or "").strip()
+            if not end_hhmm and start_hhmm:
+                try:
+                    sh_tmp, sm_tmp = map(int, start_hhmm.split(":"))
+                    end_m = (sh_tmp * 60 + sm_tmp + 30) % (24 * 60)
+                    end_hhmm = f"{end_m // 60:02d}:{end_m % 60:02d}"
+                except Exception:
+                    end_hhmm = start_hhmm
+
+        if not start_hhmm:
+            continue
+
+        try:
+            sh, sm = map(int, start_hhmm.split(":"))
+            eh, em = map(int, end_hhmm.split(":")) if end_hhmm else (sh, sm + 30)
+        except Exception:
+            continue
+
+        today_d = from_ist_dt.date()
+        slot_start_today = datetime(today_d.year, today_d.month, today_d.day, sh, sm)
+        slot_end_today = datetime(today_d.year, today_d.month, today_d.day, eh, em)
+        if slot_end_today < slot_start_today:
+            slot_end_today += timedelta(days=1)
+
+        # 1. Currently inside this slot window
+        if slot_start_today <= from_ist_dt <= slot_end_today:
+            times_played_in_slot = 0
+            if db and getattr(sched, "id", None):
+                date_str = from_ist_dt.strftime("%Y-%m-%d")
+                prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
+                if slot_name == "CUSTOM_WINDOW":
+                    prefix_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+                slot_logs = (
+                    db.query(RepeatSlotExecutionLog)
+                    .filter(
+                        RepeatSlotExecutionLog.schedule_id == sched.id,
+                        RepeatSlotExecutionLog.slot_name == slot_name,
+                    )
+                    .all()
+                )
+                times_played_in_slot = sum(
+                    1 for log in slot_logs
+                    if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")
+                )
+
+            # Resolve repeat cap for this slot
+            ann = getattr(sched, "announcement", None)
+            prio_weight, default_reps, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
+            slot_max_repeats = 999999 if prio_tier == "EMERGENCY" else (sched.max_repeats if (sched.max_repeats and sched.max_repeats > 0) else default_reps)
+
+            if times_played_in_slot < slot_max_repeats:
+                candidate_repeat = from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS + 20)
+                if candidate_repeat + timedelta(seconds=15) <= slot_end_today:
+                    candidates.append((candidate_repeat, slot_name))
+                else:
+                    candidates.append((slot_start_today + timedelta(days=1), slot_name))
+            else:
+                candidates.append((slot_start_today + timedelta(days=1), slot_name))
+
+        # 2. Slot is upcoming today
+        elif from_ist_dt < slot_start_today:
+            candidates.append((slot_start_today, slot_name))
+
+        # 3. Slot has already passed today
+        else:
+            candidates.append((slot_start_today + timedelta(days=1), slot_name))
+
+    valid_candidates = []
+    for cand_dt, sname in candidates:
+        if cand_dt >= (from_ist_dt - timedelta(seconds=10)):
+            if sched_end_ist is None or cand_dt <= sched_end_ist:
+                valid_candidates.append((cand_dt, sname))
+
+    if not valid_candidates:
+        return None, None
+
+    valid_candidates.sort(key=lambda c: c[0])
+    earliest_ist, matched_slot = valid_candidates[0]
+    return _ist_to_utc_naive(earliest_ist), matched_slot
+
+
+
 
 def configure_repeat_schedule(
     db: Session,
@@ -191,7 +341,15 @@ def configure_repeat_schedule(
     rep_max = getattr(data, "max_repeats", None) if getattr(data, "max_repeats", None) is not None else (schedule.max_repeats if schedule else 3)
     rep_publish = getattr(data, "play_on_publish", None) if getattr(data, "play_on_publish", None) is not None else (schedule.play_on_publish if schedule else True)
 
+    # For BREAK_SLOTS mode, ensure rep_max does not choke repeat broadcasts
+    if rep_mode != "INTERVAL":
+        slots_len = len(data.selected_slots or (schedule.selected_slots if schedule else []) or ["SHORT_BREAK"])
+        if rep_max is not None and rep_max <= slots_len:
+            rep_max = max(slots_len * 3 + (1 if rep_publish else 0), 3)
+
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    ist_now = get_current_ist_datetime()
+
     # Calculate initial next_repeat_at
     if rep_mode == "INTERVAL":
         if rep_publish:
@@ -199,7 +357,25 @@ def configure_repeat_schedule(
         else:
             initial_next = start_dt if (start_dt and start_dt > now_utc) else (now_utc + timedelta(minutes=rep_interval))
     else:
-        initial_next = start_dt or now_utc
+        # Build mock/temp schedule to calculate next upcoming slot occurrence
+        calc_sched = schedule or AnnouncementRepeatSchedule(
+            announcement_id=announcement_id,
+            selected_slots=data.selected_slots or (["INTERVAL"] if rep_mode == "INTERVAL" else ["SHORT_BREAK", "LUNCH_BREAK"]),
+            custom_start_time=data.custom_start_time,
+            custom_end_time=data.custom_end_time,
+            start_date=start_dt,
+            end_date=end_dt,
+            max_repeats=rep_max,
+        )
+        if data.selected_slots is not None:
+            calc_sched.selected_slots = data.selected_slots
+        if data.custom_start_time is not None:
+            calc_sched.custom_start_time = data.custom_start_time
+        if data.custom_end_time is not None:
+            calc_sched.custom_end_time = data.custom_end_time
+
+        slot_dt, _ = get_next_slot_datetime(calc_sched, from_ist_dt=ist_now, db=db)
+        initial_next = slot_dt or start_dt or now_utc
 
     # 6. Create or update record
     if not schedule:
@@ -253,15 +429,16 @@ def configure_repeat_schedule(
     db.commit()
     db.refresh(schedule)
 
-    # 7. Queue synchronization for Published notices
+    # 7. Queue synchronization for Published and Scheduled notices
     ann_status_val = getattr(announcement, "status", "")
     ann_status_str = ann_status_val.value if hasattr(ann_status_val, "value") else str(ann_status_val)
-    if ann_status_str.upper() in ("PUBLISHED", "APPROVED"):
+    if ann_status_str.upper() in ("PUBLISHED", "APPROVED", "SCHEDULED"):
         from app.models.speaker_queue import SpeakerQueue
-        active_q = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
+        active_q: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
+        sched_time_target = getattr(announcement, "scheduled_at", None) or initial_next
         if not active_q:
-            # Enqueue initial broadcast if play_on_publish, or schedule for future
-            if rep_publish:
+            # Enqueue initial broadcast if play_on_publish (and not scheduled for later), or schedule for future
+            if rep_publish and ann_status_str.upper() != "SCHEDULED":
                 enqueue_and_broadcast_announcement(
                     db=db,
                     announcement_id=announcement_id,
@@ -279,17 +456,23 @@ def configure_repeat_schedule(
                     announcement_id=announcement_id,
                     queue_position=max_pos + 1,
                     status="Queued",
-                    scheduled_time=initial_next,
+                    scheduled_time=sched_time_target or now_utc,
                     played_at=None,
                     duration_seconds=15,
                 )
                 db.add(new_q)
                 db.commit()
-        elif active_q.status == "Completed" and rep_publish and schedule.total_played_count < schedule.max_repeats:
-            # Re-activate queue for next scheduled repeat round
-            active_q.status = "Queued"
-            active_q.scheduled_time = initial_next
-            active_q.played_at = None
+        elif getattr(active_q, "status", None) == "Completed" and rep_publish and ann_status_str.upper() != "SCHEDULED":
+            # Re-activate queue for next scheduled repeat round if upcoming slot exists
+            if initial_next and initial_next > (now_utc - timedelta(seconds=15)):
+                setattr(active_q, "status", "Queued")
+                setattr(active_q, "scheduled_time", initial_next)
+                setattr(active_q, "played_at", None)
+                db.commit()
+        elif ann_status_str.upper() == "SCHEDULED" and active_q:
+            setattr(active_q, "status", "Queued")
+            setattr(active_q, "scheduled_time", sched_time_target or now_utc)
+            setattr(active_q, "played_at", None)
             db.commit()
 
     logger.info(
@@ -708,7 +891,7 @@ def evaluate_and_dispatch_repeat_slots(
                 continue
 
             # Check if notice is currently active in the speaker queue for this slot
-            active_q = (
+            active_q: Any = (
                 db.query(SpeakerQueue)
                 .filter(
                     SpeakerQueue.announcement_id == sched.announcement_id,
@@ -720,7 +903,7 @@ def evaluate_and_dispatch_repeat_slots(
                 curr_played_at = getattr(active_q, "played_at", None)
                 curr_dur = getattr(active_q, "duration_seconds", 15) or 15
                 is_currently_speaking = False
-                if active_q.status == "Playing" and curr_played_at:
+                if getattr(active_q, "status", None) == "Playing" and curr_played_at:
                     elapsed = (utc_now - curr_played_at).total_seconds()
                     if elapsed < curr_dur and not simulated_time_str:
                         is_currently_speaking = True
@@ -729,7 +912,7 @@ def evaluate_and_dispatch_repeat_slots(
                     skipped.append({
                         "announcement_id": sched.announcement_id,
                         "slot": slot_name,
-                        "reason": f"Already actively broadcasting in speaker queue (status: {active_q.status})",
+                        "reason": f"Already actively broadcasting in speaker queue (status: {getattr(active_q, 'status', None)})",
                     })
                     continue
 
@@ -737,12 +920,12 @@ def evaluate_and_dispatch_repeat_slots(
                     skipped.append({
                         "announcement_id": sched.announcement_id,
                         "slot": slot_name,
-                        "reason": f"Already active in speaker queue rotation (status: {active_q.status})",
+                        "reason": f"Already active in speaker queue rotation (status: {getattr(active_q, 'status', None)})",
                     })
                     continue
-                else:
-                    # Item was left from an earlier slot/broadcast; mark completed so new slot begins fresh
-                    active_q.status = "Completed"
+                elif getattr(active_q, "status", None) == "Playing":
+                    # Item was left Playing from an earlier broadcast; mark completed so new slot begins fresh
+                    setattr(active_q, "status", "Completed")
                     db.commit()
 
             candidates.append({
@@ -898,11 +1081,17 @@ def evaluate_and_dispatch_repeat_slots(
         if sched_time:
             # Gather potential candidates for scheduled time in HH:MM (raw and IST-converted)
             sched_time_candidates = [sched_time.strftime("%H:%M")]
+            sched_ist = sched_time
             try:
                 sched_ist = sched_time + timedelta(hours=5, minutes=30)
                 sched_time_candidates.append(sched_ist.strftime("%H:%M"))
             except Exception:
                 pass
+
+            # CRITICAL: Only evaluate slot cutoff TTL expiration if the scheduled date is TODAY or in the past in campus IST!
+            # If the item is scheduled for tomorrow or a future date, it must NEVER be marked expired today!
+            if sched_ist.date() > ist_now.date():
+                continue
 
             expired = False
             # Short Break Cutoff: 11:15 sharp

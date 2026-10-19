@@ -300,6 +300,7 @@ class EchosphereApiService {
     String speakerVoice = 'female',
     String? targetAudience,
     int? speakerNodeId,
+    Map<String, dynamic>? repeatSchedule,
   }) async {
     try {
       final response = await _dio.post(
@@ -317,6 +318,7 @@ class EchosphereApiService {
           'speaker_voice': speakerVoice,
           if (targetAudience != null) 'target_audience': targetAudience,
           if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
+          if (repeatSchedule != null) 'repeat_schedule': repeatSchedule,
         },
       );
       return response.data as Map<String, dynamic>;

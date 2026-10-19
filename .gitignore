@@ -27,6 +27,10 @@ firebase_options.dart
 *.tmp
 scratch/
 **/scratch/
+scratch_*.py
+**/scratch_*.py
+deploy_space.py
+**/deploy_space.py
 .DS_Store
 Thumbs.db
 *.log

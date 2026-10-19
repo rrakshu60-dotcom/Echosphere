@@ -54,18 +54,33 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   }
 
   String _formatTime(dynamic rawScheduled, dynamic rawFallback) {
+    DateTime? dt;
     if (rawScheduled is DateTime) {
-      return DateFormat("hh:mm a").format(rawScheduled);
+      dt = rawScheduled.toLocal();
+    } else {
+      final val = (rawScheduled ?? rawFallback)?.toString();
+      if (val == null || val.isEmpty || val == 'null') {
+        return 'Immediate';
+      }
+      try {
+        dt = DateTime.parse(val).toLocal();
+      } catch (_) {
+        return val;
+      }
     }
-    final val = (rawScheduled ?? rawFallback)?.toString();
-    if (val == null || val.isEmpty || val == 'null') {
-      return 'Immediate';
-    }
-    try {
-      final dt = DateTime.parse(val);
-      return DateFormat("hh:mm a").format(dt);
-    } catch (_) {
-      return val;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final itemDate = DateTime(dt.year, dt.month, dt.day);
+    final diffDays = itemDate.difference(today).inDays;
+
+    final timeStr = DateFormat("hh:mm a").format(dt);
+    if (diffDays == 0) {
+      return 'Today, $timeStr';
+    } else if (diffDays == 1) {
+      return 'Tomorrow, $timeStr';
+    } else {
+      return '${DateFormat("MMM dd").format(dt)}, $timeStr';
     }
   }
 
