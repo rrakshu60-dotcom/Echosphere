@@ -525,8 +525,8 @@ class SpeakerQueueController extends GetxController {
           'max_repeats': maxReps,
           'played_count': backendPlayedCount > 0 ? backendPlayedCount : existingPlayedCount,
           'repeat_round': currentRound,
-          'repeat_mode': q['repeat_mode'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['repeat_mode'] : 'INTERVAL'),
-          'interval_minutes': q['interval_minutes'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['interval_minutes'] : 15),
+          'repeat_mode': q['repeat_mode'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['repeat_mode'] : 'BREAK_SLOTS'),
+          'interval_minutes': q['interval_minutes'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['interval_minutes'] : 0),
           'next_repeat_at': q['next_repeat_at'] ?? q['scheduled_time'],
         });
       }

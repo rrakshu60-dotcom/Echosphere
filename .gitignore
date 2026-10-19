@@ -17,8 +17,7 @@ serviceAccountKey*.json
 **/*firebase-adminsdk*.json
 google-services.json
 **/google-services.json
-firebase_options.dart
-**/firebase_options.dart
+
 
 # IDE & Editor
 .vscode/

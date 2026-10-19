@@ -1853,7 +1853,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                   Icon(Icons.repeat_rounded, size: 10, color: context.colors.primary),
                                                   const SizedBox(width: 3),
                                                   Text(
-                                                    'Round ${item['repeat_round'] ?? 1}${(item['max_repeats'] is int && (item['max_repeats'] as int) > 0) ? " of ${item['max_repeats']}" : ""}${(item['repeat_mode'] == "INTERVAL" && (item['interval_minutes'] is int && (item['interval_minutes'] as int) > 0)) ? " (${item['interval_minutes']}m)" : ""}',
+                                                    'Repeat Round ${item['repeat_round'] ?? 1}${(item['max_repeats'] is int && (item['max_repeats'] as int) > 0) ? " of ${item['max_repeats']}" : ""}',
                                                     style: TextStyle(
                                                       fontSize: 9,
                                                       fontWeight: FontWeight.bold,
