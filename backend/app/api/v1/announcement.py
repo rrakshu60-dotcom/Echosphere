@@ -563,6 +563,7 @@ def _stream_file_with_preemption_check(
     stream_start_time = time.time()
 
     def audio_chunk_generator():
+        chunk_count = 0
         try:
             with open(fpath, "rb") as af:
                 while True:
@@ -577,6 +578,12 @@ def _stream_file_with_preemption_check(
                     if not chunk:
                         break
                     yield chunk
+                    chunk_count += 1
+                    # Allow first 6 chunks (24KB) to burst immediately to fill ESP32 DMA pre-buffer,
+                    # then pace subsequent chunks at ~65ms (~4KB per 65ms = 63KB/sec vs 48KB/sec playback rate)
+                    # This ensures zero buffer underruns while keeping TCP socket alive for instant preemption!
+                    if chunk_count > 6:
+                        time.sleep(0.065)
         except Exception as e:
             logger.warning(f"Audio chunk generator closed: {e}")
 
