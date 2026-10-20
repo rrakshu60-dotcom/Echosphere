@@ -430,11 +430,21 @@ public:
               if (cmdId.length() > 0) markCommandExecuted(cmdId);
             } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
               int aId = cmd["announcement_id"].as<int>();
+              bool isIncomingEmerg = c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>());
+              const char* rT = cmd["title"];
+              if (rT && (strstr(rT, "EMERGENCY") != NULL || strstr(rT, "Emergency") != NULL)) {
+                isIncomingEmerg = true;
+              }
+
+              // A routine non-emergency notice CANNOT interrupt an ongoing broadcast!
+              if (isBroadcasting && !isIncomingEmerg) {
+                continue;
+              }
+
               if (aId > 0 && !isAnnouncementCompleted(aId) && (!isBroadcasting || activeAnnouncementId != aId)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
                 targetQId = cmd["queue_id"].as<int>();
-                const char* rT = cmd["title"];
                 targetTitle = rT ? String(rT) : "Campus Notice";
                 const char* rM = cmd["message"];
                 if (!rM || strlen(rM) == 0) rM = cmd["content"];
@@ -737,6 +747,10 @@ public:
     activeAnnouncementId = 0;
     displayMgr.clearActiveNotice();
     Serial.println(F("📺 [DISPLAY] Broadcast completed. Cleanly restored Today's Notices ticker."));
+
+    // ZERO LATENCY NEXT TRACK TRIGGER:
+    // Reset lastHeartbeatTime so the very next loop() iteration sends a heartbeat instantly (<10ms)!
+    lastHeartbeatTime = 0;
   }
 
   void stopActiveBroadcast() {
