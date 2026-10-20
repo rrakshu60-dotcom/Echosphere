@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 import re
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -1021,9 +1021,9 @@ def trigger_repeat_round_now(
 
     base_url = str(request.base_url).rstrip("/")
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    item.scheduled_time = now
-    if item.status in ("Completed", "Paused"):
-        item.status = "Queued"
+    setattr(item, "scheduled_time", now)
+    if getattr(item, "status", None) in ("Completed", "Paused"):
+        setattr(item, "status", "Queued")
     db.commit()
     db.refresh(item)
 

@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from typing import Any, List, Optional
 
 # Ensure project root is in python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -122,7 +123,7 @@ def test_repeat_schedule_suite():
     db.add(AnnouncementDelivery(announcement_id=ann1.id, delivery_type_id=deliv_inapp.id))
     db.commit()
     db.refresh(ann1)
-    assert ann1.deliver_speaker is False
+    assert getattr(ann1, "deliver_speaker") is False
 
     # Attempting to add repeat schedule without force_enable_speaker should fail
     try:
@@ -150,7 +151,7 @@ def test_repeat_schedule_suite():
     )
     sched1 = configure_repeat_schedule(db, ann1.id, config_data_force, user)
     db.refresh(ann1)
-    assert bool(ann1.deliver_speaker) is True, "deliver_speaker should now be True after force_enable"
+    assert bool(getattr(ann1, "deliver_speaker")) is True, "deliver_speaker should now be True after force_enable"
     assert sched1.id is not None
     print("  ✓ Retrofitting non-speaker notice via force_enable succeeded!")
 
@@ -213,7 +214,8 @@ def test_repeat_schedule_suite():
         start_date=now,
         end_date=now + timedelta(hours=20),
     )
-    assert custom_config.selected_slots and "CUSTOM_WINDOW" in custom_config.selected_slots
+    assert custom_config.selected_slots is not None
+    assert "CUSTOM_WINDOW" in custom_config.selected_slots
     assert custom_config.custom_start_time == "18:30"
     print("  ✓ Valid 24-hr custom window configuration accepted.")
 
@@ -325,7 +327,7 @@ def test_repeat_schedule_suite():
     q_item: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann2.id).first()
     assert q_item is not None, "Queue item must exist in speaker_queue"
     # Mark it Completed as if it finished audio playback
-    q_item.status = "Completed"
+    setattr(q_item, "status", "Completed")
     db.commit()
 
     # Now simulate Day 2 Short Break (2026-09-14 at 11:02 AM)
@@ -338,16 +340,16 @@ def test_repeat_schedule_suite():
     assert res_day2["dispatched_count"] == 1, "Day 2 short break should dispatch successfully!"
     db.refresh(q_item)
     # Status should be re-activated to Playing or Queued, not stuck in Completed!
-    assert q_item.status in ("Playing", "Queued", "Next in Queue"), f"Queue status should be re-activated, got {q_item.status}"
-    print(f"  ✓ Completed speaker queue item safely re-activated to '{q_item.status}' without crash!")
+    assert getattr(q_item, "status") in ("Playing", "Queued", "Next in Queue"), f"Queue status should be re-activated, got {getattr(q_item, 'status')}"
+    print(f"  ✓ Completed speaker queue item safely re-activated to '{getattr(q_item, 'status')}' without crash!")
 
     # -------------------------------------------------------------
     # TEST 6: Class Protection Cutoff TTL (Outside Break Hours)
     # -------------------------------------------------------------
     print("\n🔍 [TEST 6] Testing Lecture Hours Protection (Break Cutoff TTL)...")
     # Simulate unplayed notice queued during Short Break (scheduled_time = 11:05)
-    q_item.status = "Queued"
-    q_item.scheduled_time = datetime(2026, 9, 13, 11, 5)
+    setattr(q_item, "status", "Queued")
+    setattr(q_item, "scheduled_time", datetime(2026, 9, 13, 11, 5))
     db.commit()
 
     # Evaluate at 11:20 AM (Class is in session!)
@@ -358,7 +360,7 @@ def test_repeat_schedule_suite():
         simulated_date_str="2026-09-13",
     )
     db.refresh(q_item)
-    assert q_item.status == "Expired_Slot_Ended", f"Unplayed repeat item should expire after break, got {q_item.status}"
+    assert getattr(q_item, "status") == "Expired_Slot_Ended", f"Unplayed repeat item should expire after break, got {getattr(q_item, 'status')}"
     print("  ✓ Unplayed repeat item expired at 11:20 AM. Lecture hours successfully protected!")
 
     # -------------------------------------------------------------
@@ -763,7 +765,7 @@ def test_repeat_schedule_suite():
     # 1. Verify Round 1 was immediately broadcast and added to SpeakerQueue
     q_item: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_rep.id).first()
     assert q_item is not None, "Notice must be in SpeakerQueue!"
-    assert q_item.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_item.status}"
+    assert getattr(q_item, "status") in ("Playing", "Queued"), f"Status must be Playing or Queued, got {getattr(q_item, 'status')}"
     assert sched_rep.next_repeat_at is not None, "next_repeat_at must be populated"
     print("  ✓ Round 1 enqueued and broadcast immediately on publish!")
 
@@ -772,45 +774,45 @@ def test_repeat_schedule_suite():
     res_adv = auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_item)
     db.refresh(sched_rep)
-    assert q_item.status == "Queued", f"Expected status 'Queued' for next repeat round, got {q_item.status}"
+    assert getattr(q_item, "status") == "Queued", f"Expected status 'Queued' for next repeat round, got {getattr(q_item, 'status')}"
     assert q_item.scheduled_time is not None, "scheduled_time must be set for next round"
     assert q_item.played_at is None, "played_at must be reset to None to prevent rapid infinite replay"
     print(f"  ✓ Round 1 finished. Re-queued for next round at: {q_item.scheduled_time} (No rapid loop!)")
 
     # 3. Simulate arrival of Round 2 (15 minutes later)
-    q_item.scheduled_time = now - timedelta(minutes=1)
-    sched_rep.next_repeat_at = now - timedelta(minutes=1)
+    setattr(q_item, "scheduled_time", now - timedelta(minutes=1))
+    setattr(sched_rep, "next_repeat_at", now - timedelta(minutes=1))
     db.commit()
 
     # Call auto_advance_speaker_queue to pick up due item
     res_adv2 = auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_item)
     db.refresh(sched_rep)
-    assert q_item.status == "Playing", f"Expected Round 2 to be 'Playing', got {q_item.status}"
-    print(f"  ✓ Round 2 successfully began playing when scheduled time arrived! (Status: {q_item.status})")
+    assert getattr(q_item, "status") == "Playing", f"Expected Round 2 to be 'Playing', got {getattr(q_item, 'status')}"
+    print(f"  ✓ Round 2 successfully began playing when scheduled time arrived! (Status: {getattr(q_item, 'status')})")
 
     # 4. Advance queue -> Round 2 finishes
     auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_item)
     db.refresh(sched_rep)
-    assert q_item.status == "Queued", f"Expected status 'Queued' for Round 3, got {q_item.status}"
+    assert getattr(q_item, "status") == "Queued", f"Expected status 'Queued' for Round 3, got {getattr(q_item, 'status')}"
     print(f"  ✓ Round 2 finished. Re-queued for Round 3 (Total played so far: {sched_rep.total_played_count})")
 
     # 5. Simulate Round 3 arrival
-    q_item.scheduled_time = now - timedelta(minutes=1)
-    sched_rep.next_repeat_at = now - timedelta(minutes=1)
+    setattr(q_item, "scheduled_time", now - timedelta(minutes=1))
+    setattr(sched_rep, "next_repeat_at", now - timedelta(minutes=1))
     db.commit()
     res_adv3 = auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_item)
     db.refresh(sched_rep)
-    assert q_item.status == "Playing", f"Expected Round 3 to be 'Playing', got {q_item.status}"
+    assert getattr(q_item, "status") == "Playing", f"Expected Round 3 to be 'Playing', got {getattr(q_item, 'status')}"
     print(f"  ✓ Round 3 successfully began playing! (Max repeats {sched_rep.max_repeats} target)")
 
     # 6. Advance queue -> Max repeats reached (3/3), now it completes cleanly!
     auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_item)
     db.refresh(sched_rep)
-    assert q_item.status == "Completed", f"Expected 'Completed' after reaching max repeats, got {q_item.status}"
+    assert getattr(q_item, "status") == "Completed", f"Expected 'Completed' after reaching max repeats, got {getattr(q_item, 'status')}"
     assert sched_rep.is_active == False or sched_rep.total_played_count >= sched_rep.max_repeats
     print("  ✓ Repeat sequence completed cleanly after 3 rounds without looping!")
 
@@ -857,30 +859,30 @@ def test_repeat_schedule_suite():
     # 1. Verify Round 1 was enqueued and started playing immediately on publish
     q_cw: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_cw.id).first()
     assert q_cw is not None, "Notice must be enqueued immediately in SpeakerQueue!"
-    assert q_cw.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_cw.status}"
-    print(f"  ✓ Initial publish broadcast enqueued immediately (Status: {q_cw.status})")
+    assert getattr(q_cw, "status") in ("Playing", "Queued"), f"Status must be Playing or Queued, got {getattr(q_cw, 'status')}"
+    print(f"  ✓ Initial publish broadcast enqueued immediately (Status: {getattr(q_cw, 'status')})")
 
     # 2. Advance queue -> Initial playback finishes (outside custom window)
     # It must NOT complete; it must be re-queued with scheduled_time pointing to cw_start!
     res_adv_cw1 = auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_cw)
     db.refresh(sched_cw)
-    assert q_cw.status == "Queued", f"Expected 'Queued' for upcoming slot, got {q_cw.status}"
+    assert getattr(q_cw, "status") == "Queued", f"Expected 'Queued' for upcoming slot, got {getattr(q_cw, 'status')}"
     assert q_cw.scheduled_time is not None, "scheduled_time must be set to upcoming custom window"
     assert q_cw.played_at is None, "played_at must be reset to None"
     assert sched_cw.is_active == True, "Schedule must remain active for upcoming repeat window!"
     print(f"  ✓ Initial playback finished outside slot. Successfully re-queued for slot at: {q_cw.scheduled_time}")
 
     # 3. Simulate arrival of Custom Window start time
-    q_cw.scheduled_time = now - timedelta(minutes=1)
-    sched_cw.next_repeat_at = now - timedelta(minutes=1)
+    setattr(q_cw, "scheduled_time", now - timedelta(minutes=1))
+    setattr(sched_cw, "next_repeat_at", now - timedelta(minutes=1))
     db.commit()
 
     # Call auto_advance_speaker_queue: Queue advances and starts playing the repeat broadcast!
     res_adv_cw2 = auto_advance_speaker_queue(db, force_advance=True)
     db.refresh(q_cw)
     db.refresh(sched_cw)
-    assert q_cw.status == "Playing", f"Expected status 'Playing' when slot arrived, got {q_cw.status}"
+    assert getattr(q_cw, "status") == "Playing", f"Expected status 'Playing' when slot arrived, got {getattr(q_cw, 'status')}"
     print(f"  ✓ Custom Window start arrived: Item advanced to 'Playing' for repeated broadcast!")
 
     # 4. Advance queue during active slot
@@ -914,8 +916,8 @@ def test_repeat_schedule_suite():
 
     # 2. Model property evaluation
     assert sched_cw.calculated_duration_minutes == 30, f"Expected 30m, got {sched_cw.calculated_duration_minutes}"
-    assert "30 mins" in sched_cw.calculated_duration_str
-    assert "PM" in sched_cw.calculated_time_range
+    assert "30 mins" in (sched_cw.calculated_duration_str or "")
+    assert "PM" in (sched_cw.calculated_time_range or "")
     print(f"  ✓ Model property evaluation: {sched_cw.calculated_time_range} -> {sched_cw.calculated_duration_str}")
 
     # 3. Pydantic RepeatScheduleResponse serialization
