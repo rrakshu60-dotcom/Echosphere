@@ -101,18 +101,22 @@ b_b_resp = requests.post(
 )
 print(f"Broadcast Notice B response: {b_b_resp.status_code}", flush=True)
 
-# Monitor queue and node response over next 8 seconds
-print("\nMonitoring queue state after emergency broadcast:", flush=True)
-for i in range(8):
+# Monitor queue and node response over next 25 seconds
+print("\nMonitoring queue state after emergency broadcast (watching for Preemption -> Playing Emergency -> Resuming Paused Notice):", flush=True)
+for i in range(25):
     time.sleep(1)
     q_check = requests.get(f"{BASE_URL}/hardware/queue", headers=headers).json()
-    if isinstance(q_check, list):
-        now_p = next((q for q in q_check if q.get("status") == "Playing"), None)
-    else:
-        now_p = q_check.get("now_playing")
+    items = q_check if isinstance(q_check, list) else q_check.get("items", [])
+    now_p = next((q for q in items if q.get("status") == "Playing"), None)
+    paused = [q for q in items if q.get("status") == "Paused"]
+    queued = [q for q in items if q.get("status") in ("Next in Queue", "Queued")]
+    
     now_id = now_p.get("announcement_id") if now_p else None
     now_title = now_p.get("announcement", {}).get("title") if (now_p and isinstance(now_p.get("announcement"), dict)) else (now_p.get("title") if now_p else "None")
-    status = now_p.get("status") if now_p else "None"
-    print(f"[Sec +{i+1}] Backend Now Playing: #{now_id} ('{now_title}') - Status: {status}", flush=True)
+    
+    paused_ids = [q.get("announcement_id") for q in paused]
+    queued_ids = [q.get("announcement_id") for q in queued]
+    print(f"[T+{i+1:02d}s] Playing: #{now_id} ('{now_title}') | Paused: {paused_ids} | Queued: {queued_ids}", flush=True)
+
 
 
