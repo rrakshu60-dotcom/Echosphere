@@ -154,11 +154,11 @@ class SpeakerQueueController extends GetxController {
         _realtimeSubscription = EchosphereRealtimeService().events.listen((event) {
           final ev = event.event.toUpperCase();
           if (ev == 'QUEUE_SYNC_START') {
-            final dur = event.data['duration_seconds'] as int?;
+            final dur = event.rawData['duration_seconds'] as int?;
             if (dur != null && dur > 0) {
               currentTotalDuration.value = dur;
             }
-            final playedAtStr = event.data['played_at']?.toString();
+            final playedAtStr = event.rawData['played_at']?.toString();
             if (playedAtStr != null) {
               final playedAt = DateTime.tryParse(playedAtStr)?.toUtc();
               if (playedAt != null) {
