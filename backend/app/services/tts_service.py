@@ -119,13 +119,37 @@ KOKORO_API_URL = os.getenv("KOKORO_API_URL", "https://rakshiroxy-echosphere-tts.
 
 _cached_gradio_client = None
 _cached_gradio_url = None
-_openai_endpoint_supported = None
+_openai_endpoint_supported = False
 _kokoro_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="KokoroZeroGPU")
 
 _keepalive_thread: Optional[threading.Thread] = None
 _keepalive_stop_event = threading.Event()
 _last_keepalive_ping_time: Optional[float] = None
 _last_keepalive_status: Optional[str] = None
+
+
+def prewarm_gradio_client():
+    """Pre-initializes Gradio Client in the background to eliminate initial handshake latency."""
+    global _cached_gradio_client, _cached_gradio_url
+    api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
+    if not api_url:
+        return
+    if _cached_gradio_client is not None and _cached_gradio_url == api_url:
+        return
+    try:
+        from gradio_client import Client
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
+        client_kwargs = {"token": hf_token} if hf_token else {}
+        try:
+            client = Client(api_url, **client_kwargs)
+        except TypeError:
+            legacy_kwargs = {"hf_token": hf_token} if hf_token else {}
+            client = Client(api_url, **legacy_kwargs)
+        _cached_gradio_client = client
+        _cached_gradio_url = api_url
+        logger.info(f"ZeroGPU Gradio client pre-warmed successfully: {api_url}")
+    except Exception as gc_e:
+        logger.debug(f"ZeroGPU Gradio client pre-warm note: {gc_e}")
 
 
 def ping_zerogpu_worker() -> bool:
@@ -175,6 +199,14 @@ def ping_zerogpu_worker() -> bool:
     except Exception as e:
         logger.debug(f"ZeroGPU keep-alive ping note: {e}")
         _last_keepalive_status = f"Error: {e}"
+
+    # Also pre-warm Gradio client in background
+    if any_success:
+        try:
+            threading.Thread(target=prewarm_gradio_client, daemon=True).start()
+        except Exception:
+            pass
+
     return any_success
 
 
@@ -184,8 +216,9 @@ def _zerogpu_keepalive_loop():
     to keep Hugging Face ZeroGPU Spaces perpetually awake and eliminate cold starts.
     """
     logger.info("EchoSphere ZeroGPU Keep-Alive Daemon started (9-minute interval).")
-    time.sleep(10)
+    time.sleep(2)
     ping_zerogpu_worker()
+    prewarm_gradio_client()
 
     while not _keepalive_stop_event.is_set():
         for _ in range(108):
@@ -212,10 +245,11 @@ def get_zerogpu_health_status() -> dict:
     api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
     return {
         "kokoro_api_url": api_url or None,
+        "gradio_client_cached": bool(_cached_gradio_client is not None),
         "keepalive_daemon_active": bool(_keepalive_thread and _keepalive_thread.is_alive()),
         "last_ping_time": _last_keepalive_ping_time,
         "last_ping_status": _last_keepalive_status,
-        "fast_fallback_timeout_sec": 4.0,
+        "fast_fallback_timeout_sec": float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0")),
     }
 
 
@@ -796,7 +830,7 @@ def generate_announcement_audio_sync(
 
         # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
         enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "15.0"))
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0"))
         if KOKORO_API_URL and enable_remote:
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
                 if include_chime and selected_chime != "none":
