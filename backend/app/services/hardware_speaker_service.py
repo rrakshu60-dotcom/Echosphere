@@ -662,17 +662,31 @@ def enqueue_and_broadcast_announcement(
     active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
     is_future_scheduled = _is_future_time(scheduled_time, now)
 
-    # If the queue has an active playing non-emergency item that has completed real duration:
-    if active_playing and not is_future_scheduled:
-        active_ann = getattr(active_playing, "announcement", None)
-        is_active_em = is_emergency_announcement(active_ann)
-        if not is_active_em:
-            sp_played_at = getattr(active_playing, "played_at", None)
-            sp_dur = getattr(active_playing, "duration_seconds", 4) or 4
-            if sp_played_at is None or (now - sp_played_at).total_seconds() >= sp_dur:
-                setattr(active_playing, "status", "Completed")
-                db.commit()
-                active_playing = None
+    active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
+
+    # Preemption check: If another notice is actively playing and incoming notice is not future-scheduled,
+    # cleanly pause the currently playing notice so the newly pushed broadcast plays immediately!
+    if active_playing and active_ann_id != announcement_id and not is_future_scheduled:
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+        active_sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == active_playing.announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
+            .first()
+        )
+        # CRITICAL: Pause the ongoing broadcast (do NOT mark completed or disable schedule)
+        # so it resumes seamlessly for the remainder of its window after the new broadcast finishes!
+        setattr(active_playing, "status", "Paused")
+        if active_sched:
+            active_sched.is_active = True
+        db.commit()
+        logger.info(
+            f"⏸️ Preempted ongoing notice #{active_playing.announcement_id} for newly pushed notice #{announcement_id}. "
+            f"Preserved repeat schedule: {bool(active_sched)}."
+        )
+        active_playing = None
 
     active_items_count = db.query(SpeakerQueue).filter(
         SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"])
@@ -986,6 +1000,111 @@ def dispatch_queue_action_to_speakers(
     }
 
 
+def restore_paused_queue_items(db: Session, now: Optional[datetime] = None) -> int:
+    """
+    Restores any preempted 'Paused' notices back into the queue:
+    - If the paused notice has an active repeat schedule (BREAK_SLOTS, CUSTOM, or INTERVAL):
+      Checks if its slot or custom window is currently active, or if its interval schedule is valid.
+      If active now: sets status='Queued', scheduled_time=now, played_at=None, queue_position=1.
+      If slot concluded but future slots remain today: sets status='Queued', scheduled_time=next_slot_time.
+      Ensures sched.is_active = True throughout the entire scheduled window!
+    - If the paused notice was a standard one-time notice that was interrupted:
+      Restores it to status='Queued' with scheduled_time=now so it can finish its broadcast.
+    """
+    if now is None:
+        now = utc_now()
+
+    paused_items = (
+        db.query(SpeakerQueue)
+        .filter(SpeakerQueue.status == "Paused")
+        .order_by(SpeakerQueue.id.asc())
+        .all()
+    )
+    if not paused_items:
+        return 0
+
+    from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+    from app.services.repeat_schedule_service import (
+        get_current_ist_datetime,
+        get_active_break_slots,
+        is_slot_active_at_time,
+        get_next_slot_datetime,
+    )
+
+    ist_now = get_current_ist_datetime()
+    time_str = ist_now.strftime("%H:%M")
+    active_slots = get_active_break_slots(time_str)
+    restored_count = 0
+
+    for p_item in paused_items:
+        ann_id = getattr(p_item, "announcement_id", None)
+        sched = (
+            db.query(AnnouncementRepeatSchedule)
+            .filter(
+                AnnouncementRepeatSchedule.announcement_id == ann_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            )
+            .first()
+        ) if ann_id else None
+
+        if sched:
+            rep_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
+            if rep_mode == "INTERVAL":
+                max_reps = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else 999999
+                if max_reps <= 0:
+                    max_reps = 999999
+                if sched.total_played_count < max_reps and (not sched.end_date or now <= sched.end_date):
+                    setattr(p_item, "status", "Queued")
+                    setattr(p_item, "scheduled_time", now)
+                    setattr(p_item, "played_at", None)
+                    setattr(p_item, "queue_position", 1)
+                    sched.is_active = True
+                    restored_count += 1
+                    logger.info(f"▶️ Resumed preempted INTERVAL repeat announcement #{ann_id}.")
+                else:
+                    setattr(p_item, "status", "Completed")
+            else:
+                # BREAK_SLOTS or CUSTOM mode
+                # Check if currently inside one of the scheduled slots or custom window
+                matched = is_slot_active_at_time(sched, time_str, active_slots)
+                if matched:
+                    # Current break/custom window is STILL ACTIVE!
+                    setattr(p_item, "status", "Queued")
+                    setattr(p_item, "scheduled_time", now)
+                    setattr(p_item, "played_at", None)
+                    setattr(p_item, "queue_position", 1)
+                    sched.is_active = True
+                    restored_count += 1
+                    logger.info(
+                        f"▶️ Resumed preempted repeat announcement #{ann_id} in active slot '{matched[0]}'. "
+                        f"Scheduled window remains active."
+                    )
+                else:
+                    # Current slot concluded, check if there are upcoming slots today or before end_date
+                    next_slot_dt, cand_slot = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
+                    if next_slot_dt:
+                        setattr(p_item, "status", "Queued")
+                        setattr(p_item, "scheduled_time", next_slot_dt)
+                        setattr(p_item, "played_at", None)
+                        sched.is_active = True
+                        restored_count += 1
+                        logger.info(f"🔁 Queued preempted repeat announcement #{ann_id} for upcoming slot '{cand_slot}' at {next_slot_dt}.")
+                    else:
+                        setattr(p_item, "status", "Completed")
+                        sched.is_active = False
+        else:
+            # Non-repeat notice: restore to finish broadcast
+            setattr(p_item, "status", "Queued")
+            setattr(p_item, "scheduled_time", now)
+            restored_count += 1
+            logger.info(f"▶️ Resumed preempted notice #{ann_id} in speaker queue.")
+
+    if paused_items:
+        db.commit()
+
+    return restored_count
+
+
 BROADCAST_GAP_SECONDS = 4
 
 
@@ -1156,9 +1275,28 @@ def auto_advance_speaker_queue(
             return None
 
         elapsed = (now - curr_played_at).total_seconds()
-        if elapsed < curr_dur and not force_advance:
-            # Audio is actively broadcasting
-            return None
+
+        # Telemetry: Check if a physical hardware speaker node is actively broadcasting right now
+        # ESP32 nodes send heartbeats every 3s with status='PLAYING' during native I2S speech stream
+        hardware_is_actively_playing = False
+        try:
+            active_nodes = (
+                db.query(SpeakerNode)
+                .filter(SpeakerNode.last_heartbeat >= (now - timedelta(seconds=12)))
+                .all()
+            )
+            if any(str(getattr(n, "status", "")).upper() == "PLAYING" for n in active_nodes):
+                hardware_is_actively_playing = True
+        except Exception:
+            pass
+
+        if not force_advance:
+            # If physical hardware is actively playing, wait for it to complete or watchdog safety timeout (curr_dur + 35s)
+            if hardware_is_actively_playing and elapsed < (curr_dur + 35):
+                return None
+            if elapsed < curr_dur:
+                # Audio duration still active
+                return None
 
         if is_curr_emerg:
             from app.services.repeat_schedule_service import get_active_emergency_repeat_schedule
@@ -1177,27 +1315,8 @@ def auto_advance_speaker_queue(
                 # Emergency notice completed! No repeat schedule or schedule ended. Mark Completed!
                 current_playing.status = "Completed"
                 db.commit()
-                paused_by_emergency = (
-                    db.query(SpeakerQueue)
-                    .filter(SpeakerQueue.status == "Paused")
-                    .all()
-                )
-                from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
-                for p_item in paused_by_emergency:
-                    if not is_emergency_announcement(p_item.announcement):
-                        p_sched = (
-                            db.query(AnnouncementRepeatSchedule)
-                            .filter(
-                                AnnouncementRepeatSchedule.announcement_id == p_item.announcement_id,
-                                AnnouncementRepeatSchedule.is_active == True,
-                            )
-                            .first()
-                        ) if p_item.announcement_id else None
-                        if p_sched is not None or getattr(p_item, "played_at", None) is None:
-                            p_item.status = "Queued"
-                        else:
-                            p_item.status = "Completed"
-                db.commit()
+                # Restore any notices paused during the emergency broadcast
+                restore_paused_queue_items(db, now)
                 should_advance = True
 
         else:
@@ -1266,10 +1385,18 @@ def auto_advance_speaker_queue(
 
                     from app.services.repeat_schedule_service import get_next_slot_datetime
                     next_slot_dt, matched_slot_name = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
-                    if next_slot_dt is not None:
+                    
+                    # If currently inside an active slot window, KEEP SCHEDULE ACTIVE!
+                    if matched:
+                        has_repeats_remaining = True
+                        next_repeat_time = next_slot_dt or (now + timedelta(seconds=BROADCAST_GAP_SECONDS))
+                        sched.next_repeat_at = next_repeat_time
+                        sched.is_active = True
+                    elif next_slot_dt is not None:
                         has_repeats_remaining = True
                         next_repeat_time = next_slot_dt
                         sched.next_repeat_at = next_repeat_time
+                        sched.is_active = True
                     else:
                         has_repeats_remaining = False
                         sched.is_active = False
@@ -1298,13 +1425,18 @@ def auto_advance_speaker_queue(
                 )
             else:
                 current_playing.status = "Completed"
-                if sched:
+                if sched and not has_repeats_remaining:
                     sched.is_active = False
                 db.commit()
                 logger.info(f"Speaker queue item #{current_playing.id} completed playback and marked Completed.")
 
+            # Restore any notices preempted by this broadcast!
+            restore_paused_queue_items(db, now)
             should_advance = True
     elif not should_advance:
+        # Check and restore any stranded paused items when idle
+        restore_paused_queue_items(db, now)
+
         if force_advance:
             should_advance = True
         else:
@@ -1318,8 +1450,9 @@ def auto_advance_speaker_queue(
             if emergency_waiting:
                 should_advance = True
             else:
+                # Close schedule lookahead: advance immediately if next item is due or within 90 seconds!
                 scheduled_due = any(
-                    _is_time_due(q.scheduled_time, now + timedelta(seconds=BROADCAST_GAP_SECONDS + 2))
+                    _is_time_due(q.scheduled_time, now + timedelta(seconds=90))
                     for q in queued_items
                 )
                 if scheduled_due:
@@ -1359,10 +1492,10 @@ def auto_advance_speaker_queue(
         None
     )
 
-    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now
+    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now + 90s
     if not next_item:
         next_item = next(
-            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=BROADCAST_GAP_SECONDS + 2))),
+            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=90))),
             None
         )
 

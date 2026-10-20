@@ -553,42 +553,29 @@ class SpeakerQueueController extends GetxController {
       // Synchronize remote Playing state without overriding user's pause/stop command
       final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
       if (playingIdx != -1) {
+        final prevAnnId = activeIndex.value < queueItems.length
+            ? (queueItems[activeIndex.value]['announcement_id'] ?? queueItems[activeIndex.value]['id'])
+            : null;
+        final newAnnId = combined[playingIdx]['announcement_id'] ?? combined[playingIdx]['id'];
+
         activeIndex.value = playingIdx;
         combined[playingIdx]['status'] = 'Playing';
         userPausedOrStopped.value = false;
+
+        if (prevAnnId != newAnnId) {
+          currentElapsedSeconds.value = 0;
+        }
+
         if (!isPlaying.value) {
           isPlaying.value = true;
           _startPlaybackTimer();
         }
-      } else if (!userPausedOrStopped.value && combined.isNotEmpty) {
-        // Queue is idle but has items waiting that are due now (Publish Now or arrived repeat slot)
-        final now = DateTime.now();
-        final firstItem = combined.first;
-        final schedStr = firstItem['scheduled_time']?.toString();
-        bool isDueNow = true;
-        if (schedStr != null && schedStr.isNotEmpty) {
-          final sched = DateTime.tryParse(schedStr);
-          if (sched != null && sched.isAfter(now.add(const Duration(seconds: 15)))) {
-            isDueNow = false;
-          }
-        }
-        if (isDueNow && !isPlaying.value) {
-          activeIndex.value = 0;
-          combined[0]['status'] = 'Playing';
-          isPlaying.value = true;
-          userPausedOrStopped.value = false;
-          _startPlaybackTimer();
-          final targetId = firstItem['announcement_id'] as int? ?? firstItem['id'] as int?;
-          if (!Get.testMode && targetId != null) {
-            _apiService.queueAction(targetId, 'play').catchError((_) => <String, dynamic>{});
-          }
-        }
-      } else if (isPlaying.value && queueItems.isNotEmpty && activeIndex.value < queueItems.length) {
-        final currentlyPlayingId = queueItems[activeIndex.value]['announcement_id'];
-        final matchIdx = combined.indexWhere((c) => c['announcement_id'] == currentlyPlayingId);
-        if (matchIdx != -1) {
-          activeIndex.value = matchIdx;
-          combined[matchIdx]['status'] = 'Playing';
+      } else {
+        // Backend confirms no announcement is actively playing
+        if (isPlaying.value && !userPausedOrStopped.value) {
+          isPlaying.value = false;
+          _playbackTimer?.cancel();
+          currentElapsedSeconds.value = 0;
         }
       }
 
@@ -751,12 +738,12 @@ class SpeakerQueueController extends GetxController {
         return;
       }
 
-      currentElapsedSeconds.value++;
-
-      // When duration completes: Notice has played once -> Remove it and advance!
-      if (currentElapsedSeconds.value >= currentTotalDuration.value) {
-        timer.cancel();
-        _onNoticePlaybackCompleted();
+      // Smooth visual progress bar ticks up to total duration
+      // Authoritative state transition is driven by backend & physical speaker hardware
+      if (currentElapsedSeconds.value < currentTotalDuration.value) {
+        currentElapsedSeconds.value++;
+      } else {
+        currentElapsedSeconds.value = currentTotalDuration.value;
       }
     });
   }

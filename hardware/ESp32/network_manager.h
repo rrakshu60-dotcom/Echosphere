@@ -697,10 +697,10 @@ public:
     // Record as completed to prevent duplicate replay loops
     markAnnouncementCompleted(annId);
 
-    // After speech concludes, keep the notice card on screen for 4 seconds
-    // so viewers have ample time to read the notice title and text, then cleanly return to idle ticker!
+    // After speech concludes, keep the notice card on screen for 1.5 seconds
+    // so viewers have brief time to read, while eliminating delay between close schedule broadcasts
     unsigned long dwellStart = millis();
-    while (millis() - dwellStart < 4000UL) {
+    while (millis() - dwellStart < 1500UL) {
       displayMgr.tickBroadcastCarousel();
       delay(50);
       yield();

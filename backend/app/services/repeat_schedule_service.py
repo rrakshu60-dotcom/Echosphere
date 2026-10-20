@@ -277,7 +277,11 @@ def get_next_slot_datetime(
                 else:
                     candidates.append((slot_start_today + timedelta(days=1), slot_name))
             else:
-                candidates.append((slot_start_today + timedelta(days=1), slot_name))
+                # If currently within the active window, allow continuous rotation for the entire window
+                if from_ist_dt + timedelta(seconds=15) <= slot_end_today:
+                    candidates.append((from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS), slot_name))
+                else:
+                    candidates.append((slot_start_today + timedelta(days=1), slot_name))
 
         # 2. Slot is upcoming today
         elif from_ist_dt < slot_start_today:

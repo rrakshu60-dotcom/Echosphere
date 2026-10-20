@@ -18,15 +18,16 @@ def authenticate_user(
     Authenticate a user by USN, Username, Official Email, or Employee ID.
     Returns (access_token, user).
     """
+    from sqlalchemy import func
     cleaned = identifier.strip()
     user = (
         db.query(User)
         .filter(
             or_(
-                User.usn == cleaned,
-                User.official_email == cleaned,
-                User.username == cleaned,
-                User.employee_id == cleaned,
+                func.lower(User.usn) == cleaned.lower(),
+                func.lower(User.official_email) == cleaned.lower(),
+                func.lower(User.username) == cleaned.lower(),
+                func.lower(User.employee_id) == cleaned.lower(),
             )
         )
         .first()
