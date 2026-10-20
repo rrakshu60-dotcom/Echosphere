@@ -440,6 +440,9 @@ public:
                 if (!rM || strlen(rM) == 0) rM = cmd["content"];
                 targetContent = rM ? String(rM) : "";
                 targetPriority = (c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>())) ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
+                if (targetTitle.indexOf("EMERGENCY") >= 0 || targetTitle.indexOf("Emergency") >= 0 || targetPriority.indexOf("EMERG") >= 0 || targetPriority.indexOf("emerg") >= 0) {
+                  targetPriority = "EMERGENCY";
+                }
                 const char* rD = cmd["department"];
                 targetDept = rD ? String(rD) : "College-Wide";
                 targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
@@ -467,6 +470,9 @@ public:
             const char* rawP = activeNotice["priority"];
             targetPriority = rawP ? String(rawP) : "NORMAL";
             if (!activeNotice["is_emergency"].isNull() && activeNotice["is_emergency"].as<bool>()) {
+              targetPriority = "EMERGENCY";
+            }
+            if (targetTitle.indexOf("EMERGENCY") >= 0 || targetTitle.indexOf("Emergency") >= 0 || targetPriority.indexOf("EMERG") >= 0 || targetPriority.indexOf("emerg") >= 0) {
               targetPriority = "EMERGENCY";
             }
             const char* rawD = activeNotice["department"];
@@ -609,19 +615,22 @@ public:
       activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
     }
 
+    String effPriority = priority;
+    if (title.indexOf("EMERGENCY") >= 0 || title.indexOf("Emergency") >= 0 ||
+        effPriority.indexOf("EMERG") >= 0 || effPriority.indexOf("emerg") >= 0) {
+      effPriority = "EMERGENCY";
+    }
+
     DisplayNotice notice;
     notice.id = annId;
     notice.title = title;
     notice.summary = content;
-    notice.priority = priority;
+    notice.priority = effPriority;
     notice.department = dept;
     notice.category = "Notice";
 
-    // 1. Immediately update TFT Display & LED status if not already active
-    // (This renders the card header, badges, wrapped title, message, AND initial equalizer bars!)
-    if (!displayMgr.isBroadcasting() || displayMgr.getState() != STATE_PLAYING_ANNOUNCEMENT) {
-      displayMgr.setActiveNotice(notice, effectiveDuration);
-    }
+    // 1. Immediately update TFT Display & LED status (always render the active notice card)
+    displayMgr.setActiveNotice(notice, effectiveDuration);
 
     // 2. High-Fidelity Speech Audio Stream over HTTPS via Native I2S
     // Note: Chime/Siren is triggered seamlessly via preChimeCallback the moment
@@ -659,8 +668,8 @@ public:
           displayMgr.renderEqualizerGraphic();
           displayMgr.updateSubtitleProgress(progress);
         },
-        [this, &priority]() {
-          if (priority.equalsIgnoreCase("EMERGENCY")) {
+        [this, effPriority]() {
+          if (effPriority.equalsIgnoreCase("EMERGENCY")) {
             audioMgr.playEmergencySiren();
           } else {
             audioMgr.playAttentionChime();
@@ -684,7 +693,7 @@ public:
     }
 
     // 3. Fallback melody if cloud speech streaming wasn't available
-    if (!streamPlayed && !priority.equalsIgnoreCase("EMERGENCY")) {
+    if (!streamPlayed && !effPriority.equalsIgnoreCase("EMERGENCY")) {
       Serial.println(F("ℹ️ [AUDIO FALLBACK] Playing campus broadcast melody..."));
       audioMgr.playAttentionChime();
       audioMgr.playAnnouncementMelody();

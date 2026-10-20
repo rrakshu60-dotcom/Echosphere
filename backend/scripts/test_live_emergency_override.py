@@ -51,11 +51,11 @@ print(f"Notice A ID: {ann_a_id}, Title: {ann_a['title']}")
 # Broadcast Notice A to hardware queue
 print(f"Broadcasting Notice A (#{ann_a_id}) to speakers...")
 b_a_resp = requests.post(
-    f"{BASE_URL}/hardware/broadcast",
+    f"{BASE_URL}/hardware/queue/add",
     headers=headers,
     json={"announcement_id": ann_a_id}
 )
-print(f"Broadcast Notice A response: {b_a_resp.status_code} {b_a_resp.text}")
+print(f"Broadcast Notice A response: {b_a_resp.status_code}")
 
 print("\nWaiting 4 seconds for ESP32 on COM5 to fetch Notice A and begin audio playback...")
 for i in range(4, 0, -1):
@@ -95,11 +95,11 @@ print(f"Emergency Notice B ID: {ann_b_id}, Priority: {ann_b['priority']}, Emerge
 # Broadcast Emergency Notice B
 print(f"Broadcasting Emergency Notice B (#{ann_b_id}) to speakers...", flush=True)
 b_b_resp = requests.post(
-    f"{BASE_URL}/hardware/broadcast",
+    f"{BASE_URL}/hardware/queue/add",
     headers=headers,
     json={"announcement_id": ann_b_id}
 )
-print(f"Broadcast Notice B response: {b_b_resp.status_code} {b_b_resp.text}", flush=True)
+print(f"Broadcast Notice B response: {b_b_resp.status_code}", flush=True)
 
 # Monitor queue and node response over next 8 seconds
 print("\nMonitoring queue state after emergency broadcast:", flush=True)

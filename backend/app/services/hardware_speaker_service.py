@@ -69,21 +69,45 @@ _PENDING_COMMANDS: Dict[str, List[dict]] = {}
 _BROADCAST_COMMANDS: List[dict] = []
 _DELIVERED_BROADCASTS: Dict[str, Set[str]] = {}
 
-# Global Emergency Override State (for instant audio stream preemption)
+import tempfile
+
+# Global Emergency Override State (for instant audio stream preemption across all Uvicorn workers)
 _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP: float = 0.0
 _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID: Optional[int] = None
+_EMERGENCY_PREEMPTION_FILE = os.path.join(tempfile.gettempdir(), "echosphere_emergency_preemption.json")
+
+
+def _read_emergency_file() -> tuple[float, Optional[int]]:
+    try:
+        if os.path.exists(_EMERGENCY_PREEMPTION_FILE):
+            with open(_EMERGENCY_PREEMPTION_FILE, "r") as f:
+                data = json.load(f)
+                return float(data.get("timestamp", 0.0)), data.get("announcement_id")
+    except Exception:
+        pass
+    return 0.0, None
 
 
 def trigger_global_emergency_preemption(announcement_id: int):
     """
     Signals an active emergency priority override across all audio streams and queue workers.
     Any active non-emergency audio streams will immediately drop/close their connections.
+    Persists to a shared file in tempdir so all Uvicorn worker processes detect preemption in <0.1ms.
     """
     global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP, _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID
-    _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP = time.time()
+    now_ts = time.time()
+    _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP = now_ts
     _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID = announcement_id
+    try:
+        tmp_path = _EMERGENCY_PREEMPTION_FILE + f".{os.getpid()}.tmp"
+        with open(tmp_path, "w") as f:
+            json.dump({"timestamp": now_ts, "announcement_id": announcement_id}, f)
+        os.replace(tmp_path, _EMERGENCY_PREEMPTION_FILE)
+    except Exception as e:
+        logger.warning(f"Failed to write emergency preemption flag file: {e}")
+
     logger.warning(
-        f"🚨 [GLOBAL EMERGENCY PREEMPTION TRIGGERED] Announcement #{announcement_id} at {_GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP}"
+        f"🚨 [GLOBAL EMERGENCY PREEMPTION TRIGGERED] Announcement #{announcement_id} at {now_ts}"
     )
 
 
@@ -91,15 +115,22 @@ def clear_global_emergency_preemption():
     global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP, _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID
     _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP = 0.0
     _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID = None
+    try:
+        if os.path.exists(_EMERGENCY_PREEMPTION_FILE):
+            os.remove(_EMERGENCY_PREEMPTION_FILE)
+    except Exception:
+        pass
 
 
 def is_global_emergency_active(since_timestamp: Optional[float] = None) -> bool:
     global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP
-    if _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP <= 0:
+    file_ts, _ = _read_emergency_file()
+    effective_ts = max(_GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP, file_ts)
+    if effective_ts <= 0:
         return False
     if since_timestamp is not None:
-        return _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP > since_timestamp
-    return (time.time() - _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP) < 300
+        return effective_ts > since_timestamp
+    return (time.time() - effective_ts) < 300
 
 
 def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db: Optional[Session] = None):
