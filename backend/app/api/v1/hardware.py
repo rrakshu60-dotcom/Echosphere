@@ -1015,7 +1015,7 @@ def trigger_repeat_round_now(
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     from app.models.speaker_queue import SpeakerQueue
-    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == queue_id).first()
+    item: Any = db.query(SpeakerQueue).filter(SpeakerQueue.id == queue_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
