@@ -204,6 +204,33 @@ def normalize_speaker_queue_positions(db: Session) -> List[SpeakerQueue]:
         all_normalized.append(item)
         current_pos += 1
 
+    # Proactively pre-render Kokoro audio for all waiting queue items in background
+    for w_item in waiting_sorted:
+        ann = getattr(w_item, "announcement", None)
+        if ann and getattr(ann, "id", None):
+            try:
+                from app.api.v1.announcement import _find_cached_audio_file
+                v = getattr(ann, "speaker_voice", "female") or "female"
+                clean_v = str(v).lower()
+                tag = f"american_{clean_v}"
+                fname, fpath, _ = _find_cached_audio_file(ann.id, tag, include_chime=False, prefer_wav=True)
+                if not fname or not fpath:
+                    import threading
+                    from app.services.tts_service import generate_announcement_audio_sync
+                    def _prewarm_waiting_item(a_id=ann.id, a_title=getattr(ann, "title", ""), a_desc=getattr(ann, "description", ""), a_v=clean_v):
+                        try:
+                            generate_announcement_audio_sync(
+                                a_id,
+                                f"{a_title}. {a_desc}",
+                                gender=a_v,
+                                include_chime=False,
+                            )
+                        except Exception:
+                            pass
+                    threading.Thread(target=_prewarm_waiting_item, daemon=True, name=f"Prewarm_Wait_{ann.id}").start()
+            except Exception:
+                pass
+
     db.commit()
     return all_normalized
 
@@ -1782,7 +1809,7 @@ def auto_advance_speaker_queue(
     # Proactively pre-warm all upcoming queue items in the background
     # so that when the next queue transition occurs, audio playback starts with 0.0s latency!
     for upcoming in queued_all:
-        if upcoming.id != next_item.id and upcoming.announcement_id:
+        if upcoming.announcement_id:
             u_ann = getattr(upcoming, "announcement", None)
             if u_ann:
                 try:

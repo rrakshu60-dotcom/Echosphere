@@ -801,7 +801,7 @@ def generate_announcement_audio_sync(
             _IN_FLIGHT_SYNTHESIS[synth_key] = event
 
     if is_waiter:
-        event.wait(timeout=12.0)
+        event.wait(timeout=5.0)
         if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 1024:
             return _format_audio_result(
                 file_name=wav_filename,
@@ -820,75 +820,81 @@ def generate_announcement_audio_sync(
                 voice=voice_name,
                 chime=selected_chime if include_chime else "none",
             )
+    def _release_lock():
+        if not is_waiter:
+            with _IN_FLIGHT_SYNTHESIS_LOCK:
+                event.set()
+                _IN_FLIGHT_SYNTHESIS.pop(synth_key, None)
 
-    try:
-        speech_text = clean_text_for_speech(text)
-        if not speech_text:
-            speech_text = "Attention. Official campus announcement broadcast."
+    speech_text = clean_text_for_speech(text)
+    if not speech_text:
+        speech_text = "Attention. Official campus announcement broadcast."
 
-        # Tier 1: Try Kokoro Neural Engine (Local ONNX first for zero-network instantaneous synthesis)
-        if TTS_ENGINE not in ["edge_only", "gtts_only"]:
-            # 1A. Local Kokoro-ONNX Pipeline (Sub-second local inference, 100% offline & reliable)
-            kok_onnx = get_kokoro_onnx()
-            if kok_onnx is not None:
-                try:
-                    import soundfile as sf
-                    import numpy as np
+    # Tier 1: Try Kokoro Neural Engine (Local ONNX first for zero-network instantaneous synthesis)
+    if TTS_ENGINE not in ["edge_only", "gtts_only"]:
+        # 1A. Local Kokoro-ONNX Pipeline (Sub-second local inference, 100% offline & reliable)
+        kok_onnx = get_kokoro_onnx()
+        if kok_onnx is not None:
+            try:
+                import soundfile as sf
+                import numpy as np
 
-                    v = kok_voice or "af_heart"
-                    samples, sample_rate = kok_onnx.create(speech_text, voice=v, speed=1.0, lang="en-us")
-                    if samples is not None and len(samples) > 0:
-                        if include_chime:
-                            chime_bytes = generate_chime_pcm(selected_chime, sample_rate=sample_rate)
-                            chime_float = np.frombuffer(chime_bytes, dtype=np.int16).astype(np.float32) / 32767.0
-                            combined = np.concatenate([chime_float, samples])
-                        else:
-                            combined = samples
+                v = kok_voice or "af_heart"
+                samples, sample_rate = kok_onnx.create(speech_text, voice=v, speed=1.0, lang="en-us")
+                if samples is not None and len(samples) > 0:
+                    if include_chime:
+                        chime_bytes = generate_chime_pcm(selected_chime, sample_rate=sample_rate)
+                        chime_float = np.frombuffer(chime_bytes, dtype=np.int16).astype(np.float32) / 32767.0
+                        combined = np.concatenate([chime_float, samples])
+                    else:
+                        combined = samples
 
-                        sf.write(wav_filepath, combined, sample_rate)
-                        duration = round(len(combined) / float(sample_rate), 2)
-                        logger.info(f"Kokoro-ONNX neural audio generated: {wav_filepath} ({duration}s)")
+                    sf.write(wav_filepath, combined, sample_rate)
+                    duration = round(len(combined) / float(sample_rate), 2)
+                    logger.info(f"Kokoro-ONNX neural audio generated: {wav_filepath} ({duration}s)")
 
-                        # Automatically encode MP3 for low-bandwidth streaming to ESP32 / web
-                        has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
-                        import gc
-                        gc.collect()
+                    # Automatically encode MP3 for low-bandwidth streaming to ESP32 / web
+                    has_mp3 = convert_wav_to_mp3(wav_filepath, mp3_filepath)
+                    import gc
+                    gc.collect()
 
-                        chosen_fn = mp3_filename if has_mp3 else wav_filename
-                        chosen_fp = mp3_filepath if has_mp3 else wav_filepath
-                        return _format_audio_result(
-                            file_name=chosen_fn,
-                            file_path=chosen_fp,
-                            audio_type="mp3" if has_mp3 else "wav",
-                            engine=f"Kokoro-82M INT8 ({voice_name})",
-                            voice=voice_name,
-                            duration_sec=duration,
-                            chime=selected_chime if include_chime else "none",
-                        )
-                except Exception as k_err:
-                    logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying remote worker...")
-
-            # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
-            enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "10.0"))
-            if KOKORO_API_URL and enable_remote:
-                if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
-                    if include_chime and selected_chime != "none":
-                        temp_wav = wav_filepath + ".chime_tmp.wav"
-                        if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
-                            os.replace(temp_wav, wav_filepath)
-                    if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
-                        convert_wav_to_mp3(wav_filepath, mp3_filepath)
-                    chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename
-                    chosen_fp = mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath
+                    chosen_fn = mp3_filename if has_mp3 else wav_filename
+                    chosen_fp = mp3_filepath if has_mp3 else wav_filepath
+                    _release_lock()
                     return _format_audio_result(
                         file_name=chosen_fn,
                         file_path=chosen_fp,
-                        audio_type="mp3" if os.path.exists(mp3_filepath) else "wav",
-                        engine=f"Kokoro-82M Neural ({voice_name})",
+                        audio_type="mp3" if has_mp3 else "wav",
+                        engine=f"Kokoro-82M INT8 ({voice_name})",
                         voice=voice_name,
+                        duration_sec=duration,
                         chime=selected_chime if include_chime else "none",
                     )
+            except Exception as k_err:
+                logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying remote worker...")
+
+        # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
+        enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "4.5"))
+        if KOKORO_API_URL and enable_remote:
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
+                if include_chime and selected_chime != "none":
+                    temp_wav = wav_filepath + ".chime_tmp.wav"
+                    if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
+                        os.replace(temp_wav, wav_filepath)
+                if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
+                    convert_wav_to_mp3(wav_filepath, mp3_filepath)
+                chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename
+                chosen_fp = mp3_filepath if os.path.exists(mp3_filepath) else wav_filepath
+                _release_lock()
+                return _format_audio_result(
+                    file_name=chosen_fn,
+                    file_path=chosen_fp,
+                    audio_type="mp3" if os.path.exists(mp3_filepath) else "wav",
+                    engine=f"Kokoro-82M Neural ({voice_name})",
+                    voice=voice_name,
+                    chime=selected_chime if include_chime else "none",
+                )
 
         try:
             pipeline = get_kokoro_pipeline(kok_lang)
@@ -941,6 +947,7 @@ def generate_announcement_audio_sync(
             except Exception:
                 pass
             logger.info(f"Edge-TTS neural audio generated ({voice_name}): {mp3_filepath}")
+            _release_lock()
             return _format_audio_result(
                 file_name=mp3_filename,
                 file_path=mp3_filepath,
@@ -959,6 +966,7 @@ def generate_announcement_audio_sync(
         tts.save(mp3_filepath)
         if os.path.exists(mp3_filepath) and os.path.getsize(mp3_filepath) > 1024:
             logger.info(f"gTTS audio stream generated: {mp3_filepath}")
+            _release_lock()
             return _format_audio_result(
                 file_name=mp3_filename,
                 file_path=mp3_filepath,
@@ -979,6 +987,7 @@ def generate_announcement_audio_sync(
                 if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
                     os.replace(temp_wav, wav_filepath)
             logger.info(f"pyttsx3 offline speech audio generated: {wav_filepath}")
+            _release_lock()
             return _format_audio_result(
                 file_name=wav_filename,
                 file_path=wav_filepath,
@@ -998,6 +1007,7 @@ def generate_announcement_audio_sync(
             has_mp3 = convert_wav_to_mp3(fallback_wav, mp3_filepath)
             chosen_fn = mp3_filename if has_mp3 else os.path.basename(fallback_wav)
             chosen_fp = mp3_filepath if has_mp3 else fallback_wav
+            _release_lock()
             return _format_audio_result(
                 file_name=chosen_fn,
                 file_path=chosen_fp,
@@ -1008,12 +1018,8 @@ def generate_announcement_audio_sync(
             )
     except Exception as chime_fallback_err:
         logger.error(f"Chime fallback error: {chime_fallback_err}")
-    finally:
-        if not is_waiter:
-            with _IN_FLIGHT_SYNTHESIS_LOCK:
-                event.set()
-                _IN_FLIGHT_SYNTHESIS.pop(synth_key, None)
 
+    _release_lock()
     raise RuntimeError("All speech synthesis engines (Edge-TTS, gTTS, pyttsx3) are currently unavailable.")
 
 
