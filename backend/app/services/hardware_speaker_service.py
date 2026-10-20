@@ -565,6 +565,10 @@ async def broadcast_announcement_to_speaker(
     from app.models.announcement import Announcement
     announcement_exists = db.query(Announcement).filter(Announcement.id == announcement_id).first()
     queue_pos = 1
+    existing_item = None
+    queue_item = None
+    words = len((title + " " + content).split())
+    dur_secs = max(10, int(words / 2.5))
 
     if announcement_exists:
         existing_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == announcement_id).first()
@@ -575,9 +579,6 @@ async def broadcast_announcement_to_speaker(
         if is_emergency and active_playing and getattr(active_playing, "id", None) != (getattr(existing_item, "id", None) if existing_item else None):
             setattr(active_playing, "status", "Paused")
             db.commit()
-
-        words = len((title + " " + content).split())
-        dur_secs = max(10, int(words / 2.5))
 
         if not existing_item:
             max_pos = db.query(SpeakerQueue).count()
@@ -650,6 +651,7 @@ async def broadcast_announcement_to_speaker(
         AnnouncementRepeatSchedule.is_active == True,
     ).first()
     rep_round = (sched_rec.total_played_count + 1) if sched_rec else 1
+    is_rep = bool(sched_rec is not None and sched_rec.total_played_count > 0)
     target_queue_item = existing_item if existing_item else queue_item
     target_q_id = getattr(target_queue_item, "id", None)
 
