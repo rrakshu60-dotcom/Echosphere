@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
+import 'package:echosphere/services/echosphere_realtime_service.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
@@ -81,6 +82,7 @@ class SpeakerQueueController extends GetxController {
   Timer? _playbackTimer;
   Timer? _pollTimer;
   Timer? _intermissionTimer;
+  StreamSubscription? _realtimeSubscription;
 
   // Fallback initial speaker nodes: Canonical nodes (ESP32 Live Node + Wokwi + Hardware Clients 1 & 2)
   static final List<Map<String, dynamic>> defaultSpeakerNodes = [
@@ -146,6 +148,18 @@ class SpeakerQueueController extends GetxController {
       _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
         refreshQueue(silent: true);
       });
+
+      // Realtime multi-device WebSocket listener for 0-latency instant UI synchronization
+      try {
+        _realtimeSubscription = EchosphereRealtimeService().events.listen((event) {
+          final ev = event.event.toUpperCase();
+          if (ev.contains('QUEUE') || ev.contains('ANNOUNCEMENT') || ev.contains('EMERGENCY') || ev.contains('PLAYBACK') || ev.contains('NOTICE')) {
+            refreshQueue(silent: true);
+          }
+        });
+      } catch (e) {
+        debugPrint('Realtime queue subscription note: $e');
+      }
     }
 
     // Also listen to changes in AnnouncementController to immediately pick up new notices
@@ -161,6 +175,7 @@ class SpeakerQueueController extends GetxController {
     _playbackTimer?.cancel();
     _pollTimer?.cancel();
     _intermissionTimer?.cancel();
+    _realtimeSubscription?.cancel();
   }
 
   @override

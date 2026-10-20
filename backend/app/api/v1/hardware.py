@@ -955,7 +955,24 @@ def update_queue_action(
 
         adv_res = None
         try:
-            adv_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
+            # Only force-advance if the completed item was the one currently Playing (or queue is idle).
+            # If another notice was already transitioned to Playing, DO NOT force-advance past it!
+            current_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
+            should_force = (current_playing is None or current_playing.id == item.id)
+            adv_res = auto_advance_speaker_queue(db, force_advance=should_force, base_url=base_url)
+        except Exception as adv_e:
+            pass
+
+        try:
+            from app.core.websocket_manager import ws_manager
+            ws_manager.broadcast_sync({
+                "event": "QUEUE_UPDATED",
+                "queue_id": item.id,
+                "announcement_id": item.announcement_id,
+                "action": "complete",
+                "status": new_status,
+                "timestamp": now.isoformat(),
+            })
         except Exception:
             pass
 

@@ -133,6 +133,81 @@ def is_global_emergency_active(since_timestamp: Optional[float] = None) -> bool:
     return (time.time() - effective_ts) < 300
 
 
+def _get_queue_item_priority_weight(item: SpeakerQueue) -> int:
+    ann = getattr(item, "announcement", None)
+    if not ann:
+        return 200
+    if is_emergency_announcement(ann):
+        return 400
+    p = str(getattr(ann, "priority", "") or "").upper()
+    cat = str(getattr(ann, "category", "") or "").upper()
+    if "EMERGENCY" in p or "CRITICAL" in p or "EMERGENCY" in cat:
+        return 400
+    if "HIGH" in p or "URGENT" in p:
+        return 300
+    if "LOW" in p:
+        return 100
+    return 200
+
+
+def normalize_speaker_queue_positions(db: Session) -> List[SpeakerQueue]:
+    """
+    Deterministically normalizes and re-indexes speaker queue items:
+    1. Active 'Playing' item always occupies queue_position = 1.
+    2. Waiting items ('Next in Queue' and 'Queued') are sorted deterministically:
+       a. Priority Weight: Emergency (400) > High/Urgent (300) > Medium/Normal (200) > Low (100)
+       b. Scheduled Time: scheduled_time ascending (earlier target time plays first)
+       c. Homo-temporal Tie-breaker: If scheduled for identical timestamps, priority tier wins,
+          followed by earliest creation time / lowest announcement_id.
+    3. Reassigns queue_position sequentially: 1 (Playing), 2 (Next in Queue), 3, 4, ...
+    4. Automatically updates status of position 2 to 'Next in Queue' if ready to play,
+       and remaining to 'Queued'.
+    """
+    now = utc_now()
+    active_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").first()
+    waiting_items = (
+        db.query(SpeakerQueue)
+        .filter(SpeakerQueue.status.in_(["Next in Queue", "Queued"]))
+        .all()
+    )
+    if not waiting_items and not active_playing:
+        return []
+
+    def sort_key(q: SpeakerQueue):
+        weight = _get_queue_item_priority_weight(q)
+        prio_rank = -weight
+        sched_dt = _normalize_dt(q.scheduled_time) or now
+        ann_id = q.announcement_id or q.id or 0
+        return (prio_rank, sched_dt, ann_id)
+
+    waiting_sorted = sorted(waiting_items, key=sort_key)
+
+    all_normalized: List[SpeakerQueue] = []
+    current_pos = 1
+
+    if active_playing:
+        if active_playing.queue_position != 1:
+            active_playing.queue_position = 1
+        all_normalized.append(active_playing)
+        current_pos = 2
+
+    for item in waiting_sorted:
+        item.queue_position = current_pos
+        is_future = _is_future_time(item.scheduled_time, now)
+        if current_pos == 1:
+            # If queue is currently idle, position 1 is Next in Queue (ready to advance to Playing)
+            item.status = "Next in Queue" if not is_future else "Queued"
+        elif current_pos == 2 and not is_future and active_playing:
+            item.status = "Next in Queue"
+        else:
+            item.status = "Queued"
+        all_normalized.append(item)
+        current_pos += 1
+
+    db.commit()
+    return all_normalized
+
+
 def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db: Optional[Session] = None):
     """
     Pushes a command into the pending command queue for REST polling nodes.
@@ -730,12 +805,12 @@ def enqueue_and_broadcast_announcement(
 
     now = utc_now()
 
-    # 1. Clean up any finished 'Playing' items whose playback duration has elapsed
+    # 1. Clean up only genuinely expired 'Playing' items (with 20s watchdog grace period)
     stale_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
     for sp in stale_playing:
         sp_played_at = getattr(sp, "played_at", None)
         sp_dur = getattr(sp, "duration_seconds", 4) or 4
-        if sp_played_at is None or (now - sp_played_at).total_seconds() >= (sp_dur + 1):
+        if sp_played_at is not None and (now - sp_played_at).total_seconds() >= (sp_dur + 20):
             setattr(sp, "status", "Completed")
             db.commit()
 
@@ -746,9 +821,9 @@ def enqueue_and_broadcast_announcement(
 
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
 
-    # Preemption check: If another notice is actively playing and incoming notice is not future-scheduled,
-    # cleanly pause the currently playing notice so the newly pushed broadcast plays immediately!
-    if active_playing and active_ann_id != announcement_id and not is_future_scheduled:
+    # Preemption check: STRICTLY restricted to EMERGENCY notices (or explicit manual overrides)!
+    # Routine / non-emergency notices MUST NEVER pause an ongoing broadcast!
+    if is_emergency and active_playing and active_ann_id != announcement_id:
         from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
         active_sched = (
             db.query(AnnouncementRepeatSchedule)
@@ -758,15 +833,14 @@ def enqueue_and_broadcast_announcement(
             )
             .first()
         )
-        # CRITICAL: Pause the ongoing broadcast (do NOT mark completed or disable schedule)
-        # so it resumes seamlessly for the remainder of its window after the new broadcast finishes!
+        # Cleanly pause the ongoing broadcast so it can resume after emergency concludes
         setattr(active_playing, "status", "Paused")
         if active_sched:
             active_sched.is_active = True
         db.commit()
-        logger.info(
-            f"⏸️ Preempted ongoing notice #{active_playing.announcement_id} for newly pushed notice #{announcement_id}. "
-            f"Preserved repeat schedule: {bool(active_sched)}."
+        logger.warning(
+            f"🚨 [EMERGENCY PREEMPTION] Preempted ongoing notice #{active_playing.announcement_id} "
+            f"for newly arrived Emergency Notice #{announcement_id}."
         )
         active_playing = None
 
@@ -778,6 +852,7 @@ def enqueue_and_broadcast_announcement(
     existing_status = getattr(existing_item, "status", None) if existing_item else None
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
 
+    # Audio should play immediately ONLY if queue is idle or this notice is emergency / already playing
     should_play = (not is_future_scheduled) and (
         is_emergency
         or (active_playing is None)
@@ -816,8 +891,6 @@ def enqueue_and_broadcast_announcement(
         db.commit()
         db.refresh(queue_item)
         active_item = queue_item
-        queue_pos = int(getattr(queue_item, "queue_position", 1) or 1)
-        current_status = str(getattr(queue_item, "status", item_status))
     else:
         # Check if existing item is already Completed and has no repeat schedule
         if getattr(existing_item, "status", "") == "Completed" and not is_emergency and not force_requeue:
@@ -856,8 +929,12 @@ def enqueue_and_broadcast_announcement(
         setattr(existing_item, "failure_reason", None)
         setattr(existing_item, "error_count", 0)
         db.commit()
-        queue_pos = int(getattr(existing_item, "queue_position", 1) or 1)
-        current_status = str(getattr(existing_item, "status", "Queued"))
+
+    # Deterministically normalize all queue positions (orders by emergency, schedule, priority, homo-temporal tie-breaker)
+    normalize_speaker_queue_positions(db)
+    db.refresh(active_item)
+    queue_pos = int(getattr(active_item, "queue_position", 1) or 1)
+    current_status = str(getattr(active_item, "status", "Queued"))
 
     # 2. Form robust streaming audio URL directly targeting 16-bit PCM WAV for ESP32 hardware streaming
     audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
@@ -1609,9 +1686,9 @@ def auto_advance_speaker_queue(
             if emergency_waiting:
                 should_advance = True
             else:
-                # Close schedule lookahead: advance immediately if next item is due or within 90 seconds!
+                # Close schedule check: advance when next item is due (within 2s tolerance for timer tick)
                 scheduled_due = any(
-                    _is_time_due(q.scheduled_time, now + timedelta(seconds=90))
+                    _is_time_due(q.scheduled_time, now + timedelta(seconds=2))
                     for q in queued_items
                 )
                 if scheduled_due:
@@ -1619,6 +1696,9 @@ def auto_advance_speaker_queue(
 
     if not should_advance:
         return None
+
+    # Deterministically re-normalize queue items before selecting next item
+    normalize_speaker_queue_positions(db)
 
     # Priority 1: Emergency preemption - check if an emergency notice is queued (prioritized first)
     queued_all = (
@@ -1651,12 +1731,19 @@ def auto_advance_speaker_queue(
         None
     )
 
-    # Priority 2: First Come First Serve (FCFS) for scheduled & publish now notices whose scheduled_time <= now + 90s
+    # Priority 2: Deterministic First Come First Serve
+    # Prefer ready items that are due now or not in the future (<= now + 2s).
     if not next_item:
-        next_item = next(
-            (q for q in queued_all if _is_time_due(q.scheduled_time, now + timedelta(seconds=90))),
-            None
-        )
+        ready_items = [q for q in queued_all if not _is_future_time(q.scheduled_time, now + timedelta(seconds=2))]
+        if ready_items:
+            next_item = ready_items[0]
+        elif force_advance and queued_all:
+            # If force_advance was requested and no items are due, advance to another distinct waiting notice,
+            # but NEVER immediately re-play the exact same notice that was just rescheduled for the future!
+            just_played_ann_id = getattr(current_playing, "announcement_id", None) if current_playing else None
+            other_items = [q for q in queued_all if q.announcement_id != just_played_ann_id]
+            if other_items:
+                next_item = other_items[0]
 
     if not next_item:
         return None
@@ -1673,6 +1760,10 @@ def auto_advance_speaker_queue(
     db.commit()
     db.refresh(next_item)
 
+    # Normalize positions so next_item is #1, followed by #2 Next in Queue, and others Queued
+    normalize_speaker_queue_positions(db)
+    db.refresh(next_item)
+
     # Dispatch PLAY command to speakers
     dispatch_res = dispatch_queue_action_to_speakers(
         db=db,
@@ -1681,17 +1772,19 @@ def auto_advance_speaker_queue(
         base_url=base_url,
     )
 
-    # Update the item immediately after next_item to 'Next in Queue' if it is ready to play (not future scheduled)
-    subsequent_items = (
-        db.query(SpeakerQueue)
-        .filter(SpeakerQueue.status == "Queued", SpeakerQueue.id != next_item.id)
-        .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
-        .all()
-    )
-    ready_subsequent = next((s for s in subsequent_items if not _is_future_time(s.scheduled_time, now)), None)
-    if ready_subsequent:
-        setattr(ready_subsequent, "status", "Next in Queue")
-        db.commit()
+    # Real-time multi-device WebSocket notification for 0-latency UI update
+    try:
+        from app.core.websocket_manager import ws_manager
+        ws_manager.broadcast_sync({
+            "event": "QUEUE_ADVANCED",
+            "announcement_id": next_item.announcement_id,
+            "title": next_item.announcement.title if next_item.announcement else "Announcement",
+            "queue_id": next_item.id,
+            "status": "Playing",
+            "timestamp": now.isoformat(),
+        })
+    except Exception:
+        pass
 
     logger.info(f"Speaker queue automatically advanced to item #{next_item.id} ('{next_item.announcement.title if next_item.announcement else 'Announcement'}').")
     return {
