@@ -328,7 +328,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/api/v1/diagnostic/tts")
-def diagnostic_tts(run_test: bool = False):
+def diagnostic_tts(run_test: bool = False, reset_client: bool = False):
     import traceback
     diag = {}
     from app.services.tts_service import (
@@ -353,8 +353,8 @@ def diagnostic_tts(run_test: bool = False):
 
     try:
         from app.services.tts_service import prewarm_gradio_client, _cached_gradio_client
-        if _cached_gradio_client is None:
-            prewarm_gradio_client()
+        if reset_client or _cached_gradio_client is None:
+            prewarm_gradio_client(force=True)
         from app.services.tts_service import _cached_gradio_client as _chk_client
         diag["gradio_client_status"] = "INITIALIZED" if _chk_client is not None else "NONE"
         if _chk_client is not None:
@@ -366,6 +366,8 @@ def diagnostic_tts(run_test: bool = False):
                 "result": str(pred_res),
             }
     except Exception as gce:
+        import app.services.tts_service as tts_mod
+        tts_mod._cached_gradio_client = None
         diag["gradio_client_status"] = f"ERROR: {gce}"
         diag["gradio_client_traceback"] = traceback.format_exc().splitlines()[-6:]
 

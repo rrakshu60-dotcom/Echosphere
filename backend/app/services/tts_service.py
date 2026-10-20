@@ -129,13 +129,13 @@ _last_keepalive_ping_time: Optional[float] = None
 _last_keepalive_status: Optional[str] = None
 
 
-def prewarm_gradio_client():
+def prewarm_gradio_client(force: bool = False):
     """Pre-initializes Gradio Client in the background to eliminate initial handshake latency."""
     global _cached_gradio_client, _cached_gradio_url
     api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
     if not api_url:
         return
-    if _cached_gradio_client is not None and _cached_gradio_url == api_url:
+    if not force and _cached_gradio_client is not None and _cached_gradio_url == api_url:
         return
     try:
         from gradio_client import Client
