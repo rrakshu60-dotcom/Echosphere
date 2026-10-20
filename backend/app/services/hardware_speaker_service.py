@@ -783,7 +783,9 @@ def enqueue_and_broadcast_announcement(
             speaker_node_id = None
 
     words = len((str(title) + " " + str(content)).split())
-    dur_secs = max(4, int(words / 2.5) + 2)
+    # Speech pace: ~2.2 words per second.
+    # Total hardware cycle: 1.5s attention chime + speech audio + 1.5s LCD dwell + 1s network buffer = speech + 4s
+    dur_secs = max(8, int(words / 2.2) + 5)
     clean_v = (speaker_voice or "female").lower()
     tag = f"american_{clean_v}"
     try:
@@ -799,7 +801,7 @@ def enqueue_and_broadcast_announcement(
             with wave.open(cached_fp, "rb") as wf:
                 real_d = int(wf.getnframes() / wf.getframerate())
                 if real_d > 0:
-                    dur_secs = real_d + 1
+                    dur_secs = real_d + 4
     except Exception:
         pass
 
@@ -1638,13 +1640,16 @@ def auto_advance_speaker_queue(
                         sched.is_active = False
 
                 prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-                exec_log = RepeatSlotExecutionLog(
-                    schedule_id=sched.id,
-                    slot_key=f"{prefix_key}:{sched.total_played_count}",
-                    slot_name=slot_name,
-                    played_at=now,
-                )
-                db.add(exec_log)
+                target_key = f"{prefix_key}:{sched.total_played_count}"
+                existing_log = db.query(RepeatSlotExecutionLog).filter(RepeatSlotExecutionLog.slot_key == target_key).first()
+                if not existing_log:
+                    exec_log = RepeatSlotExecutionLog(
+                        schedule_id=sched.id,
+                        slot_key=target_key,
+                        slot_name=slot_name,
+                        played_at=now,
+                    )
+                    db.add(exec_log)
 
             if has_repeats_remaining and next_repeat_time:
                 max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
@@ -1752,11 +1757,24 @@ def auto_advance_speaker_queue(
     setattr(next_item, "played_at", utc_now())
     if next_item.announcement and str(getattr(next_item.announcement, "status", "")).upper() in ("SCHEDULED", "APPROVED", "SUBMITTED"):
         from app.core.enums.announcement import AnnouncementStatus
-        setattr(next_item.announcement, "status", AnnouncementStatus.PUBLISHED)
-    if not getattr(next_item, "duration_seconds", None) or next_item.duration_seconds < 4:
+    dur = 0
+    if next_item.announcement_id:
+        try:
+            from app.api.v1.announcement import _find_cached_audio_file
+            _, real_fp, _ = _find_cached_audio_file(next_item.announcement_id, "american_female", include_chime=False, prefer_wav=True)
+            if real_fp and os.path.exists(real_fp) and real_fp.endswith(".wav"):
+                import wave
+                with wave.open(real_fp, "rb") as wf:
+                    real_secs = int(wf.getnframes() / wf.getframerate())
+                    if real_secs > 0:
+                        dur = real_secs + 4  # Speech duration + attention chime (1.5s) + network pre-buffer (1.0s) + LCD dwell (1.5s)
+        except Exception:
+            pass
+    if dur <= 0:
         ann = getattr(next_item, "announcement", None)
         words = len(((getattr(ann, "title", "") or '') + ' ' + (getattr(ann, "description", "") or '')).split())
-        setattr(next_item, "duration_seconds", max(4, int(words / 2.5) + 1))
+        dur = max(6, int(words / 2.2) + 5)
+    setattr(next_item, "duration_seconds", dur)
     db.commit()
     db.refresh(next_item)
 

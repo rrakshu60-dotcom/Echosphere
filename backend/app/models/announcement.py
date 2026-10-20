@@ -219,12 +219,18 @@ class Announcement(TimestampMixin, Base):
 
     @property
     def deliver_speaker(self) -> bool:
+        if getattr(self, "_deliver_speaker", None) is not None:
+            return bool(self._deliver_speaker)
         if self.deliveries:
             for d in self.deliveries:
                 name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
                 if "speaker" in name:
                     return True
         return False
+
+    @deliver_speaker.setter
+    def deliver_speaker(self, value: bool):
+        self._deliver_speaker = bool(value)
 
     @property
     def deliver_in_app(self) -> bool:

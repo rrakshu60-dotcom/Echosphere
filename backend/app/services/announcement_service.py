@@ -282,21 +282,19 @@ def create_announcement_service(
             if sched_obj and not getattr(sched_obj, 'play_on_publish', True) and not broadcast_sched_time:
                 broadcast_sched_time = sched_obj.next_repeat_at
 
-            from app.models.speaker_queue import SpeakerQueue
-            already_in_q = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == created_announcement.id).first()
-            if not already_in_q:
-                enqueue_and_broadcast_announcement(
-                    db=db,
-                    announcement_id=created_announcement.id,
-                    title=created_announcement.title,
-                    content=created_announcement.description,
-                    department_code=dept_code,
-                    zone="College-Wide",
-                    is_emergency=is_emerg,
-                    speaker_node_id=getattr(request, 'speaker_node_id', None),
-                    scheduled_time=broadcast_sched_time,
-                    speaker_voice=created_announcement.speaker_voice or "female",
-                )
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=created_announcement.id,
+                title=created_announcement.title,
+                content=created_announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=is_emerg,
+                speaker_node_id=getattr(request, 'speaker_node_id', None),
+                scheduled_time=broadcast_sched_time,
+                speaker_voice=created_announcement.speaker_voice or "female",
+                force_requeue=True,
+            )
         except Exception as e:
             logger.warning(f"Auto-broadcast error on announcement creation: {e}")
 
@@ -422,55 +420,62 @@ def update_announcement_service(
         request,
     )
 
-    # Manage speaker delivery channel if specified in update request
+    # Manage speaker delivery channel if specified in update request or on publishing/approval
     deliver_speaker = getattr(request, 'deliver_speaker', None)
-    if deliver_speaker is not None:
-        try:
-            from app.models.delivery_type import DeliveryType
-            from app.models.announcement_delivery import AnnouncementDelivery
-            spk_type = db.query(DeliveryType).filter(DeliveryType.name.ilike("%speaker%")).first()
-            if not spk_type:
-                spk_type = DeliveryType(name="Speaker")
-                db.add(spk_type)
-                db.commit()
-                db.refresh(spk_type)
+    try:
+        from app.models.delivery_type import DeliveryType
+        from app.models.announcement_delivery import AnnouncementDelivery
+        spk_type = db.query(DeliveryType).filter(DeliveryType.name.ilike("%speaker%")).first()
+        if not spk_type:
+            spk_type = DeliveryType(name="Speaker")
+            db.add(spk_type)
+            db.commit()
+            db.refresh(spk_type)
 
-            existing_deliv = db.query(AnnouncementDelivery).filter(
-                AnnouncementDelivery.announcement_id == updated_announcement.id,
-                AnnouncementDelivery.delivery_type_id == spk_type.id,
-            ).first()
+        existing_deliv = db.query(AnnouncementDelivery).filter(
+            AnnouncementDelivery.announcement_id == updated_announcement.id,
+            AnnouncementDelivery.delivery_type_id == spk_type.id,
+        ).first()
 
-            if deliver_speaker and not existing_deliv:
+        has_speaker_delivery = False
+        if deliver_speaker is True:
+            if not existing_deliv:
                 db.add(AnnouncementDelivery(
                     announcement_id=updated_announcement.id,
                     delivery_type_id=spk_type.id,
                 ))
                 db.commit()
-            elif not deliver_speaker and existing_deliv:
+            has_speaker_delivery = True
+        elif deliver_speaker is False:
+            if existing_deliv:
                 db.delete(existing_deliv)
                 db.commit()
+            has_speaker_delivery = False
+        else:
+            has_speaker_delivery = bool(existing_deliv) or getattr(updated_announcement, "deliver_speaker", False)
 
-            if deliver_speaker and updated_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
-                from app.core.emergency_utils import is_emergency_announcement
-                is_emerg = is_emergency_announcement(updated_announcement)
-                from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
-                dept_code = "ALL"
-                if updated_announcement.creator and hasattr(updated_announcement.creator, 'department') and updated_announcement.creator.department:
-                    dept_code = updated_announcement.creator.department.code
-                enqueue_and_broadcast_announcement(
-                    db=db,
-                    announcement_id=updated_announcement.id,
-                    title=updated_announcement.title,
-                    content=updated_announcement.description,
-                    department_code=dept_code,
-                    zone="College-Wide",
-                    is_emergency=is_emerg,
-                    speaker_node_id=getattr(request, 'speaker_node_id', None),
-                    scheduled_time=updated_announcement.scheduled_at,
-                    speaker_voice=updated_announcement.speaker_voice or "female",
-                )
-        except Exception as e:
-            logger.warning(f"Speaker delivery update error on announcement {updated_announcement.id}: {e}")
+        if has_speaker_delivery and updated_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
+            from app.core.emergency_utils import is_emergency_announcement
+            is_emerg = is_emergency_announcement(updated_announcement)
+            from app.services.hardware_speaker_service import enqueue_and_broadcast_announcement
+            dept_code = "ALL"
+            if updated_announcement.creator and hasattr(updated_announcement.creator, 'department') and updated_announcement.creator.department:
+                dept_code = updated_announcement.creator.department.code
+            enqueue_and_broadcast_announcement(
+                db=db,
+                announcement_id=updated_announcement.id,
+                title=updated_announcement.title,
+                content=updated_announcement.description,
+                department_code=dept_code,
+                zone="College-Wide",
+                is_emergency=is_emerg,
+                speaker_node_id=getattr(request, 'speaker_node_id', None),
+                scheduled_time=updated_announcement.scheduled_at,
+                speaker_voice=updated_announcement.speaker_voice or "female",
+                force_requeue=True,
+            )
+    except Exception as e:
+        logger.warning(f"Speaker delivery update error on announcement {updated_announcement.id}: {e}")
 
     create_audit_log_service(
         db=db,

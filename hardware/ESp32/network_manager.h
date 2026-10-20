@@ -70,8 +70,8 @@ private:
     unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
       if (completedAnnouncements[i].annId == annId) {
-        // Cooldown of 3 seconds prevents double-polling within a single loop while allowing rapid repeats
-        if (now - completedAnnouncements[i].completedAt < 3000UL) {
+        // Cooldown of 1.5 seconds (matching LCD dwell time) prevents double-polling within a single loop
+        if (now - completedAnnouncements[i].completedAt < 1500UL) {
           return true;
         }
       }
@@ -441,7 +441,9 @@ public:
                 continue;
               }
 
-              if (aId > 0 && !isAnnouncementCompleted(aId) && (!isBroadcasting || activeAnnouncementId != aId)) {
+              // Pending command deduplication is already guaranteed by isCommandExecuted(cmdId).
+              // Never block repeat rounds of the same announcement ID!
+              if (aId > 0 && (!isBroadcasting || isIncomingEmerg)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
                 targetQId = cmd["queue_id"].as<int>();
