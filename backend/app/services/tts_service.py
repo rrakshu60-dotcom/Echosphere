@@ -223,8 +223,8 @@ def synthesize_remote_kokoro_api(
     text: str,
     voice: str = "af_heart",
     output_path: str = "",
-    response_format: str = "mp3",
-    timeout: float = 4.0,
+    response_format: str = "wav",
+    timeout: float = 15.0,
 ) -> bool:
     """
     Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces)
@@ -794,9 +794,15 @@ def generate_announcement_audio_sync(
             except Exception as k_err:
                 logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying remote worker...")
 
-        # 1B. Dedicated Remote Kokoro-82M Worker (Only when local ONNX not present)
-        if KOKORO_API_URL and os.getenv("ENABLE_REMOTE_KOKORO", "false").lower() == "true":
-            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=2.5):
+        # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
+        enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "15.0"))
+        if KOKORO_API_URL and enable_remote:
+            if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
+                if include_chime and selected_chime != "none":
+                    temp_wav = wav_filepath + ".chime_tmp.wav"
+                    if prepend_chime_to_wav_file(wav_filepath, temp_wav, chime_type=selected_chime):
+                        os.replace(temp_wav, wav_filepath)
                 if not os.path.exists(mp3_filepath) or os.path.getsize(mp3_filepath) < 500:
                     convert_wav_to_mp3(wav_filepath, mp3_filepath)
                 chosen_fn = mp3_filename if os.path.exists(mp3_filepath) else wav_filename

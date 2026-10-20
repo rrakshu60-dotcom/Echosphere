@@ -676,7 +676,8 @@ public:
     }
 
 
-    // 5. Play completion chime after speech concludes
+    // 5. Play completion chime after speech concludes (with 350ms natural breathing space)
+    delay(350);
     audioMgr.playCompletionChime();
 
     // 6. Reset visualizer graphic to clean baseline
