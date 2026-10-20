@@ -875,7 +875,7 @@ def generate_announcement_audio_sync(
 
         # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
         enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "4.5"))
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "6.5"))
         if KOKORO_API_URL and enable_remote:
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
                 if include_chime and selected_chime != "none":
