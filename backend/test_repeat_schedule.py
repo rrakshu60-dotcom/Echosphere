@@ -150,7 +150,7 @@ def test_repeat_schedule_suite():
     )
     sched1 = configure_repeat_schedule(db, ann1.id, config_data_force, user)
     db.refresh(ann1)
-    assert ann1.deliver_speaker is True, "deliver_speaker should now be True after force_enable"
+    assert bool(ann1.deliver_speaker) is True, "deliver_speaker should now be True after force_enable"
     assert sched1.id is not None
     print("  ✓ Retrofitting non-speaker notice via force_enable succeeded!")
 
@@ -213,7 +213,7 @@ def test_repeat_schedule_suite():
         start_date=now,
         end_date=now + timedelta(hours=20),
     )
-    assert "CUSTOM_WINDOW" in custom_config.selected_slots
+    assert custom_config.selected_slots and "CUSTOM_WINDOW" in custom_config.selected_slots
     assert custom_config.custom_start_time == "18:30"
     print("  ✓ Valid 24-hr custom window configuration accepted.")
 
@@ -322,7 +322,7 @@ def test_repeat_schedule_suite():
     # TEST 5: Speaker Queue Re-Activation (Without unique=True Error)
     # -------------------------------------------------------------
     print("\n🔍 [TEST 5] Testing SpeakerQueue Re-Activation...")
-    q_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann2.id).first()
+    q_item: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann2.id).first()
     assert q_item is not None, "Queue item must exist in speaker_queue"
     # Mark it Completed as if it finished audio playback
     q_item.status = "Completed"
@@ -761,7 +761,7 @@ def test_repeat_schedule_suite():
     db.refresh(sched_rep)
 
     # 1. Verify Round 1 was immediately broadcast and added to SpeakerQueue
-    q_item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_rep.id).first()
+    q_item: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_rep.id).first()
     assert q_item is not None, "Notice must be in SpeakerQueue!"
     assert q_item.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_item.status}"
     assert sched_rep.next_repeat_at is not None, "next_repeat_at must be populated"
@@ -855,7 +855,7 @@ def test_repeat_schedule_suite():
     db.refresh(sched_cw)
 
     # 1. Verify Round 1 was enqueued and started playing immediately on publish
-    q_cw = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_cw.id).first()
+    q_cw: Any = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == ann_cw.id).first()
     assert q_cw is not None, "Notice must be enqueued immediately in SpeakerQueue!"
     assert q_cw.status in ("Playing", "Queued"), f"Status must be Playing or Queued, got {q_cw.status}"
     print(f"  ✓ Initial publish broadcast enqueued immediately (Status: {q_cw.status})")
