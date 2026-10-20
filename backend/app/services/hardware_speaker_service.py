@@ -479,29 +479,36 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
 def publish_mqtt_command(topic: str, payload: dict) -> bool:
     """
     Publishes an MQTT control message to speaker nodes.
-    Gracefully handles broker offline mode by logging locally with zero latency socket probe.
+    Gracefully handles broker offline mode by logging locally with zero latency socket probe (<40ms).
     """
     try:
         # Fast probe to check if MQTT broker is listening before attempting full connection
         import socket
         probe_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        probe_sock.settimeout(0.15)
+        probe_sock.settimeout(0.04)
         probe_res = probe_sock.connect_ex((MQTT_BROKER_HOST, MQTT_BROKER_PORT))
         probe_sock.close()
         if probe_res != 0:
             logger.info(f"MQTT Broker at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} offline. Simulated MQTT dispatch succeeded.")
             return False
 
-        try:
-            from paho.mqtt.enums import CallbackAPIVersion
-            client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
-        except (ImportError, AttributeError):
-            client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
+        def _bg_publish():
+            try:
+                try:
+                    from paho.mqtt.enums import CallbackAPIVersion
+                    client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
+                except (ImportError, AttributeError):
+                    client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
 
-        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=5)
-        client.publish(topic, json.dumps(payload), qos=1)
-        client.disconnect()
-        logger.info(f"MQTT command sent to [{topic}]: {payload.get('command')}")
+                client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=5)
+                client.publish(topic, json.dumps(payload), qos=1)
+                client.disconnect()
+                logger.info(f"MQTT command sent to [{topic}]: {payload.get('command')}")
+            except Exception as pe:
+                logger.debug(f"Background MQTT publish note: {pe}")
+
+        import threading
+        threading.Thread(target=_bg_publish, daemon=True, name="MQTTPublishWorker").start()
         return True
     except Exception as e:
         logger.warning(f"MQTT dispatch error at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} - {e}. Simulated MQTT dispatch succeeded.")

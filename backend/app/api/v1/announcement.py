@@ -390,12 +390,9 @@ def _find_cached_audio_file(
     from app.services.tts_service import is_legacy_beep_file
     from app.services.cloud_storage_service import CloudStorageService
 
+    # 1. Fast local disk check (sub-millisecond, zero network IO)
     for filename in candidates:
         filepath = os.path.join(STATIC_AUDIO_DIR, filename)
-        if not os.path.exists(filepath):
-            restored = CloudStorageService.restore_file_from_cdn_if_missing(filename, folder="audio_streams")
-            if restored and os.path.exists(restored):
-                filepath = restored
         if os.path.exists(filepath):
             if is_legacy_beep_file(filepath):
                 try:
@@ -407,7 +404,7 @@ def _find_cached_audio_file(
                 media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
                 return filename, filepath, media_type
 
-    # Specific prefix scan in directory strictly matching requested tag (never cross-matching opposite gender or mode)
+    # 2. Local prefix scan in directory strictly matching requested tag (sub-millisecond)
     try:
         prefix = f"announcement_{announcement_id}_{tag}"
         for f in os.listdir(STATIC_AUDIO_DIR):
@@ -424,6 +421,21 @@ def _find_cached_audio_file(
                     return f, fp, media_type
     except Exception:
         pass
+
+    # 3. CDN check ONLY for candidates explicitly recorded in the storage manifest
+    for filename in candidates:
+        restored = CloudStorageService.restore_file_from_cdn_if_missing(filename, folder="audio_streams")
+        if restored and os.path.exists(restored):
+            if is_legacy_beep_file(restored):
+                try:
+                    os.remove(restored)
+                except Exception:
+                    pass
+                continue
+            if os.path.getsize(restored) > 512:
+                media_type = "audio/wav" if filename.endswith(".wav") else "audio/mpeg"
+                return filename, restored, media_type
+
     return None, None, None
 
 

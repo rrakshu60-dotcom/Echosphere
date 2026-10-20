@@ -307,6 +307,8 @@ class CloudStorageService:
         If a local file was wiped during container sleep or redeployment,
         fetches it back from the Hugging Face Git LFS dataset repository.
         Returns the restored local file path, or None if unavailable.
+        Strictly requires the file to be tracked in the storage manifest to eliminate
+        wasteful 1.8s CDN probes on freshly synthesized or non-existent files.
         """
         dest_dir = os.path.join(STATIC_DIR, folder)
         local_path = os.path.join(dest_dir, filename)
@@ -317,22 +319,22 @@ class CloudStorageService:
         path_in_repo = f"{folder}/{filename}"
         cls._load_manifest()
 
+        # Strictly verify file is recorded in manifest before attempting network request
         cdn_url = cls._manifest.get(path_in_repo)
-        if not cdn_url and cls._repo_id:
-            cdn_url = f"https://huggingface.co/datasets/{cls._repo_id}/resolve/main/{path_in_repo}"
+        if not cdn_url:
+            return None
 
-        if cdn_url:
-            try:
-                import requests
-                logger.info(f"[Storage] Restoring missing container file from CDN: {cdn_url}")
-                resp = requests.get(cdn_url, timeout=15)
-                if resp.status_code == 200 and len(resp.content) > 512:
-                    os.makedirs(dest_dir, exist_ok=True)
-                    with open(local_path, "wb") as f:
-                        f.write(resp.content)
-                    logger.info(f"[Storage] Successfully restored {filename} to local container storage ({len(resp.content)} bytes).")
-                    return local_path
-            except Exception as e:
-                logger.debug(f"[Storage] Could not restore {filename} from CDN: {e}")
+        try:
+            import requests
+            logger.info(f"[Storage] Restoring missing container file from CDN: {cdn_url}")
+            resp = requests.get(cdn_url, timeout=3.0)
+            if resp.status_code == 200 and len(resp.content) > 512:
+                os.makedirs(dest_dir, exist_ok=True)
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+                logger.info(f"[Storage] Successfully restored {filename} to local container storage ({len(resp.content)} bytes).")
+                return local_path
+        except Exception as e:
+            logger.debug(f"[Storage] Could not restore {filename} from CDN: {e}")
 
         return None
