@@ -153,7 +153,29 @@ class SpeakerQueueController extends GetxController {
       try {
         _realtimeSubscription = EchosphereRealtimeService().events.listen((event) {
           final ev = event.event.toUpperCase();
-          if (ev.contains('QUEUE') || ev.contains('ANNOUNCEMENT') || ev.contains('EMERGENCY') || ev.contains('PLAYBACK') || ev.contains('NOTICE')) {
+          if (ev == 'QUEUE_SYNC_START') {
+            final dur = event.data['duration_seconds'] as int?;
+            if (dur != null && dur > 0) {
+              currentTotalDuration.value = dur;
+            }
+            final playedAtStr = event.data['played_at']?.toString();
+            if (playedAtStr != null) {
+              final playedAt = DateTime.tryParse(playedAtStr)?.toUtc();
+              if (playedAt != null) {
+                final elapsed = DateTime.now().toUtc().difference(playedAt).inSeconds;
+                currentElapsedSeconds.value = elapsed.clamp(0, currentTotalDuration.value);
+              } else {
+                currentElapsedSeconds.value = 0;
+              }
+            } else {
+              currentElapsedSeconds.value = 0;
+            }
+            if (!isPlaying.value) {
+              isPlaying.value = true;
+              _startPlaybackTimer();
+            }
+            refreshQueue(silent: true);
+          } else if (ev.contains('QUEUE') || ev.contains('ANNOUNCEMENT') || ev.contains('EMERGENCY') || ev.contains('PLAYBACK') || ev.contains('NOTICE')) {
             refreshQueue(silent: true);
           }
         });
