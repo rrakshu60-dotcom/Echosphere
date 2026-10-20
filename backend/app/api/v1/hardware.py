@@ -1,8 +1,11 @@
 from typing import Any, List, Optional
 import re
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
@@ -843,6 +846,16 @@ def update_queue_action(
     act_clean = action.lower().strip()
 
     if act_clean == "complete":
+        if getattr(item, "status", None) != "Playing":
+            logger.info(f"Notice #{item.id} action=complete ignored - status is already '{getattr(item, 'status', None)}'")
+            return {
+                "status": "success",
+                "queue_id": item.id,
+                "action": action,
+                "new_status": getattr(item, "status", None),
+                "message": f"Notice was already advanced (status: {getattr(item, 'status', None)})",
+            }
+
         ann = item.announcement
         is_emerg = is_emergency_announcement(ann)
 
@@ -927,13 +940,16 @@ def update_queue_action(
                 sched.is_active = False
 
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-            exec_log = RepeatSlotExecutionLog(
-                schedule_id=sched.id,
-                slot_key=f"{prefix_key}:{sched.total_played_count}",
-                slot_name=slot_name,
-                played_at=now,
-            )
-            db.add(exec_log)
+            target_key = f"{prefix_key}:{sched.total_played_count}"
+            existing_log = db.query(RepeatSlotExecutionLog).filter(RepeatSlotExecutionLog.slot_key == target_key).first()
+            if not existing_log:
+                exec_log = RepeatSlotExecutionLog(
+                    schedule_id=sched.id,
+                    slot_key=target_key,
+                    slot_name=slot_name,
+                    played_at=now,
+                )
+                db.add(exec_log)
 
         if has_repeats_left and next_rep_time:
             max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()

@@ -578,7 +578,25 @@ class SpeakerQueueController extends GetxController {
         userPausedOrStopped.value = false;
 
         if (prevAnnId != newAnnId) {
-          currentElapsedSeconds.value = 0;
+          if (combined[playingIdx]['played_at'] != null) {
+            final playedAt = DateTime.tryParse(combined[playingIdx]['played_at'])?.toUtc();
+            if (playedAt != null) {
+              final elapsed = DateTime.now().toUtc().difference(playedAt).inSeconds;
+              currentElapsedSeconds.value = elapsed.clamp(0, currentTotalDuration.value);
+            } else {
+              currentElapsedSeconds.value = 0;
+            }
+          } else {
+            currentElapsedSeconds.value = 0;
+          }
+        } else if (combined[playingIdx]['played_at'] != null) {
+          final playedAt = DateTime.tryParse(combined[playingIdx]['played_at'])?.toUtc();
+          if (playedAt != null) {
+            final serverElapsed = DateTime.now().toUtc().difference(playedAt).inSeconds;
+            if ((serverElapsed - currentElapsedSeconds.value).abs() > 2) {
+              currentElapsedSeconds.value = serverElapsed.clamp(0, currentTotalDuration.value);
+            }
+          }
         }
 
         if (!isPlaying.value) {
