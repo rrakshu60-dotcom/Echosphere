@@ -825,9 +825,8 @@ def test_repeat_schedule_suite():
     db.query(SpeakerQueue).delete()
     db.commit()
 
-    ist_now = get_current_ist_datetime()
-    cw_start = (ist_now + timedelta(minutes=20)).strftime("%H:%M")
-    cw_end = (ist_now + timedelta(minutes=50)).strftime("%H:%M")
+    cw_start = "14:00"
+    cw_end = "14:30"
 
     ann_cw = Announcement(
         title="Placement Cell Workshop Notice",
