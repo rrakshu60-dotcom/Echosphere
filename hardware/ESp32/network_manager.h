@@ -439,7 +439,7 @@ public:
                 const char* rM = cmd["message"];
                 if (!rM || strlen(rM) == 0) rM = cmd["content"];
                 targetContent = rM ? String(rM) : "";
-                targetPriority = c.equalsIgnoreCase("PLAY_EMERGENCY") ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
+                targetPriority = (c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>())) ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
                 const char* rD = cmd["department"];
                 targetDept = rD ? String(rD) : "College-Wide";
                 targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
@@ -466,6 +466,9 @@ public:
             targetContent = rawC ? String(rawC) : "";
             const char* rawP = activeNotice["priority"];
             targetPriority = rawP ? String(rawP) : "NORMAL";
+            if (!activeNotice["is_emergency"].isNull() && activeNotice["is_emergency"].as<bool>()) {
+              targetPriority = "EMERGENCY";
+            }
             const char* rawD = activeNotice["department"];
             targetDept = rawD ? String(rawD) : "College-Wide";
             targetDuration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
@@ -666,6 +669,18 @@ public:
       );
 
       Serial.println(streamPlayed ? F("✅ [I2S STREAM] Notice speech playback completed successfully!") : F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
+    }
+
+    // 2b. If stream was preempted by an emergency priority override, immediately cut over!
+    if (audioMgr.wasLastStreamPreempted()) {
+      Serial.println(F("🚨 [PREEMPTION HANDLER] Notice was cut short by Emergency Override! Bypassing completion chime, dwell, and notify."));
+      displayMgr.resetEqualizerGraphic();
+      isBroadcasting = false;
+      activeAnnouncementId = 0;
+      activeQueueId = 0;
+      // Immediately call sendHeartbeat to fetch and execute emergency broadcast
+      sendHeartbeat();
+      return;
     }
 
     // 3. Fallback melody if cloud speech streaming wasn't available

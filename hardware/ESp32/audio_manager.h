@@ -30,6 +30,7 @@ private:
   int currentVolume = NODE_DEFAULT_VOL; // 0 to 100%
   bool isPlaying = false;
   bool isInitialized = false;
+  bool lastStreamPreempted = false;
   uint32_t currentSampleRate = I2S_SAMPLE_RATE;
 
 #ifdef ECHOSPHERE_I2S_V5
@@ -38,6 +39,8 @@ private:
 
 public:
   AudioManager() {}
+
+  bool wasLastStreamPreempted() const { return lastStreamPreempted; }
 
   void begin() {
     Serial.println(F("🔊 [I2S AUDIO] Initializing MAX98357A I2S driver..."));
@@ -294,6 +297,7 @@ public:
     if (!isInitialized || streamUrl.length() == 0) return false;
 
     isPlaying = true;
+    lastStreamPreempted = false;
     Serial.print(F("🎧 [I2S AUDIO] Streaming from URL: "));
     Serial.println(streamUrl);
 
@@ -627,15 +631,28 @@ public:
 
     http.end();
 
-    // 1. Drain physical DMA buffer by pushing 300ms of silence at CURRENT stream sample rate.
-    // This ensures all remaining speech frames exit the MAX98357A amplifier without abrupt cuts
-    // and prevents any residual frames from being pitch-shifted when clock resets to 44.1kHz!
-    if (totalBytesStreamed >= 2048) {
-      silence(300);
-      delay(100);
+    // Check if the stream was cut short prematurely by server preemption
+    if (totalDataBytes > 8192 && totalBytesStreamed < (totalDataBytes - 4096)) {
+      lastStreamPreempted = true;
+      Serial.print(F("🚨 [I2S AUDIO] Stream was PREEMPTED by Emergency! Streamed "));
+      Serial.print(totalBytesStreamed);
+      Serial.print(F(" of "));
+      Serial.print(totalDataBytes);
+      Serial.println(F(" bytes."));
     }
 
-    bool streamPlayedSuccess = (totalBytesStreamed >= 2048);
+    // 1. Drain physical DMA buffer by pushing silence at CURRENT stream sample rate.
+    // If preempted, only do a very short 40ms silence to cut over immediately!
+    if (totalBytesStreamed >= 2048) {
+      if (lastStreamPreempted) {
+        silence(40);
+      } else {
+        silence(300);
+        delay(100);
+      }
+    }
+
+    bool streamPlayedSuccess = (totalBytesStreamed >= 2048) && !lastStreamPreempted;
     if (!streamPlayedSuccess) {
       Serial.print(F("⚠️ [I2S AUDIO] Voice stream delivered only "));
       Serial.print(totalBytesStreamed);

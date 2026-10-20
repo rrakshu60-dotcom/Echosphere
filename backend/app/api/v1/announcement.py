@@ -1,7 +1,11 @@
 import os
+import time
+import logging
 from fastapi import APIRouter, Depends, Request, HTTPException, status, Query, UploadFile, File
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import (
     get_current_user,
@@ -537,6 +541,56 @@ def get_announcement_audio_endpoint(
     }
 
 
+def _stream_file_with_preemption_check(
+    fpath: str,
+    media_type: str,
+    filename: str,
+    announcement_id: int,
+    db: Session,
+):
+    from app.services.hardware_speaker_service import is_global_emergency_active
+    from app.core.emergency_utils import is_emergency_announcement
+    from app.repositories.announcement_repository import get_announcement_by_id
+
+    notice = get_announcement_by_id(db, announcement_id)
+    is_emergency = is_emergency_announcement(notice) if notice else False
+
+    # Emergency audio streams must NEVER be preempted
+    if is_emergency or not fpath or not os.path.exists(fpath):
+        return FileResponse(fpath, media_type=media_type, filename=filename)
+
+    file_size = os.path.getsize(fpath)
+    stream_start_time = time.time()
+
+    def audio_chunk_generator():
+        try:
+            with open(fpath, "rb") as af:
+                while True:
+                    # If an emergency was triggered while this non-emergency notice was streaming, ABORT!
+                    if is_global_emergency_active(stream_start_time):
+                        logger.warning(
+                            f"🚨 [STREAM CUT] Non-emergency audio stream #{announcement_id} "
+                            f"preempted by incoming emergency override! Closing socket immediately."
+                        )
+                        break
+                    chunk = af.read(4096)
+                    if not chunk:
+                        break
+                    yield chunk
+        except Exception as e:
+            logger.warning(f"Audio chunk generator closed: {e}")
+
+    return StreamingResponse(
+        audio_chunk_generator(),
+        media_type=media_type,
+        headers={
+            "Content-Length": str(file_size),
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Accept-Ranges": "bytes",
+        },
+    )
+
+
 @router.get("/{announcement_id}/audio/stream")
 def stream_announcement_audio_endpoint(
     announcement_id: int,
@@ -610,7 +664,7 @@ def stream_announcement_audio_endpoint(
                 pass
 
     if fname and fpath:
-        return FileResponse(fpath, media_type=mtype, filename=fname)
+        return _stream_file_with_preemption_check(fpath, mtype, fname, announcement_id, db)
 
     notice = get_announcement_by_id(db, announcement_id)
     if notice:
@@ -697,7 +751,7 @@ def stream_announcement_audio_endpoint(
             except Exception:
                 pass
 
-    return FileResponse(file_path, media_type=media_type, filename=file_name)
+    return _stream_file_with_preemption_check(file_path, media_type, file_name, announcement_id, db)
 
 
 @router.get("/{announcement_id}/chime")

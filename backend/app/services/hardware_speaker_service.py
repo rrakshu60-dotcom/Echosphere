@@ -69,6 +69,38 @@ _PENDING_COMMANDS: Dict[str, List[dict]] = {}
 _BROADCAST_COMMANDS: List[dict] = []
 _DELIVERED_BROADCASTS: Dict[str, Set[str]] = {}
 
+# Global Emergency Override State (for instant audio stream preemption)
+_GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP: float = 0.0
+_GLOBAL_EMERGENCY_ANNOUNCEMENT_ID: Optional[int] = None
+
+
+def trigger_global_emergency_preemption(announcement_id: int):
+    """
+    Signals an active emergency priority override across all audio streams and queue workers.
+    Any active non-emergency audio streams will immediately drop/close their connections.
+    """
+    global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP, _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID
+    _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP = time.time()
+    _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID = announcement_id
+    logger.warning(
+        f"🚨 [GLOBAL EMERGENCY PREEMPTION TRIGGERED] Announcement #{announcement_id} at {_GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP}"
+    )
+
+
+def clear_global_emergency_preemption():
+    global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP, _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID
+    _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP = 0.0
+    _GLOBAL_EMERGENCY_ANNOUNCEMENT_ID = None
+
+
+def is_global_emergency_active(since_timestamp: Optional[float] = None) -> bool:
+    global _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP
+    if _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP <= 0:
+        return False
+    if since_timestamp is not None:
+        return _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP > since_timestamp
+    return (time.time() - _GLOBAL_EMERGENCY_OVERRIDE_TIMESTAMP) < 300
+
 
 def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db: Optional[Session] = None):
     """
@@ -359,19 +391,36 @@ async def broadcast_announcement_to_speaker(
     """
     # Emergency Fast-Path: Sub-millisecond dispatch for urgent alarms without blocking on network TTS
     if is_emergency:
+        trigger_global_emergency_preemption(announcement_id)
         topic = "echosphere/speakers/all/emergency"
+        audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
         payload = {
             "command": "PLAY_EMERGENCY",
             "announcement_id": announcement_id,
             "title": title,
             "message": content,
-            "audio_url": f"{base_url}/static/audio_streams/emergency_{announcement_id}.wav",
+            "priority": "EMERGENCY",
+            "is_emergency": True,
+            "audio_url": audio_full_url,
             "zone": zone or "College-Wide",
             "volume": 100,
             "timestamp": utc_now().isoformat(),
         }
         publish_success = publish_mqtt_command(topic, payload)
         queue_command_for_nodes(payload, target_mac=None, db=db)
+
+        # Enforce emergency preemption on SpeakerQueue: pause all non-emergency active items!
+        non_em_items = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id != announcement_id,
+                SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
+            )
+            .all()
+        )
+        for nei in non_em_items:
+            nei.status = "Paused"
+        db.commit()
 
         # Record in SpeakerQueue table if announcement exists
         from app.models.announcement import Announcement
@@ -385,6 +434,7 @@ async def broadcast_announcement_to_speaker(
                     status="Playing",
                     scheduled_time=utc_now(),
                     played_at=utc_now(),
+                    duration_seconds=15,
                 )
                 db.add(queue_item)
                 db.commit()
@@ -392,6 +442,7 @@ async def broadcast_announcement_to_speaker(
             else:
                 setattr(existing_item, "status", "Playing")
                 setattr(existing_item, "played_at", utc_now())
+                setattr(existing_item, "queue_position", 1)
                 db.commit()
 
         return {
@@ -705,6 +756,7 @@ def enqueue_and_broadcast_announcement(
     )
 
     if is_emergency:
+        trigger_global_emergency_preemption(announcement_id)
         other_active = (
             db.query(SpeakerQueue)
             .filter(
@@ -798,6 +850,8 @@ def enqueue_and_broadcast_announcement(
         "target_mac": target_mac,
         "title": title,
         "message": content,
+        "priority": "EMERGENCY" if is_emergency else "NORMAL",
+        "is_emergency": is_emergency,
         "audio_url": audio_full_url,
         "zone": zone,
         "volume": 100 if is_emergency else 85,
@@ -859,6 +913,26 @@ def enqueue_and_broadcast_announcement(
         "is_playing": should_play,
         "mqtt_dispatched": publish_success,
     }
+
+
+def restore_paused_queue_items(db: Session, now: datetime):
+    """
+    Restores any paused notices back to Queued state after an emergency broadcast finishes.
+    """
+    paused_items = (
+        db.query(SpeakerQueue)
+        .filter(SpeakerQueue.status == "Paused")
+        .order_by(SpeakerQueue.queue_position.asc())
+        .all()
+    )
+    if paused_items:
+        logger.info(f"Restoring {len(paused_items)} paused queue items after emergency broadcast.")
+        pos = 1
+        for item in paused_items:
+            item.status = "Queued"
+            item.queue_position = pos
+            pos += 1
+        db.commit()
 
 
 def dispatch_queue_action_to_speakers(
@@ -924,8 +998,12 @@ def dispatch_queue_action_to_speakers(
         max_reps = getattr(sched, "max_repeats", 1) or 1
         cmd_uid = f"cmd_ann_{ann_id}_rep_{repeat_round}_{int(time.time()*1000)}"
 
+        is_em = is_emergency_announcement(ann)
+        if is_em:
+            trigger_global_emergency_preemption(ann_id)
+
         payload = {
-            "command": "PLAY_ANNOUNCEMENT",
+            "command": "PLAY_EMERGENCY" if is_em else "PLAY_ANNOUNCEMENT",
             "command_id": cmd_uid,
             "announcement_id": ann_id,
             "queue_id": queue_item.id,
@@ -933,8 +1011,10 @@ def dispatch_queue_action_to_speakers(
             "target_mac": target_mac,
             "title": title,
             "message": message,
+            "priority": "EMERGENCY" if is_em else "NORMAL",
+            "is_emergency": is_em,
             "audio_url": audio_full_url,
-            "volume": 85,
+            "volume": 100 if is_em else 85,
             "duration": getattr(queue_item, "duration_seconds", 15) or 15,
             "duration_seconds": getattr(queue_item, "duration_seconds", 15) or 15,
             "is_repeat": is_repeat,
@@ -1291,6 +1371,53 @@ def auto_advance_speaker_queue(
             pass
 
         if not force_advance:
+            # IMMEDIATE EMERGENCY OVERRIDE CHECK:
+            # If current item is NOT an emergency notice, check if any emergency notice is waiting in queue!
+            if not is_curr_emerg:
+                from app.models.announcement import Announcement
+                pending_emergency = (
+                    db.query(SpeakerQueue)
+                    .join(SpeakerQueue.announcement)
+                    .filter(
+                        SpeakerQueue.status.in_(["Queued", "Next in Queue"]),
+                        or_(
+                            Announcement.priority == "High",
+                            Announcement.category == "Emergency",
+                            Announcement.alert_level == "Emergency",
+                        )
+                    )
+                    .order_by(SpeakerQueue.queue_position.asc())
+                    .first()
+                )
+                if pending_emergency:
+                    logger.warning(
+                        f"🚨 [EMERGENCY PREEMPTION] Non-emergency notice #{current_playing.announcement_id} "
+                        f"preempted by waiting emergency notice #{pending_emergency.announcement_id}!"
+                    )
+                    # Pause current playing notice so it can resume after emergency finishes
+                    current_playing.status = "Paused"
+                    # Promote emergency notice to Playing immediately
+                    pending_emergency.status = "Playing"
+                    pending_emergency.played_at = now
+                    pending_emergency.queue_position = 1
+                    db.commit()
+
+                    trigger_global_emergency_preemption(pending_emergency.announcement_id)
+
+                    dispatch_res = dispatch_queue_action_to_speakers(
+                        db=db,
+                        queue_item=pending_emergency,
+                        action="play",
+                        base_url=base_url,
+                    )
+                    return {
+                        "status": "emergency_preempted",
+                        "preempted_id": current_playing.id,
+                        "advanced_to_id": pending_emergency.id,
+                        "title": pending_emergency.announcement.title if pending_emergency.announcement else "Emergency",
+                        "dispatch": dispatch_res,
+                    }
+
             # If physical hardware is actively playing, wait for it to complete or watchdog safety timeout (curr_dur + 35s)
             if hardware_is_actively_playing and elapsed < (curr_dur + 35):
                 return None
@@ -1315,6 +1442,7 @@ def auto_advance_speaker_queue(
                 # Emergency notice completed! No repeat schedule or schedule ended. Mark Completed!
                 current_playing.status = "Completed"
                 db.commit()
+                clear_global_emergency_preemption()
                 # Restore any notices paused during the emergency broadcast
                 restore_paused_queue_items(db, now)
                 should_advance = True

@@ -182,8 +182,9 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             or (clean_mac in ("00:00:00:00:00:00", "D4:F3:2D:22:2A:CD") and target_mac_str in ("00:00:00:00:00:00", "D4:F3:2D:22:2A:CD"))
         )
         if is_targeted:
+            is_emergency = is_emergency_announcement(ann)
             dept_name = ann.creator.department.name if (ann.creator and ann.creator.department) else "College-Wide"
-            p_val = ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)
+            p_val = "EMERGENCY" if is_emergency else (ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority))
             active_content = (ann.ai_summary or ann.description or "").strip()
             for prefix in ("OFFICIAL CIRCULAR:", "CIRCULAR:", "NOTICE:", "ANNOUNCEMENT:", "SUMMARY:"):
                 if active_content.upper().startswith(prefix):
@@ -204,6 +205,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "title": active_title,
                 "content": active_content,
                 "priority": p_val,
+                "is_emergency": is_emergency,
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
                 "target_node_mac": target_mac,
