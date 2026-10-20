@@ -346,10 +346,21 @@ def diagnostic_tts(run_test: bool = False):
     except Exception:
         pass
 
+    try:
+        from app.services.tts_service import prewarm_gradio_client, _cached_gradio_client
+        if _cached_gradio_client is None:
+            prewarm_gradio_client()
+        from app.services.tts_service import _cached_gradio_client as _chk_client
+        diag["gradio_client_status"] = "INITIALIZED" if _chk_client is not None else "NONE"
+    except Exception as gce:
+        diag["gradio_client_status"] = f"ERROR: {gce}"
+        diag["gradio_client_traceback"] = traceback.format_exc().splitlines()[-6:]
+
     if run_test:
         try:
+            test_id = int(time.time() % 100000)
             res = generate_announcement_audio_sync(
-                announcement_id=9999,
+                announcement_id=test_id,
                 text="EchoSphere diagnostic audio test.",
                 gender="female",
                 accent="american",
