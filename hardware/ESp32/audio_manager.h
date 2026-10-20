@@ -489,6 +489,13 @@ public:
     unsigned long streamStartTime = millis();
     int chunkBytesTarget = (channels == 1) ? (CHUNK_SAMPLES * 2) : (CHUNK_SAMPLES * 4);
 
+    // Calculate dynamic safety limit: at least 3 minutes, or expected WAV length + 60s
+    uint32_t bytesPerSec = sampleRate * channels * (bitsPerSample / 8);
+    unsigned long expectedDurationMs = (totalDataBytes > 0 && bytesPerSec > 0)
+        ? ((uint64_t)totalDataBytes * 1000ULL) / bytesPerSec
+        : 60000UL;
+    unsigned long safetyLimitMs = max(180000UL, expectedDurationMs + 60000UL);
+
     // Helper lambda to fetch up to targetLen bytes reliably from the network stream
     auto fetchChunk = [&](int targetLen) -> int {
       int gathered = 0;
@@ -609,9 +616,9 @@ public:
         delay(2);
       }
 
-      // Safety timeout guard: max 50s per announcement stream
-      if (millis() - streamStartTime > 50000UL) {
-        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded safety limit. Stopping."));
+      // Safety timeout guard: dynamically scaled to WAV length (min 3 minutes)
+      if (millis() - streamStartTime > safetyLimitMs) {
+        Serial.println(F("⚠️ [I2S AUDIO] Stream exceeded dynamic safety limit. Stopping."));
         break;
       }
 
@@ -619,6 +626,14 @@ public:
     }
 
     http.end();
+
+    // 1. Drain physical DMA buffer by pushing 300ms of silence at CURRENT stream sample rate.
+    // This ensures all remaining speech frames exit the MAX98357A amplifier without abrupt cuts
+    // and prevents any residual frames from being pitch-shifted when clock resets to 44.1kHz!
+    if (totalBytesStreamed >= 2048) {
+      silence(300);
+      delay(100);
+    }
 
     bool streamPlayedSuccess = (totalBytesStreamed >= 2048);
     if (!streamPlayedSuccess) {
@@ -632,7 +647,7 @@ public:
     }
 
     stopAudio();
-    // Restore default sample rate for standard chimes
+    // Restore default sample rate for standard chimes AFTER DMA has fully drained
     setSampleRate(I2S_SAMPLE_RATE);
     isPlaying = false;
     return streamPlayedSuccess;

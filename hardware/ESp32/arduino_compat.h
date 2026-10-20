@@ -1,3 +1,6 @@
+#include <ArduinoJson.h>
+#include <ArduinoJson.hpp>
+
 #ifndef ECHOSPHERE_ARDUINO_COMPAT_H
 #define ECHOSPHERE_ARDUINO_COMPAT_H
 

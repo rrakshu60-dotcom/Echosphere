@@ -432,6 +432,7 @@ def get_announcement_audio_endpoint(
     is_summary: bool = False,
     include_chime: bool = True,
     chime: str | None = None,
+    regenerate: bool = False,
     db: Session = Depends(get_db),
 ):
     """
@@ -458,7 +459,7 @@ def get_announcement_audio_endpoint(
     if is_summary:
         tag += "_summary"
 
-    fname, fpath, mtype = _find_cached_audio_file(announcement_id, tag, chime)
+    fname, fpath, mtype = (None, None, None) if regenerate else _find_cached_audio_file(announcement_id, tag, chime)
     if fname and fpath:
         public_url = CloudStorageService.get_public_url("audio_streams", fname)
         if not public_url.startswith("http"):
@@ -546,6 +547,7 @@ def stream_announcement_audio_endpoint(
     chime: str | None = None,
     lang: str = "en",
     audio_format: str = Query("wav", description="Audio format: 'wav' (lossless PCM for ESP32/speakers) or 'mp3'"),
+    regenerate: bool = False,
     db: Session = Depends(get_db),
 ):
     """
@@ -566,7 +568,7 @@ def stream_announcement_audio_endpoint(
     if clean_lang != "en":
         tag += f"_{clean_lang}"
 
-    fname, fpath, mtype = _find_cached_audio_file(
+    fname, fpath, mtype = (None, None, None) if regenerate else _find_cached_audio_file(
         announcement_id,
         tag,
         chime,
