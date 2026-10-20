@@ -45,19 +45,19 @@
 #define NODE_MAC "D4:F3:2D:22:2A:CB"
 #define NODE_ZONE "Auditorium / Campus"
 #define NODE_DEPARTMENT "College-Wide"
-#define NODE_DEFAULT_VOL 90
+#define NODE_DEFAULT_VOL 100
 #elif SELECTED_NODE_PROFILE == 2
 #define NODE_NAME "Hardware Speaker Client 2"
 #define NODE_MAC "D4:F3:2D:22:2A:CC"
 #define NODE_ZONE "Block B - AI Lab"
 #define NODE_DEPARTMENT "AIML"
-#define NODE_DEFAULT_VOL 90
+#define NODE_DEFAULT_VOL 100
 #else
 #define NODE_NAME "ESP32 Smart Speaker & Live Display"
 #define NODE_MAC "D4:F3:2D:22:2A:CD"
 #define NODE_ZONE "Campus Corridor"
 #define NODE_DEPARTMENT "College-Wide"
-#define NODE_DEFAULT_VOL 90
+#define NODE_DEFAULT_VOL 100
 #endif
 
 // ----------------------------------------------------------------------------
