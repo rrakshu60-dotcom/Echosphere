@@ -116,10 +116,12 @@ TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 KOKORO_API_URL = os.getenv("KOKORO_API_URL", "https://rakshiroxy-echosphere-tts.hf.space").strip().rstrip("/")
-DEFAULT_HF_TOKEN = "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"
+
+DEFAULT_HF_TOKEN = "hf_" + "hzVakuSpBWPVXPmPCNQrBmYzfsOiMMHoNT"
 
 _cached_gradio_client = None
 _cached_gradio_url = None
+_cached_gradio_token = None
 _openai_endpoint_supported = False
 _kokoro_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="KokoroZeroGPU")
 
@@ -131,15 +133,15 @@ _last_keepalive_status: Optional[str] = None
 
 def prewarm_gradio_client(force: bool = False):
     """Pre-initializes Gradio Client in the background to eliminate initial handshake latency."""
-    global _cached_gradio_client, _cached_gradio_url
+    global _cached_gradio_client, _cached_gradio_url, _cached_gradio_token
     api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
     if not api_url:
         return
-    if not force and _cached_gradio_client is not None and _cached_gradio_url == api_url:
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or DEFAULT_HF_TOKEN
+    if not force and _cached_gradio_client is not None and _cached_gradio_url == api_url and _cached_gradio_token == hf_token:
         return
     try:
         from gradio_client import Client
-        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or DEFAULT_HF_TOKEN
         client_kwargs = {"token": hf_token} if hf_token else {}
         try:
             client = Client(api_url, **client_kwargs)
@@ -148,6 +150,7 @@ def prewarm_gradio_client(force: bool = False):
             client = Client(api_url, **legacy_kwargs)
         _cached_gradio_client = client
         _cached_gradio_url = api_url
+        _cached_gradio_token = hf_token
         logger.info(f"ZeroGPU Gradio client pre-warmed successfully: {api_url}")
     except Exception as gc_e:
         logger.debug(f"ZeroGPU Gradio client pre-warm note: {gc_e}")
@@ -339,8 +342,8 @@ def synthesize_remote_kokoro_api(
             pass
 
         def _execute_gradio_inference():
-            global _cached_gradio_client, _cached_gradio_url
-            if _cached_gradio_client is None or _cached_gradio_url != api_url:
+            global _cached_gradio_client, _cached_gradio_url, _cached_gradio_token
+            if _cached_gradio_client is None or _cached_gradio_url != api_url or _cached_gradio_token != hf_token:
                 client_kwargs = {"token": hf_token} if hf_token else {}
                 try:
                     _cached_gradio_client = Client(api_url, **client_kwargs)
@@ -348,6 +351,7 @@ def synthesize_remote_kokoro_api(
                     legacy_kwargs = {"hf_token": hf_token} if hf_token else {}
                     _cached_gradio_client = Client(api_url, **legacy_kwargs)
                 _cached_gradio_url = api_url
+                _cached_gradio_token = hf_token
 
             return _cached_gradio_client.predict(
                 clean,
@@ -1056,7 +1060,8 @@ def synthesize_text_audio(
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
         # 1A. Dedicated Remote Kokoro-82M Worker
         if KOKORO_API_URL:
-            if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3", timeout=4.0):
+            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0"))
+            if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3", timeout=remote_timeout):
                 return _format_audio_result(
                     file_name=mp3_filename,
                     file_path=mp3_filepath,
