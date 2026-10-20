@@ -650,14 +650,20 @@ async def broadcast_announcement_to_speaker(
         AnnouncementRepeatSchedule.is_active == True,
     ).first()
     rep_round = (sched_rec.total_played_count + 1) if sched_rec else 1
-    is_rep = bool(sched_rec is not None and sched_rec.total_played_count > 0)
+    target_queue_item = existing_item if existing_item else queue_item
+    target_q_id = getattr(target_queue_item, "id", None)
 
     payload = {
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
         "command_id": f"cmd_ann_{announcement_id}_rep_{rep_round}_{int(time.time()*1000)}",
         "announcement_id": announcement_id,
+        "queue_id": target_q_id,
         "title": title,
         "message": content,
+        "priority": "EMERGENCY" if is_emergency else "NORMAL",
+        "is_emergency": is_emergency,
+        "duration_seconds": dur_secs,
+        "department": department_code,
         "audio_url": audio_full_url,
         "zone": zone,
         "volume": 100,

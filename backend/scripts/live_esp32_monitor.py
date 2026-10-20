@@ -25,7 +25,15 @@ import threading
 import urllib.request
 import urllib.error
 
-# Force unbuffered prints
+# Force unbuffered prints and safe UTF-8 encoding for Windows terminals
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 print = functools.partial(print, flush=True)
 
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -82,7 +90,7 @@ class LatencyTracker:
             self.audio_start_time[ann_id] = now
             t_lcd = self.lcd_display_time.get(ann_id)
             gap_str = f"({(now - t_lcd):.2f}s after LCD display)" if t_lcd else ""
-            print(f"[{get_ts()}] [4. AUDIO PLAYING] I2S 16-bit PCM streaming to 8Ω speaker! {gap_str}")
+            print(f"[{get_ts()}] [4. AUDIO PLAYING] I2S 16-bit PCM streaming to 8-ohm speaker! {gap_str}")
 
     def record_audio_completed(self, ann_id):
         with self.lock:
@@ -94,7 +102,7 @@ class LatencyTracker:
 
             if self.last_repeat_cycle_end is not None:
                 repeat_gap = now - self.last_repeat_cycle_end
-                print(f"⏱️  [{get_ts()}] [REPEAT TIME GAP] Exactly {repeat_gap:.2f} seconds between repeat cycles!")
+                print(f"[{get_ts()}] [REPEAT TIME GAP] Exactly {repeat_gap:.2f} seconds between repeat cycles!")
 
             self.last_repeat_cycle_end = now
 

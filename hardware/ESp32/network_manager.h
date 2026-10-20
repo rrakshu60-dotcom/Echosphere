@@ -57,21 +57,29 @@ private:
     executedCmdIndex = (executedCmdIndex + 1) % MAX_EXECUTED_CMDS;
   }
 
+  int pendingTargetRound = 1;
+  int activeRepeatRound = 1;
+
   struct CompletedNoticeRecord {
     int annId = 0;
+    int round = 0;
+    int queueId = 0;
     unsigned long completedAt = 0;
   };
   static const int MAX_COMPLETED_ANNS = 16;
   CompletedNoticeRecord completedAnnouncements[MAX_COMPLETED_ANNS];
   int completedAnnIndex = 0;
 
-  bool isAnnouncementCompleted(int annId) const {
-    if (annId <= 0) return false;
+  bool isAnnouncementCompleted(int annId, int round = 0, int queueId = 0) const {
+    if (annId <= 0 && queueId <= 0) return false;
     unsigned long now = millis();
     for (int i = 0; i < MAX_COMPLETED_ANNS; i++) {
-      if (completedAnnouncements[i].annId == annId) {
-        // Cooldown of 1.5 seconds (matching LCD dwell time) prevents double-polling within a single loop
-        if (now - completedAnnouncements[i].completedAt < 1500UL) {
+      bool qMatch = (queueId > 0 && completedAnnouncements[i].queueId == queueId);
+      bool aMatch = (annId > 0 && completedAnnouncements[i].annId == annId);
+      bool rMatch = (round == 0 || completedAnnouncements[i].round == 0 || completedAnnouncements[i].round == round);
+      if ((qMatch || aMatch) && rMatch) {
+        // Cooldown of 45 seconds prevents REST heartbeats from re-triggering the same queue item/round
+        if (now - completedAnnouncements[i].completedAt < 45000UL) {
           return true;
         }
       }
@@ -79,9 +87,11 @@ private:
     return false;
   }
 
-  void markAnnouncementCompleted(int annId) {
-    if (annId <= 0) return;
+  void markAnnouncementCompleted(int annId, int round = 1, int queueId = 0) {
+    if (annId <= 0 && queueId <= 0) return;
     completedAnnouncements[completedAnnIndex].annId = annId;
+    completedAnnouncements[completedAnnIndex].round = round;
+    completedAnnouncements[completedAnnIndex].queueId = queueId;
     completedAnnouncements[completedAnnIndex].completedAt = millis();
     completedAnnIndex = (completedAnnIndex + 1) % MAX_COMPLETED_ANNS;
     lastCompletedAnnouncementId = annId;
@@ -377,6 +387,7 @@ public:
     bool shouldTriggerBroadcast = false;
     int targetAnnId = 0;
     int targetQId = 0;
+    int targetRound = 1;
     String targetTitle = "";
     String targetContent = "";
     String targetPriority = "NORMAL";
@@ -446,7 +457,8 @@ public:
               if (aId > 0 && (!isBroadcasting || isIncomingEmerg)) {
                 shouldTriggerBroadcast = true;
                 targetAnnId = aId;
-                targetQId = cmd["queue_id"].as<int>();
+                targetQId = cmd["queue_id"].isNull() ? 0 : cmd["queue_id"].as<int>();
+                targetRound = cmd["repeat_round"].isNull() ? 1 : cmd["repeat_round"].as<int>();
                 targetTitle = rT ? String(rT) : "Campus Notice";
                 const char* rM = cmd["message"];
                 if (!rM || strlen(rM) == 0) rM = cmd["content"];
@@ -470,11 +482,14 @@ public:
         if (!shouldTriggerBroadcast && !respDoc["active_notice"].isNull()) {
           JsonObject activeNotice = respDoc["active_notice"].as<JsonObject>();
           int aId = activeNotice["id"].as<int>();
-          bool isJustCompleted = isAnnouncementCompleted(aId);
+          int qId = activeNotice["queue_id"].isNull() ? 0 : activeNotice["queue_id"].as<int>();
+          int repRound = activeNotice["repeat_round"].isNull() ? 1 : activeNotice["repeat_round"].as<int>();
+          bool isJustCompleted = isAnnouncementCompleted(aId, repRound, qId);
           if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
             shouldTriggerBroadcast = true;
             targetAnnId = aId;
-            targetQId = activeNotice["queue_id"].as<int>();
+            targetQId = qId;
+            targetRound = repRound;
             const char* rawT = activeNotice["title"];
             targetTitle = rawT ? String(rawT) : "Campus Notice";
             const char* rawC = activeNotice["content"];
@@ -604,6 +619,7 @@ public:
       pendingBroadcastScheduled = true;
       pendingTargetAnnId = targetAnnId;
       pendingTargetQId = targetQId;
+      pendingTargetRound = targetRound;
       pendingTargetTitle = targetTitle;
       pendingTargetContent = targetContent;
       pendingTargetPriority = targetPriority;
@@ -616,9 +632,10 @@ public:
   // --------------------------------------------------------------------------
   // Notice Playback Flow
   // --------------------------------------------------------------------------
-  void triggerNoticeBroadcast(int annId, int qId, const String& title, const String& content, const String& priority, const String& dept, int durationSec, const String& customAudioUrl = "") {
+  void triggerNoticeBroadcast(int annId, int qId, const String& title, const String& content, const String& priority, const String& dept, int durationSec, const String& customAudioUrl = "", int repeatRound = 1) {
     activeAnnouncementId = annId;
     activeQueueId = qId;
+    activeRepeatRound = repeatRound;
     isBroadcasting = true;
 
     // Minimum 4 seconds or requested duration so notice card is readable
@@ -725,13 +742,16 @@ public:
 
     // 7. Auto-advance the backend queue right away so next item can queue
     int finishedQueueId = activeQueueId;
+    int finishedRound = activeRepeatRound;
     activeQueueId = 0; // Reset so notify is only called once
     if (finishedQueueId > 0) {
       notifyPlaybackCompleted(finishedQueueId);
+    } else if (annId > 0) {
+      notifyPlaybackCompleted(annId);
     }
 
     // Record as completed to prevent duplicate replay loops
-    markAnnouncementCompleted(annId);
+    markAnnouncementCompleted(annId, finishedRound, finishedQueueId);
 
     // After speech concludes, keep the notice card on screen for 1.5 seconds
     // so viewers have brief time to read, while eliminating delay between close schedule broadcasts
@@ -826,7 +846,7 @@ public:
       pendingBroadcastScheduled = false;
       Serial.print(F("🧠 [HEAP] Free heap before audio stream: "));
       Serial.println(ESP.getFreeHeap());
-      triggerNoticeBroadcast(pendingTargetAnnId, pendingTargetQId, pendingTargetTitle, pendingTargetContent, pendingTargetPriority, pendingTargetDept, pendingTargetDuration, pendingTargetAudioUrl);
+      triggerNoticeBroadcast(pendingTargetAnnId, pendingTargetQId, pendingTargetTitle, pendingTargetContent, pendingTargetPriority, pendingTargetDept, pendingTargetDuration, pendingTargetAudioUrl, pendingTargetRound);
     }
 
     // 3. Periodic 3-second heartbeat & display feed telemetry

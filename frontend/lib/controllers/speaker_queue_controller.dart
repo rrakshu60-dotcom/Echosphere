@@ -187,9 +187,19 @@ class SpeakerQueueController extends GetxController {
   bool isScheduleActiveNow(Map<String, dynamic> sched) {
     if (sched['is_active'] == false) return false;
     final now = DateTime.now();
-    final curMinutes = now.hour * 60 + now.minute;
 
+    if (sched['end_date'] != null) {
+      final endDt = DateTime.tryParse(sched['end_date'].toString());
+      if (endDt != null && now.isAfter(endDt.toLocal())) return false;
+    }
+
+    final mode = (sched['repeat_mode'] ?? '').toString().toUpperCase();
     final slots = (sched['selected_slots'] as List? ?? []).map((e) => e.toString().toUpperCase()).toList();
+
+    // INTERVAL mode is active continuously across the schedule lifespan
+    if (mode == 'INTERVAL' || slots.contains('INTERVAL')) return true;
+
+    final curMinutes = now.hour * 60 + now.minute;
 
     // Standard break slots in minutes:
     // SHORT_BREAK: 11:00 - 11:15 (660 - 675)
@@ -329,8 +339,9 @@ class SpeakerQueueController extends GetxController {
 
     bool changed = false;
     for (var notice in finalCandidates) {
-      if (dismissedAnnouncementIds.contains(notice.id) ||
-          completedSinglePlayAnnouncementIds.contains(notice.id)) {
+      final hasNoticeRepeat = notice.repeatSchedule != null && isScheduleActiveNow(notice.repeatSchedule!);
+      if ((dismissedAnnouncementIds.contains(notice.id) ||
+          completedSinglePlayAnnouncementIds.contains(notice.id)) && !hasNoticeRepeat) {
         continue;
       }
 

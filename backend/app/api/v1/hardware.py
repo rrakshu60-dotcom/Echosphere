@@ -201,10 +201,19 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                     active_title = active_title[len(prefix):].strip()
             active_title = re.sub(r'[*_#`]', '', active_title).strip() or ann.title
 
+            from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+            sched_rec = db.query(AnnouncementRepeatSchedule).filter(
+                AnnouncementRepeatSchedule.announcement_id == ann.id,
+                AnnouncementRepeatSchedule.is_active == True,
+            ).first()
+            active_round = (sched_rec.total_played_count + 1) if sched_rec else 1
+
             active_dict = {
                 "is_playing": True,
                 "id": ann.id,
                 "queue_id": active_playing.id,
+                "repeat_round": active_round,
+                "played_at": active_playing.played_at.isoformat() if active_playing.played_at else None,
                 "title": active_title,
                 "content": active_content,
                 "priority": p_val,
