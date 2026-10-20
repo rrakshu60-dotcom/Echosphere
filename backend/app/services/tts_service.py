@@ -154,6 +154,15 @@ def prewarm_gradio_client(force: bool = False):
         _cached_gradio_url = api_url
         _cached_gradio_token = hf_token
         logger.info(f"ZeroGPU Gradio client pre-warmed successfully: {api_url}")
+
+        # In background, fire a lightweight predict to allocate the ZeroGPU slice ahead of time
+        def _warm_slice(c=client):
+            try:
+                c.predict(".", "af_heart", 1.0, api_name="/synthesize")
+                logger.info("ZeroGPU GPU slice pre-allocated and ready for instant inference.")
+            except Exception as we:
+                logger.debug(f"ZeroGPU slice pre-allocation note: {we}")
+        threading.Thread(target=_warm_slice, daemon=True, name="ZeroGPU_Slice_Prewarm").start()
     except Exception as gc_e:
         logger.debug(f"ZeroGPU Gradio client pre-warm note: {gc_e}")
 
@@ -875,7 +884,7 @@ def generate_announcement_audio_sync(
 
         # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
         enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "6.5"))
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "12.0"))
         if KOKORO_API_URL and enable_remote:
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
                 if include_chime and selected_chime != "none":
