@@ -237,6 +237,24 @@ def create_announcement_service(
         description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
     )
 
+    # Proactively pre-render Kokoro-82M neural audio in background so ANY future broadcast/playback has 0.0s delay
+    try:
+        import threading
+        from app.services.tts_service import generate_announcement_audio_sync
+        def _bg_synth(ann_id=created_announcement.id, t=created_announcement.title, d=created_announcement.description, v=created_announcement.speaker_voice):
+            try:
+                generate_announcement_audio_sync(
+                    ann_id,
+                    f"{t}. {d}",
+                    gender=v or "female",
+                    include_chime=False,
+                )
+            except Exception as se:
+                logger.debug(f"Proactive background synthesis note: {se}")
+        threading.Thread(target=_bg_synth, daemon=True, name=f"PreRender_Ann_{created_announcement.id}").start()
+    except Exception as bg_err:
+        logger.debug(f"Failed to launch background pre-render: {bg_err}")
+
     # Multi-channel delivery and notification dispatch
     deliver_speaker = getattr(request, 'deliver_speaker', False)
     deliver_in_app = getattr(request, 'deliver_in_app', True)
