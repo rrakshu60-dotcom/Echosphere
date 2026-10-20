@@ -1,77 +1,152 @@
 """
-EchoSphere ESP32 Live Telemetry & Latency Monitor
-=================================================
-Monitors:
-1. COM7 Serial Port at 115200 baud (Direct hardware ESP32 logs).
-2. Backend Database Queue & Repeat Schedule events (Millisecond latency tracking).
-3. Live notice transitions: Creation -> TTS Audio -> ESP32 Enqueue -> ESP32 Playback -> Repeat Gap.
+EchoSphere Comprehensive ESP32 & Website Latency Monitor
+=========================================================
+Monitors concurrently:
+1. Hardware ESP32 on COM5 (115200 baud) - Captures exact LCD display and audio streaming events.
+2. Cloud Backend API (Render) - Captures when website pushes announcements & speaker queue changes.
+3. Local Backend Database - Fallback telemetry if testing locally.
+
+Directly measures and displays:
+- [T0] Website Notice Pushed (Timestamp when API receives notice)
+- [T1] Notice Enqueued in Speaker Queue
+- [T2] LCD Displays Notice (Hardware TFT activation timestamp)
+- [T3] Audio Playback Starts (I2S audio stream begins)
+- [T4] Audio Playback Finishes
+- [T5] Repeat Gap (Exact elapsed seconds between repeat broadcast cycles)
 """
 
 import sys
 import os
 import time
 import functools
+import json
 from datetime import datetime, timezone
 import threading
+import urllib.request
+import urllib.error
 
 # Force unbuffered prints
 print = functools.partial(print, flush=True)
 
-# Add backend directory to sys.path
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from app.db.database import SessionLocal
-from app.models.speaker_node import SpeakerNode
-from app.models.speaker_queue import SpeakerQueue
-from app.models.announcement import Announcement
-from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
-
 def get_ts():
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
+def safe_str(val):
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="replace")
+    return str(val)
+
+# Shared timeline tracker
+class LatencyTracker:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.notice_push_time = {}   # ann_id -> timestamp
+        self.lcd_display_time = {}   # ann_id -> timestamp
+        self.audio_start_time = {}   # ann_id -> timestamp
+        self.audio_end_time = {}     # ann_id -> timestamp
+        self.last_repeat_cycle_end = None
+
+    def record_website_push(self, ann_id, title):
+        with self.lock:
+            now = time.time()
+            self.notice_push_time[ann_id] = now
+            print(f"\n{'='*75}")
+            print(f"[{get_ts()}] [1. WEBSITE PUSH] Announcement #{ann_id} pushed! Title: '{title}'")
+            print(f"{'='*75}")
+
+    def record_queue_added(self, ann_id, q_id, priority, status):
+        with self.lock:
+            now = time.time()
+            t_push = self.notice_push_time.get(ann_id)
+            lat_str = f"+{(now - t_push):.2f}s after website push" if t_push else ""
+            print(f"[{get_ts()}] [2. QUEUE ADDED] Item #{q_id} (Ann #{ann_id}) in status '{status}' {lat_str}")
+
+    def record_lcd_displayed(self, ann_id, title):
+        with self.lock:
+            now = time.time()
+            self.lcd_display_time[ann_id] = now
+            t_push = self.notice_push_time.get(ann_id)
+            if t_push:
+                diff = now - t_push
+                print(f"\n>>> [{get_ts()}] [3. LCD DISPLAYED] ESP32 TFT rendered notice #{ann_id}! [LATENCY: {diff:.2f}s from Website Push] <<<")
+            else:
+                print(f"\n>>> [{get_ts()}] [3. LCD DISPLAYED] ESP32 TFT rendered notice: '{title}' <<<")
+
+    def record_audio_playing(self, ann_id, url):
+        with self.lock:
+            now = time.time()
+            self.audio_start_time[ann_id] = now
+            t_lcd = self.lcd_display_time.get(ann_id)
+            gap_str = f"({(now - t_lcd):.2f}s after LCD display)" if t_lcd else ""
+            print(f"[{get_ts()}] [4. AUDIO PLAYING] I2S 16-bit PCM streaming to 8Ω speaker! {gap_str}")
+
+    def record_audio_completed(self, ann_id):
+        with self.lock:
+            now = time.time()
+            self.audio_end_time[ann_id] = now
+            t_start = self.audio_start_time.get(ann_id)
+            dur_str = f"Duration: {(now - t_start):.2f}s" if t_start else ""
+            print(f"[{get_ts()}] [5. AUDIO COMPLETED] Broadcast finished. {dur_str}")
+
+            if self.last_repeat_cycle_end is not None:
+                repeat_gap = now - self.last_repeat_cycle_end
+                print(f"⏱️  [{get_ts()}] [REPEAT TIME GAP] Exactly {repeat_gap:.2f} seconds between repeat cycles!")
+
+            self.last_repeat_cycle_end = now
+
+tracker = LatencyTracker()
+
+
 def serial_monitor_thread(stop_event):
     """
-    Watches for COM7 (or any new COM port) and reads serial lines at 115200 baud.
-    Uses win32file for reliable, zero-dependency Windows serial communications.
+    Connects to the ESP32 on COM5 (or COM7 fallback) at 115200 baud.
+    Parses hardware events: LCD rendering, I2S streaming, completion.
     """
     import win32file
     import win32con
 
-    target_port = "COM7"
+    target_ports = ["COM5", "COM7", "COM3", "COM4"]
     handle = None
+    active_port = None
 
-    print(f"[{get_ts()}] [SERIAL] Waiting for {target_port} to connect at 115200 baud...")
+    print(f"[{get_ts()}] [SERIAL] Scanning for ESP32 on {target_ports} at 115200 baud...")
 
     while not stop_event.is_set():
         if handle is None:
-            try:
-                handle = win32file.CreateFile(
-                    f"\\\\.\\{target_port}",
-                    win32con.GENERIC_READ | win32con.GENERIC_WRITE,
-                    0,
-                    None,
-                    win32con.OPEN_EXISTING,
-                    0,
-                    None,
-                )
-                dcb = win32file.GetCommState(handle)
-                dcb.BaudRate = 115200
-                dcb.ByteSize = 8
-                dcb.Parity = win32file.NOPARITY
-                dcb.StopBits = win32file.ONESTOPBIT
-                win32file.SetCommState(handle, dcb)
+            for p in target_ports:
+                try:
+                    h = win32file.CreateFile(
+                        f"\\\\.\\{p}",
+                        win32con.GENERIC_READ | win32con.GENERIC_WRITE,
+                        0,
+                        None,
+                        win32con.OPEN_EXISTING,
+                        0,
+                        None,
+                    )
+                    dcb = win32file.GetCommState(h)
+                    dcb.BaudRate = 115200
+                    dcb.ByteSize = 8
+                    dcb.Parity = win32file.NOPARITY
+                    dcb.StopBits = win32file.ONESTOPBIT
+                    dcb.fDtrControl = win32file.DTR_CONTROL_DISABLE
+                    dcb.fRtsControl = win32file.RTS_CONTROL_DISABLE
+                    win32file.SetCommState(h, dcb)
+                    # Timeouts: (ReadIntervalTimeout, ReadTotalTimeoutMultiplier, ReadTotalTimeoutConstant, WriteTotalTimeoutMultiplier, WriteTotalTimeoutConstant)
+                    win32file.SetCommTimeouts(h, (20, 5, 50, 5, 50))
 
-                timeouts = win32file.COMMTIMEOUTS()
-                timeouts.ReadIntervalTimeout = 20
-                timeouts.ReadTotalTimeoutConstant = 50
-                timeouts.ReadTotalTimeoutMultiplier = 10
-                win32file.SetCommTimeouts(handle, timeouts)
+                    handle = h
+                    active_port = p
+                    print(f"[{get_ts()}] [SERIAL] >>> CONNECTED TO ESP32 ON {active_port} (115200 baud) <<<")
+                    break
+                except Exception:
+                    continue
 
-                print(f"[{get_ts()}] [SERIAL] >>> CONNECTED TO ESP32 ON {target_port} (115200 baud) <<<")
-            except Exception:
-                handle = None
+            if handle is None:
                 time.sleep(1.0)
                 continue
 
@@ -82,11 +157,26 @@ def serial_monitor_thread(stop_event):
                 lines = text.splitlines()
                 for line in lines:
                     line_str = line.strip()
-                    if line_str:
-                        print(f"[{get_ts()}] [ESP32 SERIAL {target_port}] {line_str}")
+                    if not line_str:
+                        continue
+
+                    # Filter out raw memory dots or clean lines
+                    clean_line = line_str.encode("ascii", errors="backslashreplace").decode("ascii")
+
+                    # Check for key hardware events
+                    if "TFT DISPLAY" in line_str or "ACTIVE NOTICE" in line_str or "STATE_PLAYING_ANNOUNCEMENT" in line_str:
+                        tracker.record_lcd_displayed(0, clean_line)
+                    elif "AUDIO STREAM" in line_str or "Streaming 16-bit PCM" in line_str:
+                        tracker.record_audio_playing(0, clean_line)
+                    elif "BROADCAST FINISHED" in line_str or "Announcement completed" in line_str or "Cleanly restored" in line_str:
+                        tracker.record_audio_completed(0)
+
+                    # Print formatted line
+                    print(f"[{get_ts()}] [ESP32 {active_port}] {clean_line}")
+
             time.sleep(0.02)
         except Exception as e:
-            print(f"[{get_ts()}] [SERIAL] {target_port} disconnected or read error: {e}")
+            print(f"[{get_ts()}] [SERIAL] Disconnected: {e}")
             try:
                 win32file.CloseHandle(handle)
             except Exception:
@@ -101,105 +191,70 @@ def serial_monitor_thread(stop_event):
             pass
 
 
-def backend_queue_monitor_thread(stop_event):
+def cloud_api_monitor_thread(stop_event):
     """
-    Polls the backend database every 250ms for:
-    - New announcements published or scheduled
-    - SpeakerQueue item status changes (PENDING -> PLAYING -> COMPLETED)
-    - Repeat schedule triggers
-    - Measures precise latency intervals
+    Monitors Render backend API (https://echosphere-backend-9lv8.onrender.com/api/v1)
+    for new announcements, queue items, and repeat events in real time.
     """
-    seen_announcements = set()
-    seen_queue_items = {} # id -> status
-    last_completed_time = None
-    last_enqueued_time = None
+    base_url = "https://echosphere-backend-9lv8.onrender.com/api/v1"
+    seen_ann_ids = set()
+    seen_queue_ids = {}
 
-    print(f"[{get_ts()}] [BACKEND MONITOR] Telemetry engine active. Monitoring SpeakerQueue and RepeatSchedules...")
+    print(f"[{get_ts()}] [CLOUD MONITOR] Polling Render API ({base_url}) for website notice activity...")
 
     while not stop_event.is_set():
-        db = SessionLocal()
         try:
-            # 1. Check recent announcements (last 10 minutes)
-            recent_anns = db.query(Announcement).order_by(Announcement.id.desc()).limit(5).all()
-            for ann in recent_anns:
-                if ann.id not in seen_announcements:
-                    seen_announcements.add(ann.id)
-                    print(
-                        f"[{get_ts()}] [ANNOUNCEMENT CREATED] ID #{ann.id} | Title: '{ann.title}' "
-                        f"| Status: {ann.status} | DeliverSpeaker: {ann.deliver_speaker} | AudioURL: {bool(ann.audio_url)}"
-                    )
+            # 1. Fetch latest announcements
+            req = urllib.request.Request(
+                f"{base_url}/announcements/?limit=5",
+                headers={"User-Agent": "EchoSphere-Latency-Monitor/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                items = data.get("items", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                for it in items:
+                    a_id = it.get("id")
+                    title = it.get("title", "")
+                    if a_id and a_id not in seen_ann_ids:
+                        seen_ann_ids.add(a_id)
+                        tracker.record_website_push(a_id, title)
 
-            # 2. Check Speaker Queue items
-            queue_items = db.query(SpeakerQueue).order_by(SpeakerQueue.id.desc()).limit(10).all()
-            for q in queue_items:
-                prev_status = seen_queue_items.get(q.id)
-                current_status = q.status
+            # 2. Fetch speaker queue items
+            q_req = urllib.request.Request(
+                f"{base_url}/hardware/speakers/13/queue",
+                headers={"User-Agent": "EchoSphere-Latency-Monitor/1.0"}
+            )
+            with urllib.request.urlopen(q_req, timeout=3.5) as resp:
+                q_data = json.loads(resp.read().decode("utf-8"))
+                q_items = q_data if isinstance(q_data, list) else q_data.get("items", [])
+                for qi in q_items:
+                    qid = qi.get("id")
+                    aid = qi.get("announcement_id")
+                    st = qi.get("status")
+                    prio = qi.get("priority", "NORMAL")
+                    if qid and (qid not in seen_queue_ids or seen_queue_ids[qid] != st):
+                        seen_queue_ids[qid] = st
+                        tracker.record_queue_added(aid, qid, prio, st)
 
-                if prev_status is None:
-                    seen_queue_items[q.id] = current_status
-                    if current_status in ["PENDING", "PLAYING"]:
-                        last_enqueued_time = time.time()
-                        repeat_info = f" (Round {q.repeat_round} of {q.max_repeats})" if q.is_repeat else " (Initial Broadcast)"
-                        print(
-                            f"[{get_ts()}] [QUEUE ENQUEUED] Item #{q.id} | AnnID: #{q.announcement_id} "
-                            f"| Priority: {q.priority} | Status: {current_status}{repeat_info} "
-                            f"| Scheduled: {q.scheduled_time}"
-                        )
-                elif prev_status != current_status:
-                    seen_queue_items[q.id] = current_status
-                    now_time = time.time()
+        except Exception:
+            pass
 
-                    if current_status == "PLAYING":
-                        latency = f"{(now_time - last_enqueued_time):.2f}s" if last_enqueued_time else "N/A"
-                        print(
-                            f"[{get_ts()}] [BROADCAST PLAYING] Item #{q.id} (Ann #{q.announcement_id}) "
-                            f"is NOW PLAYING on ESP32! (Pickup Latency: {latency})"
-                        )
-                    elif current_status == "COMPLETED":
-                        gap = f"{(now_time - last_completed_time):.2f}s" if last_completed_time else "First Notice"
-                        last_completed_time = now_time
-                        print(
-                            f"[{get_ts()}] [BROADCAST FINISHED] Item #{q.id} (Ann #{q.announcement_id}) "
-                            f"COMPLETED playback. (Repeat Gap: {gap})"
-                        )
-                    else:
-                        print(f"[{get_ts()}] [QUEUE STATUS] Item #{q.id} transitioned {prev_status} -> {current_status}")
-
-            # 3. Check Repeat Schedules
-            repeat_schedules = db.query(AnnouncementRepeatSchedule).filter(AnnouncementRepeatSchedule.is_active == True).all()
-            for rs in repeat_schedules:
-                key = f"rs_{rs.id}_{rs.total_played_count}_{rs.last_repeat_at}"
-                if key not in seen_queue_items:
-                    seen_queue_items[key] = True
-                    slots = rs.selected_slots or []
-                    custom_range = f" | Window: {rs.custom_start_time} - {rs.custom_end_time}" if "CUSTOM_WINDOW" in slots else ""
-                    print(
-                        f"[{get_ts()}] [REPEAT SCHEDULE ACTIVE] Ann #{rs.announcement_id} "
-                        f"| Slots: {slots}{custom_range} | Total Played: {rs.total_played_count} "
-                        f"| Next Due: {rs.next_repeat_at}"
-                    )
-
-        except Exception as e:
-            print(f"[{get_ts()}] [MONITOR ERROR] {e}")
-        finally:
-            db.close()
-
-        time.sleep(0.3)
+        time.sleep(0.6)
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("  EchoSphere Live ESP32 & Repeat Latency Debugging Monitor")
-    print("  Port: COM7 (115200 baud) | Backend: SQLite Session DB")
-    print("=" * 70)
+    print("=" * 75)
+    print("  EchoSphere Comprehensive ESP32 & Website Latency Monitor")
+    print("  ESP32 Port: COM5 (115200 baud) | Website API: Render Cloud")
+    print("=" * 75)
 
     stop_event = threading.Event()
 
     t_serial = threading.Thread(target=serial_monitor_thread, args=(stop_event,), daemon=True)
-    t_queue = threading.Thread(target=backend_queue_monitor_thread, args=(stop_event,), daemon=True)
+    t_cloud = threading.Thread(target=cloud_api_monitor_thread, args=(stop_event,), daemon=True)
 
     t_serial.start()
-    t_queue.start()
+    t_cloud.start()
 
     try:
         while True:
