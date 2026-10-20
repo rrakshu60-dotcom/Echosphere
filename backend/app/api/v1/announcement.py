@@ -555,12 +555,42 @@ def _stream_file_with_preemption_check(
     notice = get_announcement_by_id(db, announcement_id)
     is_emergency = is_emergency_announcement(notice) if notice else False
 
+    file_size = os.path.getsize(fpath) if (fpath and os.path.exists(fpath)) else 0
+    stream_start_time = time.time()
+
+    # Synchronize SpeakerQueue.played_at to the exact second physical audio streaming commences
+    try:
+        from app.models.speaker import SpeakerQueue
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        q_item = (
+            db.query(SpeakerQueue)
+            .filter(
+                SpeakerQueue.announcement_id == announcement_id,
+                SpeakerQueue.status == "Playing",
+            )
+            .first()
+        )
+        if q_item:
+            q_item.played_at = now_utc
+            db.commit()
+            try:
+                from app.core.websocket_manager import ws_manager
+                ws_manager.broadcast_sync({
+                    "event": "QUEUE_SYNC_START",
+                    "queue_id": q_item.id,
+                    "announcement_id": announcement_id,
+                    "played_at": now_utc.isoformat(),
+                    "duration_seconds": getattr(q_item, "duration_seconds", 15) or 15,
+                })
+            except Exception:
+                pass
+    except Exception as sq_e:
+        logger.debug(f"Audio stream queue sync note: {sq_e}")
+
     # Emergency audio streams must NEVER be preempted
     if is_emergency or not fpath or not os.path.exists(fpath):
         return FileResponse(fpath, media_type=media_type, filename=filename)
-
-    file_size = os.path.getsize(fpath)
-    stream_start_time = time.time()
 
     def audio_chunk_generator():
         chunk_count = 0

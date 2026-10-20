@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:echosphere/controllers/auth_controller.dart';
+import 'package:echosphere/controllers/speaker_queue_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/services/echosphere_realtime_service.dart';
@@ -1223,12 +1224,8 @@ class AnnouncementController extends GetxController {
           }
 
           try {
-            if (Get.isRegistered<dynamic>(tag: null)) {
-              // Reconcile temporary ID in speaker queue controller if active
-              final speakerCtrl = Get.isRegistered<dynamic>() ? Get.find<dynamic>() : null;
-              if (speakerCtrl != null && speakerCtrl.runtimeType.toString() == 'SpeakerQueueController') {
-                (speakerCtrl as dynamic).replaceTemporaryId(newId, backendId);
-              }
+            if (Get.isRegistered<SpeakerQueueController>()) {
+              Get.find<SpeakerQueueController>().replaceTemporaryId(newId, backendId);
             }
           } catch (_) {}
 
