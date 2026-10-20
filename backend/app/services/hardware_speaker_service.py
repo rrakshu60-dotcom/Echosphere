@@ -629,14 +629,20 @@ async def broadcast_announcement_to_speaker(
     )
     if not fname or not fpath:
         try:
-            generate_announcement_audio_sync(
-                announcement_id,
-                f"{title}. {content}",
-                gender=clean_v,
-                include_chime=False,
-            )
-        except Exception as bg_e:
-            logger.warning(f"Audio pre-generation on broadcast note: {bg_e}")
+            import threading
+            def _broadcast_bg_synth(a_id=announcement_id, a_title=title, a_content=content, a_gender=clean_v):
+                try:
+                    generate_announcement_audio_sync(
+                        a_id,
+                        f"{a_title}. {a_content}",
+                        gender=a_gender,
+                        include_chime=False,
+                    )
+                except Exception as bg_e:
+                    logger.warning(f"Audio pre-generation on broadcast note: {bg_e}")
+            threading.Thread(target=_broadcast_bg_synth, daemon=True, name=f"Broadcast_Synth_{announcement_id}").start()
+        except Exception as bg_err:
+            logger.warning(f"Failed to launch broadcast audio pre-render: {bg_err}")
 
     # 4. Publish MQTT dispatch and queue command for REST-polling nodes
     topic = f"echosphere/dept/{department_code}/speakers/command"
@@ -990,14 +996,20 @@ def enqueue_and_broadcast_announcement(
         )
         if not fname or not fpath:
             try:
-                generate_announcement_audio_sync(
-                    announcement_id,
-                    f"{title}. {content}",
-                    gender=clean_v,
-                    include_chime=False,
-                )
-            except Exception as bg_e:
-                logger.warning(f"Audio pre-generation on auto-play note: {bg_e}")
+                import threading
+                def _autoplay_bg_synth(a_id=announcement_id, a_title=title, a_content=content, a_gender=clean_v):
+                    try:
+                        generate_announcement_audio_sync(
+                            a_id,
+                            f"{a_title}. {a_content}",
+                            gender=a_gender,
+                            include_chime=False,
+                        )
+                    except Exception as bg_e:
+                        logger.warning(f"Audio pre-generation on auto-play note: {bg_e}")
+                threading.Thread(target=_autoplay_bg_synth, daemon=True, name=f"Autoplay_Synth_{announcement_id}").start()
+            except Exception as bg_err:
+                logger.warning(f"Failed to launch auto-play audio pre-render: {bg_err}")
 
         publish_success = publish_mqtt_command(topic, payload)
         queue_command_for_nodes(payload, target_mac=target_mac, db=db)
@@ -1092,14 +1104,20 @@ def dispatch_queue_action_to_speakers(
         )
         if not fname or not fpath:
             try:
-                generate_announcement_audio_sync(
-                    ann_id,
-                    f"{title}. {message}",
-                    gender=clean_v,
-                    include_chime=False,
-                )
-            except Exception as e:
-                logger.warning(f"Audio pre-generation on queue play: {e}")
+                import threading
+                def _queue_play_bg_synth(a_id=ann_id, a_title=title, a_message=message, a_gender=clean_v):
+                    try:
+                        generate_announcement_audio_sync(
+                            a_id,
+                            f"{a_title}. {a_message}",
+                            gender=a_gender,
+                            include_chime=False,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Audio pre-generation on queue play: {e}")
+                threading.Thread(target=_queue_play_bg_synth, daemon=True, name=f"Queue_Synth_{ann_id}").start()
+            except Exception as bg_err:
+                logger.warning(f"Failed to launch queue audio pre-render: {bg_err}")
 
         from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
         sched = (
@@ -1760,6 +1778,29 @@ def auto_advance_speaker_queue(
 
     if not next_item:
         return None
+
+    # Proactively pre-warm all upcoming queue items in the background
+    # so that when the next queue transition occurs, audio playback starts with 0.0s latency!
+    for upcoming in queued_all:
+        if upcoming.id != next_item.id and upcoming.announcement_id:
+            u_ann = getattr(upcoming, "announcement", None)
+            if u_ann:
+                try:
+                    import threading
+                    from app.services.tts_service import generate_announcement_audio_sync
+                    def _prewarm_item(u_id=upcoming.announcement_id, u_title=getattr(u_ann, "title", ""), u_desc=getattr(u_ann, "description", ""), u_v=getattr(u_ann, "speaker_voice", "female") or "female"):
+                        try:
+                            generate_announcement_audio_sync(
+                                u_id,
+                                f"{u_title}. {u_desc}",
+                                gender=str(u_v).lower(),
+                                include_chime=False,
+                            )
+                        except Exception:
+                            pass
+                    threading.Thread(target=_prewarm_item, daemon=True, name=f"Prewarm_Q_{upcoming.id}").start()
+                except Exception:
+                    pass
 
     setattr(next_item, "status", "Playing")
     setattr(next_item, "played_at", utc_now())

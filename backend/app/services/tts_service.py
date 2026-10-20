@@ -253,7 +253,7 @@ def get_zerogpu_health_status() -> dict:
         "keepalive_daemon_active": bool(_keepalive_thread and _keepalive_thread.is_alive()),
         "last_ping_time": _last_keepalive_ping_time,
         "last_ping_status": _last_keepalive_status,
-        "fast_fallback_timeout_sec": float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0")),
+        "fast_fallback_timeout_sec": float(os.getenv("KOKORO_TIMEOUT_SEC", "4.0")),
     }
 
 
@@ -262,7 +262,7 @@ def synthesize_remote_kokoro_api(
     voice: str = "af_heart",
     output_path: str = "",
     response_format: str = "wav",
-    timeout: float = 15.0,
+    timeout: float = 4.0,
 ) -> bool:
     """
     Synthesizes speech using a dedicated remote Kokoro-82M neural worker (e.g. Hugging Face Spaces)
@@ -835,7 +835,7 @@ def generate_announcement_audio_sync(
 
         # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
         enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0"))
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "4.0"))
         if KOKORO_API_URL and enable_remote:
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
                 if include_chime and selected_chime != "none":
@@ -1060,7 +1060,7 @@ def synthesize_text_audio(
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
         # 1A. Dedicated Remote Kokoro-82M Worker
         if KOKORO_API_URL:
-            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "7.0"))
+            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "4.0"))
             if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3", timeout=remote_timeout):
                 return _format_audio_result(
                     file_name=mp3_filename,
