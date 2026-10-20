@@ -138,6 +138,8 @@ backend/api/index.py
 *.ps1
 *.bat
 !frontend/android/gradlew.bat
+!run_serial_monitor.bat
+!install_esp32_driver.bat
 
 # Local Chat Documentation & Session History (Do not track in Git)
 COMPLETE_CHAT_CONVERSATION_HISTORY.md
