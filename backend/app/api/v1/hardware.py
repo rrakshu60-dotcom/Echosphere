@@ -139,7 +139,12 @@ def register_speaker_node(
         db.commit()
         db.refresh(existing)
         return existing
-    return create_speaker_node(db=db, node_in=node_in)
+def _format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).isoformat()
+    return dt.replace(tzinfo=timezone.utc).isoformat()
 
 
 def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dict:
@@ -661,8 +666,8 @@ def fetch_speaker_queue(
                 "interval_minutes": getattr(sched, "interval_minutes", 15),
                 "max_repeats": sched.max_repeats,
                 "play_on_publish": getattr(sched, "play_on_publish", True),
-                "next_repeat_at": sched.next_repeat_at.isoformat() if sched.next_repeat_at else None,
-                "last_repeat_at": sched.last_repeat_at.isoformat() if sched.last_repeat_at else None,
+                "next_repeat_at": _format_utc_iso(sched.next_repeat_at) if sched else None,
+                "last_repeat_at": _format_utc_iso(sched.last_repeat_at) if sched else None,
                 "selected_slots": sched.selected_slots,
                 "custom_start_time": sched.custom_start_time,
                 "custom_end_time": sched.custom_end_time,
@@ -675,7 +680,7 @@ def fetch_speaker_queue(
             prio_tier = (ann.priority.value if hasattr(ann.priority, "value") else str(ann.priority)) if ann else "NORMAL"
 
         repeat_round = (sched.total_played_count + 1) if sched else 1
-        next_rep_iso = sched.next_repeat_at.isoformat() if (sched and sched.next_repeat_at) else (item.scheduled_time.isoformat() if item.scheduled_time else None)
+        next_rep_iso = _format_utc_iso(sched.next_repeat_at) if (sched and sched.next_repeat_at) else _format_utc_iso(item.scheduled_time)
 
         result.append({
             "id": item.id,
@@ -688,8 +693,8 @@ def fetch_speaker_queue(
             "type": "AI Speech",
             "status": item.status,
             "queue_position": item.queue_position,
-            "scheduled_time": item.scheduled_time.isoformat() if item.scheduled_time else None,
-            "played_at": item.played_at.isoformat() if item.played_at else None,
+            "scheduled_time": _format_utc_iso(item.scheduled_time),
+            "played_at": _format_utc_iso(item.played_at),
             "duration_seconds": getattr(item, "duration_seconds", 15) or 15,
             "audio_url": f"{base_url}/api/v1/announcements/{item.announcement_id}/audio/stream",
             "speaker_node_id": item.speaker_node_id,
@@ -903,6 +908,7 @@ def update_queue_action(
                         next_rep_time = now + timedelta(seconds=4)
                         sched.next_repeat_at = next_rep_time
                         has_repeats_left = True
+                        sched.is_active = True
                         slot_name = matched[0]
                     else:
                         from app.services.repeat_schedule_service import get_next_slot_datetime, _utc_to_ist_naive
@@ -911,7 +917,10 @@ def update_queue_action(
                             next_rep_time = next_cand
                             sched.next_repeat_at = next_rep_time
                             has_repeats_left = True
+                            sched.is_active = True
                             slot_name = cand_slot or "NEXT_BREAK"
+                        else:
+                            sched.is_active = False
             else:
                 sched.is_active = False
 
@@ -938,10 +947,13 @@ def update_queue_action(
         db.commit()
         db.refresh(item)
 
-        from app.services.hardware_speaker_service import auto_advance_speaker_queue
+        from app.services.hardware_speaker_service import auto_advance_speaker_queue, restore_paused_queue_items
+        # 1. Unpause and restore any preempted notices so they immediately resume for their scheduled window!
+        restore_paused_queue_items(db=db, now=now)
+
         adv_res = None
         try:
-            adv_res = auto_advance_speaker_queue(db, force_advance=False, base_url=base_url)
+            adv_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
         except Exception:
             pass
 
@@ -964,6 +976,11 @@ def update_queue_action(
         "remove": "Completed",
     }
     new_status = status_map.get(act_clean, "Queued")
+    if new_status == "Playing":
+        other_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing", SpeakerQueue.id != item.id).all()
+        for op in other_playing:
+            op.status = "Paused"
+        db.commit()
     updated = update_queue_item_status(db=db, queue_id=item.id, status=new_status)
 
     # Dispatch hardware command to all speaker nodes
