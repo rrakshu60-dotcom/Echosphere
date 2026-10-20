@@ -824,7 +824,7 @@ def update_queue_action(
     request: Request,
     action: str = "complete",
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
     if not item:
@@ -900,7 +900,7 @@ def update_queue_action(
                 else:
                     matched = is_slot_active_at_time(sched, time_str, active_slots)
                     if matched:
-                        next_rep_time = now + timedelta(seconds=30)
+                        next_rep_time = now + timedelta(seconds=4)
                         sched.next_repeat_at = next_rep_time
                         has_repeats_left = True
                         slot_name = matched[0]
