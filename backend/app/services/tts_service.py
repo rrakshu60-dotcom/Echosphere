@@ -116,6 +116,7 @@ TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro").lower()
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 KOKORO_API_URL = os.getenv("KOKORO_API_URL", "https://rakshiroxy-echosphere-tts.hf.space").strip().rstrip("/")
+DEFAULT_HF_TOKEN = "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"
 
 _cached_gradio_client = None
 _cached_gradio_url = None
@@ -138,7 +139,7 @@ def prewarm_gradio_client():
         return
     try:
         from gradio_client import Client
-        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or DEFAULT_HF_TOKEN
         client_kwargs = {"token": hf_token} if hf_token else {}
         try:
             client = Client(api_url, **client_kwargs)
@@ -167,7 +168,7 @@ def ping_zerogpu_worker() -> bool:
     if not target_urls:
         return False
 
-    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or DEFAULT_HF_TOKEN
     headers = {"User-Agent": "EchoSphere-ZeroGPU-KeepAlive/2.2"}
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token}"
@@ -276,7 +277,7 @@ def synthesize_remote_kokoro_api(
     if not clean:
         clean = "Attention. Official campus announcement broadcast."
 
-    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN", "")
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or DEFAULT_HF_TOKEN
 
     # Fast Probe: Only try OpenAI endpoint if not previously discovered to be unsupported
     if _openai_endpoint_supported is None or _openai_endpoint_supported:
