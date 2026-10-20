@@ -357,7 +357,7 @@ def diagnostic_tts(run_test: bool = False, reset_client: bool = False):
             prewarm_gradio_client(force=True)
         from app.services.tts_service import _cached_gradio_client as _chk_client
         diag["gradio_client_status"] = "INITIALIZED" if _chk_client is not None else "NONE"
-        if _chk_client is not None:
+        if _chk_client is not None and not run_test:
             t0 = time.time()
             pred_res = _chk_client.predict("Test Kokoro synthesis", "af_heart", 1.0, api_name="/synthesize")
             diag["direct_predict"] = {
