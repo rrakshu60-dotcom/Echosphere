@@ -346,12 +346,25 @@ def diagnostic_tts(run_test: bool = False):
     except Exception:
         pass
 
+    from app.services.tts_service import TTS_ENGINE, KOKORO_API_URL
+    diag["TTS_ENGINE"] = TTS_ENGINE
+    diag["KOKORO_API_URL"] = KOKORO_API_URL
+    diag["ENABLE_REMOTE_KOKORO"] = os.getenv("ENABLE_REMOTE_KOKORO", "true")
+
     try:
         from app.services.tts_service import prewarm_gradio_client, _cached_gradio_client
         if _cached_gradio_client is None:
             prewarm_gradio_client()
         from app.services.tts_service import _cached_gradio_client as _chk_client
         diag["gradio_client_status"] = "INITIALIZED" if _chk_client is not None else "NONE"
+        if _chk_client is not None:
+            t0 = time.time()
+            pred_res = _chk_client.predict("Test Kokoro synthesis", "af_heart", 1.0, api_name="/synthesize")
+            diag["direct_predict"] = {
+                "success": True,
+                "elapsed_sec": round(time.time() - t0, 2),
+                "result": str(pred_res),
+            }
     except Exception as gce:
         diag["gradio_client_status"] = f"ERROR: {gce}"
         diag["gradio_client_traceback"] = traceback.format_exc().splitlines()[-6:]
