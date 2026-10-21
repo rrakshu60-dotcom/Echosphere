@@ -2,6 +2,11 @@
 Live Full-Stack Queue & ESP32 Hardware Verification Script
 Tests notice enqueuing, repeat scheduling, and hardware synchronization against the live Render API.
 """
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import time
 import requests
 from datetime import datetime, timezone
@@ -17,7 +22,7 @@ def run_live_test():
     print("\n[STEP 1] Logging into Live Production Backend (ESDEV01)...")
     login_res = requests.post(
         f"{BASE_URL}/auth/login",
-        json={"identifier": "ESDEV01", "password": "rakshitha@1228"},
+        json={"identifier": "ESDEV01", "password": os.environ.get("ES_PASSWORD_ESDEV01", "")},
         timeout=15,
     )
     assert login_res.status_code == 200, f"Login failed: {login_res.text}"

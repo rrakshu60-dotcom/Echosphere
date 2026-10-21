@@ -16,12 +16,12 @@
 // ----------------------------------------------------------------------------
 // 1. Wi-Fi Configuration
 // ----------------------------------------------------------------------------
-#define WIFI_SSID "OnePlus 13"                  // Primary Mobile Hotspot SSID
-#define WIFI_PASSWORD "12345678"                // Primary Hotspot Password
-#define WIFI_FALLBACK_SSID "ACT-ai_102814513118"// Home Wi-Fi SSID
-#define WIFI_FALLBACK_PASSWORD "94415283"       // Home Wi-Fi Password
-#define WIFI_ALT_SSID "Rakshitha"               // Secondary Hotspot SSID
-#define WIFI_ALT_PASSWORD "12345678"            // Secondary Hotspot Password
+// Wi-Fi SSIDs/passwords live in git-ignored wifi_secrets.h (template: wifi_secrets.h.example)
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#else
+#error "Copy wifi_secrets.h.example to wifi_secrets.h and fill in your Wi-Fi details"
+#endif
 #define WIFI_TIMEOUT_MS 6000                    // Wi-Fi connection timeout in ms per SSID attempt
 
 // ----------------------------------------------------------------------------

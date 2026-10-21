@@ -130,7 +130,7 @@ class AuthController extends GetxController {
     _loadSessionFromDisk();
     _loadAuditLogsFromDisk();
     loadResetQuotaFromDisk();
-    _loadCustomPasswordsFromDisk();
+    _purgeLegacyLocalPasswords();
   }
 
   Future<void> loadResetQuotaFromDisk() async {
@@ -192,29 +192,13 @@ class AuthController extends GetxController {
     return r == 'college admin' || r == 'principal' || r == 'dev admin' || r == 'developer';
   }
 
-  final RxMap<String, String> _customUserPasswords = <String, String>{}.obs;
-
-  Future<void> _loadCustomPasswordsFromDisk() async {
+  /// Older builds cached changed passwords in plain text on the device. Remove them.
+  Future<void> _purgeLegacyLocalPasswords() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('custom_user_passwords');
-      if (raw != null) {
-        final Map<String, dynamic> data = jsonDecode(raw);
-        data.forEach((k, v) {
-          _customUserPasswords[k.toString()] = v.toString();
-        });
-      }
+      await prefs.remove('custom_user_passwords');
     } catch (e) {
-      debugPrint('Failed to load custom passwords: $e');
-    }
-  }
-
-  Future<void> _saveCustomPasswordsToDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('custom_user_passwords', jsonEncode(_customUserPasswords));
-    } catch (e) {
-      debugPrint('Failed to save custom passwords: $e');
+      debugPrint('Failed to purge legacy local passwords: $e');
     }
   }
 
@@ -234,33 +218,14 @@ class AuthController extends GetxController {
 
     final idKey = user.officialEmail ?? user.usn ?? user.employeeId ?? user.fullName;
 
-    // Validate current password locally
-    final mockCheck = validateMockCredentials(idKey, currentPassword);
-    if (mockCheck == null) {
-      debugPrint('Current password validation failed for user: $idKey');
-    }
-
-    // Call live backend endpoint
+    // The server is the only authority on passwords
     final backendSuccess = await EchosphereApiService().updatePassword(
       currentPassword: currentPassword,
       newPassword: newPassword,
       identifier: idKey,
     );
 
-    // Save custom password locally for instant UI responsiveness & offline authentication
-    final keys = [
-      user.fullName.toLowerCase(),
-      if (user.officialEmail != null) user.officialEmail!.toLowerCase(),
-      if (user.usn != null) user.usn!.toLowerCase(),
-      if (user.employeeId != null) user.employeeId!.toLowerCase(),
-    ];
-
-    for (final k in keys) {
-      _customUserPasswords[k] = newPassword;
-    }
-    await _saveCustomPasswordsToDisk();
-
-    if (isRestrictedRole) {
+    if (backendSuccess && isRestrictedRole) {
       annualPasswordResetCount.value++;
       await _saveResetQuotaToDisk();
     }
@@ -268,11 +233,11 @@ class AuthController extends GetxController {
     await addAuditLog(
       username: user.fullName,
       role: user.role,
-      status: backendSuccess ? 'SUCCESS (Password Updated on Backend)' : 'SUCCESS (Password Updated Locally)',
+      status: backendSuccess ? 'SUCCESS (Password Updated)' : 'FAILED (Password Not Updated)',
       employeeId: user.employeeId,
     );
 
-    return true;
+    return backendSuccess;
   }
 
   Future<void> _loadSessionFromDisk() async {
@@ -434,66 +399,11 @@ class AuthController extends GetxController {
     return false;
   }
 
-  /// Get mock user for validation with strict password checking for ALL roles.
-  EchosphereUser? validateMockCredentials(String identifier, String password) {
-    final mockUser = _getMockUser(identifier);
-    if (mockUser == null) return null;
-
+  /// Whether this login identifier belongs to the College Admin account,
+  /// which needs the extra Employee ID verification step before signing in.
+  bool isCollegeAdminIdentifier(String identifier) {
     final idLower = identifier.trim().toLowerCase();
-    final pwTrimmed = password.trim();
-
-    final customPw = _customUserPasswords[idLower] ??
-        (mockUser.officialEmail != null ? _customUserPasswords[mockUser.officialEmail!.toLowerCase()] : null) ??
-        (mockUser.usn != null ? _customUserPasswords[mockUser.usn!.toLowerCase()] : null) ??
-        (mockUser.employeeId != null ? _customUserPasswords[mockUser.employeeId!.toLowerCase()] : null) ??
-        _customUserPasswords[mockUser.fullName.toLowerCase()];
-
-    if (customPw != null) {
-      return pwTrimmed == customPw ? mockUser : null;
-    }
-
-    // 1. College Admin (Primary)
-    if (idLower == 'cadmin' || idLower == 'dbitadm001') {
-      return pwTrimmed == 'Dbit@ES01' ? mockUser : null;
-    }
-
-    // 2. Dev Admin
-    if (idLower == 'esdev01' || idLower == 'devadm01' || idLower == 'developer') {
-      return pwTrimmed == 'rakshitha@1228' ? mockUser : null;
-    }
-
-    // 3. Principal
-    if (idLower == 'principal' || idLower == 'principal@echosphere.edu' || idLower == 'pri001') {
-      return pwTrimmed == 'Principal@123' ? mockUser : null;
-    }
-
-    // 4. Student (Rakshitha S)
-    if (idLower == '1db23ci079' ||
-        idLower == '1db23ci079@echosphere.edu' ||
-        idLower == 'rakshitha s' ||
-        idLower == 'rakshitha.s' ||
-        idLower == 'rakshitha') {
-      return pwTrimmed == 'rakshitha@1228' ? mockUser : null;
-    }
-
-    // 5. Teacher (Dr. B Kursheed)
-    if (idLower == 'dbitaimlt022022' ||
-        idLower == 'b.kursheed@echosphere.edu' ||
-        idLower == 'dr. b kursheed' ||
-        idLower == 'kursheed') {
-      return pwTrimmed == 'Kursh@2022' ? mockUser : null;
-    }
-
-    // 6. HoD (Dr. AIML HoD)
-    if (idLower == 'hod_aiml' ||
-        idLower == 'hod.aiml@echosphere.edu' ||
-        idLower == 'hod001' ||
-        idLower == 'hod') {
-      return pwTrimmed == 'Hod@123' ? mockUser : null;
-    }
-
-    // Deny login if password does not match any recognized credentials
-    return null;
+    return idLower == 'cadmin' || idLower == 'dbitadm001';
   }
 
   Future<bool> login({
@@ -537,33 +447,7 @@ class AuthController extends GetxController {
           return true;
         }
       } catch (e) {
-        debugPrint('Live backend login error, using local validation if match: $e');
-      }
-
-      // Local / Seed Fallback for testing
-      final mockUser = validateMockCredentials(identifier, password);
-      if (mockUser != null) {
-        currentUser.value = mockUser;
-        isLoggedIn.value = true;
-        token.value = 'mock_jwt_token_${mockUser.role.toLowerCase()}';
-        EchosphereApiService().setAuthToken(token.value);
-        await _saveSessionToDisk();
-
-        FcmPushService.instance.syncUserSubscriptions(
-          departmentCode: mockUser.department,
-          role: mockUser.role,
-        );
-
-        await addAuditLog(
-          username: mockUser.fullName,
-          role: mockUser.role,
-          status: employeeIdVerification != null
-              ? 'SUCCESS (Employee ID Verified: $employeeIdVerification)'
-              : 'LOGIN SUCCESS',
-          employeeId: mockUser.employeeId ?? employeeIdVerification,
-        );
-
-        return true;
+        debugPrint('Live backend login error: $e');
       }
 
       await addAuditLog(
@@ -603,87 +487,5 @@ class AuthController extends GetxController {
       await prefs.remove('auth_session');
     } catch (_) {}
     Get.offAll(() => const LoginScreen());
-  }
-
-  /// Auto-detect role from the identifier for mock/offline fallback.
-  EchosphereUser? _getMockUser(String identifier) {
-    final id = identifier.trim();
-    final idLower = id.toLowerCase();
-
-    // Email login is disabled for administrative roles (College Admin & Dev Admin)
-    // Primary College Admin account (Username: cadmin/CAdmin or Employee ID: DBITADM001)
-    if (idLower == 'cadmin' || idLower == 'dbitadm001') {
-      return EchosphereUser(
-        id: 12,
-        fullName: 'College Admin (Primary)',
-        role: 'College Admin',
-        officialEmail: 'cadmin@echosphere.edu',
-        employeeId: 'DBITADM001',
-        department: 'Administration',
-      );
-    }
-
-    // USN / Identity pattern matching (case insensitive)
-    if (idLower == '1db23ci079' || idLower == 'rakshitha s' || idLower == 'rakshitha.s' || idLower == 'rakshitha') {
-      return EchosphereUser(
-        id: 10,
-        fullName: 'Rakshitha S',
-        role: 'Student',
-        usn: '1DB23CI079',
-        officialEmail: '1db23ci079@echosphere.edu',
-        department: 'AIML',
-        departmentId: 5,
-      );
-    }
-
-    if (idLower == 'dbitaimlt022022' || idLower == 'dr. b kursheed' || idLower == 'b.kursheed@echosphere.edu' || idLower == 'kursheed') {
-      return EchosphereUser(
-        id: 11,
-        fullName: 'Dr. B Kursheed',
-        role: 'Teacher',
-        employeeId: 'DBITAIMLT022022',
-        officialEmail: 'b.kursheed@echosphere.edu',
-        department: 'AIML',
-        departmentId: 5,
-      );
-    }
-
-    if (idLower == 'hod_aiml' || idLower == 'hod.aiml@echosphere.edu' || idLower == 'hod001' || idLower == 'hod') {
-      return EchosphereUser(
-        id: 15,
-        fullName: 'Dr. AIML HoD',
-        role: 'HoD',
-        employeeId: 'HOD001',
-        officialEmail: 'hod.aiml@echosphere.edu',
-        department: 'AIML',
-        departmentId: 5,
-      );
-    }
-
-    // Email & role detection for Principal
-    if (idLower == 'principal' || idLower == 'principal@echosphere.edu') {
-      return EchosphereUser(
-        id: 3,
-        fullName: 'Dr. Principal',
-        role: 'Principal',
-        officialEmail: 'principal@echosphere.edu',
-        employeeId: 'PRI001',
-        department: 'Executive',
-      );
-    }
-
-    // Dev Admin account (Username/Employee ID: ESDev01)
-    if (idLower == 'esdev01' || idLower == 'devadm01' || idLower == 'developer') {
-      return EchosphereUser(
-        id: 7,
-        fullName: 'Dev Admin',
-        role: 'Dev Admin',
-        officialEmail: 'rrakshu60@gmail.com',
-        employeeId: 'ESDev01',
-        department: 'Dev Operations',
-      );
-    }
-
-    return null;
   }
 }

@@ -1,3 +1,8 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import requests
 import time
 import json
@@ -5,7 +10,7 @@ import json
 BASE_URL = "https://echosphere-backend-9lv8.onrender.com/api/v1"
 
 # 1. Login as admin
-login_resp = requests.post(f"{BASE_URL}/auth/login", json={"identifier": "ESDEV01", "password": "rakshitha@1228"})
+login_resp = requests.post(f"{BASE_URL}/auth/login", json={"identifier": "ESDEV01", "password": os.environ.get("ES_PASSWORD_ESDEV01", "")})
 if login_resp.status_code != 200:
     print(f"Login failed: {login_resp.status_code} {login_resp.text}")
     exit(1)

@@ -39,7 +39,7 @@ new_adapter = os.path.join(SCRIPT_DIR, "output_gemma_model", "final_adapter")
 old_adapter = os.path.join(SCRIPT_DIR, "output_gemma_campus_model", "final_adapter")
 ADAPTER_PATH = new_adapter if os.path.isdir(new_adapter) else old_adapter
 MODEL_ID = "google/gemma-2-2b-it"
-HF_TOKEN = os.getenv("HF_TOKEN", "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")
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 tokenizer = None
 model = None

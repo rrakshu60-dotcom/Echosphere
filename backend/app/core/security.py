@@ -12,7 +12,12 @@ load_dotenv()
 # JWT Configuration
 # ------------------------------------------------------------------
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY") or "echosphere_super_secure_jwt_signing_key_campus_2026_x89"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or ""
+if not SECRET_KEY:
+    # Never fall back to a fixed key: anyone could forge tokens with it.
+    # A per-process random key keeps local dev working (sessions end on restart).
+    SECRET_KEY = secrets.token_urlsafe(48)
+    print("WARNING: JWT_SECRET_KEY is not set; using a temporary random key. Set it in the environment.")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))
 

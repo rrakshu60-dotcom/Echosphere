@@ -1,3 +1,8 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import requests
 import time
 import json
@@ -14,7 +19,7 @@ def run_live_verification():
     print("[STEP 1] Authenticating with Live Backend (ESDEV01)...")
     login_res = requests.post(
         f"{BASE_URL}/auth/login",
-        json={"identifier": "ESDEV01", "password": "rakshitha@1228"},
+        json={"identifier": "ESDEV01", "password": os.environ.get("ES_PASSWORD_ESDEV01", "")},
         timeout=15,
     )
     assert login_res.status_code == 200, f"Login failed: {login_res.text}"

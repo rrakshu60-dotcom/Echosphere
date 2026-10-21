@@ -37,27 +37,10 @@ def get_current_user(
         payload = verify_access_token(token)
         sub = payload.get("sub")
     except ValueError:
-        # Graceful fallback for mock / development tokens
-        if token and token.startswith("mock_jwt_token_"):
-            role_slug = token.replace("mock_jwt_token_", "").strip().lower()
-            role_to_username = {
-                "dev admin": "ESDev01",
-                "developer": "ESDev01",
-                "devadmin": "ESDev01",
-                "college admin": "CAdmin",
-                "cadmin": "CAdmin",
-                "admin": "CAdmin",
-                "principal": "principal",
-                "hod": "hod_aiml",
-                "teacher": "dbitaimlt022022",
-                "student": "1db23ci079",
-            }
-            sub = role_to_username.get(role_slug, "ESDev01")
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
     if sub is None:
         raise HTTPException(
@@ -88,23 +71,7 @@ def get_optional_current_user(
         if sub:
             return _find_user_by_sub(db, str(sub))
     except Exception:
-        if token and token.startswith("mock_jwt_token_"):
-            role_slug = token.replace("mock_jwt_token_", "").strip().lower()
-            role_to_username = {
-                "dev admin": "ESDev01",
-                "developer": "ESDev01",
-                "devadmin": "ESDev01",
-                "college admin": "CAdmin",
-                "cadmin": "CAdmin",
-                "admin": "CAdmin",
-                "principal": "principal",
-                "hod": "hod_aiml",
-                "teacher": "dbitaimlt022022",
-                "student": "1db23ci079",
-            }
-            sub = role_to_username.get(role_slug, "ESDev01")
-            if sub:
-                return _find_user_by_sub(db, sub)
+        pass
     return None
 
 

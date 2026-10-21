@@ -44,21 +44,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Check if initial credentials match
-    final validatedUser = authController.validateMockCredentials(identifier, password);
-    if (validatedUser == null) {
-      errorSnackBar('Login failed. Please check your credentials.');
-      await authController.addAuditLog(
-        username: identifier,
-        role: 'Unknown',
-        status: 'FAILED (Invalid Username/Password)',
-      );
-      return;
-    }
-
-    // Secondary Verification for College Admin role
-    if (validatedUser.role == 'College Admin') {
-      _showEmployeeIdVerificationDialog(context, validatedUser, identifier, password);
+    // Secondary Verification for College Admin role (password is checked by the server afterwards)
+    if (authController.isCollegeAdminIdentifier(identifier)) {
+      _showEmployeeIdVerificationDialog(context, identifier, password);
       return;
     }
 
@@ -83,7 +71,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showEmployeeIdVerificationDialog(
     BuildContext context,
-    EchosphereUser targetUser,
     String identifier,
     String password,
   ) {

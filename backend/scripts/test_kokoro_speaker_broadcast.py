@@ -3,6 +3,10 @@ import requests
 import json
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
+
 BASE_URL = "https://echosphere-backend-9lv8.onrender.com/api/v1"
 LOG_PATH = r"C:\Users\Rakshitha\.gemini\antigravity-ide\brain\a04559c6-a19d-4fcd-b96a-6b073258a0bf\.system_generated\tasks\task-6362.log"
 
@@ -25,7 +29,7 @@ def test_kokoro_speaker_broadcast():
     print("\n[STEP 1] Authenticating on Live Production Backend...")
     resp = requests.post(
         f"{BASE_URL}/auth/login",
-        json={"identifier": "ESDEV01", "password": "rakshitha@1228"},
+        json={"identifier": "ESDEV01", "password": os.environ.get("ES_PASSWORD_ESDEV01", "")},
         timeout=15,
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"

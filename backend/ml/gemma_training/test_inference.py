@@ -15,7 +15,7 @@ new_adapter = os.path.join(SCRIPT_DIR, "output_gemma_model", "final_adapter")
 old_adapter = os.path.join(SCRIPT_DIR, "output_gemma_campus_model", "final_adapter")
 adapter_path = new_adapter if os.path.isdir(new_adapter) else old_adapter
 model_id = "google/gemma-2-2b-it"
-hf_token = "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"
+hf_token = os.environ.get("HF_TOKEN", "")
 
 print(f"CUDA Available: {torch.cuda.is_available()}")
 print(f"Adapter exists: {os.path.isdir(adapter_path)} ({adapter_path})")

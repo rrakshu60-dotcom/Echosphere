@@ -1,9 +1,26 @@
+import os
+import re
+import secrets
+
 from sqlalchemy.orm import Session
 
 from app.core.password import hash_password
 from app.models.department import Department
 from app.models.role import Role
 from app.models.user import User
+
+
+def _seed_password(username: str) -> str:
+    """
+    Initial password for a seeded account, read from ES_PASSWORD_<USERNAME>.
+    If unset, a random password is used (set the variable, or use password reset).
+    """
+    env_name = "ES_PASSWORD_" + re.sub(r"\W", "_", username.upper())
+    value = os.getenv(env_name)
+    if value:
+        return value
+    print(f"Seeding '{username}' with a random password ({env_name} not set).")
+    return secrets.token_urlsafe(16)
 
 
 def seed_users(db: Session):
@@ -22,7 +39,7 @@ def seed_users(db: Session):
             "full_name": "Dev Admin",
             "username": "ESDev01",
             "official_email": "rrakshu60@gmail.com",
-            "password": "rakshitha@1228",
+            "password": _seed_password("ESDev01"),
             "employee_id": "ESDev01",
             "role": "Dev Admin",
             "department": None,
@@ -31,7 +48,7 @@ def seed_users(db: Session):
             "full_name": "College Admin (Primary)",
             "username": "CAdmin",
             "official_email": "cadmin@echosphere.edu",
-            "password": "Dbit@ES01",
+            "password": _seed_password("CAdmin"),
             "employee_id": "DBITADM001",
             "role": "College Admin",
             "department": None,
@@ -40,7 +57,7 @@ def seed_users(db: Session):
             "full_name": "Principal",
             "username": "principal",
             "official_email": "principal@echosphere.edu",
-            "password": "Principal@123",
+            "password": _seed_password("principal"),
             "employee_id": "PRI001",
             "role": "Principal",
             "department": None,
@@ -49,7 +66,7 @@ def seed_users(db: Session):
             "full_name": "Dr. AIML HoD",
             "username": "hod_aiml",
             "official_email": "hod.aiml@echosphere.edu",
-            "password": "Hod@123",
+            "password": _seed_password("hod_aiml"),
             "employee_id": "HOD001",
             "role": "HoD",
             "department": "AIML",
@@ -58,7 +75,7 @@ def seed_users(db: Session):
             "full_name": "Rakshitha S",
             "username": "1db23ci079",
             "official_email": "1db23ci079@echosphere.edu",
-            "password": "rakshitha@1228",
+            "password": _seed_password("1db23ci079"),
             "usn": "1DB23CI079",
             "semester": 5,
             "section": "A",
@@ -69,7 +86,7 @@ def seed_users(db: Session):
             "full_name": "Dr. B Kursheed",
             "username": "dbitaimlt022022",
             "official_email": "b.kursheed@echosphere.edu",
-            "password": "Kursh@2022",
+            "password": _seed_password("dbitaimlt022022"),
             "employee_id": "DBITAIMLT022022",
             "role": "Teacher",
             "department": "AIML",

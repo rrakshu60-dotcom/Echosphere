@@ -1,8 +1,9 @@
+import os
 import urllib.request
 import json
 import sys
 
-RENDER_API_KEY = "rnd_wb1K8roldWsy63eSOLjGaKss7Ney"
+RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "")
 SERVICE_ID = "srv-dabdp2rtqb8s73fjp000"
 
 def get_deploys():

@@ -146,3 +146,6 @@ COMPLETE_CHAT_CONVERSATION_HISTORY.md
 ZEROGPU_TTS_DEPLOYMENT_JOURNEY.md
 
 
+
+# ESP32 Wi-Fi credentials
+hardware/ESp32/wifi_secrets.h
