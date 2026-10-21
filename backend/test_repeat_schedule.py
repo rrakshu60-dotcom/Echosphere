@@ -594,6 +594,14 @@ def test_repeat_schedule_suite():
     sched_em.custom_end_time = end_cur
     sched_em.start_date = now - timedelta(hours=2)
     sched_em.end_date = now + timedelta(hours=24)
+
+    # Deactivate previous test repeat schedules for High and Med so they act as routine queued notices
+    sched_hi = db.query(AnnouncementRepeatSchedule).filter(AnnouncementRepeatSchedule.announcement_id == ann_high.id).first()
+    if sched_hi:
+        sched_hi.is_active = False
+    sched_me = db.query(AnnouncementRepeatSchedule).filter(AnnouncementRepeatSchedule.announcement_id == ann_med.id).first()
+    if sched_me:
+        sched_me.is_active = False
     db.commit()
 
     # Clear queue and add Emergency (Playing) + High (Next in Queue) + Med (Queued)
