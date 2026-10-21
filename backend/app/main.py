@@ -41,6 +41,7 @@ try:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_summary TEXT;"))
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS speaker_voice VARCHAR(20) DEFAULT 'female';"))
             conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_node_id INTEGER;"))
+            conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_confirmed_at TIMESTAMP WITHOUT TIME ZONE;"))
             conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS repeat_mode VARCHAR(20) DEFAULT 'INTERVAL';"))
             conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS interval_minutes INTEGER DEFAULT 15;"))
             conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS max_repeats INTEGER DEFAULT 3;"))
@@ -59,6 +60,9 @@ try:
                 conn.execute(text("ALTER TABLE announcements ADD COLUMN ai_summary TEXT;"))
             if "speaker_voice" not in col_names:
                 conn.execute(text("ALTER TABLE announcements ADD COLUMN speaker_voice VARCHAR(20) DEFAULT 'female';"))
+            sq_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(speaker_queue);")).fetchall()]
+            if sq_cols and "speaker_confirmed_at" not in sq_cols:
+                conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN speaker_confirmed_at DATETIME;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
 

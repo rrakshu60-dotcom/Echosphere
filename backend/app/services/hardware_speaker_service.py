@@ -448,11 +448,12 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     ann = getattr(p_item, "announcement", None)
                     title = getattr(ann, "title", "Announcement") if ann else "Announcement"
                     message = (getattr(ann, "ai_summary", None) or getattr(ann, "description", "")) if ann else ""
-                    audio_url = f"https://echosphere-backend-9lv8.onrender.com/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav"
+                    audio_url = f"/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav&include_chime=false&queue_id={p_item.id}"
                     cmds.append({
                         "command": "PLAY_ANNOUNCEMENT",
                         "command_id": b_id,
                         "announcement_id": int(getattr(p_item, "announcement_id", 0)),
+                        "queue_id": int(p_item.id),
                         "title": str(title),
                         "message": str(message),
                         "audio_url": audio_url,
@@ -903,7 +904,8 @@ def enqueue_and_broadcast_announcement(
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
 
     # Audio should play immediately ONLY if queue is idle or this notice is emergency / already playing
-    should_play = (not is_future_scheduled) and (
+    queue_held = (not is_emergency) and is_queue_held(db)
+    should_play = (not is_future_scheduled) and (not queue_held) and (
         is_emergency
         or (active_playing is None)
         or (existing_status == "Playing")
@@ -1079,6 +1081,13 @@ def enqueue_and_broadcast_announcement(
     }
 
 
+HELD_STATUS = "Held"  # user pressed pause: the whole queue holds until resumed (emergencies still play)
+
+
+def is_queue_held(db: Session) -> bool:
+    return db.query(SpeakerQueue.id).filter(SpeakerQueue.status == HELD_STATUS).first() is not None
+
+
 def restore_paused_queue_items(db: Session, now: datetime):
     """
     Restores any paused notices back to Queued state after an emergency broadcast finishes.
@@ -1125,7 +1134,7 @@ def dispatch_queue_action_to_speakers(
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
         # Direct neural audio stream URL (16-bit PCM WAV for ESP32 I2S)
-        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav&include_chime=false"
+        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav&include_chime=false&queue_id={queue_item.id}"
         voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
         clean_v = str(voice_gender).lower()
         tag = f"american_{clean_v}"
@@ -1578,6 +1587,9 @@ def auto_advance_speaker_queue(
                             curr_dur = real_secs
             except Exception:
                 pass
+        confirmed_at = getattr(current_playing, "speaker_confirmed_at", None)
+        if confirmed_at and current_playing.played_at and confirmed_at >= current_playing.played_at and current_playing.duration_seconds:
+            curr_dur = int(current_playing.duration_seconds)
         curr_dur = max(3, int(curr_dur) + 1)
         curr_played_at = getattr(current_playing, "played_at", None)
 
@@ -1653,6 +1665,10 @@ def auto_advance_speaker_queue(
 
             # If physical hardware is actively playing, wait for it to complete or watchdog safety timeout (curr_dur + 35s)
             if hardware_is_actively_playing and elapsed < (curr_dur + 35):
+                return None
+            # The speaker is still pulling this notice's audio: it is mid-sentence, never cut it short
+            from app.services.speaker_playback import is_stream_active
+            if is_stream_active(current_playing.id) and elapsed < (curr_dur + 35):
                 return None
             if elapsed < curr_dur:
                 # Audio duration still active
@@ -1853,6 +1869,9 @@ def auto_advance_speaker_queue(
         (q for q in queued_all if is_emergency_announcement(q.announcement)),
         None
     )
+
+    if not next_item and is_queue_held(db):
+        return None
 
     # Priority 2: Deterministic First Come First Serve
     # Prefer ready items that are due now (within the small event-scheduler tolerance).

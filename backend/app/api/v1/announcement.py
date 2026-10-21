@@ -553,81 +553,138 @@ def get_announcement_audio_endpoint(
     }
 
 
+def _wav_stream_info(fpath: str) -> tuple[int, float]:
+    """Returns (byte_rate, speech_seconds) for a PCM WAV file, or (0, 0.0) if unknown."""
+    if not fpath or not fpath.endswith(".wav"):
+        return 0, 0.0
+    try:
+        import wave
+        with wave.open(fpath, "rb") as wf:
+            rate = wf.getframerate()
+            byte_rate = rate * wf.getnchannels() * wf.getsampwidth()
+            return byte_rate, (wf.getnframes() / float(rate) if rate else 0.0)
+    except Exception:
+        return 0, 0.0
+
+
 def _stream_file_with_preemption_check(
     fpath: str,
     media_type: str,
     filename: str,
     announcement_id: int,
     db: Session,
+    queue_id: int | None = None,
+    is_speaker_client: bool = False,
 ):
+    """
+    Streams notice audio to a speaker and keeps the speaker queue honest:
+      - when the first audio chunk goes out, the queue item is stamped as confirmed
+        (played_at = speaker_confirmed_at = speech start) with the real speech length,
+      - the stream closes as soon as the item stops being 'Playing' (pause / stop / remove /
+        skip) or an emergency preempts it, so the speaker stops within about a second,
+      - audio is paced just above real time so a cut takes effect quickly.
+    """
+    import math
+    from datetime import datetime, timedelta, timezone
+    from app.db.database import SessionLocal
+    from app.models.speaker_queue import SpeakerQueue
     from app.services.hardware_speaker_service import is_global_emergency_active
+    from app.services import speaker_playback
     from app.core.emergency_utils import is_emergency_announcement
     from app.repositories.announcement_repository import get_announcement_by_id
 
     notice = get_announcement_by_id(db, announcement_id)
     is_emergency = is_emergency_announcement(notice) if notice else False
 
-    file_size = os.path.getsize(fpath) if (fpath and os.path.exists(fpath)) else 0
-    stream_start_time = time.time()
-
-    # Synchronize SpeakerQueue.played_at to the exact second physical audio streaming commences
-    try:
-        from app.models.speaker import SpeakerQueue
-        from datetime import datetime, timezone
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        q_item = (
-            db.query(SpeakerQueue)
-            .filter(
-                SpeakerQueue.announcement_id == announcement_id,
-                SpeakerQueue.status == "Playing",
-            )
-            .first()
-        )
-        if q_item:
-            q_item.played_at = now_utc
-            db.commit()
-            try:
-                from app.core.websocket_manager import ws_manager
-                ws_manager.broadcast_sync({
-                    "event": "QUEUE_SYNC_START",
-                    "queue_id": q_item.id,
-                    "announcement_id": announcement_id,
-                    "played_at": now_utc.isoformat(),
-                    "duration_seconds": getattr(q_item, "duration_seconds", 15) or 15,
-                })
-            except Exception:
-                pass
-    except Exception as sq_e:
-        logger.debug(f"Audio stream queue sync note: {sq_e}")
-
-    # Emergency audio streams must NEVER be preempted
-    if is_emergency or not fpath or not os.path.exists(fpath):
+    if not fpath or not os.path.exists(fpath):
         return FileResponse(fpath, media_type=media_type, filename=filename)
 
+    file_size = os.path.getsize(fpath)
+    stream_start_time = time.time()
+    byte_rate, speech_secs = _wav_stream_info(fpath)
+
+    # Only a real speaker playing a queued notice may confirm playback (never a browser preview)
+    sync_queue_id = None
+    if queue_id or is_speaker_client:
+        q_filter = [SpeakerQueue.announcement_id == announcement_id, SpeakerQueue.status == "Playing"]
+        if queue_id:
+            q_filter.append(SpeakerQueue.id == queue_id)
+        q_item = db.query(SpeakerQueue).filter(*q_filter).first()
+        sync_queue_id = q_item.id if q_item else None
+
+    def _confirm_playback_started() -> None:
+        offset = speaker_playback.EMERGENCY_CHIME_OFFSET_SECONDS if is_emergency else speaker_playback.CHIME_OFFSET_SECONDS
+        started = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=offset)
+        duration = int(math.ceil(speech_secs)) if speech_secs > 0 else None
+        with SessionLocal() as s:
+            item = s.query(SpeakerQueue).filter(SpeakerQueue.id == sync_queue_id).first()
+            if not item or item.status != "Playing":
+                return
+            item.played_at = started
+            item.speaker_confirmed_at = started
+            if duration:
+                item.duration_seconds = duration
+            s.commit()
+            duration = item.duration_seconds or duration or 15
+        try:
+            from app.core.websocket_manager import ws_manager
+            ws_manager.broadcast_sync({
+                "event": "QUEUE_SYNC_START",
+                "queue_id": sync_queue_id,
+                "announcement_id": announcement_id,
+                "played_at": started.isoformat(),
+                "speaker_confirmed_at": started.isoformat(),
+                "duration_seconds": duration,
+                "elapsed_seconds": 0,
+            })
+        except Exception:
+            pass
+
+    def _still_playing() -> bool:
+        with SessionLocal() as s:
+            st = s.query(SpeakerQueue.status).filter(SpeakerQueue.id == sync_queue_id).scalar()
+        return st == "Playing"
+
     def audio_chunk_generator():
-        chunk_count = 0
+        sent = 0
+        burst_bytes = int(byte_rate * 1.5) if byte_rate else 24 * 1024
+        # Barely above real time: the speaker never starves after the burst, and the server is never
+        # more than ~1.5s ahead, so closing the stream stops the speaker almost immediately
+        paced_rate = (byte_rate * 1.02) if byte_rate else 50 * 1024
+        pace_start = None
+        last_check = time.monotonic()
         try:
             with open(fpath, "rb") as af:
                 while True:
-                    # If an emergency was triggered while this non-emergency notice was streaming, ABORT!
-                    if is_global_emergency_active(stream_start_time):
-                        logger.warning(
-                            f"🚨 [STREAM CUT] Non-emergency audio stream #{announcement_id} "
-                            f"preempted by incoming emergency override! Closing socket immediately."
-                        )
+                    if not is_emergency and is_global_emergency_active(stream_start_time):
+                        logger.warning(f"[STREAM CUT] Notice #{announcement_id} preempted by an emergency broadcast.")
                         break
+                    if sync_queue_id and time.monotonic() - last_check >= 0.5:
+                        last_check = time.monotonic()
+                        if not _still_playing():
+                            logger.info(f"[STREAM CUT] Queue item #{sync_queue_id} is no longer playing; closing speaker stream.")
+                            break
                     chunk = af.read(4096)
                     if not chunk:
                         break
                     yield chunk
-                    chunk_count += 1
-                    # Allow first 6 chunks (24KB) to burst immediately to fill ESP32 DMA pre-buffer,
-                    # then pace subsequent chunks at ~65ms (~4KB per 65ms = 63KB/sec vs 48KB/sec playback rate)
-                    # This ensures zero buffer underruns while keeping TCP socket alive for instant preemption!
-                    if chunk_count > 6:
-                        time.sleep(0.065)
+                    if sent == 0 and sync_queue_id:
+                        try:
+                            _confirm_playback_started()
+                        except Exception as ce:
+                            logger.warning(f"Speaker playback confirmation failed: {ce}")
+                    sent += len(chunk)
+                    speaker_playback.mark_stream_active(sync_queue_id)
+                    if sent > burst_bytes:
+                        if pace_start is None:
+                            pace_start = time.monotonic()
+                        ahead = (sent - burst_bytes) / paced_rate - (time.monotonic() - pace_start)
+                        if ahead > 0:
+                            time.sleep(ahead)
         except Exception as e:
             logger.warning(f"Audio chunk generator closed: {e}")
+        finally:
+            speaker_playback.mark_stream_finished(sync_queue_id)
 
     return StreamingResponse(
         audio_chunk_generator(),
@@ -643,6 +700,7 @@ def _stream_file_with_preemption_check(
 @router.get("/{announcement_id}/audio/stream")
 def stream_announcement_audio_endpoint(
     announcement_id: int,
+    request: Request,
     gender: str = "female",
     accent: str = "american",
     is_summary: bool = False,
@@ -651,12 +709,15 @@ def stream_announcement_audio_endpoint(
     lang: str = "en",
     audio_format: str = Query("wav", description="Audio format: 'wav' (lossless PCM for ESP32/speakers) or 'mp3'"),
     regenerate: bool = False,
+    queue_id: int | None = None,
     db: Session = Depends(get_db),
 ):
     """
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
     Supports 16-bit PCM WAV for ESP32 I2S hardware streaming and regional languages.
     """
+    user_agent = request.headers.get("user-agent", "").lower()
+    is_speaker_client = "esp32" in user_agent
     from app.repositories.announcement_repository import get_announcement_by_id
     from app.services.tts_service import generate_announcement_audio_sync
     from app.services.chime_service import resolve_contextual_chime
@@ -713,7 +774,7 @@ def stream_announcement_audio_endpoint(
                 pass
 
     if fname and fpath:
-        return _stream_file_with_preemption_check(fpath, mtype, fname, announcement_id, db)
+        return _stream_file_with_preemption_check(fpath, mtype, fname, announcement_id, db, queue_id=queue_id, is_speaker_client=is_speaker_client)
 
     notice = get_announcement_by_id(db, announcement_id)
     if notice:
@@ -800,7 +861,7 @@ def stream_announcement_audio_endpoint(
             except Exception:
                 pass
 
-    return _stream_file_with_preemption_check(file_path, media_type, file_name, announcement_id, db)
+    return _stream_file_with_preemption_check(file_path, media_type, file_name, announcement_id, db, queue_id=queue_id, is_speaker_client=is_speaker_client)
 
 
 @router.get("/{announcement_id}/chime")

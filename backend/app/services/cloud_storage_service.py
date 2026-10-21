@@ -123,6 +123,7 @@ class CloudStorageService:
             cls._token = token
             cls._repo_id = repo_id
             cls._cloud_enabled = True
+            cls._rebuild_manifest_from_repo()
             logger.info(f"[Storage] Hugging Face Datasets CDN active on repo: {repo_id}")
             return True
 
@@ -130,6 +131,27 @@ class CloudStorageService:
             logger.warning(f"[Storage] Hugging Face authentication/init warning: {e}. Falling back to local static storage.")
             cls._cloud_enabled = False
             return False
+
+    @classmethod
+    def _rebuild_manifest_from_repo(cls) -> None:
+        """
+        The manifest file lives on the container's ephemeral disk, so a Render restart empties it
+        and every backed-up audio file would be synthesized again. Rebuild it from the dataset itself.
+        """
+        try:
+            files = cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset")
+        except Exception as e:
+            logger.warning(f"[Storage] Could not list dataset files to rebuild manifest: {e}")
+            return
+        added = 0
+        with cls._lock:
+            for path_in_repo in files:
+                if "/" in path_in_repo and path_in_repo not in cls._manifest:
+                    cls._manifest[path_in_repo] = f"https://huggingface.co/datasets/{cls._repo_id}/resolve/main/{path_in_repo}"
+                    added += 1
+            if added:
+                cls._save_manifest()
+        logger.info(f"[Storage] Manifest rebuilt from dataset: {added} file(s) restorable.")
 
     @classmethod
     def is_cloud_enabled(cls) -> bool:
@@ -317,7 +339,7 @@ class CloudStorageService:
             return local_path
 
         path_in_repo = f"{folder}/{filename}"
-        cls._load_manifest()
+        cls._init_client()  # first call rebuilds the manifest from the dataset after a restart
 
         # Strictly verify file is recorded in manifest before attempting network request
         cdn_url = cls._manifest.get(path_in_repo)
@@ -327,7 +349,7 @@ class CloudStorageService:
         try:
             import requests
             logger.info(f"[Storage] Restoring missing container file from CDN: {cdn_url}")
-            resp = requests.get(cdn_url, timeout=3.0)
+            resp = requests.get(cdn_url, timeout=8.0)
             if resp.status_code == 200 and len(resp.content) > 512:
                 os.makedirs(dest_dir, exist_ok=True)
                 with open(local_path, "wb") as f:

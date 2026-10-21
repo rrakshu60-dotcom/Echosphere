@@ -221,7 +221,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
                 "target_node_mac": target_mac,
-                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav&include_chime=false",
+                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav&include_chime=false&queue_id={active_playing.id}",
             }
 
     # 2. Daily important announcements for idle display ticker (strictly today's notices in IST)
@@ -586,6 +586,18 @@ def poll_pending_node_commands(
     }
 
 
+def _speaker_confirmed(item) -> bool:
+    c, p = getattr(item, "speaker_confirmed_at", None), getattr(item, "played_at", None)
+    return bool(getattr(item, "status", None) == "Playing" and c and p and c >= p)
+
+
+def _speaker_elapsed(item) -> Optional[float]:
+    if not _speaker_confirmed(item):
+        return None
+    elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - item.speaker_confirmed_at).total_seconds()
+    return round(max(0.0, elapsed), 2)
+
+
 @router.get("/queue")
 def fetch_speaker_queue(
     request: Request,
@@ -613,7 +625,7 @@ def fetch_speaker_queue(
         stale_past_items = (
             db.query(SpeakerQueue)
             .filter(
-                SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]),
+                SpeakerQueue.status.in_(["Playing", "Paused", "Held", "Next in Queue", "Queued"]),
                 SpeakerQueue.scheduled_time < start_of_today_utc,
             )
             .all()
@@ -637,7 +649,7 @@ def fetch_speaker_queue(
     if status is None:
         queue_items = (
             db.query(SpeakerQueue)
-            .filter(SpeakerQueue.status.in_(["Playing", "Paused", "Next in Queue", "Queued"]))
+            .filter(SpeakerQueue.status.in_(["Playing", "Paused", "Held", "Next in Queue", "Queued"]))
             .order_by(SpeakerQueue.queue_position.asc(), SpeakerQueue.id.asc())
             .all()
         )
@@ -710,6 +722,9 @@ def fetch_speaker_queue(
             "scheduled_time": _format_utc_iso(item.scheduled_time),
             "played_at": _format_utc_iso(item.played_at),
             "duration_seconds": getattr(item, "duration_seconds", 15) or 15,
+            # Speaker-confirmed playback: elapsed is computed on the server so client clocks don't matter
+            "speaker_confirmed": _speaker_confirmed(item),
+            "speaker_elapsed_seconds": _speaker_elapsed(item),
             "audio_url": f"{base_url}/api/v1/announcements/{item.announcement_id}/audio/stream",
             "speaker_node_id": item.speaker_node_id,
             "speaker_node_mac": node_mac,
@@ -842,12 +857,18 @@ def update_queue_action(
     id: int,
     request: Request,
     action: str = "complete",
+    target: str = "queue",
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
-    if not item:
+    # target=announcement: {id} is an announcement id (the web app); otherwise a queue id (the ESP32).
+    # The announcement-id fallback stays only for 'complete', which old firmware may send with an announcement id.
+    if target.lower() == "announcement":
         item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == id).order_by(SpeakerQueue.id.desc()).first()
+    else:
+        item = db.query(SpeakerQueue).filter(SpeakerQueue.id == id).first()
+        if not item and action.lower().strip() == "complete":
+            item = db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == id).order_by(SpeakerQueue.id.desc()).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.")
 
@@ -1004,38 +1025,81 @@ def update_queue_action(
             "auto_advance": adv_res,
         }
 
-    status_map = {
-        "play": "Playing",
-        "pause": "Paused",
-        "resume": "Playing",
-        "skip": "Skipped",
-        "cancel": "Cancelled",
-        "stop": "Cancelled",
-        "remove": "Completed",
-    }
-    new_status = status_map.get(act_clean, "Queued")
-    if new_status == "Playing":
-        other_playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing", SpeakerQueue.id != item.id).all()
-        for op in other_playing:
-            op.status = "Paused"
-        db.commit()
-    updated = update_queue_item_status(db=db, queue_id=item.id, status=new_status)
+    from app.services.hardware_speaker_service import HELD_STATUS, auto_advance_speaker_queue
+    from app.services.speaker_playback import cancel_pending_play_commands
 
-    # Dispatch hardware command to all speaker nodes
-    dispatch_res = dispatch_queue_action_to_speakers(
-        db=db,
-        queue_item=updated,
-        action=action,
-        base_url=base_url,
-    )
-
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    was_playing = getattr(item, "status", None) == "Playing"
     advance_res = None
-    if act_clean == "skip":
-        from app.services.hardware_speaker_service import auto_advance_speaker_queue
-        try:
-            advance_res = auto_advance_speaker_queue(db, force_advance=True, base_url=base_url)
-        except Exception:
-            pass
+    dispatch_res = None
+
+    if act_clean in ("pause", "hold"):
+        # Pause holds the whole queue. The notice restarts from the beginning on resume:
+        # a streamed notice cannot continue mid-sentence on the speaker.
+        item.status = HELD_STATUS
+        db.commit()
+        cancel_pending_play_commands(db, item.announcement_id)
+        if was_playing:
+            dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action="pause", base_url=base_url)
+        new_status = HELD_STATUS
+
+    elif act_clean in ("play", "resume"):
+        # Playing something releases any hold; whatever was playing goes back to the queue.
+        for other in db.query(SpeakerQueue).filter(
+            SpeakerQueue.id != item.id,
+            SpeakerQueue.status.in_(["Playing", HELD_STATUS]),
+        ).all():
+            other.status = "Queued"
+            other.played_at = None
+            other.scheduled_time = now
+        item.status = "Playing"
+        item.played_at = now
+        item.speaker_confirmed_at = None
+        item.queue_position = 1
+        item.failure_reason = None
+        db.commit()
+        cancel_pending_play_commands(db, item.announcement_id)
+        dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action="play", base_url=base_url)
+        new_status = "Playing"
+
+    elif act_clean in ("remove", "cancel", "stop", "skip"):
+        new_status = {"remove": "Completed", "skip": "Skipped"}.get(act_clean, "Cancelled")
+        item.status = new_status
+        if act_clean == "remove" and item.announcement_id:
+            # Removing a notice also ends its repeat schedule, otherwise the next round re-queues it
+            from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+            for sched in db.query(AnnouncementRepeatSchedule).filter(
+                AnnouncementRepeatSchedule.announcement_id == item.announcement_id,
+                AnnouncementRepeatSchedule.is_active == True,
+            ).all():
+                sched.is_active = False
+                sched.next_repeat_at = None
+        db.commit()
+        cancel_pending_play_commands(db, item.announcement_id)
+        if was_playing:
+            dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action=act_clean, base_url=base_url)
+            # Not forced: the item is no longer Playing, so a normal pass starts the next notice.
+            # (Forcing would complete whatever the daemon may have just started.)
+            try:
+                advance_res = auto_advance_speaker_queue(db, base_url=base_url)
+            except Exception as adv_e:
+                logger.warning(f"Queue advance after {act_clean}: {adv_e}")
+
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown queue action '{action}'.")
+
+    try:
+        from app.core.websocket_manager import ws_manager
+        ws_manager.broadcast_sync({
+            "event": "QUEUE_UPDATED",
+            "queue_id": item.id,
+            "announcement_id": item.announcement_id,
+            "action": act_clean,
+            "status": new_status,
+            "timestamp": now.isoformat(),
+        })
+    except Exception:
+        pass
 
     return {
         "status": "success",
