@@ -605,11 +605,12 @@ def _stream_file_with_preemption_check(
 
     # Only a real speaker playing a queued notice may confirm playback (never a browser preview)
     sync_queue_id = None
-    if queue_id or is_speaker_client:
-        q_filter = [SpeakerQueue.announcement_id == announcement_id, SpeakerQueue.status == "Playing"]
-        if queue_id:
-            q_filter.append(SpeakerQueue.id == queue_id)
-        q_item = db.query(SpeakerQueue).filter(*q_filter).first()
+    if queue_id and is_speaker_client:
+        q_item = db.query(SpeakerQueue).filter(
+            SpeakerQueue.id == queue_id,
+            SpeakerQueue.announcement_id == announcement_id,
+            SpeakerQueue.status == "Playing",
+        ).first()
         sync_queue_id = q_item.id if q_item else None
 
     def _confirm_playback_started() -> None:
@@ -710,14 +711,19 @@ def stream_announcement_audio_endpoint(
     audio_format: str = Query("wav", description="Audio format: 'wav' (lossless PCM for ESP32/speakers) or 'mp3'"),
     regenerate: bool = False,
     queue_id: int | None = None,
+    sig: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
     Supports 16-bit PCM WAV for ESP32 I2S hardware streaming and regional languages.
     """
-    user_agent = request.headers.get("user-agent", "").lower()
-    is_speaker_client = "esp32" in user_agent
+    from app.services.speaker_playback import is_valid_stream_signature, mark_stream_pending
+    # Only a URL the backend issued to a speaker (signed) may confirm playback
+    is_speaker_client = is_valid_stream_signature(queue_id, sig)
+    if is_speaker_client:
+        # Hold the queue item while its audio may still be synthesizing (cold cache can take 10s+)
+        mark_stream_pending(queue_id)
     from app.repositories.announcement_repository import get_announcement_by_id
     from app.services.tts_service import generate_announcement_audio_sync
     from app.services.chime_service import resolve_contextual_chime
