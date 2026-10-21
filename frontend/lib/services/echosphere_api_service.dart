@@ -1401,11 +1401,12 @@ class EchosphereApiService {
     }
   }
 
-  Future<Map<String, dynamic>> queueAction(int queueId, String action) async {
+  /// [target] says what [queueId] is: 'queue' (a speaker_queue row id) or 'announcement'.
+  Future<Map<String, dynamic>> queueAction(int queueId, String action, {String target = 'queue'}) async {
     try {
       final response = await _dio.post(
         '/hardware/queue/$queueId/action',
-        queryParameters: {'action': action},
+        queryParameters: {'action': action, 'target': target},
       );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {

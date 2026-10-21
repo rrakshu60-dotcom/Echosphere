@@ -70,6 +70,13 @@ class SpeakerQueue(TimestampMixin, Base):
         default=0,
     )
 
+    # When the speaker actually started pulling this notice's audio stream (UTC).
+    # Playback is "confirmed" only while speaker_confirmed_at >= played_at.
+    speaker_confirmed_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
     failure_reason = Column(
         String(255),
         nullable=True,

@@ -1447,7 +1447,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: _queueCtrl.playbackProgress,
+                          // Indeterminate until the speaker confirms it has started playing
+                          value: (isPlaying && !_queueCtrl.speakerConfirmed.value) ? null : _queueCtrl.playbackProgress,
                           minHeight: 4,
                           backgroundColor: context.colors.outline.opaque(0.15),
                           valueColor: AlwaysStoppedAnimation<Color>(
@@ -1462,8 +1463,10 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           Expanded(
                             child: EchoSphereText(
                               text: isPlaying
-                                  ? 'Playing once \u2022 auto-removes on finish'
-                                  : 'Paused',
+                                  ? (_queueCtrl.speakerConfirmed.value
+                                      ? 'Playing once \u2022 auto-removes on finish'
+                                      : 'Waiting for speaker to start\u2026')
+                                  : (_queueCtrl.userPausedOrStopped.value ? 'Paused' : 'Standing by'),
                               size: 9,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
