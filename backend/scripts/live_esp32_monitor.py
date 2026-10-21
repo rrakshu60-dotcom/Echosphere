@@ -117,7 +117,7 @@ def serial_monitor_thread(stop_event):
     import win32file
     import win32con
 
-    target_ports = ["COM5", "COM7", "COM3", "COM4"]
+    target_ports = ["COM5", "COM7"]
     handle = None
     active_port = None
 
