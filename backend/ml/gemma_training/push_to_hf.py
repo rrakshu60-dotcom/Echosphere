@@ -1,7 +1,7 @@
 import os
 from huggingface_hub import HfApi, create_repo
 
-HF_TOKEN = "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"
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 REPO_ID = "RakshiRoxy/echosphere-campus-gemma-2b"
 LOCAL_DIR = os.path.join(os.path.dirname(__file__), "output_gemma_campus_model", "final_adapter")
 

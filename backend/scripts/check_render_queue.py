@@ -1,10 +1,15 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import urllib.request
 import json
 
 BASE_URL = "https://echosphere-backend-9lv8.onrender.com/api/v1"
 
 # Login as principal
-login_data = json.dumps({"identifier": "principal", "password": "Principal@123"}).encode()
+login_data = json.dumps({"identifier": "principal", "password": os.environ.get("ES_PASSWORD_PRINCIPAL", "")}).encode()
 req = urllib.request.Request(
     f"{BASE_URL}/auth/login",
     data=login_data,

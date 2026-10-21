@@ -37,7 +37,7 @@ def test_full_approval_workflow():
     # 1. Login as Teacher (Dr. B Kursheed)
     r_teach = client.post("/api/v1/auth/login", json={
         "identifier": "dbitaimlt022022",
-        "password": "Kursh@2022"
+        "password": os.environ.get("ES_PASSWORD_DBITAIMLT022022", "")
     })
     assert r_teach.status_code == 200, f"Teacher login failed: {r_teach.text}"
     teacher_token = r_teach.json()["access_token"]
@@ -47,7 +47,7 @@ def test_full_approval_workflow():
     # 2. Login as HoD (Dr. AIML HoD)
     r_hod = client.post("/api/v1/auth/login", json={
         "identifier": "hod_aiml",
-        "password": "Hod@123"
+        "password": os.environ.get("ES_PASSWORD_HOD_AIML", "")
     })
     assert r_hod.status_code == 200, f"HoD login failed: {r_hod.text}"
     hod_token = r_hod.json()["access_token"]
@@ -57,7 +57,7 @@ def test_full_approval_workflow():
     # 3. Login as Student (Rakshitha S)
     r_stud = client.post("/api/v1/auth/login", json={
         "identifier": "1db23ci079",
-        "password": "rakshitha@1228"
+        "password": os.environ.get("ES_PASSWORD_ESDEV01", "")
     })
     assert r_stud.status_code == 200, f"Student login failed: {r_stud.text}"
     student_token = r_stud.json()["access_token"]

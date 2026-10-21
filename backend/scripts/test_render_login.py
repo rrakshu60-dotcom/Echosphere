@@ -1,14 +1,19 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import urllib.request
 import json
 
 login_url = "https://echosphere-backend-9lv8.onrender.com/api/v1/auth/login"
 
 users_to_try = [
-    ("ESDev01", "Dbit@ES01"),
+    ("ESDev01", os.environ.get("ES_PASSWORD_CADMIN", "")),
     ("admin", "admin123"),
     ("admin", "Admin@123"),
     ("ESDev01", "admin123"),
-    ("principal", "Principal@123"),
+    ("principal", os.environ.get("ES_PASSWORD_PRINCIPAL", "")),
 ]
 
 for username, password in users_to_try:

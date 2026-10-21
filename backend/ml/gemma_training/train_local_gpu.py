@@ -44,7 +44,7 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # 1. Environment & Auth
-HF_TOKEN = "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"
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 os.environ["HF_TOKEN"] = HF_TOKEN
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

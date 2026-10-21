@@ -1,3 +1,8 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ES_PASSWORD_* come from backend/.env
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import requests
@@ -12,7 +17,7 @@ print("  ECHOSPHERE 0-LATENCY HOMO-TEMPORAL & EMERGENCY QUEUE LIVE TEST")
 print("=================================================================")
 
 # 1. Login with verified production credentials
-login_resp = requests.post(f"{BASE_URL}/auth/login", json={"identifier": "ESDEV01", "password": "rakshitha@1228"})
+login_resp = requests.post(f"{BASE_URL}/auth/login", json={"identifier": "ESDEV01", "password": os.environ.get("ES_PASSWORD_ESDEV01", "")})
 if login_resp.status_code != 200:
     print(f"❌ Login failed: {login_resp.status_code} {login_resp.text}")
     exit(1)

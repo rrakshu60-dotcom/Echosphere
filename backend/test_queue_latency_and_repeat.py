@@ -1,3 +1,4 @@
+import os
 import unittest
 from datetime import datetime, timezone, timedelta
 from app.db.database import SessionLocal
@@ -21,7 +22,7 @@ def run_tests():
     with SessionLocal() as db:
         # Test 1: Case-insensitive login with ESDEV01
         print("\n[Test 1] Testing case-insensitive admin login with 'ESDEV01'...")
-        token, user = authenticate_user(db, "ESDEV01", "rakshitha@1228")
+        token, user = authenticate_user(db, "ESDEV01", os.environ.get("ES_PASSWORD_ESDEV01", ""))
         assert user is not None, "User should not be None"
         assert user.employee_id.upper() == "ESDEV01", "Employee ID match"
         print(f"✅ Login SUCCESS: Logged in as '{user.full_name}' ({user.role.name})")

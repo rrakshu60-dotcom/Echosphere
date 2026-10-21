@@ -7,12 +7,13 @@ administrative, speaker, moderation, user management, or VIP protocol endpoints.
 import sys
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.jwt_handler import create_access_token
 
 client = TestClient(app)
 
-STUDENT_TOKEN = "mock_jwt_token_student"
-ADMIN_TOKEN = "mock_jwt_token_college admin"
-DEV_TOKEN = "mock_jwt_token_dev admin"
+STUDENT_TOKEN = create_access_token({"sub": "1db23ci079"})
+ADMIN_TOKEN = create_access_token({"sub": "CAdmin"})
+DEV_TOKEN = create_access_token({"sub": "ESDev01"})
 
 
 def test_student_blocked_from_approval_queue():

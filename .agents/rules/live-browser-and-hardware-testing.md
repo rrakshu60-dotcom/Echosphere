@@ -7,7 +7,7 @@ Whenever diagnosing, fixing, developing, or confirming solutions:
 
 1. **Simultaneous Real-Time Testing**:
    - MUST open the live production website (`https://echosphere-2jf.pages.dev/`) using the browser subagent.
-   - MUST log in using verified credentials (`ESDEV01` / `rakshitha@1228`).
+   - MUST log in using verified credentials (`ESDEV01` / (password: `ES_PASSWORD_ESDEV01` in `backend/.env`)).
    - MUST simultaneously access the physical ESP32 microcontroller (`COM5`) and actively monitor its live serial logs (`python -u backend/scripts/live_esp32_monitor.py` or active serial task).
 
 2. **End-to-End User Scenario Confirmation**:
