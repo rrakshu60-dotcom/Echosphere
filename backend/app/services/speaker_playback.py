@@ -19,6 +19,33 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+# Serializes every speaker-queue state transition (daemon, user actions, enqueue, speaker callbacks).
+# Without it a daemon pass can read "nothing playing" while a request starts a notice, and then
+# start a second one, leaving two notices 'Playing'. Production runs a single worker process.
+QUEUE_LOCK = threading.RLock()
+
+
+def serialized(fn):
+    """Runs fn while holding QUEUE_LOCK."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with QUEUE_LOCK:
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+def try_serialized(fn, *args, **kwargs):
+    """Runs fn only if the queue is not busy; for opportunistic callers like heartbeats."""
+    if not QUEUE_LOCK.acquire(blocking=False):
+        return None
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        QUEUE_LOCK.release()
+
+
 # Seconds the speaker spends on its local attention chime / siren before speech starts
 CHIME_OFFSET_SECONDS = 0.4
 EMERGENCY_CHIME_OFFSET_SECONDS = 0.8

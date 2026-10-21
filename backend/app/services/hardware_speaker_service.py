@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.models.speaker_node import SpeakerNode
 from app.models.speaker_queue import SpeakerQueue
+from app.services.speaker_playback import serialized
 from app.core.emergency_utils import is_emergency_announcement
 from app.repositories.hardware_repository import (
     get_all_speaker_nodes,
@@ -787,6 +788,7 @@ def send_node_control_command(
     }
 
 
+@serialized
 def enqueue_and_broadcast_announcement(
     db: Session,
     announcement_id: Any,
@@ -1003,6 +1005,9 @@ def enqueue_and_broadcast_announcement(
         topic = f"echosphere/dept/{department_code}/speakers/command"
 
     q_id = getattr(active_item, "id", None)
+    if q_id:
+        from app.services.speaker_playback import signed_stream_query
+        audio_full_url = f"{audio_full_url}&{signed_stream_query(q_id)}"
     payload = {
         "command": "PLAY_EMERGENCY" if is_emergency else "PLAY_ANNOUNCEMENT",
         "announcement_id": announcement_id,
@@ -1431,6 +1436,7 @@ def get_next_queue_wake_seconds(db: Session, max_wait: float = 1.0) -> float:
     return max(0.0, min(wait, max_wait))
 
 
+@serialized
 def auto_advance_speaker_queue(
     db: Session,
     force_advance: bool = False,

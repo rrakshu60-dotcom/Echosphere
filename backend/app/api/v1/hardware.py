@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
+from app.services.speaker_playback import serialized, try_serialized
+
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
 from app.db.database import get_db
 from app.models.user import User
@@ -158,7 +160,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     """
     from app.services.hardware_speaker_service import auto_advance_speaker_queue
     try:
-        auto_advance_speaker_queue(db)
+        try_serialized(auto_advance_speaker_queue, db)
     except Exception:
         pass
 
@@ -552,7 +554,7 @@ def receive_node_heartbeat(
     node = update_speaker_node_heartbeat(db=db, heartbeat=heartbeat_in)
     from app.services.hardware_speaker_service import auto_advance_speaker_queue, get_pending_commands_for_mac
     try:
-        auto_advance_speaker_queue(db)
+        try_serialized(auto_advance_speaker_queue, db)
     except Exception:
         pass
     cmds = get_pending_commands_for_mac(str(node.mac_address), db=db)
@@ -577,7 +579,7 @@ def poll_pending_node_commands(
     """
     from app.services.hardware_speaker_service import auto_advance_speaker_queue, get_pending_commands_for_mac
     try:
-        auto_advance_speaker_queue(db)
+        try_serialized(auto_advance_speaker_queue, db)
     except Exception:
         pass
     cmds = get_pending_commands_for_mac(mac_address, db=db)
@@ -610,7 +612,7 @@ def fetch_speaker_queue(
     from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
     try:
         evaluate_and_dispatch_repeat_slots(db)
-        auto_advance_speaker_queue(db)
+        try_serialized(auto_advance_speaker_queue, db)
     except Exception:
         pass
 
@@ -854,6 +856,7 @@ def reorder_speaker_queue_items(
 @router.post("/speaker-queue/{id}/action")
 @router.put("/speaker-queue/{id}/status")
 @router.post("/speaker-queue/{id}/status")
+@serialized
 def update_queue_action(
     id: int,
     request: Request,
