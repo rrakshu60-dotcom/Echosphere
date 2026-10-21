@@ -28,13 +28,42 @@ _STREAM_IDLE_SECONDS = 5.0
 
 # queue_id -> monotonic time of the last chunk sent to the speaker
 _ACTIVE_STREAMS: Dict[int, float] = {}
+# queue_id -> monotonic time the speaker requested audio that may still be synthesizing
+_PENDING_STREAMS: Dict[int, float] = {}
+_PENDING_SECONDS = 60.0
 _LOCK = threading.Lock()
+
+
+def stream_signature(queue_id: int) -> str:
+    """HMAC proving a stream URL was issued by the backend for this queue item (only then may it confirm playback)."""
+    import hashlib
+    import hmac
+    from app.core.security import SECRET_KEY
+    return hmac.new(SECRET_KEY.encode(), f"speaker-stream:{int(queue_id)}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def signed_stream_query(queue_id: int) -> str:
+    return f"queue_id={int(queue_id)}&sig={stream_signature(queue_id)}"
+
+
+def is_valid_stream_signature(queue_id: Optional[int], sig: Optional[str]) -> bool:
+    import hmac
+    return bool(queue_id and sig and hmac.compare_digest(stream_signature(queue_id), sig))
+
+
+def mark_stream_pending(queue_id: Optional[int]) -> None:
+    """The speaker asked for this item's audio; it may still be synthesizing (cold cache)."""
+    if not queue_id:
+        return
+    with _LOCK:
+        _PENDING_STREAMS[int(queue_id)] = time.monotonic()
 
 
 def mark_stream_active(queue_id: Optional[int]) -> None:
     if not queue_id:
         return
     with _LOCK:
+        _PENDING_STREAMS.pop(int(queue_id), None)
         _ACTIVE_STREAMS[int(queue_id)] = time.monotonic()
 
 
@@ -43,14 +72,18 @@ def mark_stream_finished(queue_id: Optional[int]) -> None:
         return
     with _LOCK:
         _ACTIVE_STREAMS.pop(int(queue_id), None)
+        _PENDING_STREAMS.pop(int(queue_id), None)
 
 
 def is_stream_active(queue_id: Optional[int]) -> bool:
+    """True while the speaker is pulling this item's audio, or waiting for it to be synthesized."""
     if not queue_id:
         return False
+    now = time.monotonic()
     with _LOCK:
         last = _ACTIVE_STREAMS.get(int(queue_id))
-    return last is not None and (time.monotonic() - last) < _STREAM_IDLE_SECONDS
+        pending = _PENDING_STREAMS.get(int(queue_id))
+    return (last is not None and now - last < _STREAM_IDLE_SECONDS) or (pending is not None and now - pending < _PENDING_SECONDS)
 
 
 def cancel_pending_play_commands(db: Session, announcement_id: Optional[int]) -> int:

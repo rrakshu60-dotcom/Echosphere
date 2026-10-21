@@ -201,6 +201,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                     active_title = active_title[len(prefix):].strip()
             active_title = re.sub(r'[*_#`]', '', active_title).strip() or ann.title
 
+            from app.services.speaker_playback import signed_stream_query
             from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
             sched_rec = db.query(AnnouncementRepeatSchedule).filter(
                 AnnouncementRepeatSchedule.announcement_id == ann.id,
@@ -221,7 +222,7 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
                 "department": dept_name,
                 "duration_seconds": active_playing.duration_seconds or 15,
                 "target_node_mac": target_mac,
-                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav&include_chime=false&queue_id={active_playing.id}",
+                "audio_url": f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav&include_chime=false&{signed_stream_query(active_playing.id)}",
             }
 
     # 2. Daily important announcements for idle display ticker (strictly today's notices in IST)
@@ -874,6 +875,15 @@ def update_queue_action(
 
     base_url = str(request.base_url).rstrip("/")
     act_clean = action.lower().strip()
+
+    # Only the speaker's own 'complete' callback is anonymous; every user command needs staff login
+    if act_clean != "complete":
+        staff_roles = {"dev admin", "developer", "college admin", "admin", "principal", "hod", "teacher"}
+        role_name = str(getattr(getattr(current_user, "role", None), "name", "") or "").lower()
+        if current_user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required.")
+        if role_name not in staff_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to control the speaker queue.")
 
     if act_clean == "complete":
         if getattr(item, "status", None) != "Playing":

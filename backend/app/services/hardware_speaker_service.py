@@ -448,7 +448,8 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     ann = getattr(p_item, "announcement", None)
                     title = getattr(ann, "title", "Announcement") if ann else "Announcement"
                     message = (getattr(ann, "ai_summary", None) or getattr(ann, "description", "")) if ann else ""
-                    audio_url = f"/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav&include_chime=false&queue_id={p_item.id}"
+                    from app.services.speaker_playback import signed_stream_query
+                    audio_url = f"/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav&include_chime=false&{signed_stream_query(p_item.id)}"
                     cmds.append({
                         "command": "PLAY_ANNOUNCEMENT",
                         "command_id": b_id,
@@ -1134,7 +1135,8 @@ def dispatch_queue_action_to_speakers(
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)
     if action_lower == "play":
         # Direct neural audio stream URL (16-bit PCM WAV for ESP32 I2S)
-        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav&include_chime=false&queue_id={queue_item.id}"
+        from app.services.speaker_playback import signed_stream_query
+        audio_full_url = f"{base_url}/api/v1/announcements/{ann_id}/audio/stream?audio_format=wav&include_chime=false&{signed_stream_query(queue_item.id)}"
         voice_gender = getattr(ann, 'speaker_voice', 'female') or 'female'
         clean_v = str(voice_gender).lower()
         tag = f"american_{clean_v}"
