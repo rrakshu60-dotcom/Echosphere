@@ -1357,6 +1357,68 @@ def restore_paused_queue_items(db: Session, now: Optional[datetime] = None) -> i
 
 BROADCAST_GAP_SECONDS = 4
 
+# The scheduler daemon is event-driven (see app/core/queue_signal.py) and wakes exactly at
+# each item's due time, so only a tiny tolerance is needed for clock jitter.
+QUEUE_DUE_TOLERANCE_SECONDS = 0.25
+
+# Extra watchdog time a physical node may keep a notice "Playing" past its expected duration
+HARDWARE_PLAYBACK_WATCHDOG_SECONDS = 35
+
+
+def get_next_queue_wake_seconds(db: Session, max_wait: float = 1.0) -> float:
+    """
+    Returns how many seconds the scheduler daemon may sleep before the next KNOWN event:
+      - the currently Playing notice reaching its duration (and its hardware watchdog),
+      - a Queued notice's scheduled_time,
+      - an active repeat schedule's next_repeat_at,
+      - the next IST minute boundary (break / custom windows open and close on minutes).
+    Only future deadlines count, so an already-elapsed deadline never causes a busy loop.
+    Any in-process change wakes the daemon earlier via queue_signal.notify_queue_change().
+    """
+    now = utc_now()
+    deadlines: List[datetime] = []
+
+    try:
+        playing = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Playing").all()
+        for p in playing:
+            played_at = _normalize_dt(getattr(p, "played_at", None))
+            if not played_at:
+                continue
+            dur = max(3, int(getattr(p, "duration_seconds", 4) or 4) + 1)
+            deadlines.append(played_at + timedelta(seconds=dur))
+            deadlines.append(played_at + timedelta(seconds=dur + HARDWARE_PLAYBACK_WATCHDOG_SECONDS))
+
+        queued_times = (
+            db.query(SpeakerQueue.scheduled_time)
+            .filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"]))
+            .all()
+        )
+        for (st,) in queued_times:
+            st_n = _normalize_dt(st)
+            if st_n:
+                deadlines.append(st_n)
+
+        from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+        repeat_times = (
+            db.query(AnnouncementRepeatSchedule.next_repeat_at)
+            .filter(AnnouncementRepeatSchedule.is_active == True)
+            .all()
+        )
+        for (nr,) in repeat_times:
+            nr_n = _normalize_dt(nr)
+            if nr_n:
+                deadlines.append(nr_n)
+    except Exception:
+        return max_wait
+
+    # Next wall-clock minute boundary (IST is UTC+05:30, so minute boundaries coincide)
+    next_minute = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    deadlines.append(next_minute)
+
+    future = [(d - now).total_seconds() for d in deadlines if d > now]
+    wait = min(future) if future else max_wait
+    return max(0.0, min(wait, max_wait))
+
 
 def auto_advance_speaker_queue(
     db: Session,
@@ -1545,15 +1607,16 @@ def auto_advance_speaker_queue(
             # If current item is NOT an emergency notice, check if any emergency notice is waiting in queue!
             if not is_curr_emerg:
                 from app.models.announcement import Announcement
+                from app.models.announcement_category import AnnouncementCategory
+                from app.core.enums.announcement import EmergencyLevel
                 pending_emergency = (
                     db.query(SpeakerQueue)
                     .join(SpeakerQueue.announcement)
                     .filter(
                         SpeakerQueue.status.in_(["Queued", "Next in Queue"]),
                         or_(
-                            Announcement.priority == "High",
-                            Announcement.category == "Emergency",
-                            Announcement.alert_level == "Emergency",
+                            Announcement.emergency_level == EmergencyLevel.EMERGENCY,
+                            Announcement.category.has(AnnouncementCategory.name == "Emergency"),
                         )
                     )
                     .order_by(SpeakerQueue.queue_position.asc())
@@ -1746,9 +1809,9 @@ def auto_advance_speaker_queue(
             if emergency_waiting:
                 should_advance = True
             else:
-                # Close schedule check: advance when next item is due (within 2s tolerance for timer tick)
+                # Close schedule check: advance when next item is due (event-driven daemon wakes exactly on time)
                 scheduled_due = any(
-                    _is_time_due(q.scheduled_time, now + timedelta(seconds=2))
+                    _is_time_due(q.scheduled_time, now + timedelta(seconds=QUEUE_DUE_TOLERANCE_SECONDS))
                     for q in queued_items
                 )
                 if scheduled_due:
@@ -1792,9 +1855,9 @@ def auto_advance_speaker_queue(
     )
 
     # Priority 2: Deterministic First Come First Serve
-    # Prefer ready items that are due now or not in the future (<= now + 2s).
+    # Prefer ready items that are due now (within the small event-scheduler tolerance).
     if not next_item:
-        ready_items = [q for q in queued_all if not _is_future_time(q.scheduled_time, now + timedelta(seconds=2))]
+        ready_items = [q for q in queued_all if not _is_future_time(q.scheduled_time, now + timedelta(seconds=QUEUE_DUE_TOLERANCE_SECONDS))]
         if ready_items:
             next_item = ready_items[0]
 

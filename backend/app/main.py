@@ -24,6 +24,11 @@ import app.models
 from app.models.speaker_command import SpeakerCommand
 from app.core.rate_limiter import limiter
 from app.db.database import Base, engine
+from app.db.database import SessionLocal as _QueueSessionFactory
+from app.core.queue_signal import install_session_hooks
+
+# Wake the speaker queue daemon instantly on any queue / schedule / announcement commit
+install_session_hooks(_QueueSessionFactory)
 
 Base.metadata.create_all(bind=engine)
 SpeakerCommand.__table__.create(bind=engine, checkfirst=True)
@@ -116,29 +121,47 @@ from contextlib import asynccontextmanager
 
 def _speaker_and_repeat_daemon():
     """
-    High-precision background daemon:
-    - Runs every 3 seconds: Auto-advances speaker queue (progresses playing items after duration,
-      triggers queued notices when scheduled_time <= now, and dispatches to hardware nodes).
-    - Runs every 45 seconds: Evaluates campus break slot repeat announcement schedules.
+    Event-driven, zero-lag speaker queue & repeat schedule engine.
+
+    Every pass runs BOTH the speaker queue progression and the repeat schedule
+    evaluation. Between passes the daemon does not sleep on a fixed timer; it waits
+    on app.core.queue_signal and wakes:
+      - instantly when any request commits a queue / repeat schedule / announcement change
+        (publish, approve, emergency override, ESP32 'complete', schedule edits, ...), or
+      - exactly when the next known event is due (current notice ends, a scheduled notice
+        or repeat round comes due, or an IST break / custom window opens or closes).
+    After a pass that changed something it re-runs immediately so chained transitions
+    (notice finishes -> next starts -> repeat enqueued) happen back-to-back.
     """
     from app.db.database import SessionLocal
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    from app.services.hardware_speaker_service import (
+        auto_advance_speaker_queue,
+        get_next_queue_wake_seconds,
+    )
     from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
+    from app.core.queue_signal import DAEMON_SESSION_FLAG, wait_for_queue_change
 
-    tick_count = 0
+    # Upper bound on sleep, only as a safety net for changes made outside this process
+    # (e.g. maintenance scripts writing directly to Supabase). In-process changes wake instantly.
+    safety_poll = float(os.getenv("QUEUE_DAEMON_SAFETY_POLL_SEC", "1.0"))
+    max_chained_passes = 8
+
     while True:
+        wait_seconds = safety_poll
         try:
-            time.sleep(2)
-            tick_count += 1
-            with SessionLocal() as db_session:
-                # 1. Real-time speaker queue progression & scheduled time triggers (every 2s)
-                auto_advance_speaker_queue(db_session)
-
-                # 2. Campus acoustic window repeat schedules (evaluated every ~4s = 2 ticks)
-                if tick_count % 2 == 0:
-                    evaluate_and_dispatch_repeat_slots(db_session)
-        except Exception:
-            time.sleep(1)
+            for _ in range(max_chained_passes):
+                with SessionLocal() as db_session:
+                    db_session.info[DAEMON_SESSION_FLAG] = True
+                    advance_res = auto_advance_speaker_queue(db_session)
+                    repeat_res = evaluate_and_dispatch_repeat_slots(db_session)
+                    changed = bool(advance_res) or bool((repeat_res or {}).get("dispatched"))
+                    if not changed:
+                        wait_seconds = get_next_queue_wake_seconds(db_session, max_wait=safety_poll)
+                        break
+        except Exception as exc:
+            print(f"Speaker queue daemon note: {exc}")
+            wait_seconds = 1.0
+        wait_for_queue_change(wait_seconds)
 
 
 def _prewarm_recent_announcements():
