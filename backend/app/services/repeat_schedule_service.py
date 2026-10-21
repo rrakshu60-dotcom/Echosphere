@@ -265,22 +265,36 @@ def get_next_slot_datetime(
                     if log.slot_key == prefix_key or log.slot_key.startswith(f"{prefix_key}:")
                 )
 
+            # If announcement already played at least once (e.g. publish now or in-progress playback)
+            total_played = getattr(sched, "total_played_count", 0) or 0
+            effective_played_in_slot = max(times_played_in_slot, 1 if total_played > 0 else 0)
+
             # Resolve repeat cap for this slot
             ann = getattr(sched, "announcement", None)
             prio_weight, default_reps, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
             slot_max_repeats = 999999 if prio_tier == "EMERGENCY" else (sched.max_repeats if (sched.max_repeats and sched.max_repeats > 0) else default_reps)
 
-            if times_played_in_slot < slot_max_repeats:
+            if prio_tier == "EMERGENCY":
                 candidate_repeat = from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS)
                 if candidate_repeat + timedelta(seconds=15) <= slot_end_today:
                     candidates.append((candidate_repeat, slot_name))
                 else:
                     candidates.append((slot_start_today + timedelta(days=1), slot_name))
+            elif effective_played_in_slot == 0:
+                # Has not played yet in this active window: play now
+                candidates.append((from_ist_dt, slot_name))
             else:
-                # If currently within the active window, allow continuous rotation for the entire window
-                if from_ist_dt + timedelta(seconds=15) <= slot_end_today:
-                    candidates.append((from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS), slot_name))
+                interval_m = getattr(sched, "interval_minutes", 0) or 0
+                if interval_m > 0 and effective_played_in_slot < slot_max_repeats:
+                    candidate_repeat = from_ist_dt + timedelta(minutes=interval_m)
+                    if candidate_repeat + timedelta(seconds=15) <= slot_end_today:
+                        candidates.append((candidate_repeat, slot_name))
+                    else:
+                        candidates.append((slot_start_today + timedelta(days=1), slot_name))
                 else:
+                    # In standard break slots (or custom window without interval, or after max repeats in this slot):
+                    # The notice has completed its broadcast for this slot window today.
+                    # Its next repetition for this slot is tomorrow.
                     candidates.append((slot_start_today + timedelta(days=1), slot_name))
 
         # 2. Slot is upcoming today

@@ -1684,17 +1684,12 @@ def auto_advance_speaker_queue(
                     from app.services.repeat_schedule_service import get_next_slot_datetime
                     next_slot_dt, matched_slot_name = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
                     
-                    # If currently inside an active slot window, KEEP SCHEDULE ACTIVE!
-                    if matched:
-                        has_repeats_remaining = True
-                        next_repeat_time = next_slot_dt or (now + timedelta(seconds=BROADCAST_GAP_SECONDS))
-                        sched.next_repeat_at = next_repeat_time
-                        sched.is_active = True
-                    elif next_slot_dt is not None:
+                    if next_slot_dt is not None:
                         has_repeats_remaining = True
                         next_repeat_time = next_slot_dt
                         sched.next_repeat_at = next_repeat_time
                         sched.is_active = True
+                        slot_name = matched_slot_name or (matched[0] if matched else "CUSTOM_WINDOW")
                     else:
                         has_repeats_remaining = False
                         sched.is_active = False
@@ -1802,13 +1797,6 @@ def auto_advance_speaker_queue(
         ready_items = [q for q in queued_all if not _is_future_time(q.scheduled_time, now + timedelta(seconds=2))]
         if ready_items:
             next_item = ready_items[0]
-        elif force_advance and queued_all:
-            # If force_advance was requested and no items are due, advance to another distinct waiting notice,
-            # but NEVER immediately re-play the exact same notice that was just rescheduled for the future!
-            just_played_ann_id = getattr(current_playing, "announcement_id", None) if current_playing else None
-            other_items = [q for q in queued_all if q.announcement_id != just_played_ann_id]
-            if other_items:
-                next_item = other_items[0]
 
     if not next_item:
         return None

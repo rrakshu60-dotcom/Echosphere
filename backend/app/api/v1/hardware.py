@@ -927,25 +927,19 @@ def update_queue_action(
                     has_repeats_left = True
                     slot_name = f"INTERVAL_{interval_m}M"
                 else:
-                    matched = is_slot_active_at_time(sched, time_str, active_slots)
-                    if matched:
-                        next_rep_time = now + timedelta(seconds=4)
+                    from app.services.repeat_schedule_service import get_next_slot_datetime, _utc_to_ist_naive
+                    next_cand, cand_slot = get_next_slot_datetime(sched, _utc_to_ist_naive(now), db)
+                    if next_cand:
+                        next_rep_time = next_cand
                         sched.next_repeat_at = next_rep_time
                         has_repeats_left = True
                         sched.is_active = True
-                        slot_name = matched[0]
+                        slot_name = cand_slot or "NEXT_BREAK"
                     else:
-                        from app.services.repeat_schedule_service import get_next_slot_datetime, _utc_to_ist_naive
-                        next_cand, cand_slot = get_next_slot_datetime(sched, _utc_to_ist_naive(now), db)
-                        if next_cand:
-                            next_rep_time = next_cand
-                            sched.next_repeat_at = next_rep_time
-                            has_repeats_left = True
-                            sched.is_active = True
-                            slot_name = cand_slot or "NEXT_BREAK"
-                        else:
-                            sched.is_active = False
+                        has_repeats_left = False
+                        sched.is_active = False
             else:
+                has_repeats_left = False
                 sched.is_active = False
 
             prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
