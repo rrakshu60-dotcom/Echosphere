@@ -33,6 +33,23 @@ from app.services.audit_log_service import create_audit_log_service
 from app.core.websocket_manager import ws_manager
 
 
+def recorded_delivery_channels(announcement: Announcement) -> tuple:
+    """
+    (in_app, push) as chosen when the notice was created, read from its recorded deliveries.
+    Notices without recorded channels (older data) keep the previous behaviour: both on.
+    """
+    names = [
+        d.delivery_type.name.lower()
+        for d in (announcement.deliveries or [])
+        if getattr(d, "delivery_type", None) is not None
+    ]
+    if not names:
+        return True, True
+    in_app = any("in-app" in n or "feed" in n for n in names)
+    push = any("push" in n for n in names)
+    return in_app, push
+
+
 def dispatch_announcement_notifications_and_deliveries(
     db: Session,
     announcement: Announcement,
@@ -79,8 +96,8 @@ def dispatch_announcement_notifications_and_deliveries(
         except Exception as e:
             logger.warning(f"Error persisting delivery type {ch_name}: {e}")
 
-    # 2. If status is PUBLISHED, generate Notifications for targeted users
-    if announcement.status == AnnouncementStatus.PUBLISHED:
+    # 2. If PUBLISHED and delivered in-app, generate Notifications for targeted users
+    if deliver_in_app and announcement.status == AnnouncementStatus.PUBLISHED:
         try:
             target_str = (target_audience or "").strip().lower()
             users_query = db.query(User)
@@ -734,12 +751,13 @@ def approve_announcement_service(
     except Exception as e:
         logger.warning(f"Auto-broadcast error on announcement approval: {e}")
 
-    # Dispatch in-app and push notifications to recipients upon approval
+    # Dispatch in-app and push notifications upon approval, on the channels chosen at creation
+    approved_in_app, approved_push = recorded_delivery_channels(updated_announcement)
     dispatch_announcement_notifications_and_deliveries(
         db=db,
         announcement=updated_announcement,
-        deliver_in_app=True,
-        deliver_push=True,
+        deliver_in_app=approved_in_app,
+        deliver_push=approved_push,
         deliver_speaker=has_speaker_delivery,
         current_user=current_user,
     )
@@ -1001,11 +1019,12 @@ def batch_moderate_service(
                         speaker_voice=ann.speaker_voice or "female",
                     )
 
+                ann_in_app, ann_push = recorded_delivery_channels(ann)
                 dispatch_announcement_notifications_and_deliveries(
                     db=db,
                     announcement=ann,
-                    deliver_in_app=True,
-                    deliver_push=True,
+                    deliver_in_app=ann_in_app,
+                    deliver_push=ann_push,
                     deliver_speaker=has_spk,
                     current_user=current_user,
                 )
