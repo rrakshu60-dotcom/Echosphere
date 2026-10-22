@@ -51,6 +51,8 @@ else:
         pool_size=5,
         max_overflow=10,
     )
+    # Host only (no credentials): shows in deploy logs which database region the backend uses
+    print(f"[DB] PostgreSQL host: {engine.url.host}", flush=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
