@@ -4,7 +4,6 @@ from datetime import timedelta
 from typing import cast
 
 from dotenv import load_dotenv
-from passlib.context import CryptContext
 
 load_dotenv()
 
@@ -19,41 +18,15 @@ if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(48)
     print("WARNING: JWT_SECRET_KEY is not set; using a temporary random key. Set it in the environment.")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
 # ------------------------------------------------------------------
 # Password Hashing
 # ------------------------------------------------------------------
 
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
-
-
-def hash_password(password: str) -> str:
-    """
-    Hashes a plain-text password.
-    """
-    return pwd_context.hash(password)
-
-
-def verify_password(
-    plain_password: str,
-    hashed_password: str,
-) -> bool:
-    """
-    Verifies a plain-text password against its hash.
-    """
-    return pwd_context.verify(
-        plain_password,
-        hashed_password,
-    )
-
-
-# ------------------------------------------------------------------
-# Access Token Expiry
-# ------------------------------------------------------------------
+# One hasher for the whole app (app.core.password, plain bcrypt). passlib's bcrypt wrapper
+# fails with current bcrypt releases, which broke password reset.
+from app.core.password import hash_password, verify_password  # noqa: E402,F401
 
 
 def get_access_token_expiry() -> timedelta:

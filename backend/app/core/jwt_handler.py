@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from jose import JWTError, jwt
 
@@ -9,14 +10,14 @@ from app.core.security import (
 )
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expires_in: Optional[timedelta] = None) -> str:
     """
     Create a signed JWT access token.
     """
 
     to_encode = data.copy()
 
-    expire = datetime.now(timezone.utc) + get_access_token_expiry()
+    expire = datetime.now(timezone.utc) + (expires_in or get_access_token_expiry())
 
     to_encode.update(
         {

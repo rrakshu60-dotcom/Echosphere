@@ -184,6 +184,11 @@ def reset_password_service(
         user=user,
     )
 
+    # A reset usually means the old password leaked: sign out every device
+    from app.services.session_service import end_all_user_sessions
+
+    end_all_user_sessions(db, user.id, "password_reset")
+
     reset_token.used = True
 
     update_password_reset_token(

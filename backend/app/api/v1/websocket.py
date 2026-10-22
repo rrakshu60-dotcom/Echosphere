@@ -21,6 +21,22 @@ def websocket_live_http_probe():
     }
 
 
+def _session_user(token):
+    """The signed-in user for a socket's ?token=, only if its session is still open."""
+    if not token or not token.strip():
+        return None
+    from app.core.dependencies import _resolve_session
+    from app.db.database import SessionLocal
+
+    with SessionLocal() as db:
+        resolved = _resolve_session(token.strip(), db)
+        if resolved is None:
+            return None
+        user = resolved[0]
+        _ = user.role  # load before the session closes
+        return user
+
+
 @router.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket, token: str | None = None):
     """
@@ -32,14 +48,10 @@ async def websocket_live_endpoint(websocket: WebSocket, token: str | None = None
     """
     role = None
     user_id = None
-    if token and token.strip():
-        try:
-            from app.core.jwt_handler import verify_access_token
-            payload = verify_access_token(token.strip())
-            role = payload.get("role")
-            user_id = payload.get("id") or payload.get("sub")
-        except Exception:
-            pass
+    signed_in = _session_user(token)
+    if signed_in is not None:
+        role = signed_in.role.name if signed_in.role else "Student"
+        user_id = signed_in.official_email or signed_in.usn or signed_in.username
 
     await ws_manager.connect(websocket, role=role, user_id=user_id)
     try:
@@ -198,25 +210,17 @@ async def websocket_mic_stream_endpoint(
     - Raw binary PCM frames (16-bit mono 16kHz) forwarded immediately (< 120ms)
     - JSON text commands: {"command": "STOP"} or {"command": "CHANGE_ZONE", "zone": "..."}
     """
-    broadcaster_id = None
     broadcaster_name = "Campus Administrator"
-    broadcaster_role = "Admin"
 
-    # Authenticate broadcaster
-    if token and token.strip():
-        try:
-            from app.core.jwt_handler import verify_access_token
-            payload = verify_access_token(token.strip())
-            broadcaster_id = payload.get("id") or payload.get("sub")
-            broadcaster_name = payload.get("name") or payload.get("username") or broadcaster_name
-            broadcaster_role = payload.get("role") or broadcaster_role
-        except Exception as e:
-            logger.warning(f"[Live PA] Authentication token invalid: {e}")
-            await websocket.close(code=1008, reason="Invalid authentication token")
-            return
-    else:
-        # In development or when token omitted, check query params or deny
-        logger.info("[Live PA] Mic stream connected with default credentials.")
+    # Only a signed-in staff member with an open session may speak through the campus speakers
+    broadcaster = _session_user(token)
+    if broadcaster is None:
+        logger.warning("[Live PA] Refused mic stream without a valid session.")
+        await websocket.close(code=1008, reason="Sign in to use the campus PA microphone.")
+        return
+    broadcaster_id = broadcaster.official_email or broadcaster.usn or broadcaster.username
+    broadcaster_name = broadcaster.full_name or broadcaster_name
+    broadcaster_role = broadcaster.role.name if broadcaster.role else "Student"
 
     # Restrict live broadcast to authorized staff/admin roles
     norm_role = str(broadcaster_role).lower()
