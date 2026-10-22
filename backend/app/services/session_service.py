@@ -167,6 +167,13 @@ def end_all_user_sessions(db: Session, user_id: int, reason: str) -> int:
     return len(open_sessions)
 
 
+def mask_identifier(identifier: str) -> str:
+    """For IDs that match no account: keep 2 characters and the length. People sometimes type a
+    password into the ID box, and the sign-in log is permanent."""
+    text = (identifier or "").strip()
+    return f"{text[:2]}••• ({len(text)} chars)"
+
+
 def log_sign_in(
     db: Session,
     identifier: str,
@@ -178,6 +185,8 @@ def log_sign_in(
     user: Optional[User] = None,
     session: Optional[UserSession] = None,
 ) -> None:
+    if reason == "unknown_user":
+        identifier = mask_identifier(identifier)
     db.add(SignInLog(
         identifier=(identifier or "")[:255],
         user_id=user.id if user else None,
