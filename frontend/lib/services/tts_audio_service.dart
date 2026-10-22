@@ -498,16 +498,17 @@ class TtsAudioService extends GetxService {
   }
 
   Future<void> stop() async {
+    // Reset the state first so Stop always takes effect, even if the player call fails or stalls.
+    currentAnnouncementId.value = null;
+    activeAnnouncementTitle.value = '';
+    isPlaying.value = false;
+    isBuffering.value = false;
+    position.value = Duration.zero;
+    _lastPlayedGender = null;
+    _lastPlayedAccent = null;
+    _lastPlayedMode = null;
     try {
       await _player.stop();
-      currentAnnouncementId.value = null;
-      activeAnnouncementTitle.value = '';
-      isPlaying.value = false;
-      isBuffering.value = false;
-      position.value = Duration.zero;
-      _lastPlayedGender = null;
-      _lastPlayedAccent = null;
-      _lastPlayedMode = null;
     } catch (_) {}
   }
 
