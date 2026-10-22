@@ -45,6 +45,7 @@
  * ============================================================================
  */
 
+#include <esp_task_wdt.h>
 #include "arduino_compat.h"
 #if !defined(__clang__)
 #include <Arduino.h>
@@ -124,10 +125,27 @@ void setup() {
   // 7. Connect to Wi-Fi and register node with EchoSphere backend
   networkManager.begin();
 
+  // 8. Watchdog: if the main loop ever stops for 60s (hung network call, deadlock), reboot
+  //    automatically instead of staying silent and offline until someone power-cycles the node.
+  if (esp_reset_reason() == ESP_RST_TASK_WDT || esp_reset_reason() == ESP_RST_INT_WDT || esp_reset_reason() == ESP_RST_WDT) {
+    Serial.println(F("⚠️ [WATCHDOG] Previous run froze and was rebooted automatically by the watchdog."));
+  }
+  esp_task_wdt_config_t wdtConfig = {};
+  wdtConfig.timeout_ms = 60000;
+  wdtConfig.idle_core_mask = 0;
+  wdtConfig.trigger_panic = true;
+  if (esp_task_wdt_reconfigure(&wdtConfig) != ESP_OK) {
+    esp_task_wdt_init(&wdtConfig);
+  }
+  esp_task_wdt_add(NULL);
+  Serial.println(F("🛡️ [WATCHDOG] Armed: auto-reboot if the main loop stalls for 60s."));
+
   Serial.println(F("🚀 [BOOT COMPLETE] EchoSphere ESP32 Node is LIVE and LISTENING."));
 }
 
 void loop() {
+  esp_task_wdt_reset();
+
   // 1. Update Display ticker, animations, and LED states
   displayManager.update();
 

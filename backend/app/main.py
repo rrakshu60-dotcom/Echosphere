@@ -207,12 +207,37 @@ def _prewarm_recent_announcements():
         print(f"Startup audio pre-warm note: {exc}")
 
 
+def _render_self_keepalive():
+    """
+    Render's free tier sleeps after 15 minutes without inbound traffic, and the GitHub cron
+    keep-alive is throttled to a few runs a day. While the service is up, ping our own public
+    URL every 9 minutes during campus hours (07:00-23:30 IST) so it never dozes off mid-day.
+    It cannot wake a sleeping service; the speaker's heartbeats and an external monitor do that.
+    """
+    import urllib.request
+    from datetime import datetime, timedelta, timezone
+
+    url = (os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    if not url:
+        return  # not running on Render
+    while True:
+        time.sleep(540)
+        ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        minutes = ist.hour * 60 + ist.minute
+        if 7 * 60 <= minutes <= 23 * 60 + 30:
+            try:
+                urllib.request.urlopen(url + "/", timeout=20).read(64)
+            except Exception as exc:
+                print(f"Render self keep-alive note: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     t = threading.Thread(target=_speaker_and_repeat_daemon, daemon=True, name="SpeakerAndRepeatDaemon")
     t.start()
     t2 = threading.Thread(target=_prewarm_recent_announcements, daemon=True, name="AudioPrewarmDaemon")
     t2.start()
+    threading.Thread(target=_render_self_keepalive, daemon=True, name="RenderSelfKeepAlive").start()
     try:
         from app.services.tts_service import start_zerogpu_keepalive_daemon
         start_zerogpu_keepalive_daemon()
@@ -416,7 +441,8 @@ def diagnostic_tts(run_test: bool = False, reset_client: bool = False):
     return diag
 
 
-@app.get("/")
+# HEAD too: uptime monitors (UptimeRobot) probe with HEAD and got 405 "Method Not Allowed"
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     try:
         with engine.connect() as connection:

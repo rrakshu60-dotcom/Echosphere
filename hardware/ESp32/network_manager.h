@@ -20,6 +20,21 @@ private:
   String nodeDept;
   int nodeId = 0;
 
+  // One persistent TLS session to the backend, reused by heartbeats, the audio stream and the
+  // completion callback. A fresh TLS handshake costs ~1s on the ESP32, and heartbeats run every
+  // 0.8s, so reusing it removes most of the delay before a notice starts. Only one TLS session
+  // ever exists, so heap use is the same as before.
+  WiFiClientSecure backendClient;
+  bool backendClientConfigured = false;
+
+  WiFiClientSecure& sharedTlsClient() {
+    if (!backendClientConfigured) {
+      backendClient.setInsecure();
+      backendClientConfigured = true;
+    }
+    return backendClient;
+  }
+
   String currentStatus = "ONLINE";
   int activeAnnouncementId = 0;
   int activeQueueId = 0;
@@ -366,12 +381,11 @@ public:
     serializeJson(reqDoc, requestBody);
 
     HTTPClient http;
-    WiFiClientSecure secureClient;
     WiFiClient plainClient;
+    http.setReuse(true);  // keep the TLS session open between heartbeats
 
     if (serverUrl.startsWith("https://")) {
-      secureClient.setInsecure();
-      http.begin(secureClient, url);
+      http.begin(sharedTlsClient(), url);
     } else {
       http.begin(plainClient, url);
     }
@@ -595,9 +609,11 @@ public:
       Serial.print(F("⚠️ [HEARTBEAT] Request failed (HTTP "));
       Serial.print(httpCode);
       Serial.println(F(")"));
+      backendClient.stop();  // stale/broken session: reconnect on the next heartbeat
     }
 
-    // CRITICAL: Close heartbeat HTTP & release TLS heap memory BEFORE dispatching audio streams!
+    // Ends this request but keeps the shared TLS session open (setReuse); the audio stream reuses
+    // the same session, so there is still only one TLS session in memory.
     http.end();
 
     // Now execute control command if present
@@ -703,7 +719,8 @@ public:
           } else {
             audioMgr.playAttentionChime();
           }
-        }
+        },
+        streamUrl.startsWith("https://") ? &sharedTlsClient() : nullptr
       );
 
       if (streamPlayed) {
@@ -802,12 +819,11 @@ public:
     Serial.println(F(" completion..."));
 
     HTTPClient http;
-    WiFiClientSecure secureClient;
     WiFiClient plainClient;
+    http.setReuse(true);
 
     if (serverUrl.startsWith("https://")) {
-      secureClient.setInsecure();
-      http.begin(secureClient, url);
+      http.begin(sharedTlsClient(), url);
     } else {
       http.begin(plainClient, url);
     }
@@ -821,8 +837,8 @@ public:
       Serial.println(F("✅ [QUEUE AUTO-ADVANCE] Server acknowledged completion. Queue advanced!"));
     }
     http.end();
-    if (serverUrl.startsWith("https://")) {
-      secureClient.stop();
+    if (httpCode <= 0) {
+      backendClient.stop();
     }
   }
 

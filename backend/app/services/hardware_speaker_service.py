@@ -973,6 +973,20 @@ def enqueue_and_broadcast_announcement(
     queue_pos = int(getattr(active_item, "queue_position", 1) or 1)
     current_status = str(getattr(active_item, "status", "Queued"))
 
+    # Tell every open queue page right away instead of waiting for its next poll
+    try:
+        from app.core.websocket_manager import ws_manager
+        ws_manager.broadcast_sync({
+            "event": "QUEUE_UPDATED",
+            "queue_id": getattr(active_item, "id", None),
+            "announcement_id": announcement_id,
+            "action": "enqueue",
+            "status": current_status,
+            "timestamp": utc_now().isoformat(),
+        })
+    except Exception:
+        pass
+
     # 2. Form robust streaming audio URL directly targeting 16-bit PCM WAV for ESP32 hardware streaming
     audio_full_url = f"{base_url}/api/v1/announcements/{announcement_id}/audio/stream?audio_format=wav&include_chime=false"
 
