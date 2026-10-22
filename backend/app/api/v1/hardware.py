@@ -594,6 +594,8 @@ def receive_node_heartbeat(
         pass
     cmds = get_pending_commands_for_mac(str(node.mac_address), db=db)
     feed = get_display_feed_data(db, str(node.mac_address))
+    if any(str(c.get("command", "")).startswith("PLAY") for c in cmds) or feed.get("active_notice"):
+        print(f"[TEMP-TIMING] heartbeat returns PLAY={[c.get('announcement_id') for c in cmds if str(c.get('command','')).startswith('PLAY')]} active={(feed.get('active_notice') or {}).get('id')} at {time.time():.2f}", flush=True)
     return {
         "status": "success",
         "node_id": node.id,

@@ -167,6 +167,7 @@ def create_announcement_service(
     current_user: User,
 ) -> Announcement:
 
+    import time as _t; _t0 = _t.time()  # TEMP-TIMING
     category = get_category_by_id(
         db,
         request.category_id,
@@ -239,6 +240,7 @@ def create_announcement_service(
         db,
         announcement,
     )
+    print(f"[TEMP-TIMING] create #{created_announcement.id}: inserted at {_t.time()-_t0:.2f}s", flush=True)
 
     # Proactively pre-render Kokoro-82M neural audio in background so ANY future broadcast/playback has 0.0s delay
     try:
@@ -283,6 +285,7 @@ def create_announcement_service(
         except Exception as e:
             logger.warning(f"Error configuring repeat schedule on announcement creation: {e}")
 
+    print(f"[TEMP-TIMING] create #{created_announcement.id}: enqueue starts at {_t.time()-_t0:.2f}s", flush=True)
     # Speaker first: it plays now, and notifications / the AI summary must not delay it.
     if deliver_speaker and created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
         from app.core.emergency_utils import is_emergency_announcement
@@ -328,6 +331,7 @@ def create_announcement_service(
                 logger.warning(f"Background AI summary after creation note: {se}")
         threading.Thread(target=_summarize_after_create, daemon=True, name=f"Summary_Ann_{created_announcement.id}").start()
 
+    print(f"[TEMP-TIMING] create #{created_announcement.id}: enqueue done at {_t.time()-_t0:.2f}s", flush=True)
     # Audit after the speaker step: it isn't needed to start playback
     create_audit_log_service(
         db=db,
@@ -382,6 +386,7 @@ def create_announcement_service(
     except Exception:
         pass
 
+    print(f"[TEMP-TIMING] create #{created_announcement.id}: service done at {_t.time()-_t0:.2f}s", flush=True)
     return created_announcement
 
 
