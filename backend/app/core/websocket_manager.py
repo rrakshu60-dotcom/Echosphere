@@ -11,8 +11,12 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
         self.connection_meta: Dict[WebSocket, Dict[str, Any]] = {}
+        # The server's event loop, which owns every WebSocket. Sync code (threadpool endpoints,
+        # the queue daemon) must hand broadcasts to this loop, not send from a private loop.
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def connect(self, websocket: WebSocket, role: str | None = None, user_id: int | None = None):
+        self._loop = asyncio.get_running_loop()
         await websocket.accept()
         self.active_connections.append(websocket)
         self.connection_meta[websocket] = {"role": role, "user_id": user_id}
@@ -55,6 +59,18 @@ class ConnectionManager:
         """
         Thread-safe synchronous helper to schedule broadcast on the active event loop.
         """
+        if not self.active_connections:
+            return
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            try:
+                if asyncio.get_running_loop() is loop:
+                    loop.create_task(self.broadcast(message, target_roles))
+                    return
+            except RuntimeError:
+                pass  # called from a worker thread: no running loop here
+            asyncio.run_coroutine_threadsafe(self.broadcast(message, target_roles), loop)
+            return
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():

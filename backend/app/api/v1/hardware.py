@@ -1,5 +1,7 @@
 from typing import Any, List, Optional
 import re
+import threading
+import time
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -152,6 +154,35 @@ def _format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.replace(tzinfo=timezone.utc).isoformat()
 
 
+_DAILY_FEED_TTL_SECONDS = 10.0
+_DAILY_FEED_CACHE: dict = {"key": None, "at": 0.0, "data": []}
+_SUMMARY_JOBS: set = set()
+
+
+def _summarize_in_background(announcement_id: int) -> None:
+    """Generate and save a missing AI summary once, outside the request (heartbeat) path."""
+    if announcement_id in _SUMMARY_JOBS:
+        return
+    _SUMMARY_JOBS.add(announcement_id)
+
+    def _job():
+        from app.db.database import SessionLocal
+        from app.services.ai_service import AIService
+        try:
+            with SessionLocal() as s:
+                ann = s.query(Announcement).filter(Announcement.id == announcement_id).first()
+                if ann and ann.description:
+                    real_sum = AIService.summarize(ann.description)
+                    if real_sum and len(real_sum.strip()) > 10:
+                        ann.ai_summary = real_sum.strip()
+                        s.commit()
+                        _DAILY_FEED_CACHE["key"] = None  # show the new summary on the next heartbeat
+        except Exception as exc:
+            logger.debug(f"Background summary for #{announcement_id} note: {exc}")
+
+    threading.Thread(target=_job, daemon=True, name=f"FeedSummary_{announcement_id}").start()
+
+
 def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dict:
     """
     Constructs live display payload for ESP32 OLED/LED screens:
@@ -230,6 +261,13 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     # 2. Daily important announcements for idle display ticker (strictly today's notices in IST)
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     now_ist = now_utc + timedelta(hours=5, minutes=30)
+
+    # Heartbeats arrive every 0.8s and this list is the same for every speaker: rebuild it at
+    # most every 10s instead of re-querying today's notices on every heartbeat.
+    cache_key = now_ist.date().isoformat()
+    cached = _DAILY_FEED_CACHE
+    if cached["key"] == cache_key and time.monotonic() - cached["at"] < _DAILY_FEED_TTL_SECONDS:
+        return {"status": "success", "active_notice": active_dict, "daily_notices": cached["data"]}
     start_of_today_ist = datetime(now_ist.year, now_ist.month, now_ist.day)
     start_of_today_utc = start_of_today_ist - timedelta(hours=5, minutes=30)
 
@@ -276,15 +314,10 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             or (summary_raw.lower().startswith("summary:") and len(summary_raw.split()) <= 6)
         )
         if is_placeholder and n.description and len(n.description.strip()) > 10:
-            try:
-                from app.services.ai_service import AIService
-                real_sum = AIService.summarize(n.description)
-                if real_sum and len(real_sum.strip()) > 10:
-                    summary_raw = real_sum.strip()
-                    n.ai_summary = summary_raw
-                    db.commit()
-            except Exception:
-                db.rollback()
+            # Never block a speaker heartbeat on an AI call: summarize in the background,
+            # show the description until the summary is saved.
+            _summarize_in_background(n.id)
+            summary_raw = ""
 
         if not summary_raw:
             summary_raw = (n.description or n.title or "").strip()
@@ -310,6 +343,8 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
             "category": cat_name,
             "created_at": n.created_at.isoformat() if n.created_at else None,
         })
+
+    _DAILY_FEED_CACHE.update({"key": cache_key, "at": time.monotonic(), "data": daily_list})
 
     # Return authentic published announcements (empty list when none are published)
     return {

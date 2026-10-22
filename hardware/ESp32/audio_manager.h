@@ -1,6 +1,7 @@
 #ifndef ECHOSPHERE_AUDIO_MANAGER_H
 #define ECHOSPHERE_AUDIO_MANAGER_H
 
+#include <esp_task_wdt.h>
 #include "config.h"
 #include "arduino_compat.h"
 
@@ -293,7 +294,7 @@ public:
   // Stream Lossless 16-Bit PCM WAV Audio Stream Directly to MAX98357A I2S
   // Supports HTTP & HTTPS with dynamic sample rate detection and tight buffering
   // --------------------------------------------------------------------------
-  bool playStream(const String& streamUrl, std::function<void(float)> progressCallback = {}, std::function<void()> preChimeCallback = {}) {
+  bool playStream(const String& streamUrl, std::function<void(float)> progressCallback = {}, std::function<void()> preChimeCallback = {}, WiFiClientSecure* reuseClient = nullptr) {
     if (!isInitialized || streamUrl.length() == 0) return false;
 
     isPlaying = true;
@@ -312,10 +313,12 @@ public:
     WiFiClient* clientPtr = nullptr;
 
     bool isHttps = streamUrl.startsWith("https://");
+    // Reuse the caller's already-open TLS session when given (saves a ~1s handshake)
+    WiFiClientSecure& tls = (isHttps && reuseClient) ? *reuseClient : secureClient;
     if (isHttps) {
-      secureClient.setInsecure(); // Skip certificate verification for low memory overhead
-      secureClient.setTimeout(25000); // 25s socket timeout (in milliseconds!)
-      clientPtr = &secureClient;
+      tls.setInsecure(); // Skip certificate verification for low memory overhead
+      tls.setTimeout(25000); // 25s socket timeout (in milliseconds!)
+      clientPtr = &tls;
     } else {
       plainClient.setTimeout(20000); // 20s socket timeout (in milliseconds!)
       clientPtr = &plainClient;
@@ -324,10 +327,11 @@ public:
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(25000); // 25s timeout allows cloud ZeroGPU neural speech synthesis
+    http.setReuse(reuseClient != nullptr);
 
     bool beginOk = false;
     if (isHttps) {
-      beginOk = http.begin(secureClient, streamUrl);
+      beginOk = http.begin(tls, streamUrl);
     } else {
       beginOk = http.begin(plainClient, streamUrl);
     }
@@ -619,6 +623,8 @@ public:
         }
         delay(2);
       }
+
+      esp_task_wdt_reset();  // streaming a long notice is legitimate work, not a hang
 
       // Safety timeout guard: dynamically scaled to WAV length (min 3 minutes)
       if (millis() - streamStartTime > safetyLimitMs) {

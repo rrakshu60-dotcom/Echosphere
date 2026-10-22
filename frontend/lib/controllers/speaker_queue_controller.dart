@@ -528,17 +528,10 @@ class SpeakerQueueController extends GetxController {
         remoteActiveItems = rawQueue
             .whereType<Map>()
             .map((q) => Map<String, dynamic>.from(q))
+            // Show exactly what the backend queue holds. (Local "already played" / "dismissed"
+            // lists used to hide items here, so a replayed or re-queued notice showed an empty
+            // queue while the speaker was playing it.)
             .where((q) {
-              final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
-              final hasRepeat = q['has_repeat'] == true ||
-                  (q['repeat_schedule'] != null &&
-                   q['repeat_schedule'] is Map &&
-                   (q['repeat_schedule'] as Map)['is_active'] != false);
-              final isSingleCompleted = dismissedAnnouncementIds.contains(annId) ||
-                  completedSinglePlayAnnouncementIds.contains(annId) ||
-                  (Get.isRegistered<AnnouncementController>() && Get.find<AnnouncementController>().playedSpeakerNoticeIds.contains(annId));
-              if (isSingleCompleted && !hasRepeat) return false;
-              if (dismissedAnnouncementIds.contains(annId) && !hasRepeat) return false;
               return q['status'] != 'Completed' &&
                   q['status'] != 'Cancelled' &&
                   q['status'] != 'Skipped';
@@ -1159,7 +1152,6 @@ class SpeakerQueueController extends GetxController {
 
     if (!Get.testMode) {
       // Backend stops the speaker, cancels pending plays and ends any repeat schedule
-      if (targetId != null && targetId > 0) dismissedAnnouncementIds.add(targetId);
       if (await _sendLiveQueueAction(item, 'remove')) {
         snackBar('Notice removed from speaker queue.');
       }
