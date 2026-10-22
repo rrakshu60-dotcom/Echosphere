@@ -1084,7 +1084,6 @@ def enqueue_and_broadcast_announcement(
             except Exception as bg_err:
                 logger.warning(f"Failed to launch auto-play audio pre-render: {bg_err}")
 
-        print(f"[TEMP-TIMING] enqueue #{announcement_id}: PLAY command queued at {time.time():.2f}", flush=True)
         queue_command_for_nodes(payload, target_mac=target_mac, db=db)  # speaker first
         publish_success = publish_mqtt_command(topic, payload)
         normalize_speaker_queue_positions(db)

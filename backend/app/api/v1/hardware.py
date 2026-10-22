@@ -605,8 +605,12 @@ def receive_node_heartbeat(
     # Running it here too cost every request ~a dozen extra database round trips.
     cmds = get_pending_commands_for_mac(node_mac, db=db)
     feed = get_display_feed_data(db, node_mac)
-    if any(str(c.get("command", "")).startswith("PLAY") for c in cmds) or feed.get("active_notice"):
-        print(f"[TEMP-TIMING] heartbeat returns PLAY={[c.get('announcement_id') for c in cmds if str(c.get('command','')).startswith('PLAY')]} active={(feed.get('active_notice') or {}).get('id')} at {time.time():.2f}", flush=True)
+    # Never hand out a PLAY for a notice that isn't the one playing now. A stale duplicate (e.g. the
+    # DB copy of a command already delivered from memory while the speaker was streaming) would
+    # otherwise replay a finished notice, since the firmware lets the last PLAY in a batch win.
+    if any(str(c.get("command", "")).startswith("PLAY") for c in cmds):
+        playing_ids = {row[0] for row in db.query(SpeakerQueue.announcement_id).filter(SpeakerQueue.status == "Playing").all()}
+        cmds = [c for c in cmds if not str(c.get("command", "")).startswith("PLAY") or c.get("announcement_id") in playing_ids]
     return {
         "status": "success",
         "node_id": node_id,

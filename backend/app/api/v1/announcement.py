@@ -671,8 +671,6 @@ def _stream_file_with_preemption_check(
                     chunk = af.read(4096)
                     if not chunk:
                         break
-                    if sent == 0 and sync_queue_id:
-                        print(f"[TEMP-TIMING] stream #{announcement_id}: first byte at {time.time():.2f}", flush=True)
                     yield chunk
                     if sent == 0 and sync_queue_id:
                         try:
@@ -723,7 +721,6 @@ def stream_announcement_audio_endpoint(
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
     Supports 16-bit PCM WAV for ESP32 I2S hardware streaming and regional languages.
     """
-    if queue_id: print(f"[TEMP-TIMING] stream #{announcement_id}: request arrived at {time.time():.2f}", flush=True)
     from app.services.speaker_playback import is_valid_stream_signature, mark_stream_pending
     # Only a URL the backend issued to a speaker (signed) may confirm playback
     is_speaker_client = is_valid_stream_signature(queue_id, sig)
