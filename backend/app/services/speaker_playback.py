@@ -46,9 +46,10 @@ def try_serialized(fn, *args, **kwargs):
         QUEUE_LOCK.release()
 
 
-# Seconds the speaker spends on its local attention chime / siren before speech starts
-CHIME_OFFSET_SECONDS = 0.4
-EMERGENCY_CHIME_OFFSET_SECONDS = 0.8
+# Seconds from the first audio chunk leaving the server until the speaker's voice is heard:
+# transit through Render's proxy (~1s, measured live), then the local chime and pre-buffer.
+CHIME_OFFSET_SECONDS = 1.5
+EMERGENCY_CHIME_OFFSET_SECONDS = 1.9
 
 # A stream counts as active if it sent a chunk within this many seconds
 _STREAM_IDLE_SECONDS = 5.0
