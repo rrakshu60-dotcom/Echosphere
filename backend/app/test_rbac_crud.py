@@ -91,7 +91,7 @@ def test_hardware_crud():
         "zone": "Lab-Block"
     }
     r_reg = client.post("/api/v1/hardware/speakers/register", json=node_payload, headers=headers_dev)
-    assert r_reg.status_code in [201, 400], f"Register speaker failed: {r_reg.text}"
+    assert r_reg.status_code == 201, f"Register speaker failed: {r_reg.text}"
     
     # 2. Get Speaker Nodes
     r_nodes = client.get("/api/v1/hardware/speakers", headers=headers_dev)
