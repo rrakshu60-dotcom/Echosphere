@@ -986,7 +986,14 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                       children: [
                                         Icon(Icons.refresh_rounded, size: 18),
                                         SizedBox(width: 8),
-                                        Text('Retry Connection', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                        Flexible(
+                                          child: Text(
+                                            'Retry Connection',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
