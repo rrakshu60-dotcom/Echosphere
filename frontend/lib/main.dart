@@ -311,17 +311,18 @@ class _MainAppState extends State<MainApp> {
             name: '/',
             page: () => const RootWrapper(),
           ),
-          GetPage(name: '/home', page: () => const HomePage()),
+          GetPage(name: '/home', page: () => const HomePage(), middlewares: [AuthGuard()]),
           GetPage(name: '/login', page: () => const LoginScreen()),
-          GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage()),
-          GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage()),
-          GetPage(name: '/user-management', page: () => const UserManagementPage()),
-          GetPage(name: '/announcement-management', page: () => const AnnouncementManagementPage()),
-          GetPage(name: '/archive', page: () => const ArchivePage()),
-          GetPage(name: '/notifications', page: () => const NotificationsPage()),
-          GetPage(name: '/profile', page: () => const ProfilePage()),
+          GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/user-management', page: () => const UserManagementPage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/announcement-management', page: () => const AnnouncementManagementPage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/archive', page: () => const ArchivePage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/notifications', page: () => const NotificationsPage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/profile', page: () => const ProfilePage(), middlewares: [AuthGuard()]),
           GetPage(
             name: '/announcement',
+            middlewares: [AuthGuard()],
             page: () {
               final args = Get.arguments;
               if (args is AnnouncementModel) {
@@ -363,5 +364,16 @@ class _MainAppState extends State<MainApp> {
         },
       ),
     );
+  }
+}
+
+/// Sends signed-out visitors of app pages (direct URL, bookmark, reload) to '/',
+/// which shows the login screen, instead of rendering an admin page whose
+/// controls would all fail with "Login required".
+class AuthGuard extends GetMiddleware {
+  @override
+  RouteSettings? redirect(String? route) {
+    final loggedIn = Get.isRegistered<AuthController>() && Get.find<AuthController>().isLoggedIn.value;
+    return loggedIn ? null : const RouteSettings(name: '/');
   }
 }
