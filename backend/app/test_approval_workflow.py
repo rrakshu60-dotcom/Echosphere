@@ -57,7 +57,7 @@ def test_full_approval_workflow():
     # 3. Login as Student (Rakshitha S)
     r_stud = client.post("/api/v1/auth/login", json={
         "identifier": "1db23ci079",
-        "password": os.environ.get("ES_PASSWORD_ESDEV01", "")
+        "password": os.environ.get("ES_PASSWORD_1DB23CI079", "")
     })
     assert r_stud.status_code == 200, f"Student login failed: {r_stud.text}"
     student_token = r_stud.json()["access_token"]

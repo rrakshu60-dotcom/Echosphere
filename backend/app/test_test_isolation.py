@@ -54,3 +54,11 @@ def test_no_ai_model_provider_is_used():
     assert not (mr.USE_FINE_TUNED_GEMMA and router.fine_tuned_gemma.is_configured())
     assert not router.gemini_provider.is_configured()
     assert not router.cloudflare_provider.is_configured()
+
+
+def test_backend_env_file_is_not_loaded():
+    # Real secrets in backend/.env must never reach unit tests; CI has no .env at all.
+    # Compare names only, so a failure never prints secret values.
+    leaked = {"HF_TOKEN", "SG_DATABASE_URL", "OLD_MUMBAI_DATABASE_URL"} & set(os.environ)
+    assert not leaked, f"backend/.env leaked into unit tests: {sorted(leaked)}"
+    assert os.environ.get("ES_PASSWORD_ESDEV01", "").startswith("unit-test-"), "seeded test passwords not set"
