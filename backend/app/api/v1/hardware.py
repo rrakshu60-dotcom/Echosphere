@@ -146,6 +146,9 @@ def register_speaker_node(
         db.commit()
         db.refresh(existing)
         return existing
+    return create_speaker_node(db=db, node_in=node_in)
+
+
 def _format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
     if dt is None:
         return None
