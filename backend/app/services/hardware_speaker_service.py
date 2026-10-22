@@ -1000,8 +1000,10 @@ def enqueue_and_broadcast_announcement(
         setattr(existing_item, "error_count", 0)
         db.commit()
 
-    # Deterministically normalize all queue positions (orders by emergency, schedule, priority, homo-temporal tie-breaker)
-    normalize_speaker_queue_positions(db)
+    # Deterministically normalize all queue positions (orders by emergency, schedule, priority, homo-temporal tie-breaker).
+    # A notice that plays now is position 1 anyway: normalize after its speaker command goes out.
+    if not should_play:
+        normalize_speaker_queue_positions(db)
     db.refresh(active_item)
     queue_pos = int(getattr(active_item, "queue_position", 1) or 1)
     current_status = str(getattr(active_item, "status", "Queued"))
@@ -1082,8 +1084,9 @@ def enqueue_and_broadcast_announcement(
             except Exception as bg_err:
                 logger.warning(f"Failed to launch auto-play audio pre-render: {bg_err}")
 
+        queue_command_for_nodes(payload, target_mac=target_mac, db=db)  # speaker first
         publish_success = publish_mqtt_command(topic, payload)
-        queue_command_for_nodes(payload, target_mac=target_mac, db=db)
+        normalize_speaker_queue_positions(db)
         logger.info(f"📢 [AUTO-PLAY] Announcement #{announcement_id} ('{title}') -> Immediately playing on {topic} (Node: {target_mac or 'ALL'})")
     else:
         logger.info(f"📋 [ENQUEUED] Announcement #{announcement_id} ('{title}') -> Standing by at queue position #{queue_pos} ({current_status})")

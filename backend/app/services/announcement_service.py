@@ -240,15 +240,6 @@ def create_announcement_service(
         announcement,
     )
 
-    create_audit_log_service(
-        db=db,
-        user_id=current_user.id,
-        action="CREATE_ANNOUNCEMENT",
-        entity="ANNOUNCEMENT",
-        entity_id=created_announcement.id,
-        description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
-    )
-
     # Proactively pre-render Kokoro-82M neural audio in background so ANY future broadcast/playback has 0.0s delay
     try:
         import threading
@@ -336,6 +327,16 @@ def create_announcement_service(
             except Exception as se:
                 logger.warning(f"Background AI summary after creation note: {se}")
         threading.Thread(target=_summarize_after_create, daemon=True, name=f"Summary_Ann_{created_announcement.id}").start()
+
+    # Audit after the speaker step: it isn't needed to start playback
+    create_audit_log_service(
+        db=db,
+        user_id=current_user.id,
+        action="CREATE_ANNOUNCEMENT",
+        entity="ANNOUNCEMENT",
+        entity_id=created_announcement.id,
+        description=f"Created announcement (status: {initial_status.value}): {created_announcement.title}",
+    )
 
     dispatch_announcement_notifications_and_deliveries(
         db=db,
