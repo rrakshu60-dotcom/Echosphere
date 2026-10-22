@@ -79,8 +79,8 @@ void main(List<String> args) async {
 
     await safeCall(() async {
       await Supabase.initialize(
-        url: 'https://wvugkkwykdnyzcmaoxgj.supabase.co',
-        anonKey: 'sb_publishable_0h1jDPae3piItxkSaJEuqA_aUWgFuDe',
+        url: 'https://mxxdjjkvlbisukkldbpi.supabase.co',
+        anonKey: 'sb_publishable_-4E6hkFb8VtC0c5p251c0A_X0QguCHS',
       );
     }, errorMessage: 'Failed to initialize Supabase');
 
