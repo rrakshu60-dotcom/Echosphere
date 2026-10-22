@@ -706,12 +706,17 @@ public:
         }
       );
 
-      Serial.println(streamPlayed ? F("✅ [I2S STREAM] Notice speech playback completed successfully!") : F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
+      if (streamPlayed) {
+        Serial.println(F("✅ [I2S STREAM] Notice speech playback completed successfully!"));
+      } else if (!audioMgr.wasLastStreamPreempted()) {
+        Serial.println(F("⚠️ [I2S STREAM] Cloud speech stream unavailable."));
+      }
     }
 
-    // 2b. If stream was preempted by an emergency priority override, immediately cut over!
+    // 2b. The server stopped the stream (pause/stop/remove/skip or an emergency taking over):
+    // skip the completion chime, dwell and 'complete' callback, and ask the backend what to do next.
     if (audioMgr.wasLastStreamPreempted()) {
-      Serial.println(F("🚨 [PREEMPTION HANDLER] Notice was cut short by Emergency Override! Bypassing completion chime, dwell, and notify."));
+      Serial.println(F("⏹️ [STREAM STOPPED] Server ended this notice early. Skipping completion chime and notify; checking backend for what plays next."));
       displayMgr.resetEqualizerGraphic();
       isBroadcasting = false;
       activeAnnouncementId = 0;

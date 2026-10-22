@@ -631,10 +631,11 @@ public:
 
     http.end();
 
-    // Check if the stream was cut short prematurely by server preemption
+    // The server closes a notice's stream early when it is paused, stopped, removed or skipped,
+    // or when an emergency broadcast takes over. The speaker can't tell which, only that it was cut.
     if (totalDataBytes > 8192 && totalBytesStreamed < (totalDataBytes - 4096)) {
       lastStreamPreempted = true;
-      Serial.print(F("🚨 [I2S AUDIO] Stream was PREEMPTED by Emergency! Streamed "));
+      Serial.print(F("⏹️ [I2S AUDIO] Stream stopped early by the server (pause/stop/remove/skip or emergency). Played "));
       Serial.print(totalBytesStreamed);
       Serial.print(F(" of "));
       Serial.print(totalDataBytes);
@@ -653,7 +654,9 @@ public:
     }
 
     bool streamPlayedSuccess = (totalBytesStreamed >= 2048) && !lastStreamPreempted;
-    if (!streamPlayedSuccess) {
+    if (lastStreamPreempted) {
+      // Already reported above; no fallback cue is played for a stream the server stopped
+    } else if (!streamPlayedSuccess) {
       Serial.print(F("⚠️ [I2S AUDIO] Voice stream delivered only "));
       Serial.print(totalBytesStreamed);
       Serial.println(F(" bytes (insufficient for audible speech, will sound fallback cue)."));
