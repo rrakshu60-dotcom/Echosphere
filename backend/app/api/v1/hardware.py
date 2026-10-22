@@ -146,6 +146,8 @@ def register_speaker_node(
         db.commit()
         db.refresh(existing)
         return existing
+    # Only admins may add a new speaker; known speakers above reconnect without a login.
+    require_roles("Dev Admin", "Developer", "College Admin")(current_user)
     return create_speaker_node(db=db, node_in=node_in)
 
 
