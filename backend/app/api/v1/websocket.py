@@ -93,7 +93,8 @@ async def websocket_speaker_push_endpoint(websocket: WebSocket, mac: str):
         return
     await websocket.accept()
     speaker_push.register(mac, websocket)
-    logger.info(f"Speaker {mac} connected to the push channel")
+    # print (not logger.info): app INFO logs are hidden on Render, and these show speaker connectivity
+    print(f"[SPEAKER PUSH] {mac} connected", flush=True)
     try:
         while True:
             # The speaker only sends keep-alive text; reading detects disconnects
@@ -101,10 +102,10 @@ async def websocket_speaker_push_endpoint(websocket: WebSocket, mac: str):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.info(f"Speaker push session for {mac} ended: {e}")
+        print(f"[SPEAKER PUSH] {mac} session error: {e}", flush=True)
     finally:
         speaker_push.unregister(mac, websocket)
-        logger.info(f"Speaker {mac} left the push channel")
+        print(f"[SPEAKER PUSH] {mac} disconnected", flush=True)
 
 
 @router.get("/ws/hardware/mic-status")
