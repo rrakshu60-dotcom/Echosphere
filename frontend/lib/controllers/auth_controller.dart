@@ -108,7 +108,7 @@ class AuthController extends GetxController {
   final Rxn<EchosphereUser> currentUser = Rxn<EchosphereUser>();
   final RxBool isLoggedIn = false.obs;
   final RxBool isLoading = false.obs;
-  final RxBool rememberMe = true.obs;
+  final RxBool rememberMe = false.obs;
   final RxString token = ''.obs;
 
   final RxList<LoginLogEntry> auditLogs = <LoginLogEntry>[].obs;
@@ -124,10 +124,13 @@ class AuthController extends GetxController {
     'Dev Admin',
   ];
 
+  /// Completes once a remembered session (if any) has been restored.
+  late final Future<void> sessionRestored;
+
   @override
   void onInit() {
     super.onInit();
-    _loadSessionFromDisk();
+    sessionRestored = _loadSessionFromDisk();
     _loadAuditLogsFromDisk();
     loadResetQuotaFromDisk();
     _purgeLegacyLocalPasswords();
@@ -240,46 +243,29 @@ class AuthController extends GetxController {
     return backendSuccess;
   }
 
+  /// Restores a remembered session saved by an earlier run.
   Future<void> _loadSessionFromDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('auth_session');
-      if (raw != null) {
-        final Map<String, dynamic> data = jsonDecode(raw);
-        final isRemembered = data['remember_me'] == true;
-        if (isRemembered && data['user'] != null) {
-          rememberMe.value = true;
-          currentUser.value = EchosphereUser.fromJson(data['user']);
-          token.value = data['token'] ?? '';
-          isLoggedIn.value = true;
-          EchosphereApiService().setAuthToken(token.value);
-          FcmPushService.instance.syncUserSubscriptions(
-            departmentCode: currentUser.value?.department,
-            role: currentUser.value?.role,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Failed to load session from disk: $e');
-    }
+    final api = EchosphereApiService();
+    api.sessions.onSignedOut = _onSessionEndedRemotely;
+    final saved = await api.sessions.restore();
+    if (saved == null) return;
+    rememberMe.value = true;
+    currentUser.value = EchosphereUser.fromJson(saved);
+    token.value = api.sessions.accessToken ?? '';
+    api.setAuthToken(token.value);
+    isLoggedIn.value = true;
+    FcmPushService.instance.syncUserSubscriptions(
+      departmentCode: currentUser.value?.department,
+      role: currentUser.value?.role,
+    );
   }
 
-  Future<void> _saveSessionToDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (rememberMe.value && currentUser.value != null) {
-        final data = {
-          'remember_me': true,
-          'token': token.value,
-          'user': currentUser.value!.toJson(),
-        };
-        await prefs.setString('auth_session', jsonEncode(data));
-      } else {
-        await prefs.remove('auth_session');
-      }
-    } catch (e) {
-      debugPrint('Failed to save session to disk: $e');
-    }
+  /// The backend ended this session (expired, signed out by an admin, password changed, account disabled).
+  void _onSessionEndedRemotely() {
+    if (!isLoggedIn.value) return;
+    _clearLocalSignIn();
+    Get.offAll(() => const LoginScreen());
+    Get.snackbar('Signed out', 'Your session has ended. Please sign in again.', snackPosition: SnackPosition.BOTTOM);
   }
 
   Future<void> _loadAuditLogsFromDisk() async {
@@ -409,7 +395,7 @@ class AuthController extends GetxController {
   Future<bool> login({
     required String identifier,
     required String password,
-    bool remember = true,
+    bool remember = false,
     String? employeeIdVerification,
   }) async {
     rememberMe.value = remember;
@@ -420,17 +406,17 @@ class AuthController extends GetxController {
         final res = await api.login(
           identifier: identifier,
           password: password,
+          rememberMe: remember,
         );
 
         final accessToken = res['access_token'] as String?;
         if (accessToken != null) {
+          final user = EchosphereUser.fromJson(res);
+          await api.sessions.start(res, rememberMe: remember, user: user.toJson());
           token.value = accessToken;
           api.setAuthToken(accessToken);
-
-          final user = EchosphereUser.fromJson(res);
           currentUser.value = user;
           isLoggedIn.value = true;
-          await _saveSessionToDisk();
 
           FcmPushService.instance.syncUserSubscriptions(
             departmentCode: user.department,
@@ -462,6 +448,13 @@ class AuthController extends GetxController {
   }
 
   void logout() async {
+    // End the session on the backend first, while the token is still set
+    await EchosphereApiService().logoutSession();
+    await _clearLocalSignIn();
+    Get.offAll(() => const LoginScreen());
+  }
+
+  Future<void> _clearLocalSignIn() async {
     final prevUser = currentUser.value;
     if (prevUser != null) {
       FcmPushService.instance.unsubscribeUserSubscriptions(
@@ -474,7 +467,9 @@ class AuthController extends GetxController {
     token.value = '';
     rememberMe.value = false;
     isLoading.value = false;
-    EchosphereApiService().setAuthToken(null);
+    final api = EchosphereApiService();
+    api.setAuthToken(null);
+    await api.sessions.clear();
     // Clear persisted approval/rejection caches so stale local decisions
     // don't mask server truth on next login
     try {
@@ -482,10 +477,5 @@ class AuthController extends GetxController {
         await Get.find<AnnouncementController>().clearPersistedApprovalCache();
       }
     } catch (_) {}
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('auth_session');
-    } catch (_) {}
-    Get.offAll(() => const LoginScreen());
   }
 }

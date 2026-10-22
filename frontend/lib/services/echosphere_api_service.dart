@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
+import 'package:echosphere/services/session_manager.dart';
+import 'package:echosphere/utils/client_info.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -34,6 +36,37 @@ class EchosphereApiService {
   late Dio _dio;
   late String _baseUrl;
   String? _authToken;
+
+  /// The signed-in session (access token + one-time refresh key).
+  late final SessionManager sessions = SessionManager(refresher: _postRefresh);
+
+  /// Swaps the refresh key for a new token on a plain client, so the 401 handler can't loop.
+  Future<Map<String, dynamic>> _postRefresh(String refreshKey) async {
+    try {
+      final res = await Dio(BaseOptions(
+        baseUrl: _baseUrl,
+        connectTimeout: const Duration(seconds: 35),
+        receiveTimeout: const Duration(seconds: 35),
+        headers: {'Content-Type': 'application/json'},
+      )).post('/auth/refresh', data: {
+        'refresh_token': refreshKey,
+        'platform': clientPlatform(),
+        'app_version': await clientAppVersion(),
+      });
+      return Map<String, dynamic>.from(res.data as Map);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) throw const SessionEndedException();
+      rethrow;
+    }
+  }
+
+  /// Uses the session's current access token for every request.
+  void _useSessionToken() {
+    _authToken = sessions.accessToken;
+    if (Get.isRegistered<AuthController>()) {
+      Get.find<AuthController>().token.value = _authToken ?? '';
+    }
+  }
 
   EchosphereApiService._internal() {
     const String canonicalRenderUrl = 'https://echosphere-backend-9lv8.onrender.com/api/v1';
@@ -93,26 +126,24 @@ class EchosphereApiService {
             return handler.next(error);
           }
           debugPrint('API Error [${error.response?.statusCode}]: ${error.response?.data}');
-          if (error.response?.statusCode == 401 && _authToken != null && _authToken!.isNotEmpty) {
-            try {
-              debugPrint('[Auth] Silent token auto-renewal triggered...');
-              final refreshResp = await _dio.post(
-                '/auth/refresh',
-                data: {'token': _authToken},
-              );
-              if (refreshResp.statusCode == 200 && refreshResp.data != null) {
-                final newToken = refreshResp.data['access_token'] as String?;
-                if (newToken != null && newToken.isNotEmpty) {
-                  _authToken = newToken;
-                  debugPrint('[Auth] Silent token auto-renewal successful! Retrying request...');
-                  final opts = error.requestOptions;
-                  opts.headers['Authorization'] = 'Bearer $newToken';
-                  final cloneReq = await _dio.fetch(opts);
-                  return handler.resolve(cloneReq);
-                }
+          final path = error.requestOptions.path;
+          final retried = error.requestOptions.extra['session_retry'] == true;
+          if (error.response?.statusCode == 401 &&
+              sessions.isActive &&
+              !retried &&
+              !path.startsWith('/auth/login') &&
+              !path.startsWith('/auth/refresh')) {
+            // The 30-minute access token ran out: renew it once and retry the request
+            if (await sessions.refresh()) {
+              _useSessionToken();
+              final opts = error.requestOptions;
+              opts.extra['session_retry'] = true;
+              opts.headers['Authorization'] = 'Bearer $_authToken';
+              try {
+                return handler.resolve(await _dio.fetch(opts));
+              } on DioException catch (retryError) {
+                return handler.next(retryError);
               }
-            } catch (rErr) {
-              debugPrint('Token auto-renewal failed: $rErr');
             }
           }
           return handler.next(error);
@@ -194,6 +225,7 @@ class EchosphereApiService {
   Future<Map<String, dynamic>> login({
     required String identifier,
     required String password,
+    bool rememberMe = false,
   }) async {
     try {
       final response = await _dio.post(
@@ -201,6 +233,8 @@ class EchosphereApiService {
         data: {
           'identifier': identifier,
           'password': password,
+          'remember_me': rememberMe,
+          'platform': clientPlatform(),
         },
       );
       return response.data as Map<String, dynamic>;
@@ -208,6 +242,24 @@ class EchosphereApiService {
       final msg = e.response?.data?['detail'] ?? 'Login failed. Please check credentials.';
       throw Exception(msg);
     }
+  }
+
+  /// Ends this device's session on the backend. Signing out locally goes ahead even if this fails.
+  Future<void> logoutSession() async {
+    try {
+      await _dio.post('/auth/logout');
+    } catch (e) {
+      debugPrint('Sign-out request failed: $e');
+    }
+  }
+
+  /// Records an app open ("launch" or "resume") in the admin's App Access log.
+  Future<void> reportAppAccess(String event) async {
+    await _dio.post('/auth/access', data: {
+      'event': event,
+      'platform': clientPlatform(),
+      'app_version': await clientAppVersion(),
+    });
   }
 
   Future<Map<String, dynamic>> getCurrentUser() async {
