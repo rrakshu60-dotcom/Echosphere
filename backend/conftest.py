@@ -61,6 +61,15 @@ def pytest_configure(config):
             "Unit tests always use a temporary SQLite DB; production is only for backend/scripts/live_*.py."
         )
 
+    # Never load backend/.env: its real secrets must not reach tests, and CI has no .env at all.
+    import dotenv
+
+    dotenv.load_dotenv = lambda *args, **kwargs: False
+
+    # Known passwords for the seeded accounts (seeders read ES_PASSWORD_<USERNAME>).
+    for username in ("ESDEV01", "CADMIN", "PRINCIPAL", "HOD_AIML", "1DB23CI079", "DBITAIMLT022022"):
+        os.environ[f"ES_PASSWORD_{username}"] = f"unit-test-{username.lower()}"
+
     # No AI model answers unit tests, not even a local one on loopback: replies must be deterministic.
     os.environ.update(
         USE_FINE_TUNED_QWEN="false",
