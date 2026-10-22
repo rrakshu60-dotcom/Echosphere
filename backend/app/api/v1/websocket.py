@@ -68,10 +68,15 @@ from app.core.mic_stream_manager import mic_stream_manager
 
 
 def _is_registered_speaker(mac: str) -> bool:
+    # Strict format + exact match: a LIKE pattern would let "%" pose as any registered speaker
+    import re
+    from sqlalchemy import func
     from app.db.database import SessionLocal
     from app.models.speaker_node import SpeakerNode
+    if not re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac or ""):
+        return False
     with SessionLocal() as db:
-        return db.query(SpeakerNode.id).filter(SpeakerNode.mac_address.ilike(mac)).first() is not None
+        return db.query(SpeakerNode.id).filter(func.upper(SpeakerNode.mac_address) == mac.upper()).first() is not None
 
 
 @router.websocket("/ws/speaker/{mac}")
