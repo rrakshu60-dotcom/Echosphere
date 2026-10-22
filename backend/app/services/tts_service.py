@@ -695,9 +695,21 @@ def _backup_upload_worker() -> None:
             time.sleep(max(0.0, queued_at + _BACKUP_DELAY_SECONDS - time.monotonic()))
             while any_stream_busy():
                 time.sleep(1.0)
+            if not _should_back_up(file_name):
+                continue
             CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
         except Exception as e:
             logger.debug(f"Background cloud backup note: {e}")
+
+
+def _should_back_up(file_name: str) -> bool:
+    """Never back up audio of a notice that has been deleted."""
+    match = re.match(r"^announcement_(\d+)(_|\.)", file_name)
+    if not match:
+        return True
+    from app.services.notice_record_service import notice_was_deleted
+
+    return not notice_was_deleted(int(match.group(1)))
 
 
 def _queue_backup_upload(file_path: str, file_name: str) -> None:
@@ -744,7 +756,16 @@ def _format_audio_result(
     return res
 
 
-def generate_announcement_audio_sync(
+def generate_announcement_audio_sync(announcement_id: int, text: str, **kwargs) -> dict:
+    """Synthesize a notice's audio. If the notice was deleted while this ran, its audio is discarded."""
+    result = _generate_announcement_audio(announcement_id, text, **kwargs)
+    from app.services.notice_record_service import discard_audio_if_notice_deleted
+
+    discard_audio_if_notice_deleted(announcement_id)
+    return result
+
+
+def _generate_announcement_audio(
     announcement_id: int,
     text: str,
     gender: str = "female",

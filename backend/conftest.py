@@ -101,3 +101,13 @@ def pytest_unconfigure(config):
         except Exception:
             pass
         shutil.rmtree(_tmp_dir, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_speech_synthesis(monkeypatch):
+    """Rule 3: speech synthesis is faked in unit tests. Background speech jobs (started when a notice is
+    created) would otherwise write audio files at unpredictable times and make tests depend on timing."""
+    from app.services import tts_service
+
+    monkeypatch.setattr(tts_service, "_generate_announcement_audio",
+                        lambda announcement_id, text, **kwargs: {"status": "faked-in-tests", "announcement_id": announcement_id})

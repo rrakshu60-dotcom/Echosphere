@@ -159,6 +159,39 @@ class CloudStorageService:
         logger.info(f"[Storage] Manifest rebuilt from dataset: {added} file(s) restorable.")
 
     @classmethod
+    def delete_announcement_audio(cls, announcement_id: int, folder: str = "audio_streams") -> int:
+        """
+        Deletes a notice's audio backups (announcement_<id>_*.* / announcement_<id>.*) from the cloud
+        dataset and the manifest. Returns how many files were removed. Called after the notice's
+        deletion has been written to its permanent record.
+        """
+        cls._load_manifest()
+        prefix = f"{folder}/announcement_{announcement_id}"
+        mine = [k for k in list(cls._manifest) if k.startswith(prefix + "_") or k.startswith(prefix + ".")]
+        removed = 0
+        if cls.is_cloud_enabled() and cls._api and cls._repo_id:
+            try:
+                repo_files = cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset")
+                targets = [f for f in repo_files if f.startswith(prefix + "_") or f.startswith(prefix + ".")]
+                if targets:
+                    cls._api.delete_files(
+                        repo_id=cls._repo_id,
+                        repo_type="dataset",
+                        delete_patterns=targets,
+                        commit_message=f"Delete audio of deleted notice #{announcement_id}",
+                    )
+                removed = len(targets)
+            except Exception as e:
+                logger.warning(f"[Storage] Cloud delete for notice #{announcement_id} failed: {e}")
+                raise
+        if mine:
+            with cls._lock:
+                for k in mine:
+                    cls._manifest.pop(k, None)
+                cls._save_manifest()
+        return removed
+
+    @classmethod
     def is_cloud_enabled(cls) -> bool:
         """Returns True if Hugging Face Datasets cloud storage is operational."""
         return cls._init_client()

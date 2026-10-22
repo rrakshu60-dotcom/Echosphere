@@ -27,6 +27,9 @@ class Announcement(TimestampMixin, Base):
     __tablename__ = "announcements"
     __table_args__ = (
         Index("ix_announcements_status_created_at", "status", "created_at"),
+        # Never reuse a deleted notice's ID (SQLite would): the permanent notice record is keyed by it.
+        # Postgres sequences never reuse IDs.
+        {"sqlite_autoincrement": True},
     )
 
     # -------------------------
