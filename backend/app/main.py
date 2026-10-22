@@ -20,6 +20,7 @@ from app.api.v1.user_management import router as user_management_router
 from app.api.v1.websocket import router as websocket_router
 from app.api.v1.repeat_schedule import router as repeat_schedule_router
 from app.api.v1.vip_protocol import router as vip_protocol_router
+from app.api.v1.audit_access import router as audit_access_router
 import app.models
 from app.models.speaker_command import SpeakerCommand
 from app.core.rate_limiter import limiter
@@ -231,6 +232,22 @@ def _render_self_keepalive():
                 print(f"Render self keep-alive note: {exc}")
 
 
+def _purge_old_access_logs_daemon():
+    """Every 6 hours, drop app-access entries older than 90 days (free-tier storage). Other logs are kept."""
+    from app.db.database import SessionLocal
+    from app.services.session_service import purge_old_access_logs
+
+    while True:
+        try:
+            with SessionLocal() as db:
+                removed = purge_old_access_logs(db)
+            if removed:
+                print(f"[ACCESS LOG] Purged {removed} app-access entries older than 90 days")
+        except Exception as exc:
+            print(f"Access log purge note: {exc}")
+        time.sleep(6 * 3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     t = threading.Thread(target=_speaker_and_repeat_daemon, daemon=True, name="SpeakerAndRepeatDaemon")
@@ -238,6 +255,7 @@ async def lifespan(app: FastAPI):
     t2 = threading.Thread(target=_prewarm_recent_announcements, daemon=True, name="AudioPrewarmDaemon")
     t2.start()
     threading.Thread(target=_render_self_keepalive, daemon=True, name="RenderSelfKeepAlive").start()
+    threading.Thread(target=_purge_old_access_logs_daemon, daemon=True, name="AccessLogPurge").start()
     try:
         from app.services.tts_service import start_zerogpu_keepalive_daemon
         start_zerogpu_keepalive_daemon()
@@ -352,6 +370,11 @@ app.include_router(
 
 app.include_router(
     vip_protocol_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    audit_access_router,
     prefix="/api/v1",
 )
 

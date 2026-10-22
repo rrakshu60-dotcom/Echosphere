@@ -1,11 +1,20 @@
-from typing import Tuple, cast
-from sqlalchemy import or_
+from typing import cast
+
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.core.jwt_handler import create_access_token
 from app.core.password import verify_password
 from app.models.user import User
 from app.services.audit_log_service import create_audit_log_service
+
+
+class SignInRefused(ValueError):
+    """A refused sign-in. `reason` goes to the sign-in log; the message is what the user sees."""
+
+    def __init__(self, reason: str, message: str = "Invalid credentials.", user: User | None = None):
+        super().__init__(message)
+        self.reason = reason
+        self.user = user
 
 
 def authenticate_user(
@@ -13,12 +22,11 @@ def authenticate_user(
     identifier: str,
     password: str,
     employee_id: str | None = None,
-) -> Tuple[str, User]:
+) -> User:
     """
-    Authenticate a user by USN, Username, Official Email, or Employee ID.
-    Returns (access_token, user).
+    Check credentials by USN, Username, Official Email, or Employee ID and return the user.
+    Raises SignInRefused. Unknown user and wrong password show the same message so accounts can't be probed.
     """
-    from sqlalchemy import func
     cleaned = identifier.strip()
     user = (
         db.query(User)
@@ -34,30 +42,19 @@ def authenticate_user(
     )
 
     if user is None:
-        raise ValueError("Invalid credentials.")
-
-    role_name = user.role.name if user.role else "Student"
-
-    # Administrative accounts are supported via username, employee ID, or official email
-    pass
+        raise SignInRefused("unknown_user")
 
     if not verify_password(password, cast(str, user.password_hash)):
-        raise ValueError("Invalid credentials.")
+        raise SignInRefused("wrong_password", user=user)
 
     if employee_id and user.employee_id:
         if user.employee_id.strip() != employee_id.strip():
-            raise ValueError("Employee ID verification failed.")
+            raise SignInRefused("employee_id_mismatch", "Employee ID verification failed.", user=user)
+
+    if not user.is_active:
+        raise SignInRefused("disabled", "This account is disabled. Contact the administrator.", user=user)
 
     role_name = user.role.name if user.role else "Student"
-
-    access_token = create_access_token(
-        {
-            "sub": user.official_email or user.usn or user.username,
-            "role": role_name,
-            "user_id": user.id,
-        }
-    )
-
     create_audit_log_service(
         db=db,
         user_id=cast(int, user.id),
@@ -67,46 +64,4 @@ def authenticate_user(
         description=f"User {user.full_name} ({role_name}) logged in successfully.",
     )
 
-    return access_token, user
-
-
-def refresh_token_service(db: Session, token: str) -> Tuple[str, User]:
-    """
-    Silently renew an access token for an active user.
-    """
-    from app.core.jwt_handler import decode_expired_token, create_access_token
-
-    payload = decode_expired_token(token)
-    sub = payload.get("sub")
-    if not sub:
-        raise ValueError("Invalid token payload claims.")
-
-    user = (
-        db.query(User)
-        .filter(
-            or_(
-                User.official_email == sub,
-                User.usn == sub,
-                User.username == sub,
-                User.employee_id == sub,
-            )
-        )
-        .first()
-    )
-
-    if user is None:
-        raise ValueError("User account not found.")
-
-    role_name = user.role.name if user.role else "Student"
-
-    new_access_token = create_access_token(
-        {
-            "sub": user.official_email or user.usn or user.username,
-            "role": role_name,
-            "user_id": user.id,
-        }
-    )
-
-    return new_access_token, user
-
-
+    return user

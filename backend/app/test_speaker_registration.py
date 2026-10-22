@@ -3,14 +3,14 @@ import secrets
 
 from fastapi.testclient import TestClient
 
-from app.core.jwt_handler import create_access_token
+from app.auth_test_helpers import bearer
 from app.main import app
 
 client = TestClient(app)
 
 
 def _auth(username: str) -> dict:
-    return {"Authorization": f"Bearer {create_access_token({'sub': username})}"}
+    return bearer(username)
 
 
 def _new_node() -> dict:
