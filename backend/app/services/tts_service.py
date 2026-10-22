@@ -126,6 +126,19 @@ _cached_gradio_token = None
 _openai_endpoint_supported = False
 _kokoro_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="KokoroZeroGPU")
 _IN_FLIGHT_SYNTHESIS_LOCK = threading.Lock()
+# Circuit breaker for the ZeroGPU speech worker: while its free GPU quota is exhausted (or its
+# queue is timing out) skip it entirely, so a new notice never waits on a call that will fail.
+_KOKORO_UNAVAILABLE_UNTIL = 0.0
+
+
+def remote_kokoro_enabled() -> bool:
+    """
+    The free ZeroGPU worker needs ~6s just to get a GPU per call and its daily quota covers only a
+    few calls, so it can't give new notices a near-zero gap. It is used only when KOKORO_PRIMARY=true
+    (e.g. after moving to a paid GPU or an always-on CPU worker); otherwise the fast neural voice is primary.
+    """
+    return (os.getenv("KOKORO_PRIMARY", "false").lower() == "true"
+            and os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true")
 _IN_FLIGHT_SYNTHESIS: dict[str, threading.Event] = {}
 
 _keepalive_thread: Optional[threading.Thread] = None
@@ -156,14 +169,8 @@ def prewarm_gradio_client(force: bool = False):
         _cached_gradio_token = hf_token
         logger.info(f"ZeroGPU Gradio client pre-warmed successfully: {api_url}")
 
-        # In background, fire a lightweight predict to allocate the ZeroGPU slice ahead of time
-        def _warm_slice(c=client):
-            try:
-                c.predict(".", "af_heart", 1.0, api_name="/synthesize")
-                logger.info("ZeroGPU GPU slice pre-allocated and ready for instant inference.")
-            except Exception as we:
-                logger.debug(f"ZeroGPU slice pre-allocation note: {we}")
-        threading.Thread(target=_warm_slice, daemon=True, name="ZeroGPU_Slice_Prewarm").start()
+        # No warm-up synthesis here: every ZeroGPU call reserves 60s of the small free daily
+        # quota, and warming every 9 minutes used it all up before real notices arrived.
     except Exception as gc_e:
         logger.debug(f"ZeroGPU Gradio client pre-warm note: {gc_e}")
 
@@ -283,9 +290,12 @@ def synthesize_remote_kokoro_api(
     """
     global _cached_gradio_client, _cached_gradio_url, _openai_endpoint_supported
 
+    global _KOKORO_UNAVAILABLE_UNTIL
     api_url = os.getenv("KOKORO_API_URL", KOKORO_API_URL).strip().rstrip("/")
     if not api_url:
         return False
+    if time.time() < _KOKORO_UNAVAILABLE_UNTIL:
+        return False  # worker known unavailable (quota exhausted / queue timing out): fall back at once
 
     clean = clean_text_for_speech(text)
     if not clean:
@@ -414,13 +424,22 @@ def synthesize_remote_kokoro_api(
             logger.info(f"Kokoro-82M audio generated via Gradio ZeroGPU worker: {output_path}")
             return True
     except concurrent.futures.TimeoutError:
+        _KOKORO_UNAVAILABLE_UNTIL = time.time() + 120
         logger.warning(
             f"Kokoro ZeroGPU remote worker latency exceeded {timeout}s cutoff (Space cold-starting or queuing). "
-            f"Immediately falling back to Edge-TTS neural engine."
+            f"Using the fallback voice for the next 2 minutes."
         )
         return False
     except Exception as g_err:
-        logger.debug(f"Gradio Space client error: {g_err}")
+        msg = str(g_err)
+        if "ZeroGPU quota" in msg or "exceeded your" in msg:
+            import re as _re
+            m = _re.search(r"Try again in (\d+):(\d+):(\d+)", msg)
+            wait_s = (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))) if m else 3600
+            _KOKORO_UNAVAILABLE_UNTIL = time.time() + min(wait_s, 24 * 3600)
+            logger.warning(f"ZeroGPU quota exhausted; using the fallback voice for {wait_s // 60} min.")
+        else:
+            logger.debug(f"Gradio Space client error: {g_err}")
         _cached_gradio_client = None
 
     return False
@@ -927,8 +946,8 @@ def generate_announcement_audio_sync(
                 logger.debug(f"Kokoro-ONNX synthesis note: {k_err}. Trying remote worker...")
 
         # 1B. Dedicated Remote Kokoro-82M Worker (Hugging Face ZeroGPU / Space)
-        enable_remote = os.getenv("ENABLE_REMOTE_KOKORO", "true").lower() == "true"
-        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "16.0"))
+        enable_remote = remote_kokoro_enabled()
+        remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "8.0"))
         if KOKORO_API_URL and enable_remote:
             if synthesize_remote_kokoro_api(speech_text, voice=kok_voice, output_path=wav_filepath, response_format="wav", timeout=remote_timeout):
                 if include_chime and selected_chime != "none":
@@ -1158,8 +1177,8 @@ def synthesize_text_audio(
     # Tier 1: Kokoro Neural Engine (Remote AI Worker, ONNX, or PyTorch pipeline)
     if TTS_ENGINE not in ["edge_only", "gtts_only"]:
         # 1A. Dedicated Remote Kokoro-82M Worker
-        if KOKORO_API_URL:
-            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "16.0"))
+        if KOKORO_API_URL and remote_kokoro_enabled():
+            remote_timeout = float(os.getenv("KOKORO_TIMEOUT_SEC", "8.0"))
             if synthesize_remote_kokoro_api(clean_text, voice=kok_voice, output_path=mp3_filepath, response_format="mp3", timeout=remote_timeout):
                 return _format_audio_result(
                     file_name=mp3_filename,

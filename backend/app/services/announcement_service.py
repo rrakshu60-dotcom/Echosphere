@@ -146,6 +146,21 @@ def dispatch_announcement_notifications_and_deliveries(
 
 
 
+def _generate_creation_summary(title: str, description: Optional[str]) -> Optional[str]:
+    """AI summary for a new notice (falls back to the distilled campus summary)."""
+    generated_summary: Optional[str] = None
+    from app.services.ai_service import AIService
+    try:
+        desc_text = (description or "").strip()
+        text_to_summarize = desc_text if len(desc_text) > 10 else f"{title}. {desc_text}".strip()
+        generated_summary = AIService.summarize(text_to_summarize)
+    except Exception as e:
+        logger.warning(f"AI summarization attempt failed on creation: {e}")
+    if not generated_summary or len(generated_summary.strip()) < 10:
+        generated_summary = AIService.distill_qwen_campus_summary((description or "").strip() or title)
+    return generated_summary
+
+
 def create_announcement_service(
     db: Session,
     request: AnnouncementCreate,
@@ -190,20 +205,17 @@ def create_announcement_service(
 
     speaker_voice = getattr(request, 'speaker_voice', 'female') or 'female'
 
+    # A speaker notice published now must reach the speaker without waiting on an AI call:
+    # its summary is generated in the background right after creation instead.
+    plays_on_speaker_now = (
+        (getattr(request, 'deliver_speaker', False) or bool(getattr(request, 'repeat_schedule', None)))
+        and initial_status == AnnouncementStatus.PUBLISHED
+    )
+
     # Generate real institutional AI summary from content
     generated_summary: Optional[str] = None
-    try:
-        from app.services.ai_service import AIService
-        desc_text = (request.description or "").strip()
-        text_to_summarize = desc_text if len(desc_text) > 10 else f"{request.title}. {desc_text}".strip()
-        generated_summary = AIService.summarize(text_to_summarize)
-    except Exception as e:
-        logger.warning(f"AI summarization attempt failed on creation: {e}")
-
-    if not generated_summary or len(generated_summary.strip()) < 10:
-        from app.services.ai_service import AIService
-        fallback_text = (request.description or "").strip() or request.title
-        generated_summary = AIService.distill_qwen_campus_summary(fallback_text)
+    if not plays_on_speaker_now:
+        generated_summary = _generate_creation_summary(request.title, request.description)
 
     # Clean any lingering "Summary:" or quotes from final summary
     if generated_summary:
@@ -280,16 +292,7 @@ def create_announcement_service(
         except Exception as e:
             logger.warning(f"Error configuring repeat schedule on announcement creation: {e}")
 
-    dispatch_announcement_notifications_and_deliveries(
-        db=db,
-        announcement=created_announcement,
-        deliver_in_app=deliver_in_app,
-        deliver_push=deliver_push,
-        deliver_speaker=deliver_speaker,
-        target_audience=target_audience,
-        current_user=current_user,
-    )
-
+    # Speaker first: it plays now, and notifications / the AI summary must not delay it.
     if deliver_speaker and created_announcement.status in (AnnouncementStatus.PUBLISHED, AnnouncementStatus.SCHEDULED):
         from app.core.emergency_utils import is_emergency_announcement
         is_emerg = is_emergency_announcement(created_announcement)
@@ -315,6 +318,34 @@ def create_announcement_service(
             )
         except Exception as e:
             logger.warning(f"Auto-broadcast error on announcement creation: {e}")
+
+    if plays_on_speaker_now:
+        import threading
+
+        def _summarize_after_create(ann_id=created_announcement.id, t=created_announcement.title, d=created_announcement.description):
+            try:
+                summary = _generate_creation_summary(t, d)
+                if summary:
+                    summary = re.sub(r'^(summary|notice)\s*[:\-–]\s*', '', summary, flags=re.IGNORECASE).strip(' "\'')
+                    from app.db.database import SessionLocal
+                    with SessionLocal() as s2:
+                        row = s2.query(Announcement).filter(Announcement.id == ann_id).first()
+                        if row and not row.ai_summary:
+                            row.ai_summary = summary
+                            s2.commit()
+            except Exception as se:
+                logger.warning(f"Background AI summary after creation note: {se}")
+        threading.Thread(target=_summarize_after_create, daemon=True, name=f"Summary_Ann_{created_announcement.id}").start()
+
+    dispatch_announcement_notifications_and_deliveries(
+        db=db,
+        announcement=created_announcement,
+        deliver_in_app=deliver_in_app,
+        deliver_push=deliver_push,
+        deliver_speaker=deliver_speaker,
+        target_audience=target_audience,
+        current_user=current_user,
+    )
 
     try:
         ws_manager.broadcast_sync({
