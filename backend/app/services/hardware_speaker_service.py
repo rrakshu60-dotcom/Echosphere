@@ -134,6 +134,38 @@ def is_global_emergency_active(since_timestamp: Optional[float] = None) -> bool:
     return (time.time() - effective_ts) < 300
 
 
+# --------------------------------------------------------------------------
+# Active Audio Stream Abort Tracking (Pause, Stop, Cancel, Remove, Skip)
+# --------------------------------------------------------------------------
+_ABORTED_ANNOUNCEMENT_STREAMS: Dict[int, float] = {}
+_ABORT_LOCK = threading.Lock()
+
+
+def abort_announcement_stream(announcement_id: int):
+    """Signals any active HTTP audio streams for this announcement to immediately terminate."""
+    global _ABORTED_ANNOUNCEMENT_STREAMS
+    with _ABORT_LOCK:
+        _ABORTED_ANNOUNCEMENT_STREAMS[int(announcement_id)] = time.time()
+    logger.info(f"🛑 [STREAM ABORT] Abort signal flagged for Announcement #{announcement_id}")
+
+
+def clear_announcement_stream_abort(announcement_id: int):
+    """Clears any abort signal when playback is resumed or restarted."""
+    global _ABORTED_ANNOUNCEMENT_STREAMS
+    with _ABORT_LOCK:
+        _ABORTED_ANNOUNCEMENT_STREAMS.pop(int(announcement_id), None)
+
+
+def is_announcement_stream_aborted(announcement_id: int, stream_start_time: float) -> bool:
+    """Returns True if this announcement's audio stream was aborted after stream_start_time."""
+    global _ABORTED_ANNOUNCEMENT_STREAMS
+    with _ABORT_LOCK:
+        abort_ts = _ABORTED_ANNOUNCEMENT_STREAMS.get(int(announcement_id))
+    if abort_ts is not None and abort_ts >= (stream_start_time - 0.5):
+        return True
+    return False
+
+
 def _get_queue_item_priority_weight(item: SpeakerQueue) -> int:
     ann = getattr(item, "announcement", None)
     if not ann:
@@ -1898,6 +1930,10 @@ def auto_advance_speaker_queue(
                     from app.services.tts_service import generate_announcement_audio_sync
                     def _prewarm_item(u_id=upcoming.announcement_id, u_title=getattr(u_ann, "title", ""), u_desc=getattr(u_ann, "description", ""), u_v=getattr(u_ann, "speaker_voice", "female") or "female"):
                         try:
+                            from app.api.v1.announcement import _find_cached_audio_file
+                            fn, fp, _ = _find_cached_audio_file(u_id, f"american_{str(u_v).lower()}", include_chime=False, prefer_wav=True)
+                            if fn and fp:
+                                return  # Audio already cached and stored! No need to re-synthesize.
                             generate_announcement_audio_sync(
                                 u_id,
                                 f"{u_title}. {u_desc}",

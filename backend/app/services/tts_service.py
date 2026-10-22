@@ -789,15 +789,71 @@ def generate_announcement_audio_sync(
             voice=voice_name,
             chime=selected_chime if include_chime else "none",
         )
-    if os.path.exists(wav_filepath) and os.path.getsize(wav_filepath) > 4096:
+
+    # 1B. Re-use existing speech audio for this notice across all repeat rounds (0ms synthesis!)
+    base_nochime_name = f"announcement_{announcement_id}_{accent.lower()}_{gender.lower()}_nochime.wav"
+    base_nochime_path = os.path.join(STATIC_AUDIO_DIR, base_nochime_name)
+
+    if not include_chime and os.path.exists(base_nochime_path) and os.path.getsize(base_nochime_path) > 1024:
         return _format_audio_result(
-            file_name=wav_filename,
-            file_path=wav_filepath,
+            file_name=base_nochime_name,
+            file_path=base_nochime_path,
             audio_type="wav",
             engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
             voice=voice_name,
-            chime=selected_chime if include_chime else "none",
+            chime="none",
         )
+
+    if include_chime and os.path.exists(base_nochime_path) and os.path.getsize(base_nochime_path) > 1024:
+        if prepend_chime_to_wav_file(base_nochime_path, wav_filepath, chime_type=selected_chime):
+            convert_wav_to_mp3(wav_filepath, mp3_filepath)
+            return _format_audio_result(
+                file_name=wav_filename,
+                file_path=wav_filepath,
+                audio_type="wav",
+                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
+                voice=voice_name,
+                chime=selected_chime,
+            )
+
+    # Check if ANY valid audio file already exists for this announcement
+    try:
+        if os.path.exists(STATIC_AUDIO_DIR):
+            for f in os.listdir(STATIC_AUDIO_DIR):
+                if f.startswith(f"announcement_{announcement_id}_") and f.endswith(".wav") and not is_legacy_beep_file(os.path.join(STATIC_AUDIO_DIR, f)):
+                    fp = os.path.join(STATIC_AUDIO_DIR, f)
+                    if os.path.getsize(fp) > 2048:
+                        if not include_chime and "_nochime" in f:
+                            return _format_audio_result(
+                                file_name=f,
+                                file_path=fp,
+                                audio_type="wav",
+                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
+                                voice=voice_name,
+                                chime="none",
+                            )
+                        elif not include_chime and not os.path.exists(base_nochime_path):
+                            import shutil
+                            shutil.copy2(fp, base_nochime_path)
+                            return _format_audio_result(
+                                file_name=base_nochime_name,
+                                file_path=base_nochime_path,
+                                audio_type="wav",
+                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
+                                voice=voice_name,
+                                chime="none",
+                            )
+                        elif include_chime and f == wav_filename:
+                            return _format_audio_result(
+                                file_name=f,
+                                file_path=fp,
+                                audio_type="wav",
+                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
+                                voice=voice_name,
+                                chime=selected_chime,
+                            )
+    except Exception:
+        pass
 
     # In-Flight Synthesis De-duplication: Prevent multiple concurrent requests from hammering ZeroGPU for the same announcement
     synth_key = f"{announcement_id}_{tag}"

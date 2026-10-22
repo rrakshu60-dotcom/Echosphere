@@ -588,7 +588,7 @@ def _stream_file_with_preemption_check(
     from datetime import datetime, timedelta, timezone
     from app.db.database import SessionLocal
     from app.models.speaker_queue import SpeakerQueue
-    from app.services.hardware_speaker_service import is_global_emergency_active
+    from app.services.hardware_speaker_service import is_global_emergency_active, is_announcement_stream_aborted
     from app.services import speaker_playback
     from app.core.emergency_utils import is_emergency_announcement
     from app.repositories.announcement_repository import get_announcement_by_id
@@ -659,6 +659,9 @@ def _stream_file_with_preemption_check(
                 while True:
                     if not is_emergency and is_global_emergency_active(stream_start_time):
                         logger.warning(f"[STREAM CUT] Notice #{announcement_id} preempted by an emergency broadcast.")
+                        break
+                    if is_announcement_stream_aborted(announcement_id, stream_start_time):
+                        logger.warning(f"[STREAM CUT] Notice #{announcement_id} audio stream terminated by explicit abort signal.")
                         break
                     if sync_queue_id and time.monotonic() - last_check >= 0.5:
                         last_check = time.monotonic()
