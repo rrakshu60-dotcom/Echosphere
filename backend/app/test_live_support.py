@@ -173,3 +173,24 @@ def test_position_after_last_match_and_lines_since():
         line, _ = esp.wait_for(r"next", timeout=1, since=after_a)
         assert line == "C next"
         assert esp.lines_since(esp.after_last_match()) == []
+
+
+def test_speaker_is_busy_only_with_something_playing_or_due_soon():
+    from datetime import datetime, timedelta, timezone
+
+    from scripts.live_support import speaker_busy
+
+    now = datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc)
+
+    def item(status, minutes_from_now=None):
+        when = None if minutes_from_now is None else (now + timedelta(minutes=minutes_from_now)).isoformat()
+        return {"id": 1, "status": status, "scheduled_time": when, "title": "x"}
+
+    assert speaker_busy([], now) == []
+    assert speaker_busy([item("Completed")], now) == []
+    assert speaker_busy([item("Queued", minutes_from_now=60 * 20)], now) == []  # tomorrow's notice
+    assert speaker_busy([item("Playing")], now)
+    assert speaker_busy([item("Held")], now)
+    assert speaker_busy([item("Paused")], now)
+    assert speaker_busy([item("Queued", minutes_from_now=5)], now)  # would play during the check
+    assert speaker_busy([item("Queued")], now)  # no time means "now"

@@ -11,7 +11,7 @@ real push notification to every phone, which a test must never do.
 import sys
 import time
 
-from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession
+from live_support import speaker_busy, ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession
 
 LONG_TEXT = (
     "This is a longer speaker test notice. It keeps playing for a while so that an emergency test notice "
@@ -21,8 +21,8 @@ LONG_TEXT = (
 
 def main() -> None:
     session = LiveSession.login()
-    busy = [q for q in session.get("/hardware/queue") if q.get("status") not in ("Completed", "Cancelled", "Skipped")]
-    assert not busy, f"speaker queue is busy ({len(busy)} item(s)); not interrupting real notices"
+    busy = speaker_busy(session.get("/hardware/queue"))
+    assert not busy, f"speaker is busy ({len(busy)} item(s) playing or due soon); not interrupting real notices"
 
     with Esp32Serial() as esp, LiveNotices(session) as notices:
         mark = esp.mark()
