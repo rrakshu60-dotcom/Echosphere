@@ -310,6 +310,13 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
         if len(_PENDING_COMMANDS[key]) > 10:
             _PENDING_COMMANDS[key] = _PENDING_COMMANDS[key][-10:]
 
+    # 1b. Push it to connected speakers right away (heartbeats remain the fallback)
+    try:
+        from app.core.speaker_push import push_command
+        push_command(payload, target_mac)
+    except Exception as pe:
+        logger.debug(f"Speaker push note: {pe}")
+
     # 2. Database persistent command queue (cross-worker reliability)
     session = db
     close_session = False
