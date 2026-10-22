@@ -791,10 +791,12 @@ def generate_announcement_audio_sync(
         )
 
     # 1B. Re-use existing speech audio for this notice across all repeat rounds (0ms synthesis!)
+    # Only the same voice and only the full notice: a summary is different speech.
     base_nochime_name = f"announcement_{announcement_id}_{accent.lower()}_{gender.lower()}_nochime.wav"
     base_nochime_path = os.path.join(STATIC_AUDIO_DIR, base_nochime_name)
+    base_reusable = (not is_summary) and os.path.exists(base_nochime_path) and os.path.getsize(base_nochime_path) > 1024
 
-    if not include_chime and os.path.exists(base_nochime_path) and os.path.getsize(base_nochime_path) > 1024:
+    if not include_chime and base_reusable:
         return _format_audio_result(
             file_name=base_nochime_name,
             file_path=base_nochime_path,
@@ -804,7 +806,7 @@ def generate_announcement_audio_sync(
             chime="none",
         )
 
-    if include_chime and os.path.exists(base_nochime_path) and os.path.getsize(base_nochime_path) > 1024:
+    if include_chime and base_reusable:
         if prepend_chime_to_wav_file(base_nochime_path, wav_filepath, chime_type=selected_chime):
             convert_wav_to_mp3(wav_filepath, mp3_filepath)
             return _format_audio_result(
@@ -816,42 +818,27 @@ def generate_announcement_audio_sync(
                 chime=selected_chime,
             )
 
-    # Check if ANY valid audio file already exists for this announcement
+    # Any other cached speech for this exact voice and variant (e.g. a WAV kept under its plain
+    # name). Never borrow another voice, the summary, or a file with a chime baked in: that
+    # played the wrong voice or a double chime, and copying it in cached the mistake for good.
     try:
-        if os.path.exists(STATIC_AUDIO_DIR):
+        voice_prefix = f"announcement_{announcement_id}_{accent.lower()}_{gender.lower()}"
+        if os.path.exists(STATIC_AUDIO_DIR) and not is_summary:
             for f in os.listdir(STATIC_AUDIO_DIR):
-                if f.startswith(f"announcement_{announcement_id}_") and f.endswith(".wav") and not is_legacy_beep_file(os.path.join(STATIC_AUDIO_DIR, f)):
-                    fp = os.path.join(STATIC_AUDIO_DIR, f)
-                    if os.path.getsize(fp) > 2048:
-                        if not include_chime and "_nochime" in f:
-                            return _format_audio_result(
-                                file_name=f,
-                                file_path=fp,
-                                audio_type="wav",
-                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
-                                voice=voice_name,
-                                chime="none",
-                            )
-                        elif not include_chime and not os.path.exists(base_nochime_path):
-                            import shutil
-                            shutil.copy2(fp, base_nochime_path)
-                            return _format_audio_result(
-                                file_name=base_nochime_name,
-                                file_path=base_nochime_path,
-                                audio_type="wav",
-                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
-                                voice=voice_name,
-                                chime="none",
-                            )
-                        elif include_chime and f == wav_filename:
-                            return _format_audio_result(
-                                file_name=f,
-                                file_path=fp,
-                                audio_type="wav",
-                                engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
-                                voice=voice_name,
-                                chime=selected_chime,
-                            )
+                if not (f.startswith(voice_prefix) and f.endswith(".wav")) or "_summary" in f:
+                    continue
+                if include_chime or "_nochime" not in f:
+                    continue
+                fp = os.path.join(STATIC_AUDIO_DIR, f)
+                if os.path.getsize(fp) > 2048 and not is_legacy_beep_file(fp):
+                    return _format_audio_result(
+                        file_name=f,
+                        file_path=fp,
+                        audio_type="wav",
+                        engine=f"Kokoro-82M Neural ({voice_name} - Cached)",
+                        voice=voice_name,
+                        chime="none",
+                    )
     except Exception:
         pass
 
