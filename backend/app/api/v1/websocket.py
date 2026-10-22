@@ -67,6 +67,41 @@ async def websocket_live_endpoint(websocket: WebSocket, token: str | None = None
 from app.core.mic_stream_manager import mic_stream_manager
 
 
+def _is_registered_speaker(mac: str) -> bool:
+    from app.db.database import SessionLocal
+    from app.models.speaker_node import SpeakerNode
+    with SessionLocal() as db:
+        return db.query(SpeakerNode.id).filter(SpeakerNode.mac_address.ilike(mac)).first() is not None
+
+
+@router.websocket("/ws/speaker/{mac}")
+async def websocket_speaker_push_endpoint(websocket: WebSocket, mac: str):
+    """
+    Command push channel for speaker nodes: commands queued for this speaker are sent here
+    the moment they are queued (see app.core.speaker_push). Read-only from the speaker's side.
+    """
+    from starlette.concurrency import run_in_threadpool
+    from app.core import speaker_push
+
+    if not await run_in_threadpool(_is_registered_speaker, mac):
+        await websocket.close(code=4404)
+        return
+    await websocket.accept()
+    speaker_push.register(mac, websocket)
+    logger.info(f"Speaker {mac} connected to the push channel")
+    try:
+        while True:
+            # The speaker only sends keep-alive text; reading detects disconnects
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.info(f"Speaker push session for {mac} ended: {e}")
+    finally:
+        speaker_push.unregister(mac, websocket)
+        logger.info(f"Speaker {mac} left the push channel")
+
+
 @router.get("/ws/hardware/mic-status")
 def get_mic_stream_status():
     """
