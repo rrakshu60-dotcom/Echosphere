@@ -100,8 +100,18 @@ def test_failed_sign_ins_are_logged_with_the_reason(identifier, password, reason
     assert res.status_code == 400
     assert res.json()["detail"] == "Invalid credentials."  # same message either way: no account probing
     log = _last_sign_in()
-    assert log.success is False and log.reason == reason and log.identifier == identifier
+    assert log.success is False and log.reason == reason
     assert log.session_id is None and log.ip == "203.0.113.7"
+    if reason == "wrong_password":
+        assert log.identifier == identifier  # a real account ID: kept so admins can see who was targeted
+
+
+def test_unknown_identifiers_are_masked_in_case_a_password_was_typed_there():
+    _login(identifier="MyS3cretPassw0rd!", password="x")
+    log = _last_sign_in()
+    assert log.reason == "unknown_user"
+    assert "S3cret" not in log.identifier and log.identifier.startswith("My")
+    assert "17" in log.identifier  # length kept, content hidden
 
 
 def test_disabled_account_cannot_sign_in():
@@ -269,17 +279,16 @@ def test_only_dev_admin_and_college_admin_can_read_access_logs():
 
 
 def test_sign_in_log_search_filter_sort_and_pages():
-    _login(identifier="search-probe-1", password="x")
-    _login(identifier="search-probe-2", password="x")
+    _login(identifier="sp-probe-one", password="x")
+    _login(identifier="sp-probe-two", password="x")
     _login()
     admin = bearer("ESDev01")
     page = client.get(
         "/api/v1/audit/sign-ins",
-        params={"q": "search-probe", "success": "false", "sort": "at", "order": "asc", "page": 1, "page_size": 1},
+        params={"q": "sp", "success": "false", "sort": "at", "order": "asc", "page": 1, "page_size": 1},
         headers=admin,
     ).json()
     assert page["total"] == 2 and page["page"] == 1 and len(page["items"]) == 1
-    assert page["items"][0]["identifier"] == "search-probe-1"
     assert page["items"][0]["success"] is False and page["items"][0]["reason"] == "unknown_user"
 
     by_ip = client.get("/api/v1/audit/sign-ins", params={"q": "203.0.113.7"}, headers=admin).json()
