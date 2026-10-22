@@ -347,7 +347,7 @@ def test_live_microphone_refuses_an_ended_session():
     assert _mic_socket_refused("&token=" + body["access_token"])
 
 
-def test_without_cloudflare_the_first_forwarded_address_is_used():
+def test_without_cloudflare_forwarded_headers_are_not_trusted():
     from starlette.requests import Request
 
     from app.services.session_service import client_ip
@@ -356,5 +356,6 @@ def test_without_cloudflare_the_first_forwarded_address_is_used():
         return Request({"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
                         "client": ("10.0.0.5", 1234)})
 
-    assert client_ip(req({"X-Forwarded-For": "198.51.100.4, 10.26.96.152"})) == "198.51.100.4"
+    # X-Forwarded-For can be typed by anyone; only the direct connection counts then
+    assert client_ip(req({"X-Forwarded-For": "198.51.100.4, 10.26.96.152"})) == "10.0.0.5"
     assert client_ip(req({})) == "10.0.0.5"

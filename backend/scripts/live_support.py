@@ -13,6 +13,7 @@ Typical use:
         ann = notices.create("Speaker check", "Short test notice.", speaker_node_id=13)
         esp.wait_for(rf"Play command received for notice #{ann['id']}", timeout=5, since=mark)
 """
+import atexit
 import os
 import re
 import secrets
@@ -58,11 +59,19 @@ class LiveSession:
         env_name = "ES_PASSWORD_" + re.sub(r"\W", "_", identifier.upper())
         res = requests.post(
             f"{base_url}/auth/login",
-            json={"identifier": identifier, "password": os.environ[env_name]},
+            json={"identifier": identifier, "password": os.environ[env_name], "platform": "test"},
             timeout=30,
         )
         assert res.status_code == 200, f"login as {identifier} failed: HTTP {res.status_code}"
-        return cls(base_url, res.json()["access_token"])
+        session = cls(base_url, res.json()["access_token"])
+        atexit.register(session.logout)  # never leave a live-check session open
+        return session
+
+    def logout(self) -> None:
+        try:
+            self._http.post(f"{self.base_url}/auth/logout", timeout=30)
+        except Exception:
+            pass
 
     def _call(self, method: str, path: str, **kwargs) -> Any:
         res = self._http.request(method, f"{self.base_url}{path}", timeout=30, **kwargs)
