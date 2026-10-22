@@ -29,6 +29,9 @@ if os.path.exists(backend_env):
 else:
     load_dotenv()
 
+# Upload progress bars print ~10 log lines per 100ms on Render and steal CPU from live playback
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
 logger = logging.getLogger("echosphere.cloud_storage")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -96,7 +99,9 @@ class CloudStorageService:
 
         try:
             from huggingface_hub import HfApi
+            from huggingface_hub.utils import disable_progress_bars
 
+            disable_progress_bars()
             api = HfApi(token=token)
             # Verify credentials
             user_info = api.whoami()
