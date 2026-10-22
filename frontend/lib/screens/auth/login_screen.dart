@@ -21,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController = TextEditingController();
 
   bool isObscure = true;
-  bool rememberMe = true;
+  bool rememberMe = false;
 
   @override
   void initState() {
@@ -392,7 +392,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           value: rememberMe,
                           onChanged: (val) {
                             setState(() {
-                              rememberMe = val ?? true;
+                              rememberMe = val ?? false;
                             });
                           },
                           activeColor: theme.colorScheme.primary,

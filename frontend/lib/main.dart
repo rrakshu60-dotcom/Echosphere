@@ -34,6 +34,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:echosphere/services/app_access_reporter.dart';
 
 WebViewEnvironment? webViewEnvironment;
 
@@ -163,7 +164,11 @@ void _initializeGetxController() async {
   await safeCall(() async {
     await EchosphereApiService().loadSavedBaseUrl();
     Get.put(Settings());
-    Get.put(AuthController(), permanent: true);
+    final auth = Get.put(AuthController(), permanent: true);
+    // App Access log: report this launch (after any saved sign-in is restored) and later returns
+    final accessReporter = AppAccessReporter(send: EchosphereApiService().reportAppAccess);
+    WidgetsBinding.instance.addObserver(accessReporter);
+    auth.sessionRestored.then((_) => accessReporter.reportLaunch());
     Get.put(AnnouncementController(), permanent: true);
     Get.put(EchosphereAiController(), permanent: true);
     Get.put(GreetingController());
