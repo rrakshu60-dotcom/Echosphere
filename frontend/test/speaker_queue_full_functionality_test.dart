@@ -7,6 +7,7 @@ import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/speaker_queue_controller.dart';
 import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
+import 'support/server_queue.dart';
 
 void main() {
   setUp(() {
@@ -73,59 +74,40 @@ void main() {
         department: 'CSE',
       );
 
-      final annCtrl = Get.put(AnnouncementController());
+      Get.put(AnnouncementController());
       final queueCtrl = Get.put(SpeakerQueueController());
-
-      // Add a speaker announcement
-      await annCtrl.createAnnouncement(
-        title: 'Campus Emergency Drill Notice',
-        description: 'Please proceed to designated safe zones immediately.',
-        category: 'Safety',
-        priority: 'EMERGENCY',
-        department: 'Safety Dept',
-        creatorRole: 'Admin',
-        creatorName: 'Safety Officer',
-        deliverSpeaker: true,
-        speakerNodeId: 14,
-      );
-
-      queueCtrl.refreshQueue();
 
       await tester.pumpWidget(
         const GetMaterialApp(
           home: Scaffold(body: SpeakerQueuePage()),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 500));
 
-      // Notice must appear in queue
+      // Backend: the notice is playing on the speaker.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+        serverQueueItem(id: 3, announcementId: 301, title: 'Campus Emergency Drill Notice', status: 'Playing', durationSeconds: 20, speakerConfirmed: true, speakerElapsedSeconds: 2),
+      ]);
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Campus Emergency Drill Notice'), findsWidgets);
-      expect(queueCtrl.queueItems.length, equals(1));
-      expect(queueCtrl.queueItems.first['status'], isIn(['Playing', 'Queued']));
-
-      // Initially isPlaying is false until playback is started or auto-played
-      expect(queueCtrl.isPlaying.value, isFalse);
-
-      // Start playback
-      await queueCtrl.togglePlayPause();
       expect(queueCtrl.isPlaying.value, isTrue);
-      expect(queueCtrl.queueItems.first['status'], equals('Playing'));
+      expect(queueCtrl.queueItems.first['status'], 'Playing');
 
-      // Pause playback
-      await queueCtrl.togglePlayPause();
+      // Backend: the user paused it, so the item is Held.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+        serverQueueItem(id: 3, announcementId: 301, title: 'Campus Emergency Drill Notice', status: 'Held', durationSeconds: 20),
+      ]);
+      await tester.pump(const Duration(milliseconds: 500));
       expect(queueCtrl.isPlaying.value, isFalse);
-      expect(queueCtrl.queueItems.first['status'], equals('Paused'));
+      expect(queueCtrl.userPausedOrStopped.value, isTrue);
+      expect(find.text('Campus Emergency Drill Notice'), findsWidgets);
 
-      // Resume playback
-      await queueCtrl.togglePlayPause();
-      expect(queueCtrl.isPlaying.value, isTrue);
-
-      // Test single playback completion -> notice is automatically removed
-      await queueCtrl.completeCurrentPlayback();
-      await tester.pumpAndSettle();
-
+      // Backend: playback completed, the queue is empty.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: const []);
+      await tester.pump(const Duration(milliseconds: 500));
       expect(queueCtrl.queueItems.isEmpty, isTrue);
       expect(find.text('Speaker Queue is Empty'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('3. Nodes Tab: Displays 2 canonical nodes, live telemetry, and control actions with zero overflow on 320px', (tester) async {

@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/echosphere_ai_controller.dart';
+import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'support/server_queue.dart';
 
 void main() {
   setUp(() {
@@ -31,91 +33,64 @@ void main() {
   });
 
   group('Speaker Queue Continuous Slot Rotation & Emergency Override Verification', () {
-    test('1. Max Repeats: All notices rotate continuously (999999) throughout repeat time window', () {
+    test('1. Max Repeats: the repeat count and round come from the backend schedule', () {
+      Get.put(AnnouncementController());
       final queueCtrl = Get.put(SpeakerQueueController());
 
-      final examNotice = {
-        'id': 101,
-        'title': 'Semester Exam Time Table Released',
-        'priority': 'HIGH',
-        'has_repeat': true,
-      };
-      expect(queueCtrl.getNoticeMaxRepeats(examNotice), equals(999999));
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+        serverQueueItem(id: 1, announcementId: 101, title: 'Semester Exam Time Table Released', priority: 'HIGH', hasRepeat: true, maxRepeats: 5, totalPlayedCount: 2),
+        serverQueueItem(id: 2, announcementId: 102, title: 'Lost and found keys', priority: 'LOW', queuePosition: 2, hasRepeat: true, maxRepeats: 4, totalPlayedCount: 0),
+      ]);
 
-      final sportsNotice = {
-        'id': 102,
-        'title': 'Volley ball selection trials',
-        'priority': 'NORMAL',
-        'has_repeat': true,
-      };
-      expect(queueCtrl.getNoticeMaxRepeats(sportsNotice), equals(999999));
+      final exam = queueCtrl.queueItems.firstWhere((q) => q['announcement_id'] == 101);
+      expect(exam['has_repeat'], isTrue);
+      expect(exam['max_repeats'], 5);
+      expect(exam['played_count'], 2);
+      expect(exam['repeat_round'], 3);
+      expect(exam['is_repeat'], isTrue);
 
-      final lostFoundNotice = {
-        'id': 103,
-        'title': 'Lost and found keys',
-        'priority': 'LOW',
-        'has_repeat': true,
-      };
-      expect(queueCtrl.getNoticeMaxRepeats(lostFoundNotice), equals(999999));
-
-      final earthquakeNotice = {
-        'id': 104,
-        'title': 'Earthquake Alert - Evacuate Immediately',
-        'priority': 'EMERGENCY',
-        'has_repeat': true,
-      };
-      expect(queueCtrl.getNoticeMaxRepeats(earthquakeNotice), equals(999999));
+      final keys = queueCtrl.queueItems.firstWhere((q) => q['announcement_id'] == 102);
+      expect(keys['max_repeats'], 4);
+      expect(keys['repeat_round'], 1);
+      expect(keys['is_repeat'], isFalse);
     });
 
-    test('2. Continuous 5-Notice Round-Robin Rotation in 15-Minute Slot', () async {
+    test('2. Continuous 5-Notice Round-Robin Rotation in 15-Minute Slot', () {
+      Get.put(AnnouncementController());
       final queueCtrl = Get.put(SpeakerQueueController());
-      queueCtrl.queueItems.clear();
 
-      // Teacher creates 5 notices for a 15-minute repeating time slot (e.g. 11:00-11:15)
-      final n1 = {'id': 201, 'announcement_id': 201, 'title': 'Notice 1: Exam Timetable', 'priority': 'HIGH', 'has_repeat': true, 'played_count': 0};
-      final n2 = {'id': 202, 'announcement_id': 202, 'title': 'Notice 2: Sports Trials', 'priority': 'NORMAL', 'has_repeat': true, 'played_count': 0};
-      final n3 = {'id': 203, 'announcement_id': 203, 'title': 'Notice 3: Lost and Found', 'priority': 'LOW', 'has_repeat': true, 'played_count': 0};
-      final n4 = {'id': 204, 'announcement_id': 204, 'title': 'Notice 4: Placement Drive', 'priority': 'HIGH', 'has_repeat': true, 'played_count': 0};
-      final n5 = {'id': 205, 'announcement_id': 205, 'title': 'Notice 5: Library Returns', 'priority': 'NORMAL', 'has_repeat': true, 'played_count': 0};
+      List<Map<String, dynamic>> snapshot(List<int> order, Map<int, int> played, int playingId) => [
+            for (var i = 0; i < order.length; i++)
+              serverQueueItem(
+                id: order[i],
+                announcementId: 200 + order[i],
+                title: 'Notice ${order[i]}',
+                status: order[i] == playingId ? 'Playing' : 'Queued',
+                queuePosition: i + 1,
+                hasRepeat: true,
+                maxRepeats: 999,
+                totalPlayedCount: played[order[i]] ?? 0,
+                speakerConfirmed: order[i] == playingId,
+                speakerElapsedSeconds: order[i] == playingId ? 0 : null,
+              ),
+          ];
 
-      queueCtrl.queueItems.assignAll([n1, n2, n3, n4, n5]);
-      queueCtrl.activeIndex.value = 0;
-      queueCtrl.isPlaying.value = true;
+      // Round 1: notice 1 is playing, 2-5 wait.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: snapshot([1, 2, 3, 4, 5], {}, 1));
+      expect(queueCtrl.queueItems.map((q) => q['title']).toList(), ['Notice 1', 'Notice 2', 'Notice 3', 'Notice 4', 'Notice 5']);
+      expect(queueCtrl.activeTitle, 'Notice 1');
 
-      // Notice 1 plays (Round 1) -> re-queued to the back
-      expect(queueCtrl.activeTitle, contains('Notice 1: Exam Timetable'));
-      await queueCtrl.completeCurrentPlayback();
-      expect(queueCtrl.queueItems.last['id'], equals(201));
-      expect(queueCtrl.queueItems.last['repeat_round'], equals(2));
+      // Backend re-queues notice 1 at the back after it plays; notice 2 plays.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: snapshot([2, 3, 4, 5, 1], {1: 1}, 2));
+      expect(queueCtrl.queueItems.map((q) => q['title']).toList(), ['Notice 2', 'Notice 3', 'Notice 4', 'Notice 5', 'Notice 1']);
+      expect(queueCtrl.activeTitle, 'Notice 2');
 
-      // Notice 2 plays (Round 1) -> re-queued to the back
-      expect(queueCtrl.activeTitle, contains('Notice 2: Sports Trials'));
-      await queueCtrl.completeCurrentPlayback();
-      expect(queueCtrl.queueItems.last['id'], equals(202));
-
-      // Notice 3 plays (Round 1) -> re-queued to the back
-      expect(queueCtrl.activeTitle, contains('Notice 3: Lost and Found'));
-      await queueCtrl.completeCurrentPlayback();
-      expect(queueCtrl.queueItems.last['id'], equals(203));
-
-      // Notice 4 plays (Round 1) -> re-queued to the back
-      expect(queueCtrl.activeTitle, contains('Notice 4: Placement Drive'));
-      await queueCtrl.completeCurrentPlayback();
-      expect(queueCtrl.queueItems.last['id'], equals(204));
-
-      // Notice 5 plays (Round 1) -> re-queued to the back
-      expect(queueCtrl.activeTitle, contains('Notice 5: Library Returns'));
-      await queueCtrl.completeCurrentPlayback();
-      expect(queueCtrl.queueItems.last['id'], equals(205));
-
-      // Now Notice 1 plays Round 2! Full cycle completed and continuous rotation proceeds!
-      expect(queueCtrl.activeTitle, contains('Notice 1: Exam Timetable'));
-      expect(queueCtrl.queueItems[0]['repeat_round'], equals(2));
-      await queueCtrl.completeCurrentPlayback();
-
-      // Notice 2 plays Round 2!
-      expect(queueCtrl.activeTitle, contains('Notice 2: Sports Trials'));
-      expect(queueCtrl.queueItems[0]['repeat_round'], equals(2));
+      // After all five played once, notice 1 plays round 2.
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: snapshot([1, 2, 3, 4, 5], {1: 1, 2: 1, 3: 1, 4: 1, 5: 1}, 1));
+      final first = queueCtrl.queueItems.first;
+      expect(queueCtrl.activeTitle, 'Notice 1');
+      expect(first['repeat_round'], 2);
+      expect(first['played_count'], 1);
     });
 
     test('3. Emergency Override: Earthquake alert overrides ALL 5 notices and loops exclusively for entire slot', () async {

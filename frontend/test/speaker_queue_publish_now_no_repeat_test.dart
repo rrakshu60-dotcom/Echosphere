@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/speaker_queue_controller.dart';
+import 'support/server_queue.dart';
 
 void main() {
   setUp(() {
@@ -29,55 +30,23 @@ void main() {
     Get.testMode = true;
   });
 
-  test('Single-play speaker notice published now does NOT repeat in queue after playback finishes',
-      () async {
-    final annCtrl = Get.put(AnnouncementController());
-    annCtrl.rxAnnouncements.clear();
+  test('Single-play speaker notice published now does NOT repeat in queue after playback finishes', () {
+    Get.put(AnnouncementController());
     final queueCtrl = Get.put(SpeakerQueueController());
-    queueCtrl.queueItems.clear();
 
-    // 1. Create a single-play speaker announcement (repeatData = null)
-    await annCtrl.createAnnouncement(
-      title: 'Workshop on Edge Computing',
-      description: 'Registration starts at 10:00 AM at the Seminar Hall.',
-      department: 'CSE',
-      category: 'Academic',
-      priority: 'HIGH',
-      creatorRole: 'Dev Admin',
-      creatorName: 'Dev Administrator',
-      deliverSpeaker: true,
-      speakerNodeId: 1,
-      repeatSchedule: null,
-    );
-
-    // Initial queue sync
-    await queueCtrl.refreshQueue(silent: true);
-
-    // Queue must have exactly 1 item
+    queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+      serverQueueItem(id: 7, announcementId: 701, title: 'Workshop on Edge Computing', status: 'Playing', speakerConfirmed: true, speakerElapsedSeconds: 1),
+    ]);
     expect(queueCtrl.queueItems.length, 1);
-    expect(queueCtrl.queueItems.first['title'], 'Workshop on Edge Computing');
     expect(queueCtrl.queueItems.first['has_repeat'], isFalse);
+    expect(queueCtrl.queueItems.first['max_repeats'], 1);
 
-    // 2. Start playback
-    await queueCtrl.togglePlayPause(index: 0);
-    expect(queueCtrl.isPlaying.value, isTrue);
-    expect(queueCtrl.queueItems.first['status'], 'Playing');
-
-    // 3. Complete playback
-    await queueCtrl.completeCurrentPlayback();
-
-    // Queue must now be empty
-    expect(queueCtrl.queueItems.isEmpty, isTrue);
-    expect(queueCtrl.isPlaying.value, isFalse);
-
-    // 4. Repeated syncs and polls must NOT re-enqueue the completed single notice
-    await queueCtrl.refreshQueue(silent: true);
-    expect(queueCtrl.queueItems.isEmpty, isTrue);
-
-    // Simulate another poll timer trigger
-    await queueCtrl.refreshQueue(silent: true);
-    expect(queueCtrl.queueItems.isEmpty, isTrue);
-    expect(queueCtrl.isPlaying.value, isFalse);
+    // Backend: finished and gone. Later polls keep returning an empty queue.
+    for (var poll = 0; poll < 3; poll++) {
+      queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: const []);
+      expect(queueCtrl.queueItems.isEmpty, isTrue);
+      expect(queueCtrl.isPlaying.value, isFalse);
+    }
   });
 
   test('Temporary ID is reconciled with backend ID without spawning duplicate items in SpeakerQueue',

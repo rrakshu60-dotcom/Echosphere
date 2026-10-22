@@ -498,9 +498,9 @@ class SpeakerQueueController extends GetxController {
     }
 
     try {
-      // 1. Fetch remote hardware nodes and queue concurrently in parallel
+      // Fetch remote hardware nodes and queue concurrently in parallel
       List<dynamic> remoteNodes = [];
-      List<Map<String, dynamic>> remoteActiveItems = [];
+      List<dynamic> rawQueue = [];
       try {
         final results = await Future.wait([
           _apiService.getSpeakerNodes().catchError((e) {
@@ -513,127 +513,130 @@ class SpeakerQueueController extends GetxController {
           }),
         ]);
         remoteNodes = results[0];
-        final rawQueue = results[1];
-
-        final fetchedNodes = remoteNodes
-            .whereType<Map>()
-            .map((n) => Map<String, dynamic>.from(n))
-            .toList();
-        if (fetchedNodes.isNotEmpty) {
-          speakerNodes.assignAll(fetchedNodes);
-        } else if (speakerNodes.isEmpty) {
-          speakerNodes.assignAll(defaultSpeakerNodes);
-        }
-
-        remoteActiveItems = rawQueue
-            .whereType<Map>()
-            .map((q) => Map<String, dynamic>.from(q))
-            // Show exactly what the backend queue holds. (Local "already played" / "dismissed"
-            // lists used to hide items here, so a replayed or re-queued notice showed an empty
-            // queue while the speaker was playing it.)
-            .where((q) {
-              return q['status'] != 'Completed' &&
-                  q['status'] != 'Cancelled' &&
-                  q['status'] != 'Skipped';
-            })
-            .toList();
+        rawQueue = results[1];
       } catch (e) {
         debugPrint('Parallel speaker refresh note: $e');
-        if (speakerNodes.isEmpty) {
-          speakerNodes.assignAll(defaultSpeakerNodes);
-        }
       }
-
-      // 3. Assemble active queue strictly from canonical backend queue
-      List<Map<String, dynamic>> combined = [];
-      final Set<int> seenAnnouncementIds = {};
-
-      for (var q in remoteActiveItems) {
-        final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
-        final targetNodeId = q['speaker_node_id'] as int?;
-        final nodeName = q['speaker_node_name'] ?? _getNodeName(targetNodeId);
-        final nodeStatus = q['speaker_node_status'] ?? getNodeStatus(targetNodeId);
-        seenAnnouncementIds.add(annId);
-
-        final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == annId || item['id'] == annId));
-        final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : (q['current_round'] as int? ?? 0);
-        final existingPlayedCount = existing?['played_count'] as int? ?? backendPlayedCount;
-        final backendRound = q['repeat_round'] as int?;
-        final currentRound = backendRound ?? (existing?['repeat_round'] as int? ?? (backendPlayedCount + 1));
-        final bool hasRepeatActive = q['has_repeat'] == true ||
-            (q['repeat_schedule'] != null &&
-             q['repeat_schedule'] is Map &&
-             (q['repeat_schedule'] as Map)['is_active'] == true);
-        final maxReps = hasRepeatActive ? (q['max_repeats'] as int? ?? getNoticeMaxRepeats(q)) : 1;
-
-        combined.add({
-          ...q,
-          'node_name': nodeName,
-          'node_status': nodeStatus,
-          'duration_seconds': q['duration_seconds'] ?? 15,
-          'has_repeat': hasRepeatActive,
-          'is_repeat': q['is_repeat'] == true || (hasRepeatActive && currentRound > 1),
-          'max_repeats': maxReps,
-          'played_count': backendPlayedCount > 0 ? backendPlayedCount : existingPlayedCount,
-          'repeat_round': currentRound,
-          'repeat_mode': q['repeat_mode'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['repeat_mode'] : 'BREAK_SLOTS'),
-          'interval_minutes': q['interval_minutes'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['interval_minutes'] : 0),
-          'next_repeat_at': q['next_repeat_at'] ?? q['scheduled_time'],
-        });
-      }
-
-      // Filter out any legacy dummy/automated notices from combined list
-      combined.removeWhere((item) {
-        final t = (item['title'] ?? '').toString().toLowerCase();
-        return t.contains('automated speaker notice') || t.contains('sample notice');
-      });
-
-      if (combined.isEmpty) {
-        isPlaying.value = false;
-        userPausedOrStopped.value = false;
-        _playbackTimer?.cancel();
-        activeIndex.value = 0;
-        currentElapsedSeconds.value = 0;
-      }
-
-      // If previous queue was empty, clear any prior paused flag so incoming notices play automatically
-      if (queueItems.isEmpty && combined.isNotEmpty) {
-        userPausedOrStopped.value = false;
-      }
-
-      // The backend is the only source of truth. A notice is "playing" on the bar only after
-      // the speaker confirms it, and a user pause is the backend's 'Held' status.
-      final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
-      final heldIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'held');
-      userPausedOrStopped.value = heldIdx != -1 && playingIdx == -1;
-      if (playingIdx != -1) {
-        activeIndex.value = playingIdx;
-        combined[playingIdx]['status'] = 'Playing';
-        final dur = combined[playingIdx]['duration_seconds'] as int? ?? 15;
-        currentTotalDuration.value = dur > 0 ? dur : 15;
-        final confirmed = combined[playingIdx]['speaker_confirmed'] == true;
-        speakerConfirmed.value = confirmed;
-        _syncServerElapsed(confirmed ? (combined[playingIdx]['speaker_elapsed_seconds'] as num?)?.toDouble() ?? 0 : null);
-        if (!isPlaying.value || _playbackTimer == null || !_playbackTimer!.isActive) {
-          isPlaying.value = true;
-          _startPlaybackTimer();
-        }
-      } else {
-        if (heldIdx != -1) activeIndex.value = heldIdx;
-        isPlaying.value = false;
-        speakerConfirmed.value = false;
-        _playbackTimer?.cancel();
-        _syncServerElapsed(null);
-      }
-
-      queueItems.assignAll(combined);
-      _updateActiveNoticeMetrics();
+      applyServerSnapshot(nodes: remoteNodes, queue: rawQueue);
     } catch (e) {
       debugPrint('Error in SpeakerQueueController refreshQueue: $e');
       errorMessage.value = e.toString();
     } finally {
       if (!silent) isLoading.value = false;
     }
+  }
+
+  /// Applies one backend snapshot (speaker nodes + queue) to the page state.
+  /// The backend is the only source of truth for what is queued, playing or held.
+  void applyServerSnapshot({required List<dynamic> nodes, required List<dynamic> queue}) {
+    List<Map<String, dynamic>> remoteActiveItems = [];
+    final fetchedNodes = nodes
+        .whereType<Map>()
+        .map((n) => Map<String, dynamic>.from(n))
+        .toList();
+    if (fetchedNodes.isNotEmpty) {
+      speakerNodes.assignAll(fetchedNodes);
+    } else if (speakerNodes.isEmpty) {
+      speakerNodes.assignAll(defaultSpeakerNodes);
+    }
+
+    remoteActiveItems = queue
+        .whereType<Map>()
+        .map((q) => Map<String, dynamic>.from(q))
+        // Show exactly what the backend queue holds. (Local "already played" / "dismissed"
+        // lists used to hide items here, so a replayed or re-queued notice showed an empty
+        // queue while the speaker was playing it.)
+        .where((q) {
+          return q['status'] != 'Completed' &&
+              q['status'] != 'Cancelled' &&
+              q['status'] != 'Skipped';
+        })
+        .toList();
+
+    // 3. Assemble active queue strictly from canonical backend queue
+    List<Map<String, dynamic>> combined = [];
+    final Set<int> seenAnnouncementIds = {};
+
+    for (var q in remoteActiveItems) {
+      final annId = q['announcement_id'] as int? ?? q['id'] as int? ?? 0;
+      final targetNodeId = q['speaker_node_id'] as int?;
+      final nodeName = q['speaker_node_name'] ?? _getNodeName(targetNodeId);
+      final nodeStatus = q['speaker_node_status'] ?? getNodeStatus(targetNodeId);
+      seenAnnouncementIds.add(annId);
+
+      final existing = queueItems.firstWhereOrNull((item) => (item['announcement_id'] == annId || item['id'] == annId));
+      final backendPlayedCount = q['repeat_schedule'] != null ? (q['repeat_schedule']['total_played_count'] as int? ?? 0) : (q['current_round'] as int? ?? 0);
+      final existingPlayedCount = existing?['played_count'] as int? ?? backendPlayedCount;
+      final backendRound = q['repeat_round'] as int?;
+      final currentRound = backendRound ?? (existing?['repeat_round'] as int? ?? (backendPlayedCount + 1));
+      final bool hasRepeatActive = q['has_repeat'] == true ||
+          (q['repeat_schedule'] != null &&
+           q['repeat_schedule'] is Map &&
+           (q['repeat_schedule'] as Map)['is_active'] == true);
+      final maxReps = hasRepeatActive ? (q['max_repeats'] as int? ?? getNoticeMaxRepeats(q)) : 1;
+
+      combined.add({
+        ...q,
+        'node_name': nodeName,
+        'node_status': nodeStatus,
+        'duration_seconds': q['duration_seconds'] ?? 15,
+        'has_repeat': hasRepeatActive,
+        'is_repeat': q['is_repeat'] == true || (hasRepeatActive && currentRound > 1),
+        'max_repeats': maxReps,
+        'played_count': backendPlayedCount > 0 ? backendPlayedCount : existingPlayedCount,
+        'repeat_round': currentRound,
+        'repeat_mode': q['repeat_mode'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['repeat_mode'] : 'BREAK_SLOTS'),
+        'interval_minutes': q['interval_minutes'] ?? (q['repeat_schedule'] != null ? q['repeat_schedule']['interval_minutes'] : 0),
+        'next_repeat_at': q['next_repeat_at'] ?? q['scheduled_time'],
+      });
+    }
+
+    // Filter out any legacy dummy/automated notices from combined list
+    combined.removeWhere((item) {
+      final t = (item['title'] ?? '').toString().toLowerCase();
+      return t.contains('automated speaker notice') || t.contains('sample notice');
+    });
+
+    if (combined.isEmpty) {
+      isPlaying.value = false;
+      userPausedOrStopped.value = false;
+      _playbackTimer?.cancel();
+      activeIndex.value = 0;
+      currentElapsedSeconds.value = 0;
+    }
+
+    // If previous queue was empty, clear any prior paused flag so incoming notices play automatically
+    if (queueItems.isEmpty && combined.isNotEmpty) {
+      userPausedOrStopped.value = false;
+    }
+
+    // The backend is the only source of truth. A notice is "playing" on the bar only after
+    // the speaker confirms it, and a user pause is the backend's 'Held' status.
+    final playingIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'playing');
+    final heldIdx = combined.indexWhere((q) => q['status']?.toString().toLowerCase() == 'held');
+    userPausedOrStopped.value = heldIdx != -1 && playingIdx == -1;
+    if (playingIdx != -1) {
+      activeIndex.value = playingIdx;
+      combined[playingIdx]['status'] = 'Playing';
+      final dur = combined[playingIdx]['duration_seconds'] as int? ?? 15;
+      currentTotalDuration.value = dur > 0 ? dur : 15;
+      final confirmed = combined[playingIdx]['speaker_confirmed'] == true;
+      speakerConfirmed.value = confirmed;
+      _syncServerElapsed(confirmed ? (combined[playingIdx]['speaker_elapsed_seconds'] as num?)?.toDouble() ?? 0 : null);
+      if (!isPlaying.value || _playbackTimer == null || !_playbackTimer!.isActive) {
+        isPlaying.value = true;
+        _startPlaybackTimer();
+      }
+    } else {
+      if (heldIdx != -1) activeIndex.value = heldIdx;
+      isPlaying.value = false;
+      speakerConfirmed.value = false;
+      _playbackTimer?.cancel();
+      _syncServerElapsed(null);
+    }
+
+    queueItems.assignAll(combined);
+    _updateActiveNoticeMetrics();
   }
 
   void _updateActiveNoticeMetrics() {
