@@ -1082,6 +1082,47 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
     );
   }
 
+  /// Header action button: icon + label, or icon only on compact (<400px) screens so the
+  /// header never overflows on phones (the labels need ~400px).
+  Widget _headerActionButton(
+    BuildContext context, {
+    required Color color,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final compact = MediaQuery.of(context).size.width < 400;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: EchoSphereButton(
+          color: color,
+          radius: 12,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 8, vertical: 6),
+          onTap: onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: Colors.white),
+              if (!compact) ...[
+                const SizedBox(width: 4),
+                EchoSphereText(
+                  text: label,
+                  size: 10,
+                  variant: TextVariant.bold,
+                  color: Colors.white,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final canPop = ModalRoute.of(context)?.canPop ?? false;
@@ -1215,44 +1256,20 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                     onPressed: () => _queueCtrl.refreshQueue(),
                   ),
                   const SizedBox(width: 4),
-                  EchoSphereButton(
+                  _headerActionButton(
+                    context,
                     color: Colors.deepPurple,
-                    radius: 12,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    icon: Icons.mic_rounded,
+                    label: 'LIVE MIC PA',
                     onTap: () => LiveMicBroadcastSheet.show(context),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.mic_rounded, size: 13, color: Colors.white),
-                        SizedBox(width: 4),
-                        EchoSphereText(
-                          text: 'LIVE MIC PA',
-                          size: 10,
-                          variant: TextVariant.bold,
-                          color: Colors.white,
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(width: 4),
-                  EchoSphereButton(
+                  _headerActionButton(
+                    context,
                     color: context.colors.primary,
-                    radius: 12,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    icon: Icons.warning_rounded,
+                    label: 'EMERGENCY',
                     onTap: () => _showEmergencyDialog(context),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.warning_rounded, size: 13, color: Colors.white),
-                        SizedBox(width: 4),
-                        EchoSphereText(
-                          text: 'EMERGENCY',
-                          size: 10,
-                          variant: TextVariant.bold,
-                          color: Colors.white,
-                        ),
-                      ],
-                    ),
                   ),
                 ],
               ),
@@ -1392,7 +1409,11 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Material(
+                        Semantics(
+                          button: true,
+                          label: isPlaying ? 'Pause' : 'Play',
+                          excludeSemantics: true,
+                          child: Material(
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () => _queueCtrl.togglePlayPause(),
@@ -1436,6 +1457,7 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 ],
                               ),
                             ),
+                          ),
                           ),
                         ),
                       ],
@@ -1645,6 +1667,100 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                         final deptStr = (item['department'] ?? 'College-Wide').toString();
                         final typeStr = (item['type'] ?? 'AI Speech').toString();
                         final statusStr = (item['status'] ?? 'Queued').toString();
+                        // On compact screens (<360px) the action icons get their own line under the
+                        // notice text; side by side they squeezed the text column to zero width at 320px.
+                        final compactCard = MediaQuery.of(context).size.width < 360;
+                        final cardActions = <Widget>[
+                          IconButton(
+                            tooltip: isCurrentlyPlaying ? 'Pause' : 'Play Now',
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            padding: EdgeInsets.zero,
+                            icon: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isCurrentlyPlaying
+                                    ? context.colors.primary
+                                    : context.colors.primary.opaque(0.15),
+                              ),
+                              child: Icon(
+                                isCurrentlyPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 16,
+                                color: isCurrentlyPlaying
+                                    ? Colors.white
+                                    : context.colors.primary,
+                              ),
+                            ),
+                            onPressed: () => _queueCtrl.togglePlayPause(index: i),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            padding: EdgeInsets.zero,
+                            tooltip: 'Move Up',
+                            icon: Icon(
+                              Icons.arrow_upward_rounded,
+                              size: 16,
+                              color: context.colors.onSurface.opaque(i == 0 ? 0.2 : 0.7),
+                            ),
+                            onPressed: i == 0 ? null : () => _queueCtrl.reorderQueue(i, i - 1),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            padding: EdgeInsets.zero,
+                            tooltip: 'Move Down',
+                            icon: Icon(
+                              Icons.arrow_downward_rounded,
+                              size: 16,
+                              color: context.colors.onSurface.opaque(
+                                  i == _queueCtrl.queueItems.length - 1 ? 0.2 : 0.7),
+                            ),
+                            onPressed: i == _queueCtrl.queueItems.length - 1
+                                ? null
+                                : () => _queueCtrl.reorderQueue(i, i + 1),
+                          ),
+                          if (!_isStudent &&
+                              (item['has_repeat'] == true ||
+                                  item['is_repeat'] == true ||
+                                  (item['repeat_round'] is int && (item['repeat_round'] as int) > 0)))
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                              padding: EdgeInsets.zero,
+                              icon: Icon(Icons.fast_forward_rounded,
+                                  size: 16, color: context.colors.primary),
+                              tooltip: 'Trigger Next Repeat Round Now',
+                              onPressed: () {
+                                final qId = item['id'] as int?;
+                                if (qId != null) {
+                                  _queueCtrl.triggerRepeatNow(qId);
+                                }
+                              },
+                            ),
+                          if (!_isStudent)
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                              padding: EdgeInsets.zero,
+                              icon: Icon(Icons.repeat_rounded,
+                                  size: 16, color: context.colors.primary),
+                              tooltip: 'Repeat Broadcast Schedule',
+                              onPressed: () => _openRepeatScheduleForQueueItem(item),
+                            ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                            padding: EdgeInsets.zero,
+                            icon: Icon(Icons.delete_outline_rounded,
+                                size: 16, color: context.colors.primary),
+                            tooltip: 'Remove from Queue',
+                            onPressed: () => _queueCtrl.removeNotice(i),
+                          ),
+                        ];
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10.0),
@@ -1895,98 +2011,21 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                           ],
                                         ),
                                       ],
+                                      if (compactCard) ...[
+                                        const SizedBox(height: 4),
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: Wrap(
+                                            spacing: 2,
+                                            crossAxisAlignment: WrapCrossAlignment.center,
+                                            children: cardActions,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
-                                IconButton(
-                                  tooltip: isCurrentlyPlaying ? 'Pause' : 'Play Now',
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                  padding: EdgeInsets.zero,
-                                  icon: Container(
-                                    padding: const EdgeInsets.all(5),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: isCurrentlyPlaying
-                                          ? context.colors.primary
-                                          : context.colors.primary.opaque(0.15),
-                                    ),
-                                    child: Icon(
-                                      isCurrentlyPlaying
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      size: 16,
-                                      color: isCurrentlyPlaying
-                                          ? Colors.white
-                                          : context.colors.primary,
-                                    ),
-                                  ),
-                                  onPressed: () => _queueCtrl.togglePlayPause(index: i),
-                                ),
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Move Up',
-                                  icon: Icon(
-                                    Icons.arrow_upward_rounded,
-                                    size: 16,
-                                    color: context.colors.onSurface.opaque(i == 0 ? 0.2 : 0.7),
-                                  ),
-                                  onPressed: i == 0 ? null : () => _queueCtrl.reorderQueue(i, i - 1),
-                                ),
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                                  padding: EdgeInsets.zero,
-                                  tooltip: 'Move Down',
-                                  icon: Icon(
-                                    Icons.arrow_downward_rounded,
-                                    size: 16,
-                                    color: context.colors.onSurface.opaque(
-                                        i == _queueCtrl.queueItems.length - 1 ? 0.2 : 0.7),
-                                  ),
-                                  onPressed: i == _queueCtrl.queueItems.length - 1
-                                      ? null
-                                      : () => _queueCtrl.reorderQueue(i, i + 1),
-                                ),
-                                if (!_isStudent &&
-                                    (item['has_repeat'] == true ||
-                                        item['is_repeat'] == true ||
-                                        (item['repeat_round'] is int && (item['repeat_round'] as int) > 0)))
-                                  IconButton(
-                                    visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(Icons.fast_forward_rounded,
-                                        size: 16, color: context.colors.primary),
-                                    tooltip: 'Trigger Next Repeat Round Now',
-                                    onPressed: () {
-                                      final qId = item['id'] as int?;
-                                      if (qId != null) {
-                                        _queueCtrl.triggerRepeatNow(qId);
-                                      }
-                                    },
-                                  ),
-                                if (!_isStudent)
-                                  IconButton(
-                                    visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(Icons.repeat_rounded,
-                                        size: 16, color: context.colors.primary),
-                                    tooltip: 'Repeat Broadcast Schedule',
-                                    onPressed: () => _openRepeatScheduleForQueueItem(item),
-                                  ),
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                                  padding: EdgeInsets.zero,
-                                  icon: Icon(Icons.delete_outline_rounded,
-                                      size: 16, color: context.colors.primary),
-                                  tooltip: 'Remove from Queue',
-                                  onPressed: () => _queueCtrl.removeNotice(i),
-                                ),
+                                if (!compactCard) ...cardActions,
                               ],
                             ),
                           ),

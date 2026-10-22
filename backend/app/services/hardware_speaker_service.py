@@ -247,31 +247,17 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
     payload["command_id"] = cmd_id
     ann_id = payload.get("announcement_id")
     cmd_type = payload.get("command")
-    is_repeat = bool(payload.get("is_repeat") or (payload.get("repeat_round", 1) > 1) or payload.get("force_dispatch"))
 
-    # In-memory deduplication for PLAY commands: allow repeat rounds to dispatch cleanly
+    # A new PLAY for an announcement replaces older ones still held in memory. (Silently dropping
+    # it instead meant replaying a recently played notice never reached the speaker, because
+    # already-delivered commands stay in these lists.) The firmware dedupes by command_id.
     if ann_id and cmd_type in ("PLAY_ANNOUNCEMENT", "PLAY_EMERGENCY"):
-        if not is_repeat:
-            if not target_mac or target_mac.upper() == "ALL":
-                for c in _BROADCAST_COMMANDS:
-                    if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
-                        logger.info(f"Duplicate command for announcement #{ann_id} already in memory broadcast queue.")
-                        return
-            else:
-                key = target_mac.upper()
-                if key in _PENDING_COMMANDS:
-                    for c in _PENDING_COMMANDS[key]:
-                        if c.get("command") == cmd_type and c.get("announcement_id") == ann_id:
-                            logger.info(f"Duplicate command for announcement #{ann_id} already in node queue {key}.")
-                            return
+        if not target_mac or target_mac.upper() == "ALL":
+            _BROADCAST_COMMANDS = [c for c in _BROADCAST_COMMANDS if not (c.get("announcement_id") == ann_id and str(c.get("command", "")).startswith("PLAY"))]
         else:
-            # Prune older command for this announcement so hardware immediately processes the new repeat round
-            if not target_mac or target_mac.upper() == "ALL":
-                _BROADCAST_COMMANDS = [c for c in _BROADCAST_COMMANDS if c.get("announcement_id") != ann_id]
-            else:
-                key = target_mac.upper()
-                if key in _PENDING_COMMANDS:
-                    _PENDING_COMMANDS[key] = [c for c in _PENDING_COMMANDS[key] if c.get("announcement_id") != ann_id]
+            key = target_mac.upper()
+            if key in _PENDING_COMMANDS:
+                _PENDING_COMMANDS[key] = [c for c in _PENDING_COMMANDS[key] if not (c.get("announcement_id") == ann_id and str(c.get("command", "")).startswith("PLAY"))]
 
     # 1. In-memory queue
     if not target_mac or target_mac.upper() == "ALL":
@@ -322,11 +308,7 @@ def queue_command_for_nodes(payload: dict, target_mac: Optional[str] = None, db:
                     try:
                         p_data = json.loads(getattr(ec, "payload_json", "{}"))
                         if p_data.get("announcement_id") == ann_id:
-                            if not is_repeat:
-                                logger.info(f"SpeakerCommand for announcement #{ann_id} already PENDING (Cmd #{ec.id}). Skipping duplicate.")
-                                return
-                            else:
-                                ec.status = "SUPERSEDED"
+                            ec.status = "SUPERSEDED"  # the new command carries the current queue item
                     except Exception:
                         pass
 

@@ -85,7 +85,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Tap on EMERGENCY button
-    await tester.tap(find.text('EMERGENCY'));
+    await tester.tap(find.byTooltip('EMERGENCY'));  // icon-only below 400px
     await tester.pumpAndSettle();
 
     // Verify Emergency dialog opened
