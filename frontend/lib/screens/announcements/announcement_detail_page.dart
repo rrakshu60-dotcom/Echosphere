@@ -561,7 +561,8 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                ElevatedButton.icon(
+                                Flexible(
+                                  child: ElevatedButton.icon(
                                   onPressed: () {
                                     if (_aiSummary != null && _aiSummary!.isNotEmpty) {
                                       setState(() => _showAiSummary = true);
@@ -589,7 +590,10 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                         : ((_aiSummary != null && _aiSummary!.isNotEmpty)
                                             ? 'View AI Summary'
                                             : 'Generate AI Summary'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
                                   ),
                                 ),
                               ],
