@@ -117,7 +117,8 @@ KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
 KOKORO_LANG = os.getenv("KOKORO_LANG", "a")
 KOKORO_API_URL = os.getenv("KOKORO_API_URL", "https://rakshiroxy-echosphere-tts.hf.space").strip().rstrip("/")
 
-DEFAULT_HF_TOKEN = "hf_" + "hzVakuSpBWPVXPmPCNQrBmYzfsOiMMHoNT"
+# Never hardcode a token here: HF_TOKEN comes from the environment (Render dashboard / local .env).
+DEFAULT_HF_TOKEN = None
 
 _cached_gradio_client = None
 _cached_gradio_url = None
