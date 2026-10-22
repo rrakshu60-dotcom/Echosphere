@@ -6,15 +6,15 @@ interrupts the first (.agents/rules/testing.md §4-5). Replaces test_live_homote
 """
 import sys
 
-from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession
+from live_support import speaker_busy, ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession
 
 STOPPED_EARLY = ("Stream stopped early", "Stop received during playback", "Server ended this notice early")
 
 
 def main() -> None:
     session = LiveSession.login()
-    busy = [q for q in session.get("/hardware/queue") if q.get("status") not in ("Completed", "Cancelled", "Skipped")]
-    assert not busy, f"speaker queue is busy ({len(busy)} item(s)); not interrupting real notices"
+    busy = speaker_busy(session.get("/hardware/queue"))
+    assert not busy, f"speaker is busy ({len(busy)} item(s) playing or due soon); not interrupting real notices"
 
     with Esp32Serial() as esp, LiveNotices(session) as notices:
         mark = esp.mark()

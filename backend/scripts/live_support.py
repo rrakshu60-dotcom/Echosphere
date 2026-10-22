@@ -19,6 +19,7 @@ import re
 import secrets
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, Tuple
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,6 +38,28 @@ def wait_until(check: Callable[[], Any], timeout: float, interval: float = 0.25,
         if elapsed >= timeout:
             raise AssertionError(f"timed out waiting for {what} after {timeout:g}s")
         time.sleep(interval)
+
+
+SPEAKER_CHECK_WINDOW = timedelta(minutes=10)
+
+
+def speaker_busy(queue: list, now: Optional[datetime] = None) -> list:
+    """Queue items a live check would disturb: playing, paused or held, or due within the next 10 minutes.
+    Notices scheduled for later are left alone and do not block the check."""
+    now = now or datetime.now(timezone.utc)
+    busy = []
+    for item in queue:
+        status = item.get("status")
+        if status in ("Completed", "Cancelled", "Skipped", "Expired_Slot_Ended"):
+            continue
+        if status in ("Queued", "Next in Queue") and item.get("scheduled_time"):
+            due = datetime.fromisoformat(str(item["scheduled_time"]).replace("Z", "+00:00"))
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if due > now + SPEAKER_CHECK_WINDOW:
+                continue
+        busy.append(item)
+    return busy
 
 
 class LiveSession:

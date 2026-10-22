@@ -3,19 +3,19 @@ Live check: a published speaker notice plays on the physical ESP32 and completes
 
 Publishes one quiet [ES-TEST] notice to the ESP32 (no push, not in the feed), then asserts on the speaker's own
 serial log: play command received, audio streaming, playback completed, completion acknowledged by the backend.
-Always deletes the notice and fails on leftovers. Refuses to run while anything else is in the speaker queue.
+Always deletes the notice and fails on leftovers. Refuses to run while something is playing or due within 10 minutes.
 
     python backend/scripts/live_speaker_playback.py      (close any other serial monitor on COM7 first)
 """
 import sys
 
-from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, wait_until
+from live_support import speaker_busy, ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, wait_until
 
 
 def main() -> None:
     session = LiveSession.login()
-    busy = [q for q in session.get("/hardware/queue") if q.get("status") not in ("Completed", "Cancelled", "Skipped")]
-    assert not busy, f"speaker queue is busy ({len(busy)} item(s)); not interrupting real notices"
+    busy = speaker_busy(session.get("/hardware/queue"))
+    assert not busy, f"speaker is busy ({len(busy)} item(s) playing or due soon); not interrupting real notices"
 
     with Esp32Serial() as esp, LiveNotices(session) as notices:
         mark = esp.mark()
