@@ -240,7 +240,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap EMERGENCY button in top bar
-      final emergencyBtn = find.text('EMERGENCY');
+      final emergencyBtn = find.byTooltip('EMERGENCY');
       expect(emergencyBtn, findsOneWidget);
       await tester.tap(emergencyBtn);
       await tester.pumpAndSettle();
