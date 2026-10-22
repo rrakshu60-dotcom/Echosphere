@@ -5,6 +5,7 @@ import wave
 import asyncio
 import logging
 import hashlib
+import queue
 import threading
 import concurrent.futures
 from typing import Tuple, Dict, Any, Optional
@@ -678,6 +679,36 @@ def is_kokoro_available() -> bool:
         return False
 
 
+_BACKUP_QUEUE: "queue.Queue[Tuple[str, str, float]]" = queue.Queue()
+_BACKUP_WORKER_STARTED = False
+_BACKUP_WORKER_LOCK = threading.Lock()
+# Wait this long after synthesis before backing up, so a notice that is about to play gets the CPU
+_BACKUP_DELAY_SECONDS = 10.0
+
+
+def _backup_upload_worker() -> None:
+    from app.services.cloud_storage_service import CloudStorageService
+    from app.services.speaker_playback import any_stream_busy
+    while True:
+        file_path, file_name, queued_at = _BACKUP_QUEUE.get()
+        try:
+            time.sleep(max(0.0, queued_at + _BACKUP_DELAY_SECONDS - time.monotonic()))
+            while any_stream_busy():
+                time.sleep(1.0)
+            CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
+        except Exception as e:
+            logger.debug(f"Background cloud backup note: {e}")
+
+
+def _queue_backup_upload(file_path: str, file_name: str) -> None:
+    global _BACKUP_WORKER_STARTED
+    with _BACKUP_WORKER_LOCK:
+        if not _BACKUP_WORKER_STARTED:
+            threading.Thread(target=_backup_upload_worker, daemon=True, name="CloudBackupUploader").start()
+            _BACKUP_WORKER_STARTED = True
+    _BACKUP_QUEUE.put((file_path, file_name, time.monotonic()))
+
+
 def _format_audio_result(
     file_name: str,
     file_path: str,
@@ -693,19 +724,8 @@ def _format_audio_result(
     """
     public_url = f"/static/audio_streams/{file_name}"
     cdn_url = None
-    # Asynchronously upload to Hugging Face Git LFS in background so playback is never blocked
-    try:
-        import threading
-        from app.services.cloud_storage_service import CloudStorageService
-        def _bg_upload():
-            try:
-                CloudStorageService.upload_file(file_path, folder="audio_streams", custom_filename=file_name)
-            except Exception as e:
-                logger.debug(f"Async cloud storage upload note: {e}")
-                
-        threading.Thread(target=_bg_upload, daemon=True).start()
-    except Exception as e:
-        logger.debug(f"Cloud storage upload dispatcher note: {e}")
+    # Back up to Hugging Face later, one file at a time, while no speaker is streaming
+    _queue_backup_upload(file_path, file_name)
 
     res = {
         "file_name": file_name,

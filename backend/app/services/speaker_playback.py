@@ -103,6 +103,15 @@ def mark_stream_finished(queue_id: Optional[int]) -> None:
         _PENDING_STREAMS.pop(int(queue_id), None)
 
 
+def any_stream_busy() -> bool:
+    """True while any speaker is pulling audio or waiting for a stream to be synthesized."""
+    now = time.monotonic()
+    with _LOCK:
+        return any(now - t < _STREAM_IDLE_SECONDS for t in _ACTIVE_STREAMS.values()) or any(
+            now - t < _PENDING_SECONDS for t in _PENDING_STREAMS.values()
+        )
+
+
 def is_stream_active(queue_id: Optional[int]) -> bool:
     """True while the speaker is pulling this item's audio, or waiting for it to be synthesized."""
     if not queue_id:
