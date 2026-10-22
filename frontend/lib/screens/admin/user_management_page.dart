@@ -1047,153 +1047,50 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             itemCount: filteredUsers.length,
                             itemBuilder: (ctx, i) {
                               final u = filteredUsers[i];
-                              final isActive = u['is_active'] ?? true;
-                              final identifier = u['usn'] ?? u['official_email'] ?? u['employee_id'] ?? 'N/A';
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8.0),
-                                child: EchoSphereContainer(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 18,
-                                        backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
-                                        child: Builder(
-                                          builder: (_) {
-                                            final rawName = (u['full_name'] as String?)?.trim() ?? '';
-                                            final initial = rawName.isNotEmpty ? rawName[0].toUpperCase() : 'U';
-                                            return Text(
-                                              initial,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                color: theme.colorScheme.primary,
-                                              ),
-                                            );
-                                          },
-                                        ),
+                                child: UserAccountTile(
+                                  user: u,
+                                  canManage: canManage,
+                                  onRoleTap: () => _showRoleChangeDialog(u),
+                                  onActiveChanged: (val) async {
+                                    setState(() {
+                                      u['is_active'] = val;
+                                    });
+                                    try {
+                                      await EchosphereApiService().updateUserRole(u['id'] as int, isActive: val);
+                                    } catch (e) {
+                                      debugPrint('Update user active status: $e');
+                                    }
+                                    snackBar(
+                                      'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
+                                    );
+                                  },
+                                  onDelete: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => EchoSphereDialog(
+                                        title: 'Delete User',
+                                        confirmText: 'Delete Account',
+                                        message: 'Are you sure you want to delete user account for ${u['full_name']}? This action cannot be undone.',
+                                        onConfirm: () async {
+                                          final userId = u['id'];
+                                          if (userId != null && userId is int) {
+                                            try {
+                                              await EchosphereApiService().deleteUser(userId);
+                                            } catch (e) {
+                                              debugPrint('Delete user error: $e');
+                                            }
+                                          }
+                                          setState(() {
+                                            users.removeWhere((item) => item['id'] == u['id']);
+                                          });
+                                          snackBar('User account deleted successfully.');
+                                        },
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    u['full_name'] ?? 'User',
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Flexible(
-                                                  child: Tooltip(
-                                                    message: canManage ? 'Click to change role' : 'Role: ${u['role'] ?? "Student"}',
-                                                    child: EchoSphereChip(
-                                                      label: u['role'] ?? 'Student',
-                                                      icon: canManage ? Icons.edit_rounded : null,
-                                                      isSelected: true,
-                                                      onSelected: (_) {
-                                                        if (canManage) _showRoleChangeDialog(u);
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'ID: $identifier \u2022 Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " \u2022 Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: theme.colorScheme.onSurface.withOpacity(0.6),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (canManage) ...[
-                                        const SizedBox(width: 4),
-                                        Transform.scale(
-                                          scale: 0.85,
-                                          child: Switch(
-                                            value: isActive,
-                                            activeColor: theme.colorScheme.primary,
-                                            onChanged: (val) async {
-                                              setState(() {
-                                                u['is_active'] = val;
-                                              });
-                                              try {
-                                                await EchosphereApiService().updateUserRole(u['id'] as int, isActive: val);
-                                              } catch (e) {
-                                                debugPrint('Update user active status: $e');
-                                              }
-                                              snackBar(
-                                                'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: Icon(Icons.delete_outline_rounded, size: 20, color: theme.colorScheme.error),
-                                          tooltip: 'Delete User Account',
-                                          onPressed: () {
-                                            showDialog(
-                                              context: context,
-                                              builder: (ctx) => EchoSphereDialog(
-                                                title: 'Delete User',
-                                                confirmText: 'Delete Account',
-                                                message: 'Are you sure you want to delete user account for ${u['full_name']}? This action cannot be undone.',
-                                                onConfirm: () async {
-                                                  final userId = u['id'];
-                                                  if (userId != null && userId is int) {
-                                                    try {
-                                                      await EchosphereApiService().deleteUser(userId);
-                                                    } catch (e) {
-                                                      debugPrint('Delete user error: $e');
-                                                    }
-                                                  }
-                                                  setState(() {
-                                                    users.removeWhere((item) => item['id'] == u['id']);
-                                                  });
-                                                  snackBar('User account deleted successfully.');
-                                                },
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ] else ...[
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: (isActive ? theme.colorScheme.primary : theme.colorScheme.error).withOpacity(0.12),
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: (isActive ? theme.colorScheme.primary : theme.colorScheme.error).withOpacity(0.3),
-                                              width: 0.8,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            isActive ? 'Active' : 'Inactive',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: isActive ? theme.colorScheme.primary : theme.colorScheme.error,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
                               );
                             },
@@ -1204,6 +1101,142 @@ class _UserManagementPageState extends State<UserManagementPage> {
         ),
       ),
     ),
+    );
+  }
+}
+
+
+/// One row in the user list: avatar, name, role chip, ID line and (for managers) active switch and delete.
+class UserAccountTile extends StatelessWidget {
+  final Map<String, dynamic> user;
+  final bool canManage;
+  final VoidCallback? onRoleTap;
+  final ValueChanged<bool>? onActiveChanged;
+  final VoidCallback? onDelete;
+
+  const UserAccountTile({
+    super.key,
+    required this.user,
+    required this.canManage,
+    this.onRoleTap,
+    this.onActiveChanged,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final u = user;
+    final bool isActive = u['is_active'] ?? true;
+    final identifier = u['usn'] ?? u['official_email'] ?? u['employee_id'] ?? 'N/A';
+
+    return EchoSphereContainer(
+      padding: const EdgeInsets.all(12.0),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: theme.colorScheme.primary.withOpacity(0.18),
+            child: Builder(
+              builder: (_) {
+                final rawName = (u['full_name'] as String?)?.trim() ?? '';
+                final initial = rawName.isNotEmpty ? rawName[0].toUpperCase() : 'U';
+                return Text(
+                  initial,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: theme.colorScheme.primary,
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The name gets the full width; the role chip sits on its own line below it,
+                // so neither is squeezed on 320px screens.
+                Text(
+                  u['full_name'] ?? 'User',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Tooltip(
+                  message: canManage ? 'Click to change role' : 'Role: ${u['role'] ?? "Student"}',
+                  child: EchoSphereChip(
+                    label: u['role'] ?? 'Student',
+                    icon: canManage ? Icons.edit_rounded : null,
+                    isSelected: true,
+                    onSelected: (_) {
+                      if (canManage) onRoleTap?.call();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ID: $identifier \u2022 Dept: ${u['department'] ?? "CSE"}${u['section'] != null ? " \u2022 Sec: ${u['section']}" : ""}${u['semester'] != null ? " (Sem ${u['semester']})" : ""}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (canManage) ...[
+            const SizedBox(width: 4),
+            // Stacked so the name keeps most of the row width on narrow screens.
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Transform.scale(
+                  scale: 0.85,
+                  child: Switch(
+                    value: isActive,
+                    activeColor: theme.colorScheme.primary,
+                    onChanged: onActiveChanged,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete_outline_rounded, size: 20, color: theme.colorScheme.error),
+                  tooltip: 'Delete User Account',
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: (isActive ? theme.colorScheme.primary : theme.colorScheme.error).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: (isActive ? theme.colorScheme.primary : theme.colorScheme.error).withOpacity(0.3),
+                  width: 0.8,
+                ),
+              ),
+              child: Text(
+                isActive ? 'Active' : 'Inactive',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: isActive ? theme.colorScheme.primary : theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
