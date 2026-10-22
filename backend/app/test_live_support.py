@@ -160,3 +160,16 @@ def test_timeout_message_is_printable_on_any_console():
             esp.wait_for(r"never", timeout=0.2)
     str(exc.value).encode("cp1252")  # Windows console encoding must not choke
     assert "[WIFI] Connected!" in str(exc.value)
+
+
+def test_position_after_last_match_and_lines_since():
+    port = FakePort([b"A start\r\n", b"B stopped early\r\n", b"C next\r\n"])
+    with Esp32Serial(port_factory=lambda: port) as esp:
+        esp.wait_for(r"C next", timeout=1)
+        start = 0
+        esp.wait_for(r"A start", timeout=1, since=start)
+        after_a = esp.after_last_match()
+        assert esp.lines_since(after_a) == ["B stopped early", "C next"]
+        line, _ = esp.wait_for(r"next", timeout=1, since=after_a)
+        assert line == "C next"
+        assert esp.lines_since(esp.after_last_match()) == []

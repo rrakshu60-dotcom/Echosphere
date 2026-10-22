@@ -94,6 +94,7 @@ class Esp32Serial:
         self._cond = threading.Condition()
         self._stop = threading.Event()
         self._reader: Optional[threading.Thread] = None
+        self._after_match = 0
 
     def __enter__(self) -> "Esp32Serial":
         if self._factory:
@@ -145,6 +146,14 @@ class Esp32Serial:
         with self._cond:
             return len(self._lines)
 
+    def after_last_match(self) -> int:
+        """Log position right after the line the last wait_for() matched."""
+        return self._after_match
+
+    def lines_since(self, since: int) -> list:
+        with self._cond:
+            return [t for _, t in self._lines[since:]]
+
     def wait_for(self, pattern: str, timeout: float, since: int = 0) -> Tuple[str, float]:
         """Return (line, seconds waited) for the first line after `since` matching the regex, or fail."""
         regex = re.compile(pattern)
@@ -157,6 +166,7 @@ class Esp32Serial:
                     _, text = self._lines[index]
                     index += 1
                     if regex.search(text):
+                        self._after_match = index
                         return text, time.monotonic() - start
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
