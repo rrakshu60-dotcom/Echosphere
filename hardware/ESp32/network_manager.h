@@ -530,6 +530,9 @@ public:
       }
     });
     pushSocket.setReconnectInterval(5000);
+    // After a server restart Render's proxy can leave this side of the socket open with nothing
+    // behind it, and no close ever arrives. Ping every 15s; two missed pongs drop and reconnect.
+    pushSocket.enableHeartbeat(15000, 3000, 2);
     pushStarted = true;
   }
 
