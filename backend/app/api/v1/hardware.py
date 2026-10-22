@@ -1073,7 +1073,12 @@ def update_queue_action(
             "auto_advance": adv_res,
         }
 
-    from app.services.hardware_speaker_service import HELD_STATUS, auto_advance_speaker_queue
+    from app.services.hardware_speaker_service import (
+        HELD_STATUS,
+        auto_advance_speaker_queue,
+        abort_announcement_stream,
+        clear_announcement_stream_abort,
+    )
     from app.services.speaker_playback import cancel_pending_play_commands
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1090,6 +1095,8 @@ def update_queue_action(
         item.status = HELD_STATUS
         db.commit()
         cancel_pending_play_commands(db, item.announcement_id)
+        if item.announcement_id:
+            abort_announcement_stream(item.announcement_id)
         if was_playing:
             dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action="pause", base_url=base_url)
         new_status = HELD_STATUS
@@ -1110,6 +1117,8 @@ def update_queue_action(
         item.failure_reason = None
         db.commit()
         cancel_pending_play_commands(db, item.announcement_id)
+        if item.announcement_id:
+            clear_announcement_stream_abort(item.announcement_id)
         dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action="play", base_url=base_url)
         new_status = "Playing"
 
@@ -1127,6 +1136,8 @@ def update_queue_action(
                 sched.next_repeat_at = None
         db.commit()
         cancel_pending_play_commands(db, item.announcement_id)
+        if item.announcement_id:
+            abort_announcement_stream(item.announcement_id)
         if was_playing:
             dispatch_res = dispatch_queue_action_to_speakers(db=db, queue_item=item, action=act_clean, base_url=base_url)
             # Not forced: the item is no longer Playing, so a normal pass starts the next notice.
