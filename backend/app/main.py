@@ -237,9 +237,14 @@ def _render_self_keepalive():
                 print(f"Render self keep-alive note: {exc}")
 
 
-def _purge_old_access_logs_daemon():
-    """Every 6 hours, drop app-access entries older than 90 days (free-tier storage). Other logs are kept."""
+def _maintenance_daemon():
+    """
+    At startup and every 6 hours:
+    - drop app-access entries older than 90 days (free-tier storage; other logs are kept forever);
+    - remove the audio of deleted notices that still have audio stored (records are written first).
+    """
     from app.db.database import SessionLocal
+    from app.services.notice_record_service import purge_audio_of_deleted_notices
     from app.services.session_service import purge_old_access_logs
 
     while True:
@@ -250,6 +255,12 @@ def _purge_old_access_logs_daemon():
                 print(f"[ACCESS LOG] Purged {removed} app-access entries older than 90 days")
         except Exception as exc:
             print(f"Access log purge note: {exc}")
+        try:
+            cleaned = purge_audio_of_deleted_notices(SessionLocal)
+            if cleaned:
+                print(f"[NOTICE RECORDS] Removed audio of {len(cleaned)} deleted notice(s)")
+        except Exception as exc:
+            print(f"Deleted-notice audio cleanup note: {exc}")
         time.sleep(6 * 3600)
 
 
@@ -260,7 +271,7 @@ async def lifespan(app: FastAPI):
     t2 = threading.Thread(target=_prewarm_recent_announcements, daemon=True, name="AudioPrewarmDaemon")
     t2.start()
     threading.Thread(target=_render_self_keepalive, daemon=True, name="RenderSelfKeepAlive").start()
-    threading.Thread(target=_purge_old_access_logs_daemon, daemon=True, name="AccessLogPurge").start()
+    threading.Thread(target=_maintenance_daemon, daemon=True, name="Maintenance").start()
     try:
         from app.services.tts_service import start_zerogpu_keepalive_daemon
         start_zerogpu_keepalive_daemon()

@@ -160,33 +160,44 @@ class CloudStorageService:
 
     @classmethod
     def delete_announcement_audio(cls, announcement_id: int, folder: str = "audio_streams") -> int:
+        """Deletes one notice's audio backups. Returns how many files were removed."""
+        return cls.delete_audio_for_notices([announcement_id], folder=folder).get(announcement_id, 0)
+
+    @classmethod
+    def delete_audio_for_notices(cls, announcement_ids, folder: str = "audio_streams") -> Dict[int, int]:
         """
-        Deletes a notice's audio backups (announcement_<id>_*.* / announcement_<id>.*) from the cloud
-        dataset and the manifest. Returns how many files were removed. Called after the notice's
+        Deletes the audio backups (announcement_<id>_*.* / announcement_<id>.*) of the given notices from the
+        cloud dataset in ONE commit, and from the manifest. Returns {notice id: files removed}. Raises if the
+        cloud is configured but unreachable, so callers can retry later. Called only after each notice's
         deletion has been written to its permanent record.
         """
+        ids = list(announcement_ids)
         cls._load_manifest()
-        prefix = f"{folder}/announcement_{announcement_id}"
-        mine = [k for k in list(cls._manifest) if k.startswith(prefix + "_") or k.startswith(prefix + ".")]
-        removed = 0
+
+        def owner(path: str):
+            for nid in ids:
+                prefix = f"{folder}/announcement_{nid}"
+                if path.startswith(prefix + "_") or path.startswith(prefix + "."):
+                    return nid
+            return None
+
+        removed: Dict[int, int] = {nid: 0 for nid in ids}
         if cls.is_cloud_enabled() and cls._api and cls._repo_id:
-            try:
-                repo_files = cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset")
-                targets = [f for f in repo_files if f.startswith(prefix + "_") or f.startswith(prefix + ".")]
-                if targets:
-                    cls._api.delete_files(
-                        repo_id=cls._repo_id,
-                        repo_type="dataset",
-                        delete_patterns=targets,
-                        commit_message=f"Delete audio of deleted notice #{announcement_id}",
-                    )
-                removed = len(targets)
-            except Exception as e:
-                logger.warning(f"[Storage] Cloud delete for notice #{announcement_id} failed: {e}")
-                raise
-        if mine:
+            repo_files = cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset")
+            targets = [f for f in repo_files if owner(f) is not None]
+            if targets:
+                cls._api.delete_files(
+                    repo_id=cls._repo_id,
+                    repo_type="dataset",
+                    delete_patterns=targets,
+                    commit_message=f"Delete audio of {len(ids)} deleted notice(s)",
+                )
+            for f in targets:
+                removed[owner(f)] += 1
+        stale = [k for k in list(cls._manifest) if owner(k) is not None]
+        if stale:
             with cls._lock:
-                for k in mine:
+                for k in stale:
                     cls._manifest.pop(k, None)
                 cls._save_manifest()
         return removed
