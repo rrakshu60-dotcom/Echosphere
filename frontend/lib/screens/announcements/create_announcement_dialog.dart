@@ -40,7 +40,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
   bool deliverInApp = true;
   bool deliverPush = true;
-  bool deliverSpeaker = true;
+  bool deliverSpeaker = false;
   String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];
