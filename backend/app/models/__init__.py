@@ -21,3 +21,4 @@ from .announcement_vip_protocol import AnnouncementVipProtocol as AnnouncementVi
 from .user_session import UserSession as UserSession
 from .sign_in_log import SignInLog as SignInLog
 from .app_access_log import AppAccessLog as AppAccessLog
+from .notice_record import NoticeRecord as NoticeRecord, NoticeRecordEvent as NoticeRecordEvent

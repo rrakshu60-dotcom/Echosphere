@@ -134,6 +134,10 @@ def dispatch_announcement_notifications_and_deliveries(
                 db.bulk_save_objects(new_notifications)
                 db.commit()
                 logger.info(f"Generated {len(new_notifications)} notifications for announcement id={announcement.id}")
+                from app.services.notice_record_service import log_notice_event
+
+                log_notice_event(db, announcement.id, "IN_APP_ALERTS",
+                                 f"{len(new_notifications)} in-app alert(s) sent.", delivered=True)
         except Exception as e:
             logger.warning(f"Error generating notifications for announcement {announcement.id}: {e}")
 
@@ -158,8 +162,14 @@ def dispatch_announcement_notifications_and_deliveries(
                     audio_url=getattr(announcement, "audio_url", None),
                 )
                 logger.info(f"Dispatched FCM push notifications for announcement #{announcement.id}: {push_results}")
+                push_outcome = f"Push notification sent. Result: {push_results}"
             except Exception as ex:
                 logger.warning(f"Error dispatching FCM push notifications for announcement #{announcement.id}: {ex}")
+                push_outcome = f"Push notification failed: {ex}"
+            from app.services.notice_record_service import log_notice_event
+
+            log_notice_event(db, announcement.id, "PUSH_SENT", push_outcome[:1000],
+                             delivered=push_outcome.startswith("Push notification sent"))
 
 
 

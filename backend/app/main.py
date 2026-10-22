@@ -31,6 +31,11 @@ from app.core.queue_signal import install_session_hooks
 # Wake the speaker queue daemon instantly on any queue / schedule / announcement commit
 install_session_hooks(_QueueSessionFactory)
 
+# Permanent notice records: every notice change, delivery and deletion, in the same transaction
+from app.services.notice_record_service import current_actor, install_notice_record_hooks
+
+install_notice_record_hooks(_QueueSessionFactory)
+
 Base.metadata.create_all(bind=engine)
 SpeakerCommand.__table__.create(bind=engine, checkfirst=True)
 
@@ -269,6 +274,26 @@ app = FastAPI(
     version="1.1.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def _record_actor(request, call_next):
+    """Remember who is making this request, for the notice records (who created/edited/deleted)."""
+    actor = None
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        try:
+            from app.core.jwt_handler import verify_access_token
+
+            claims = verify_access_token(auth.split(" ", 1)[1].strip())
+            actor = {"user_id": claims.get("user_id"), "role": claims.get("role")}
+        except Exception:
+            actor = None
+    token = current_actor.set(actor)
+    try:
+        return await call_next(request)
+    finally:
+        current_actor.reset(token)
 
 
 # -------------------------

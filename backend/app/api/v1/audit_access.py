@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import require_roles
 from app.db.database import get_db
 from app.models.app_access_log import AppAccessLog
+from app.models.notice_record import NoticeRecord, NoticeRecordEvent
 from app.models.sign_in_log import SignInLog
 from app.models.user import User
 from app.models.user_session import UserSession
@@ -182,3 +183,84 @@ def end_user_session(
         description=f"{admin.full_name} signed out session #{session.id} of {session.user_name} ({session.platform or 'unknown device'}).",
     )
     return _session_dict(session)
+
+
+def _record_dict(r: NoticeRecord) -> dict:
+    return {
+        "announcement_id": r.announcement_id, "title": r.title, "content": r.content,
+        "original_title": r.original_title, "original_content": r.original_content,
+        "category": r.category, "priority": r.priority, "emergency_level": r.emergency_level,
+        "target_audience": r.target_audience, "channels": [c for c in (r.channels or "").split(",") if c],
+        "status": r.status, "creator_id": r.creator_id, "creator_name": r.creator_name,
+        "creator_role": r.creator_role, "creator_department": r.creator_department,
+        "created_at": _iso(r.created_at), "scheduled_at": _iso(r.scheduled_at), "published_at": _iso(r.published_at),
+        "first_delivered_at": _iso(r.first_delivered_at), "last_delivered_at": _iso(r.last_delivered_at),
+        "speaker_play_count": r.speaker_play_count, "deleted": r.deleted_at is not None,
+        "deleted_at": _iso(r.deleted_at), "deleted_by_id": r.deleted_by_id, "deleted_by_name": r.deleted_by_name,
+        "deleted_by_role": r.deleted_by_role, "deleted_before_broadcast": r.deleted_before_broadcast,
+        "audio_deleted_at": _iso(r.audio_deleted_at), "partial": r.partial,
+    }
+
+
+@router.get("/notices")
+def list_notice_records(
+    q: Optional[str] = None,
+    state: Optional[Literal["active", "deleted"]] = None,
+    channel: Optional[str] = None,
+    priority: Optional[str] = None,
+    deleted_before_broadcast: Optional[bool] = None,
+    start: Optional[datetime] = Query(None, alias="from"),
+    end: Optional[datetime] = Query(None, alias="to"),
+    sort: Literal["created", "scheduled", "last_delivered", "deleted", "title"] = "created",
+    order: Order = "desc",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(audit_admin),
+):
+    """Every notice ever created, deleted or not. Search by notice ID, title, content or creator."""
+    query = db.query(NoticeRecord)
+    if q and q.strip():
+        term = q.strip().lstrip("#")
+        like = f"%{term}%"
+        matches = [NoticeRecord.title.ilike(like), NoticeRecord.content.ilike(like),
+                   NoticeRecord.original_title.ilike(like), NoticeRecord.original_content.ilike(like),
+                   NoticeRecord.creator_name.ilike(like)]
+        if term.isdigit():
+            matches += [NoticeRecord.announcement_id == int(term), NoticeRecord.creator_id == int(term)]
+        query = query.filter(or_(*matches))
+    if state == "deleted":
+        query = query.filter(NoticeRecord.deleted_at.isnot(None))
+    elif state == "active":
+        query = query.filter(NoticeRecord.deleted_at.is_(None))
+    if channel:
+        query = query.filter(NoticeRecord.channels.ilike(f"%{channel}%"))
+    if priority:
+        query = query.filter(NoticeRecord.priority.ilike(priority))
+    if deleted_before_broadcast is not None:
+        query = query.filter(NoticeRecord.deleted_before_broadcast == deleted_before_broadcast)
+    sort_col = {"created": NoticeRecord.created_at, "scheduled": NoticeRecord.scheduled_at,
+                "last_delivered": NoticeRecord.last_delivered_at, "deleted": NoticeRecord.deleted_at,
+                "title": NoticeRecord.title}[sort]
+    return _page(query, NoticeRecord, [], None, sort_col, order, page, page_size, start, end, _record_dict)
+
+
+@router.get("/notices/{announcement_id}")
+def get_notice_record(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(audit_admin),
+):
+    record = db.query(NoticeRecord).filter(NoticeRecord.announcement_id == announcement_id).first()
+    if record is None:
+        raise HTTPException(status_code=404, detail="No record for this notice.")
+    events = (db.query(NoticeRecordEvent).filter(NoticeRecordEvent.announcement_id == announcement_id)
+              .order_by(NoticeRecordEvent.created_at, NoticeRecordEvent.id).all())
+    return {
+        "record": _record_dict(record),
+        "events": [
+            {"id": e.id, "at": _iso(e.created_at), "event": e.event, "actor_id": e.actor_id,
+             "actor_name": e.actor_name, "actor_role": e.actor_role, "detail": e.detail}
+            for e in events
+        ],
+    }
