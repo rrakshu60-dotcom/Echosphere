@@ -136,6 +136,7 @@ static_assert(PIN_LED_ONBOARD < 32,
 #define HEARTBEAT_INTERVAL_MS                                                  \
   800 // Periodic heartbeat interval to backend in ms (rapid 0.8s broadcast detection)
 #define QUEUE_POLL_INTERVAL_MS 800 // Queue check interval in ms
+#define PUSH_HEARTBEAT_INTERVAL_MS 2500 // Heartbeat interval while the push channel is connected
 #define LED_PULSE_DURATION_MS 60   // Heartbeat LED flash duration in ms
 
 #endif // ECHOSPHERE_CONFIG_H

@@ -7,6 +7,7 @@
 
 #include "display_manager.h"
 #include "audio_manager.h"
+#include <WebSocketsClient.h>
 
 class EchoNetworkManager {
 private:
@@ -34,6 +35,12 @@ private:
     }
     return backendClient;
   }
+
+  // Push channel: the backend sends commands down this socket the moment they are queued,
+  // so a new notice starts without waiting for the next heartbeat. Heartbeats stay as fallback.
+  WebSocketsClient pushSocket;
+  bool pushStarted = false;
+  bool pushConnected = false;
 
   String currentStatus = "ONLINE";
   int activeAnnouncementId = 0;
@@ -357,6 +364,194 @@ public:
   }
 
   // --------------------------------------------------------------------------
+  // Command handling shared by heartbeat responses and the push channel
+  // --------------------------------------------------------------------------
+  struct BroadcastTarget {
+    int annId = 0;
+    int qId = 0;
+    int round = 1;
+    String title = "";
+    String content = "";
+    String priority = "NORMAL";
+    String dept = "College-Wide";
+    int duration = 15;
+    String audioUrl = "";
+  };
+
+  // Reads a pending_commands array. Returns true if a notice should play (filled into target);
+  // the last control command lands in controlCmd/cmdVol. Each command_id runs only once.
+  bool parsePendingCommands(JsonArray commands, BroadcastTarget& target, String& controlCmd, int& cmdVol) {
+    bool shouldTriggerBroadcast = false;
+    for (JsonObject cmd : commands) {
+      const char* rawMac = cmd["target_mac"];
+      String tMac = rawMac ? String(rawMac) : "";
+      if (tMac.length() > 0 && !tMac.equalsIgnoreCase("ALL") && !tMac.equalsIgnoreCase(nodeMac)) {
+        continue; // not for this node
+      }
+
+      // Deduplicate commands by unique ID to prevent repeated replay loops
+      String cmdId = "";
+      if (!cmd["command_id"].isNull()) {
+        cmdId = String(cmd["command_id"].as<const char*>());
+      } else if (!cmd["id"].isNull()) {
+        cmdId = String(cmd["id"].as<int>());
+      }
+      if (cmdId.length() > 0 && isCommandExecuted(cmdId)) {
+        continue; // already executed this command
+      }
+
+      const char* rawC = cmd["command"];
+      String c = rawC ? String(rawC) : "";
+      if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP") || c.equalsIgnoreCase("PAUSE")) {
+        controlCmd = c;
+        if (cmdId.length() > 0) markCommandExecuted(cmdId);
+      } else if (c.equalsIgnoreCase("SET_VOLUME")) {
+        controlCmd = c;
+        cmdVol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
+        if (cmdId.length() > 0) markCommandExecuted(cmdId);
+      } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
+        int aId = cmd["announcement_id"].as<int>();
+        bool isIncomingEmerg = c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>());
+        const char* rT = cmd["title"];
+        if (rT && (strstr(rT, "EMERGENCY") != NULL || strstr(rT, "Emergency") != NULL)) {
+          isIncomingEmerg = true;
+        }
+
+        // A routine non-emergency notice CANNOT interrupt an ongoing broadcast!
+        if (isBroadcasting && !isIncomingEmerg) {
+          continue;
+        }
+
+        // Pending command deduplication is already guaranteed by isCommandExecuted(cmdId).
+        // Never block repeat rounds of the same announcement ID!
+        if (aId > 0 && (!isBroadcasting || isIncomingEmerg)) {
+          shouldTriggerBroadcast = true;
+          target.annId = aId;
+          target.qId = cmd["queue_id"].isNull() ? 0 : cmd["queue_id"].as<int>();
+          target.round = cmd["repeat_round"].isNull() ? 1 : cmd["repeat_round"].as<int>();
+          target.title = rT ? String(rT) : "Campus Notice";
+          const char* rM = cmd["message"];
+          if (!rM || strlen(rM) == 0) rM = cmd["content"];
+          target.content = rM ? String(rM) : "";
+          target.priority = (c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>())) ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
+          if (target.title.indexOf("EMERGENCY") >= 0 || target.title.indexOf("Emergency") >= 0 || target.priority.indexOf("EMERG") >= 0 || target.priority.indexOf("emerg") >= 0) {
+            target.priority = "EMERGENCY";
+          }
+          const char* rD = cmd["department"];
+          target.dept = rD ? String(rD) : "College-Wide";
+          target.duration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
+          const char* rA = cmd["audio_url"];
+          target.audioUrl = rA ? String(rA) : "";
+          if (cmdId.length() > 0) markCommandExecuted(cmdId);
+        }
+      }
+    }
+    return shouldTriggerBroadcast;
+  }
+
+  // Switches the TFT and status LED to the notice right away, before audio streaming begins
+  void showBroadcastCard(const BroadcastTarget& t) {
+    int effectiveDuration = t.duration > 0 ? max(t.duration, 4) : 4;
+    DisplayNotice notice;
+    notice.id = t.annId;
+    notice.title = t.title;
+    notice.summary = t.content;
+    notice.priority = t.priority;
+    notice.department = t.dept;
+    notice.category = "Notice";
+
+    displayMgr.setActiveNotice(notice, effectiveDuration);
+    isBroadcasting = true;
+    activeAnnouncementId = t.annId;
+    activeQueueId = t.qId;
+    activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
+  }
+
+  void runControlCommand(const String& pendingCommand, int cmdVol) {
+    if (pendingCommand.equalsIgnoreCase("TEST_SPEAKER")) {
+      audioMgr.playDiagnosticTest();
+    } else if (pendingCommand.equalsIgnoreCase("SET_VOLUME")) {
+      if (cmdVol >= 0) audioMgr.setVolume(cmdVol);
+    } else if (pendingCommand.equalsIgnoreCase("STOP") || pendingCommand.equalsIgnoreCase("CANCEL") || pendingCommand.equalsIgnoreCase("SKIP") || pendingCommand.equalsIgnoreCase("PAUSE")) {
+      stopActiveBroadcast();
+    } else if (pendingCommand.equalsIgnoreCase("RESTART")) {
+      registerNode();
+    }
+  }
+
+  // The audio stream starts on the next update() pass, outside the HTTP / socket callback
+  void queuePendingBroadcast(const BroadcastTarget& t) {
+    pendingBroadcastScheduled = true;
+    pendingTargetAnnId = t.annId;
+    pendingTargetQId = t.qId;
+    pendingTargetRound = t.round;
+    pendingTargetTitle = t.title;
+    pendingTargetContent = t.content;
+    pendingTargetPriority = t.priority;
+    pendingTargetDept = t.dept;
+    pendingTargetDuration = t.duration;
+    pendingTargetAudioUrl = t.audioUrl;
+  }
+
+  // --------------------------------------------------------------------------
+  // Push channel (WebSocket /api/v1/ws/speaker/{mac})
+  // --------------------------------------------------------------------------
+  void startPushChannel() {
+    bool secure = serverUrl.startsWith("https://");
+    String host = serverUrl.substring(serverUrl.indexOf("://") + 3);
+    uint16_t port = secure ? 443 : 80;
+    int colon = host.indexOf(':');
+    if (colon >= 0) {
+      port = (uint16_t)host.substring(colon + 1).toInt();
+      host = host.substring(0, colon);
+    }
+    String path = "/api/v1/ws/speaker/" + nodeMac;
+    if (secure) {
+      pushSocket.beginSSL(host.c_str(), port, path.c_str());
+    } else {
+      pushSocket.begin(host.c_str(), port, path.c_str());
+    }
+    pushSocket.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
+      if (type == WStype_CONNECTED) {
+        pushConnected = true;
+        Serial.println(F("⚡ [PUSH] Connected: notices now arrive the moment they are published."));
+      } else if (type == WStype_DISCONNECTED) {
+        if (pushConnected) Serial.println(F("⚡ [PUSH] Disconnected; heartbeats deliver commands until it reconnects."));
+        pushConnected = false;
+      } else if (type == WStype_TEXT) {
+        handlePushMessage(payload, length);
+      }
+    });
+    pushSocket.setReconnectInterval(5000);
+    pushStarted = true;
+  }
+
+  void handlePushMessage(uint8_t* payload, size_t length) {
+    #if defined(ARDUINOJSON_VERSION_MAJOR) && (ARDUINOJSON_VERSION_MAJOR >= 7)
+      JsonDocument doc;
+    #else
+      DynamicJsonDocument doc(4096);
+    #endif
+    if (deserializeJson(doc, payload, length) || !doc["pending_commands"].is<JsonArray>()) return;
+
+    BroadcastTarget target;
+    String controlCmd = "";
+    int cmdVol = -1;
+    bool shouldTriggerBroadcast = parsePendingCommands(doc["pending_commands"].as<JsonArray>(), target, controlCmd, cmdVol);
+    if (shouldTriggerBroadcast) {
+      Serial.print(F("⚡ [PUSH] Play command received for notice #"));
+      Serial.println(target.annId);
+      showBroadcastCard(target);
+    }
+    if (controlCmd.length() > 0) {
+      Serial.print(F("⚡ [PUSH] Control command received: "));
+      Serial.println(controlCmd);
+      runControlCommand(controlCmd, cmdVol);
+    }
+    if (shouldTriggerBroadcast) queuePendingBroadcast(target);
+  }
+
+  // --------------------------------------------------------------------------
   // Heartbeat & Telemetry (Every 3 seconds)
   // POST /api/v1/hardware/speakers/heartbeat
   // --------------------------------------------------------------------------
@@ -394,20 +589,10 @@ public:
     http.setTimeout(4000);
 
     // Extraction variables to hold incoming playback/control instructions
-    bool hasControlCommand = false;
     String pendingCommand = "";
     int cmdVol = -1;
-
     bool shouldTriggerBroadcast = false;
-    int targetAnnId = 0;
-    int targetQId = 0;
-    int targetRound = 1;
-    String targetTitle = "";
-    String targetContent = "";
-    String targetPriority = "NORMAL";
-    String targetDept = "College-Wide";
-    int targetDuration = 15;
-    String targetAudioUrl = "";
+    BroadcastTarget target;
 
     int httpCode = http.POST(requestBody);
     if (httpCode == 200 || httpCode == 201) {
@@ -423,73 +608,7 @@ public:
       if (!err) {
         // 1. Check pending commands
         if (respDoc["pending_commands"].is<JsonArray>()) {
-          JsonArray commands = respDoc["pending_commands"].as<JsonArray>();
-          for (JsonObject cmd : commands) {
-            const char* rawMac = cmd["target_mac"];
-            String tMac = rawMac ? String(rawMac) : "";
-            if (tMac.length() > 0 && !tMac.equalsIgnoreCase("ALL") && !tMac.equalsIgnoreCase(nodeMac)) {
-              continue; // not for this node
-            }
-
-            // Deduplicate commands by unique ID to prevent repeated replay loops
-            String cmdId = "";
-            if (!cmd["command_id"].isNull()) {
-              cmdId = String(cmd["command_id"].as<const char*>());
-            } else if (!cmd["id"].isNull()) {
-              cmdId = String(cmd["id"].as<int>());
-            }
-            if (cmdId.length() > 0 && isCommandExecuted(cmdId)) {
-              continue; // already executed this command
-            }
-
-            const char* rawC = cmd["command"];
-            String c = rawC ? String(rawC) : "";
-            if (c.equalsIgnoreCase("TEST_SPEAKER") || c.equalsIgnoreCase("RESTART") || c.equalsIgnoreCase("STOP") || c.equalsIgnoreCase("CANCEL") || c.equalsIgnoreCase("SKIP") || c.equalsIgnoreCase("PAUSE")) {
-              hasControlCommand = true;
-              pendingCommand = c;
-              if (cmdId.length() > 0) markCommandExecuted(cmdId);
-            } else if (c.equalsIgnoreCase("SET_VOLUME")) {
-              hasControlCommand = true;
-              pendingCommand = c;
-              cmdVol = cmd["volume"].isNull() ? audioMgr.getVolume() : cmd["volume"].as<int>();
-              if (cmdId.length() > 0) markCommandExecuted(cmdId);
-            } else if (c.equalsIgnoreCase("PLAY_ANNOUNCEMENT") || c.equalsIgnoreCase("PLAY_EMERGENCY")) {
-              int aId = cmd["announcement_id"].as<int>();
-              bool isIncomingEmerg = c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>());
-              const char* rT = cmd["title"];
-              if (rT && (strstr(rT, "EMERGENCY") != NULL || strstr(rT, "Emergency") != NULL)) {
-                isIncomingEmerg = true;
-              }
-
-              // A routine non-emergency notice CANNOT interrupt an ongoing broadcast!
-              if (isBroadcasting && !isIncomingEmerg) {
-                continue;
-              }
-
-              // Pending command deduplication is already guaranteed by isCommandExecuted(cmdId).
-              // Never block repeat rounds of the same announcement ID!
-              if (aId > 0 && (!isBroadcasting || isIncomingEmerg)) {
-                shouldTriggerBroadcast = true;
-                targetAnnId = aId;
-                targetQId = cmd["queue_id"].isNull() ? 0 : cmd["queue_id"].as<int>();
-                targetRound = cmd["repeat_round"].isNull() ? 1 : cmd["repeat_round"].as<int>();
-                targetTitle = rT ? String(rT) : "Campus Notice";
-                const char* rM = cmd["message"];
-                if (!rM || strlen(rM) == 0) rM = cmd["content"];
-                targetContent = rM ? String(rM) : "";
-                targetPriority = (c.equalsIgnoreCase("PLAY_EMERGENCY") || (!cmd["is_emergency"].isNull() && cmd["is_emergency"].as<bool>())) ? "EMERGENCY" : (cmd["priority"].isNull() ? "NORMAL" : String(cmd["priority"].as<const char*>()));
-                if (targetTitle.indexOf("EMERGENCY") >= 0 || targetTitle.indexOf("Emergency") >= 0 || targetPriority.indexOf("EMERG") >= 0 || targetPriority.indexOf("emerg") >= 0) {
-                  targetPriority = "EMERGENCY";
-                }
-                const char* rD = cmd["department"];
-                targetDept = rD ? String(rD) : "College-Wide";
-                targetDuration = cmd["duration_seconds"].isNull() ? 15 : cmd["duration_seconds"].as<int>();
-                const char* rA = cmd["audio_url"];
-                targetAudioUrl = rA ? String(rA) : "";
-                if (cmdId.length() > 0) markCommandExecuted(cmdId);
-              }
-            }
-          }
+          shouldTriggerBroadcast = parsePendingCommands(respDoc["pending_commands"].as<JsonArray>(), target, pendingCommand, cmdVol);
         }
 
         // 2. Check active playing notice if no command triggered playback
@@ -501,26 +620,26 @@ public:
           bool isJustCompleted = isAnnouncementCompleted(aId, repRound, qId);
           if (aId > 0 && !isJustCompleted && (!isBroadcasting || activeAnnouncementId != aId)) {
             shouldTriggerBroadcast = true;
-            targetAnnId = aId;
-            targetQId = qId;
-            targetRound = repRound;
+            target.annId = aId;
+            target.qId = qId;
+            target.round = repRound;
             const char* rawT = activeNotice["title"];
-            targetTitle = rawT ? String(rawT) : "Campus Notice";
+            target.title = rawT ? String(rawT) : "Campus Notice";
             const char* rawC = activeNotice["content"];
-            targetContent = rawC ? String(rawC) : "";
+            target.content = rawC ? String(rawC) : "";
             const char* rawP = activeNotice["priority"];
-            targetPriority = rawP ? String(rawP) : "NORMAL";
+            target.priority = rawP ? String(rawP) : "NORMAL";
             if (!activeNotice["is_emergency"].isNull() && activeNotice["is_emergency"].as<bool>()) {
-              targetPriority = "EMERGENCY";
+              target.priority = "EMERGENCY";
             }
-            if (targetTitle.indexOf("EMERGENCY") >= 0 || targetTitle.indexOf("Emergency") >= 0 || targetPriority.indexOf("EMERG") >= 0 || targetPriority.indexOf("emerg") >= 0) {
-              targetPriority = "EMERGENCY";
+            if (target.title.indexOf("EMERGENCY") >= 0 || target.title.indexOf("Emergency") >= 0 || target.priority.indexOf("EMERG") >= 0 || target.priority.indexOf("emerg") >= 0) {
+              target.priority = "EMERGENCY";
             }
             const char* rawD = activeNotice["department"];
-            targetDept = rawD ? String(rawD) : "College-Wide";
-            targetDuration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
+            target.dept = rawD ? String(rawD) : "College-Wide";
+            target.duration = activeNotice["duration_seconds"].isNull() ? 15 : activeNotice["duration_seconds"].as<int>();
             const char* rawA = activeNotice["audio_url"];
-            targetAudioUrl = rawA ? String(rawA) : "";
+            target.audioUrl = rawA ? String(rawA) : "";
           } else if (isJustCompleted && (isBroadcasting || displayMgr.isBroadcasting() || displayMgr.getState() == STATE_PLAYING_ANNOUNCEMENT)) {
             // Already finished playing this announcement; clean up active notice and return to idle ticker
             isBroadcasting = false;
@@ -544,20 +663,7 @@ public:
         // This guarantees the display leaves idle mode instantly upon push,
         // and renders the active notice before audio streaming begins.
         if (shouldTriggerBroadcast) {
-          int effectiveDuration = targetDuration > 0 ? max(targetDuration, 4) : 4;
-          DisplayNotice notice;
-          notice.id = targetAnnId;
-          notice.title = targetTitle;
-          notice.summary = targetContent;
-          notice.priority = targetPriority;
-          notice.department = targetDept;
-          notice.category = "Notice";
-
-          displayMgr.setActiveNotice(notice, effectiveDuration);
-          isBroadcasting = true;
-          activeAnnouncementId = targetAnnId;
-          activeQueueId = targetQId;
-          activePlaybackEndTime = millis() + (effectiveDuration * 1000UL);
+          showBroadcastCard(target);
         }
 
         // 3. Process daily important notices for idle display ticker
@@ -617,31 +723,13 @@ public:
     http.end();
 
     // Now execute control command if present
-    if (hasControlCommand) {
-      if (pendingCommand.equalsIgnoreCase("TEST_SPEAKER")) {
-        audioMgr.playDiagnosticTest();
-      } else if (pendingCommand.equalsIgnoreCase("SET_VOLUME")) {
-        if (cmdVol >= 0) audioMgr.setVolume(cmdVol);
-      } else if (pendingCommand.equalsIgnoreCase("STOP") || pendingCommand.equalsIgnoreCase("CANCEL") || pendingCommand.equalsIgnoreCase("SKIP") || pendingCommand.equalsIgnoreCase("PAUSE")) {
-        stopActiveBroadcast();
-      } else if (pendingCommand.equalsIgnoreCase("RESTART")) {
-        registerNode();
-      }
+    if (pendingCommand.length() > 0) {
+      runControlCommand(pendingCommand, cmdVol);
     }
 
     // Asynchronously schedule audio broadcast so sendHeartbeat() exits completely
-    // and secureClient destructs, releasing ~45KB TLS heap memory before audio streaming begins!
     if (shouldTriggerBroadcast) {
-      pendingBroadcastScheduled = true;
-      pendingTargetAnnId = targetAnnId;
-      pendingTargetQId = targetQId;
-      pendingTargetRound = targetRound;
-      pendingTargetTitle = targetTitle;
-      pendingTargetContent = targetContent;
-      pendingTargetPriority = targetPriority;
-      pendingTargetDept = targetDept;
-      pendingTargetDuration = targetDuration;
-      pendingTargetAudioUrl = targetAudioUrl;
+      queuePendingBroadcast(target);
     }
   }
 
@@ -870,10 +958,17 @@ public:
       triggerNoticeBroadcast(pendingTargetAnnId, pendingTargetQId, pendingTargetTitle, pendingTargetContent, pendingTargetPriority, pendingTargetDept, pendingTargetDuration, pendingTargetAudioUrl, pendingTargetRound);
     }
 
-    // 3. Periodic 3-second heartbeat & display feed telemetry
-    if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+    // 3. Periodic heartbeat & display feed telemetry (a fallback for commands while push is connected)
+    unsigned long heartbeatInterval = pushConnected ? PUSH_HEARTBEAT_INTERVAL_MS : HEARTBEAT_INTERVAL_MS;
+    if (now - lastHeartbeatTime >= heartbeatInterval) {
       lastHeartbeatTime = now;
       sendHeartbeat();
+    }
+
+    // 4. Push channel: delivers commands instantly; runs after playback so a reconnect never delays audio
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!pushStarted) startPushChannel();
+      pushSocket.loop();
     }
   }
 };
