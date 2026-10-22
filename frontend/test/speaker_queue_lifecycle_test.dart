@@ -17,6 +17,7 @@ import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/speaker_queue_controller.dart';
 
 import 'package:echosphere/screens/announcements/speaker_queue_page.dart';
+import 'support/server_queue.dart';
 
 
 
@@ -140,94 +141,28 @@ void main() {
 
 
 
-  test('Speaker notice plays once and is automatically removed from queue upon completion',
-
-      () async {
-
-    final annCtrl = Get.put(AnnouncementController());
-
-    annCtrl.rxAnnouncements.clear();
-
+  test('Speaker notice plays once and is automatically removed from queue upon completion', () {
+    Get.put(AnnouncementController());
     final queueCtrl = Get.put(SpeakerQueueController());
 
-    queueCtrl.queueItems.clear();
-
-
-
-    // Create a speaker notice
-
-    await annCtrl.createAnnouncement(
-
-      title: 'Lab Maintenance Alert',
-
-      description: 'The AI & Robotics lab will remain closed for maintenance.',
-
-      department: 'AIML',
-
-      category: 'Academic',
-
-      priority: 'MEDIUM',
-
-      creatorRole: 'Dev Admin',
-
-      creatorName: 'Dev Administrator',
-
-      deliverSpeaker: true,
-
-      speakerNodeId: 1,
-
-    );
-
-
-
-    await queueCtrl.refreshQueue(silent: true);
-
+    // Backend: the notice is playing and the speaker confirmed it 5s ago.
+    queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+      serverQueueItem(id: 1, announcementId: 501, title: 'Lab Maintenance Alert', status: 'Playing', durationSeconds: 10, speakerConfirmed: true, speakerElapsedSeconds: 5),
+    ]);
     expect(queueCtrl.queueItems.length, 1);
-
-
-
-    // Start playback
-
-    await queueCtrl.togglePlayPause(index: 0);
-
     expect(queueCtrl.isPlaying.value, isTrue);
-
-    expect(queueCtrl.queueItems.first['status'], 'Playing');
-
-
-
-    // Simulate elapsed progress
-
-    queueCtrl.currentElapsedSeconds.value = 5;
-
+    expect(queueCtrl.speakerConfirmed.value, isTrue);
+    expect(queueCtrl.activeTitle, 'Lab Maintenance Alert');
     expect(queueCtrl.currentElapsedFormatted, '00:05');
-
     expect(queueCtrl.currentTotalFormatted, '00:10');
 
-
-
-    // Complete playback (simulating timer reaching total duration)
-
-    await queueCtrl.completeCurrentPlayback();
-
-
-
-    // Verify notice has been marked as played in AnnouncementController
-
-    final playedNotice = annCtrl.allAnnouncements.firstWhere((a) => a.title.contains('Lab Maintenance Alert'));
-
-    expect(playedNotice.playedOnSpeaker, isTrue);
-
-
-
-    // Verify the played notice has been REMOVED from the speaker queue list
-
+    // Backend: playback finished, the item is Completed.
+    queueCtrl.applyServerSnapshot(nodes: serverSpeakerNodes, queue: [
+      serverQueueItem(id: 1, announcementId: 501, title: 'Lab Maintenance Alert', status: 'Completed'),
+    ]);
     expect(queueCtrl.queueItems.isEmpty, isTrue);
-
     expect(queueCtrl.isPlaying.value, isFalse);
-
     expect(queueCtrl.activeTitle, 'No active speaker announcement');
-
   });
 
 
