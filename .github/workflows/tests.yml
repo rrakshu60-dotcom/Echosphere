@@ -37,3 +37,26 @@ jobs:
       # conftest.py gives every run a temporary SQLite DB and blocks outbound network
       - name: Run pytest
         run: python -m pytest -q -W ignore
+
+  frontend:
+    name: Flutter tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run flutter test
+        run: flutter test --timeout 60s
