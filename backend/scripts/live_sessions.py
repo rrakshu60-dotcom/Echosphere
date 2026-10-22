@@ -25,11 +25,11 @@ def claims(token: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
 
 
-def login(remember: bool) -> dict:
+def login(remember: bool, headers: dict | None = None) -> dict:
     res = requests.post(f"{API}/auth/login", json={
         "identifier": "ESDEV01", "password": os.environ["ES_PASSWORD_ESDEV01"],
         "remember_me": remember, "platform": "test",
-    }, timeout=30)
+    }, headers=headers or {}, timeout=30)
     assert res.status_code == 200, f"login: HTTP {res.status_code} {res.text[:200]}"
     return res.json()
 
@@ -62,7 +62,16 @@ def main() -> None:
     sign_ins = requests.get(f"{API}/audit/sign-ins", params={"q": "ESDEV01", "page_size": 5}, headers=admin, timeout=30).json()
     mine = [s for s in sign_ins["items"] if s["session_id"] == a["session_id"]]
     assert mine and mine[0]["success"] and mine[0]["platform"] == "test", "sign-in not in the sign-in log"
-    print(f"PASS sign-in log has it (IP {mine[0]['ip']}, total entries for ESDEV01: {sign_ins['total']})")
+    public_ip = requests.get("https://api64.ipify.org", timeout=15).text.strip()
+    assert mine[0]["ip"] == public_ip, f"logged IP {mine[0]['ip']} is not this machine's public IP {public_ip}"
+    print(f"PASS sign-in log has it, with this machine's real public IP {public_ip}")
+
+    forged = login(remember=False, headers={"CF-Connecting-IP": "203.0.113.99", "X-Forwarded-For": "198.51.100.99"})
+    entry = [s for s in requests.get(f"{API}/audit/sign-ins", params={"q": "ESDEV01", "page_size": 5}, headers=admin,
+                                     timeout=30).json()["items"] if s["session_id"] == forged["session_id"]][0]
+    assert entry["ip"] == public_ip, f"forged headers changed the logged IP to {entry['ip']}"
+    requests.post(f"{API}/auth/logout", headers=auth(forged["access_token"]), timeout=30)
+    print("PASS forged IP headers were ignored")
 
     acc = requests.get(f"{API}/audit/access", params={"q": "live-check", "page_size": 10}, headers=admin, timeout=30).json()
     events = {x["event"] for x in acc["items"] if x["session_id"] == a["session_id"]}
