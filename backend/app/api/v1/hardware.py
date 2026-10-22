@@ -189,11 +189,8 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
     1. active_notice: currently playing announcement through the speaker queue.
     2. daily_notices: important active published notices of the day from the app when idle.
     """
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue
-    try:
-        try_serialized(auto_advance_speaker_queue, db)
-    except Exception:
-        pass
+    # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
+    # Running it here too cost every request ~a dozen extra database round trips.
 
     clean_mac = (mac_address or "").upper().strip()
     if clean_mac in ("00:00:00:00:00:00", "00-00-00-00-00-00", ""):
@@ -581,25 +578,39 @@ def send_control_command(
         announcement_id=control_in.announcement_id,
     )
 
+# mac -> (node_id, node_mac, status, monotonic time of the last DB write)
+_HEARTBEAT_WRITES: dict = {}
+_HEARTBEAT_WRITE_INTERVAL = 3.0
+
+
 @router.post("/speakers/heartbeat")
 def receive_node_heartbeat(
     heartbeat_in: SpeakerNodeHeartbeat,
     db: Session = Depends(get_db),
 ):
-    node = update_speaker_node_heartbeat(db=db, heartbeat=heartbeat_in)
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue, get_pending_commands_for_mac
-    try:
-        try_serialized(auto_advance_speaker_queue, db)
-    except Exception:
-        pass
-    cmds = get_pending_commands_for_mac(str(node.mac_address), db=db)
-    feed = get_display_feed_data(db, str(node.mac_address))
+    # Heartbeats arrive every 0.8s and each DB write is several round trips to the database.
+    # Persist last_heartbeat at most every 3s (online checks use >=12s windows) unless the status
+    # changed, so the speaker gets its pending commands back as fast as possible.
+    mac_key = (heartbeat_in.mac_address or "").strip().upper()
+    status_key = (heartbeat_in.status or "ONLINE").upper()
+    cached = _HEARTBEAT_WRITES.get(mac_key)
+    if cached and cached[2] == status_key and time.monotonic() - cached[3] < _HEARTBEAT_WRITE_INTERVAL:
+        node_id, node_mac = cached[0], cached[1]
+    else:
+        node = update_speaker_node_heartbeat(db=db, heartbeat=heartbeat_in)
+        node_id, node_mac = node.id, str(node.mac_address)
+        _HEARTBEAT_WRITES[mac_key] = (node_id, node_mac, status_key, time.monotonic())
+    from app.services.hardware_speaker_service import get_pending_commands_for_mac
+    # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
+    # Running it here too cost every request ~a dozen extra database round trips.
+    cmds = get_pending_commands_for_mac(node_mac, db=db)
+    feed = get_display_feed_data(db, node_mac)
     if any(str(c.get("command", "")).startswith("PLAY") for c in cmds) or feed.get("active_notice"):
         print(f"[TEMP-TIMING] heartbeat returns PLAY={[c.get('announcement_id') for c in cmds if str(c.get('command','')).startswith('PLAY')]} active={(feed.get('active_notice') or {}).get('id')} at {time.time():.2f}", flush=True)
     return {
         "status": "success",
-        "node_id": node.id,
-        "mac_address": node.mac_address,
+        "node_id": node_id,
+        "mac_address": node_mac,
         "pending_commands": cmds,
         "active_notice": feed.get("active_notice"),
         "daily_notices": feed.get("daily_notices", []),
@@ -614,11 +625,9 @@ def poll_pending_node_commands(
     """
     Allows simulated speaker nodes to poll for pending control and audio commands over REST.
     """
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue, get_pending_commands_for_mac
-    try:
-        try_serialized(auto_advance_speaker_queue, db)
-    except Exception:
-        pass
+    from app.services.hardware_speaker_service import get_pending_commands_for_mac
+    # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
+    # Running it here too cost every request ~a dozen extra database round trips.
     cmds = get_pending_commands_for_mac(mac_address, db=db)
     return {
         "mac_address": mac_address,
@@ -645,13 +654,8 @@ def fetch_speaker_queue(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    from app.services.hardware_speaker_service import auto_advance_speaker_queue
-    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
-    try:
-        evaluate_and_dispatch_repeat_slots(db)
-        try_serialized(auto_advance_speaker_queue, db)
-    except Exception:
-        pass
+    # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
+    # Running it here too cost every request ~a dozen extra database round trips.
 
     # Clean up stale items from previous dates (before today in campus IST) that have no active repeat schedule
     from datetime import timedelta, timezone
