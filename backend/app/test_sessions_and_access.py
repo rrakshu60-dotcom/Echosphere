@@ -20,7 +20,12 @@ import os
 
 PASSWORD = os.environ["ES_PASSWORD_DBITAIMLT022022"]
 TEACHER = "dbitaimlt022022"
-CLIENT_HEADERS = {"X-Forwarded-For": "10.9.9.9, 203.0.113.7", "User-Agent": "EchoSphereTest/1.0"}
+# On Render, Cloudflare sets CF-Connecting-IP (and overwrites any client value); X-Forwarded-For can be forged.
+CLIENT_HEADERS = {
+    "CF-Connecting-IP": "203.0.113.7",
+    "X-Forwarded-For": "6.6.6.6, 10.26.96.152",
+    "User-Agent": "EchoSphereTest/1.0",
+}
 
 
 def _now():
@@ -64,7 +69,7 @@ def test_successful_sign_in_creates_a_session_and_is_logged():
     log = _last_sign_in()
     assert log.success is True and log.reason == "ok"
     assert log.identifier == TEACHER and log.user_id is not None
-    assert log.ip == "203.0.113.7"  # the address the proxy saw, not a client-supplied one
+    assert log.ip == "203.0.113.7"  # Cloudflare's address for the client, not a forgeable header
     assert log.platform == "android" and log.user_agent == "EchoSphereTest/1.0"
     assert log.session_id == body["session_id"]
 
@@ -340,3 +345,16 @@ def test_live_microphone_refuses_an_ended_session():
     body = _login().json()
     client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {body['access_token']}"})
     assert _mic_socket_refused("&token=" + body["access_token"])
+
+
+def test_without_cloudflare_the_first_forwarded_address_is_used():
+    from starlette.requests import Request
+
+    from app.services.session_service import client_ip
+
+    def req(headers):
+        return Request({"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+                        "client": ("10.0.0.5", 1234)})
+
+    assert client_ip(req({"X-Forwarded-For": "198.51.100.4, 10.26.96.152"})) == "198.51.100.4"
+    assert client_ip(req({})) == "10.0.0.5"

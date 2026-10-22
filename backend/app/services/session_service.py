@@ -47,11 +47,17 @@ def clean_platform(platform: Optional[str]) -> Optional[str]:
 
 
 def client_ip(request: Request) -> Optional[str]:
-    """The address Render's proxy saw: the last X-Forwarded-For entry (earlier ones are client-supplied)."""
+    """
+    The user's real address. Render is fronted by Cloudflare, which sets CF-Connecting-IP and overwrites
+    any value a client sends. Without it, the first X-Forwarded-For entry (Render puts the client first).
+    """
+    cf = request.headers.get("cf-connecting-ip", "").strip()
+    if cf:
+        return cf[:64]
     forwarded = request.headers.get("x-forwarded-for", "")
     hops = [h.strip() for h in forwarded.split(",") if h.strip()]
     if hops:
-        return hops[-1][:64]
+        return hops[0][:64]
     return request.client.host if request.client else None
 
 
