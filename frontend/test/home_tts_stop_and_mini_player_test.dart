@@ -32,9 +32,11 @@ void main() {
     Get.put(AnnouncementController());
   });
 
-  tearDown(() async {
+  tearDown(() {
+    // stop() resets the state at once; the native player call never completes without the
+    // audio plugin in tests, so it is not awaited here.
     if (Get.isRegistered<TtsAudioService>()) {
-      await TtsAudioService.instance.stop();
+      TtsAudioService.instance.stop();
     }
   });
 

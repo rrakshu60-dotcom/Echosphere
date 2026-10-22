@@ -107,7 +107,8 @@ class HomeMiniTtsPlayerBar extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              Container(
+                              Flexible(
+                                child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: isSummaryMode
@@ -123,6 +124,8 @@ class HomeMiniTtsPlayerBar extends StatelessWidget {
                                 ),
                                 child: Text(
                                   isSummaryMode ? 'AI Summary' : 'Notice Audio',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 9.5,
                                     fontWeight: FontWeight.bold,
@@ -132,14 +135,19 @@ class HomeMiniTtsPlayerBar extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              ),
                               const SizedBox(width: 6),
                               if (isBuffering)
-                                Text(
-                                  'Loading speech...',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontStyle: FontStyle.italic,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                Flexible(
+                                  child: Text(
+                                    'Loading speech...',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontStyle: FontStyle.italic,
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ),
                                   ),
                                 ),
                             ],
