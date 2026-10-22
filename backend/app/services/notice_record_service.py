@@ -307,6 +307,39 @@ def delete_notice_audio(announcement_id: int, session_factory) -> None:
         db.commit()
 
 
+def purge_audio_of_deleted_notices(session_factory) -> list:
+    """
+    Remove the audio of every deleted notice whose audio is still stored (e.g. deleted before the record
+    system existed): local files, then all cloud backups in one commit, then AUDIO_DELETED on each record.
+    If the cloud backup can't be reached, nothing is marked, so the next run retries. Returns the cleaned IDs.
+    """
+    from app.services.cloud_storage_service import CloudStorageService
+
+    with session_factory() as db:
+        ids = [r[0] for r in db.execute(
+            select(_RECORDS.c.announcement_id).where(_RECORDS.c.deleted_at.isnot(None), _RECORDS.c.audio_deleted_at.is_(None))
+        ).all()]
+    if not ids:
+        return []
+    local = {nid: _delete_local_audio(nid) for nid in ids}
+    try:
+        cloud = CloudStorageService.delete_audio_for_notices(ids)
+    except Exception as exc:
+        logger.warning(f"Audio cleanup of {len(ids)} deleted notice(s) postponed, cloud backup unreachable: {exc}")
+        return []
+    system = {"actor_id": None, "actor_name": "System", "actor_role": None}
+    with session_factory() as db:
+        conn = db.connection()
+        for nid in ids:
+            _add_event(conn, nid, "AUDIO_DELETED",
+                       f"Removed {local[nid]} local audio file(s) and {cloud.get(nid, 0)} cloud backup file(s) "
+                       f"(clean-up of a notice deleted earlier).", actor=system)
+            _update_record(conn, nid, audio_deleted_at=_now())
+        db.commit()
+    logger.info(f"Removed audio of {len(ids)} deleted notice(s)")
+    return ids
+
+
 def notice_was_deleted(announcement_id: int) -> bool:
     from app.db.database import SessionLocal
 

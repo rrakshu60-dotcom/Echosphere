@@ -298,3 +298,54 @@ def records_module():
     import app.services.notice_record_service as records
 
     return records
+
+
+def test_cleanup_removes_audio_of_notices_deleted_before_the_record_system(monkeypatch, tmp_path):
+    import app.services.notice_record_service as records
+    import app.services.tts_service as tts
+    from app.services.cloud_storage_service import CloudStorageService
+
+    monkeypatch.setattr(tts, "STATIC_AUDIO_DIR", str(tmp_path))
+    with SessionLocal() as db:
+        # two notices deleted in the past (records exist, audio never removed), one live notice, one already cleaned
+        db.add_all([
+            NoticeRecord(announcement_id=880001, title="Old A", deleted_at=records._now(), partial=True, speaker_play_count=0),
+            NoticeRecord(announcement_id=880002, title="Old B", deleted_at=records._now(), partial=True, speaker_play_count=0),
+            NoticeRecord(announcement_id=880003, title="Live", speaker_play_count=0),
+            NoticeRecord(announcement_id=880004, title="Done", deleted_at=records._now(), audio_deleted_at=records._now(), speaker_play_count=0),
+        ])
+        db.commit()
+    for nid in (880001, 880002, 880003):
+        (tmp_path / f"announcement_{nid}_american_female_nochime.wav").write_bytes(b"RIFF")
+
+    calls = []
+    monkeypatch.setattr(CloudStorageService, "delete_audio_for_notices",
+                        classmethod(lambda cls, ids: calls.append(sorted(ids)) or {i: 2 for i in ids}))
+    cleaned = records.purge_audio_of_deleted_notices(SessionLocal)
+
+    assert sorted(cleaned) == [880001, 880002]
+    assert calls == [[880001, 880002]]  # one cloud commit for all of them
+    assert sorted(os.listdir(tmp_path)) == ["announcement_880003_american_female_nochime.wav"]
+    for nid in (880001, 880002):
+        assert _record(nid).audio_deleted_at is not None
+        assert any(e[0] == "AUDIO_DELETED" and "2 cloud" in e[2] for e in _events(nid))
+    assert _record(880003).audio_deleted_at is None
+    assert records.purge_audio_of_deleted_notices(SessionLocal) == []  # nothing left to do
+
+
+def test_cleanup_retries_later_if_the_backup_cannot_be_reached(monkeypatch, tmp_path):
+    import app.services.notice_record_service as records
+    import app.services.tts_service as tts
+    from app.services.cloud_storage_service import CloudStorageService
+
+    monkeypatch.setattr(tts, "STATIC_AUDIO_DIR", str(tmp_path))
+    with SessionLocal() as db:
+        db.add(NoticeRecord(announcement_id=880010, title="Old", deleted_at=records._now(), partial=True, speaker_play_count=0))
+        db.commit()
+
+    def unreachable(cls, ids):
+        raise ConnectionError("backup unreachable")
+
+    monkeypatch.setattr(CloudStorageService, "delete_audio_for_notices", classmethod(unreachable))
+    assert records.purge_audio_of_deleted_notices(SessionLocal) == []
+    assert _record(880010).audio_deleted_at is None
