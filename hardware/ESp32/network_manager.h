@@ -41,6 +41,11 @@ private:
   WebSocketsClient pushSocket;
   bool pushStarted = false;
   bool pushConnected = false;
+  // While a notice streams, pushed messages wait here and run when the stream ends
+  bool streamInProgress = false;
+  static const int MAX_DEFERRED_PUSH = 4;
+  String deferredPush[MAX_DEFERRED_PUSH];
+  int deferredPushCount = 0;
 
   String currentStatus = "ONLINE";
   int activeAnnouncementId = 0;
@@ -520,24 +525,62 @@ public:
         pushConnected = false;
       } else if (type == WStype_TEXT) {
         handlePushMessage(payload, length);
+      } else if (type == WStype_ERROR) {
+        Serial.println(F("⚡ [PUSH] Socket error."));
       }
     });
     pushSocket.setReconnectInterval(5000);
     pushStarted = true;
   }
 
+  // The library reads only one handshake header line per loop() call, and a heartbeat blocks the
+  // main loop for ~1s, so a single call per pass let the handshake time out. Drain several per pass.
+  void servicePushChannel() {
+    for (int i = 0; i < 16; i++) pushSocket.loop();
+  }
+
+  void runDeferredPushMessages() {
+    for (int i = 0; i < deferredPushCount; i++) {
+      handlePushMessage((uint8_t*)deferredPush[i].c_str(), deferredPush[i].length());
+      deferredPush[i] = "";
+    }
+    deferredPushCount = 0;
+  }
+
   void handlePushMessage(uint8_t* payload, size_t length) {
+    if (streamInProgress) {
+      // A pause/stop silences the speaker at once; everything else waits until the stream ends
+      String msg((const char*)payload, length);
+      if (msg.indexOf("\"PAUSE\"") >= 0 || msg.indexOf("\"STOP\"") >= 0 || msg.indexOf("\"CANCEL\"") >= 0 || msg.indexOf("\"SKIP\"") >= 0) {
+        Serial.println(F("⚡ [PUSH] Stop received during playback: ending the stream now."));
+        audioMgr.requestStreamStop();
+      }
+      if (deferredPushCount < MAX_DEFERRED_PUSH) {
+        deferredPush[deferredPushCount++] = msg;
+      }
+      return;
+    }
     #if defined(ARDUINOJSON_VERSION_MAJOR) && (ARDUINOJSON_VERSION_MAJOR >= 7)
       JsonDocument doc;
     #else
       DynamicJsonDocument doc(4096);
     #endif
-    if (deserializeJson(doc, payload, length) || !doc["pending_commands"].is<JsonArray>()) return;
+    DeserializationError err = deserializeJson(doc, payload, length);
+    if (err || !doc["pending_commands"].is<JsonArray>()) {
+      Serial.print(F("⚡ [PUSH] Ignored message ("));
+      Serial.print(length);
+      Serial.print(F(" bytes): "));
+      Serial.println(err ? err.c_str() : "no pending_commands");
+      return;
+    }
 
     BroadcastTarget target;
     String controlCmd = "";
     int cmdVol = -1;
     bool shouldTriggerBroadcast = parsePendingCommands(doc["pending_commands"].as<JsonArray>(), target, controlCmd, cmdVol);
+    if (!shouldTriggerBroadcast && controlCmd.length() == 0) {
+      Serial.println(F("⚡ [PUSH] Command received; already handled or not for this speaker."));
+    }
     if (shouldTriggerBroadcast) {
       Serial.print(F("⚡ [PUSH] Play command received for notice #"));
       Serial.println(target.annId);
@@ -795,11 +838,13 @@ public:
       Serial.print(F("🧠 [HEAP] Free heap before stream: "));
       Serial.println(ESP.getFreeHeap());
 
+      streamInProgress = true;
       streamPlayed = audioMgr.playStream(
         streamUrl,
         [this](float progress) {
           displayMgr.renderEqualizerGraphic();
           displayMgr.updateSubtitleProgress(progress);
+          if (pushStarted) servicePushChannel();  // answer server pings so the socket survives long notices
         },
         [this, effPriority]() {
           if (effPriority.equalsIgnoreCase("EMERGENCY")) {
@@ -810,6 +855,7 @@ public:
         },
         streamUrl.startsWith("https://") ? &sharedTlsClient() : nullptr
       );
+      streamInProgress = false;
 
       if (streamPlayed) {
         Serial.println(F("✅ [I2S STREAM] Notice speech playback completed successfully!"));
@@ -968,7 +1014,8 @@ public:
     // 4. Push channel: delivers commands instantly; runs after playback so a reconnect never delays audio
     if (WiFi.status() == WL_CONNECTED) {
       if (!pushStarted) startPushChannel();
-      pushSocket.loop();
+      servicePushChannel();
+      if (deferredPushCount > 0 && !streamInProgress) runDeferredPushMessages();
     }
   }
 };

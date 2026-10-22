@@ -32,6 +32,7 @@ private:
   bool isPlaying = false;
   bool isInitialized = false;
   bool lastStreamPreempted = false;
+  bool streamStopRequested = false;
   uint32_t currentSampleRate = I2S_SAMPLE_RATE;
 
 #ifdef ECHOSPHERE_I2S_V5
@@ -42,6 +43,8 @@ public:
   AudioManager() {}
 
   bool wasLastStreamPreempted() const { return lastStreamPreempted; }
+  // Ends the current stream at the next chunk (a pushed pause/stop), without waiting for the server
+  void requestStreamStop() { streamStopRequested = true; }
 
   void begin() {
     Serial.println(F("🔊 [I2S AUDIO] Initializing MAX98357A I2S driver..."));
@@ -299,6 +302,7 @@ public:
 
     isPlaying = true;
     lastStreamPreempted = false;
+    streamStopRequested = false;
     Serial.print(F("🎧 [I2S AUDIO] Streaming from URL: "));
     Serial.println(streamUrl);
 
@@ -594,6 +598,9 @@ public:
 
     // Main Streaming Loop
     while (stream->connected() || stream->available() || hasOddCarry) {
+      if (streamStopRequested) {
+        break;  // reported below as stopped early
+      }
       int bytesRead = fetchChunk(chunkBytesTarget);
 
       if (bytesRead > 0) {
@@ -639,7 +646,7 @@ public:
 
     // The server closes a notice's stream early when it is paused, stopped, removed or skipped,
     // or when an emergency broadcast takes over. The speaker can't tell which, only that it was cut.
-    if (totalDataBytes > 8192 && totalBytesStreamed < (totalDataBytes - 4096)) {
+    if (streamStopRequested || (totalDataBytes > 8192 && totalBytesStreamed < (totalDataBytes - 4096))) {
       lastStreamPreempted = true;
       Serial.print(F("⏹️ [I2S AUDIO] Stream stopped early by the server (pause/stop/remove/skip or emergency). Played "));
       Serial.print(totalBytesStreamed);
