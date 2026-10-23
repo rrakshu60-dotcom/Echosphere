@@ -17,11 +17,11 @@ import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/widgets/notice_audio_player_bar.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -522,7 +522,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                           ),
                                         ),
                                         Text(
-                                          'Department: ${announcement.department} \u2022 ${DateFormat("MMMM dd, yyyy \u2022 hh:mm a").format(announcement.createdAt)}',
+                                          'Department: ${announcement.department} \u2022 ${formatCampusTime(announcement.createdAt, "MMMM dd, yyyy \u2022 hh:mm a")}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
@@ -810,7 +810,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                       ),
                                     ),
                                     Text(
-                                      DateFormat('MMM d, yyyy').format(_calendarEvent!.startTime),
+                                      formatCampusTime(_calendarEvent!.startTime, 'MMM d, yyyy'),
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
@@ -834,7 +834,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                     const SizedBox(width: 5),
                                     Expanded(
                                       child: Text(
-                                        '${DateFormat('EEEE, h:mm a').format(_calendarEvent!.startTime)} (${_calendarEvent!.location})',
+                                        '${formatCampusTime(_calendarEvent!.startTime, 'EEEE, h:mm a')} (${_calendarEvent!.location})',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -1091,7 +1091,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                               _buildAuditRow(
                                 icon: Icons.schedule_rounded,
                                 label: 'Timestamp',
-                                value: DateFormat('MMM dd, yyyy \u2022 hh:mm:ss a').format(announcement.createdAt),
+                                value: formatCampusTime(announcement.createdAt, 'MMM dd, yyyy \u2022 hh:mm:ss a'),
                                 theme: theme,
                               ),
                             ],
@@ -1565,7 +1565,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: announcement.createdAt.isAfter(now) ? announcement.createdAt : now.add(const Duration(hours: 1)),
+      initialDate: announcement.createdAt.isAfter(now) ? announcement.createdAt.toLocal() : now.add(const Duration(hours: 1)),
       firstDate: now.subtract(const Duration(days: 1)),
       lastDate: now.add(const Duration(days: 365)),
     );
@@ -1573,7 +1573,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     if (pickedDate != null && context.mounted) {
       final pickedTime = await showTimePicker(
         context: context,
-        initialTime: TimeOfDay.fromDateTime(announcement.createdAt),
+        initialTime: TimeOfDay.fromDateTime(announcement.createdAt.toLocal()),
       );
 
       if (pickedTime != null) {
@@ -1590,7 +1590,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${formatCampusTime(newDateTime, "MMM dd, yyyy \u2022 hh:mm a")}!');
         Get.back();
       }
     }

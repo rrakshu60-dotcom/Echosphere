@@ -1,5 +1,5 @@
-import 'package:intl/intl.dart';
 import 'package:echosphere/services/audit_repository.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 /// Plain-language names for notice timeline events.
 String auditEventLabel(String? event) {
@@ -71,13 +71,12 @@ String platformLabel(String? platform) =>
     const {'web': 'Web', 'android': 'Android', 'ios': 'iOS', 'windows': 'Windows', 'macos': 'macOS', 'linux': 'Linux', 'test': 'Test'}[platform] ??
     (platform ?? 'Unknown');
 
-/// "22 Oct 2026, 14:30:05" in the viewer's local time; "-" when missing.
+/// "22 Oct 2026, 14:30:05" in Kolkata time; "-" when missing.
 String auditTime(dynamic iso) {
   if (iso == null || '$iso'.isEmpty) return '-';
-  final parsed = DateTime.tryParse('$iso');
+  final parsed = parseServerTime(iso);
   if (parsed == null) return '$iso';
-  final utc = parsed.isUtc ? parsed : DateTime.utc(parsed.year, parsed.month, parsed.day, parsed.hour, parsed.minute, parsed.second);
-  return DateFormat('d MMM yyyy, HH:mm:ss').format(utc.toLocal());
+  return formatCampusTime(parsed, 'd MMM yyyy, HH:mm:ss');
 }
 
 String _v(dynamic value) => (value == null || '$value'.isEmpty) ? '-' : '$value';

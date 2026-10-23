@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
@@ -17,6 +16,7 @@ import 'package:echosphere/widgets/custom_widgets/audio_waveform_visualizer.dart
 import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/live_mic_broadcast_sheet.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class SpeakerQueuePage extends StatefulWidget {
   const SpeakerQueuePage({super.key});
@@ -54,34 +54,16 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
   }
 
   String _formatTime(dynamic rawScheduled, dynamic rawFallback) {
-    DateTime? dt;
-    if (rawScheduled is DateTime) {
-      dt = rawScheduled.toLocal();
-    } else {
-      final val = (rawScheduled ?? rawFallback)?.toString();
-      if (val == null || val.isEmpty || val == 'null') {
-        return 'Immediate';
-      }
-      try {
-        dt = DateTime.parse(val).toLocal();
-      } catch (_) {
-        return val;
-      }
-    }
+    final raw = rawScheduled ?? rawFallback;
+    if (raw == null || raw.toString().isEmpty || raw.toString() == 'null') return 'Immediate';
+    final dt = parseServerTime(raw);
+    if (dt == null) return raw.toString();
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final itemDate = DateTime(dt.year, dt.month, dt.day);
-    final diffDays = itemDate.difference(today).inDays;
-
-    final timeStr = DateFormat("hh:mm a").format(dt);
-    if (diffDays == 0) {
-      return 'Today, $timeStr';
-    } else if (diffDays == 1) {
-      return 'Tomorrow, $timeStr';
-    } else {
-      return '${DateFormat("MMM dd").format(dt)}, $timeStr';
-    }
+    final timeStr = formatCampusTime(dt, 'hh:mm a');
+    final days = campusDayOffset(dt);
+    if (days == 0) return 'Today, $timeStr';
+    if (days == 1) return 'Tomorrow, $timeStr';
+    return '${formatCampusTime(dt, 'MMM dd')}, $timeStr';
   }
 
   String _formatMetric(dynamic val, {String suffix = '%', String fallback = '0.0'}) {
@@ -1971,12 +1953,14 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                 children: [
                                                   Icon(Icons.repeat_rounded, size: 10, color: context.colors.primary),
                                                   const SizedBox(width: 3),
-                                                  Text(
-                                                    'Repeat Round ${item['repeat_round'] ?? 1}${(item['max_repeats'] is int && (item['max_repeats'] as int) > 0) ? " of ${item['max_repeats']}" : ""}',
-                                                    style: TextStyle(
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: context.colors.primary,
+                                                  Flexible(
+                                                    child: Text(
+                                                      'Repeat Round ${item['repeat_round'] ?? 1}${(item['max_repeats'] is int && (item['max_repeats'] as int) > 0) ? " of ${item['max_repeats']}" : ""}',
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: context.colors.primary,
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -1988,21 +1972,23 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.amber.withOpacity(0.12),
+                                                  color: context.colors.primary.opaque(0.12),
                                                   borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                                                  border: Border.all(color: context.colors.primary.opaque(0.25)),
                                                 ),
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    const Icon(Icons.timer_outlined, size: 10, color: Colors.amber),
+                                                    Icon(Icons.timer_outlined, size: 10, color: context.colors.primary),
                                                     const SizedBox(width: 3),
-                                                    Text(
-                                                      'Next: ${_formatTime(item['next_repeat_at'], null)}',
-                                                      style: const TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: Colors.amber,
+                                                    Flexible(
+                                                      child: Text(
+                                                        'Next: ${_formatTime(item['next_repeat_at'], null)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: context.colors.primary,
+                                                        ),
                                                       ),
                                                     ),
                                                   ],

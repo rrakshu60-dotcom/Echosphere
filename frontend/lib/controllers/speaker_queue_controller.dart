@@ -7,6 +7,7 @@ import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/services/echosphere_realtime_service.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class SpeakerQueueController extends GetxController {
   final EchosphereApiService _apiService = EchosphereApiService();
@@ -221,8 +222,8 @@ class SpeakerQueueController extends GetxController {
     final now = DateTime.now();
 
     if (sched['end_date'] != null) {
-      final endDt = DateTime.tryParse(sched['end_date'].toString());
-      if (endDt != null && now.isAfter(endDt.toLocal())) return false;
+      final endDt = parseServerTime(sched['end_date']);
+      if (endDt != null && now.isAfter(endDt)) return false;
     }
 
     final mode = (sched['repeat_mode'] ?? '').toString().toUpperCase();
@@ -231,7 +232,8 @@ class SpeakerQueueController extends GetxController {
     // INTERVAL mode is active continuously across the schedule lifespan
     if (mode == 'INTERVAL' || slots.contains('INTERVAL')) return true;
 
-    final curMinutes = now.hour * 60 + now.minute;
+    final campusNow = toCampusTime(now); // break and custom windows are Kolkata times
+    final curMinutes = campusNow.hour * 60 + campusNow.minute;
 
     // Standard break slots in minutes:
     // SHORT_BREAK: 11:00 - 11:15 (660 - 675)
@@ -1035,7 +1037,7 @@ class SpeakerQueueController extends GetxController {
         eligibleIdx = i;
         break;
       }
-      final sched = DateTime.tryParse(schedStr);
+      final sched = parseServerTime(schedStr);
       if (sched == null || sched.isBefore(now.add(const Duration(seconds: 2)))) {
         eligibleIdx = i;
         break;

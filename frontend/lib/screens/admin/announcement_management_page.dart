@@ -12,8 +12,8 @@ import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:echosphere/screens/admin/audit_logs_page.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class AnnouncementManagementPage extends StatefulWidget {
   const AnnouncementManagementPage({super.key});
@@ -268,7 +268,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'By: ${item.creatorName} (${item.department}) \u2022 ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(item.createdAt)}',
+                                'By: ${item.creatorName} (${item.department}) \u2022 ${formatCampusTime(item.createdAt, "MMM dd, yyyy \u2022 hh:mm a")}',
                                 style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.65)),
                               ),
                               const Divider(height: 20),
@@ -567,7 +567,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: item.createdAt.isAfter(now) ? item.createdAt : now.add(const Duration(hours: 1)),
+      initialDate: item.createdAt.isAfter(now) ? item.createdAt.toLocal() : now.add(const Duration(hours: 1)),
       firstDate: now.subtract(const Duration(days: 1)),
       lastDate: now.add(const Duration(days: 365)),
     );
@@ -575,7 +575,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
     if (pickedDate != null && context.mounted) {
       final pickedTime = await showTimePicker(
         context: context,
-        initialTime: TimeOfDay.fromDateTime(item.createdAt),
+        initialTime: TimeOfDay.fromDateTime(item.createdAt.toLocal()),
       );
 
       if (pickedTime != null) {
@@ -592,7 +592,7 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
           newScheduledTime: newDateTime,
         );
 
-        snackBar('Announcement rescheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(newDateTime)}!');
+        snackBar('Announcement rescheduled for ${formatCampusTime(newDateTime, "MMM dd, yyyy \u2022 hh:mm a")}!');
         setState(() {});
       }
     }

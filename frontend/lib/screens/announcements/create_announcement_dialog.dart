@@ -12,7 +12,7 @@ import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class CreateAnnouncementDialog extends StatefulWidget {
   final String? initialTitle;
@@ -1189,7 +1189,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Scheduled for: ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)}',
+                          'Scheduled for: ${formatCampusTime(scheduledDateTime, "MMM dd, yyyy \u2022 hh:mm a")}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -1689,14 +1689,14 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         String statusMessage = '';
         if (isTeacher) {
           statusMessage = isScheduleLater
-              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)})!'
+              ? 'Notice submitted for HoD/Principal approval (Scheduled for ${formatCampusTime(scheduledDateTime, "MMM dd, yyyy \u2022 hh:mm a")})!'
               : 'Notice submitted for HoD/Principal approval!';
         } else if (isHodCrossDept) {
           statusMessage = isScheduleLater
-              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)})!'
+              ? 'Institution-wide notice submitted for Principal/College Admin approval (Scheduled for ${formatCampusTime(scheduledDateTime, "MMM dd, yyyy \u2022 hh:mm a")})!'
               : 'Institution-wide notice submitted for Principal/College Admin approval!';
         } else if (isScheduleLater) {
-          statusMessage = 'Announcement scheduled for ${DateFormat("MMM dd, yyyy \u2022 hh:mm a").format(scheduledDateTime)}!';
+          statusMessage = 'Announcement scheduled for ${formatCampusTime(scheduledDateTime, "MMM dd, yyyy \u2022 hh:mm a")}!';
         } else {
           statusMessage = deliverSpeaker
               ? 'Notice published and queued for speaker broadcast!'
@@ -1741,7 +1741,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
 
     DateTime? newStart;
     if (startTimeStr != null) {
-      newStart = DateTime.tryParse(startTimeStr);
+      newStart = parseServerTime(startTimeStr)?.toLocal();
     }
 
     if (newStart != null) {

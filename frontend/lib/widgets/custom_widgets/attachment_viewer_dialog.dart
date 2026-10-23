@@ -2,7 +2,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -11,6 +10,7 @@ import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class AttachmentViewerDialog extends StatelessWidget {
   final String filename;
@@ -85,7 +85,7 @@ DEPARTMENT: ${notice.department}
 CATEGORY: ${notice.category}
 PRIORITY: ${notice.priority}
 ISSUED BY: ${notice.creatorName} (Designation: ${notice.creatorRole})
-DATE: ${DateFormat('MMMM dd, yyyy \u2022 hh:mm a').format(notice.createdAt)}
+DATE: ${formatCampusTime(notice.createdAt, 'MMMM dd, yyyy \u2022 hh:mm a')}
 ATTACHMENT: $filename
 
 --------------------------------------------------------------------------------
@@ -115,7 +115,7 @@ Generated at: ${DateTime.now().toIso8601String()}
 ðŸ“¢ ${notice.title}
 ðŸ“ Attachment: $filename
 ðŸ› Department: ${notice.department}
-ðŸ“… Date: ${DateFormat('MMM dd, yyyy').format(notice.createdAt)}
+ðŸ“… Date: ${formatCampusTime(notice.createdAt, 'MMM dd, yyyy')}
 
 ${notice.description}
 

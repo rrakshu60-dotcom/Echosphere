@@ -712,7 +712,7 @@ class EchosphereApiService {
         data: {
           'title': title,
           'content': content,
-          'scheduled_at': scheduledAt?.toIso8601String(),
+          'scheduled_at': scheduledAt?.toUtc().toIso8601String(),
           'category': category,
           'exclude_notice_id': excludeNoticeId,
         },

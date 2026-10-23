@@ -5,7 +5,7 @@ import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 /// Minimal and user-friendly dialog to configure automated repeat announcement
 /// broadcasts using campus break schedules and custom time windows.
@@ -867,7 +867,7 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                                     final slot = log['slot'] ?? 'BREAK';
                                     final time = log['dispatched_at'] ?? log['timestamp'] ?? '';
                                     final formattedTime = time.isNotEmpty
-                                        ? DateFormat('MMM dd, hh:mm a').format(DateTime.tryParse(time.toString()) ?? DateTime.now())
+                                        ? formatCampusTime(parseServerTime(time) ?? DateTime.now(), 'MMM dd, hh:mm a')
                                         : '';
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

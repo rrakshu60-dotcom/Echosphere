@@ -12,8 +12,8 @@ import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 // ----------------------------------------------------------------------
 // Stat Card -- Animated metric display for the stats panel
@@ -152,7 +152,7 @@ class TodaySummaryBanner extends StatelessWidget {
             ),
           ),
           Text(
-            DateFormat('EEE, MMM d').format(DateTime.now()),
+            formatCampusTime(DateTime.now(), 'EEE, MMM d'),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -197,7 +197,7 @@ class _PriorityCarouselState extends State<PriorityCarousel> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat('MMM dd').format(dateTime);
+    return formatCampusTime(dateTime, 'MMM dd');
   }
 
   @override
@@ -567,7 +567,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat('MMM dd, yyyy').format(dateTime);
+    return formatCampusTime(dateTime, 'MMM dd, yyyy');
   }
 
   void _showRelevanceDialog(BuildContext context, Map<String, dynamic> relevance) {

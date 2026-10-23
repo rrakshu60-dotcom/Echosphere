@@ -7,7 +7,7 @@ import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class ArchivePage extends StatefulWidget {
   const ArchivePage({super.key});
@@ -178,7 +178,7 @@ class _ArchivePageState extends State<ArchivePage> {
                                   EchoSphereBadge.outline(label: item.department),
                                   const EchoSphereBadge.muted(label: 'ARCHIVED'),
                                   Text(
-                                    DateFormat('MMM dd, yyyy').format(item.createdAt),
+                                    formatCampusTime(item.createdAt, 'MMM dd, yyyy'),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: theme.colorScheme.onSurface.withOpacity(0.5),

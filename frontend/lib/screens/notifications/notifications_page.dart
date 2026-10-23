@@ -5,8 +5,8 @@ import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
@@ -226,7 +226,7 @@ class NotificationsPage extends StatelessWidget {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              DateFormat('hh:mm a').format(n['time']),
+                              formatCampusTime(n['time'], 'hh:mm a'),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: theme.colorScheme.onSurface.withOpacity(0.5),
@@ -444,7 +444,7 @@ class NotificationsPage extends StatelessWidget {
                                         ),
                                         const SizedBox(width: 6),
                                         Text(
-                                          DateFormat('MMM dd, hh:mm a').format(n['time']),
+                                          formatCampusTime(n['time'], 'MMM dd, hh:mm a'),
                                           style: TextStyle(
                                             fontSize: 10,
                                             color: theme.colorScheme.onSurface.withOpacity(0.4),
