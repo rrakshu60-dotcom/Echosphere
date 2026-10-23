@@ -36,7 +36,9 @@ def gemini(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_MODEL", "gemini-test-current")
 
-    def fake_post(url, json=None, timeout=None, **_):
+    def fake_post(url, json=None, timeout=None, headers=None, **_):
+        assert "test-key" not in url, "the API key must not be in the URL (errors and logs include it)"
+        assert (headers or {}).get("x-goog-api-key") == "test-key"
         model = url.split("/models/")[1].split(":")[0]
         calls.append(model)
         if model != "gemini-test-current":
