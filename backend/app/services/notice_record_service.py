@@ -37,6 +37,7 @@ current_actor: ContextVar[Optional[dict]] = ContextVar("current_actor", default=
 _RECORDS = NoticeRecord.__table__
 _EVENTS = NoticeRecordEvent.__table__
 _PENDING_AUDIO_KEY = "notice_records_deleted_ids"
+_PENDING_ATTACHMENTS_KEY = "notice_records_deleted_attachments"
 STOPPED_STATUSES = {"Paused", "Held", "Skipped", "Cancelled", "Expired_Slot_Ended"}
 
 
@@ -397,6 +398,14 @@ def discard_audio_if_notice_deleted(announcement_id: int) -> None:
 # ---------------------------------------------------------------- the hook
 
 
+def _delete_attachments(files) -> None:
+    from app.services.cloud_storage_service import CloudStorageService
+    try:
+        CloudStorageService.delete_attachment_files(files)
+    except Exception as exc:
+        logger.warning(f"Could not delete attachments {files}: {exc}")
+
+
 def install_notice_record_hooks(session_factory) -> None:
     # Load a queue item's previous status whenever it changes, even after a commit expired it,
     # so Playing -> Completed is always visible to the hook.
@@ -429,6 +438,9 @@ def install_notice_record_hooks(session_factory) -> None:
             if isinstance(obj, Announcement):
                 _record_deletion(conn, obj)
                 session.info.setdefault(_PENDING_AUDIO_KEY, set()).add(obj.id)
+                files = [str(a.get("url", "")).rsplit("/", 1)[-1] for a in (obj.attachments or []) if isinstance(a, dict)]
+                if files:
+                    session.info.setdefault(_PENDING_ATTACHMENTS_KEY, {})[obj.id] = files
                 channel_changes.discard(obj.id)
         for nid in channel_changes:
             _update_record(conn, nid, channels=_channels(conn, nid))
@@ -439,7 +451,12 @@ def install_notice_record_hooks(session_factory) -> None:
         for nid in ids or ():
             threading.Thread(target=delete_notice_audio, args=(nid, session_factory), daemon=True,
                              name=f"NoticeAudioDelete-{nid}").start()
+        # A deleted notice's attachments go too (they'd otherwise stay in cloud storage forever)
+        for nid, files in (session.info.pop(_PENDING_ATTACHMENTS_KEY, None) or {}).items():
+            threading.Thread(target=_delete_attachments, args=(files,), daemon=True,
+                             name=f"NoticeAttachmentDelete-{nid}").start()
 
     @event.listens_for(session_factory, "after_rollback")
     def _forget(session):
         session.info.pop(_PENDING_AUDIO_KEY, None)
+        session.info.pop(_PENDING_ATTACHMENTS_KEY, None)

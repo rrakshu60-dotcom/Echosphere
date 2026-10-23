@@ -214,6 +214,25 @@ class CloudStorageService:
         return removed
 
     @classmethod
+    def delete_attachment_files(cls, file_names) -> int:
+        """Deletes notice attachments (attachments/<name>) from the cloud dataset in one commit, and any local
+        copy. Returns how many cloud files were removed."""
+        names = [os.path.basename(n) for n in file_names if n]
+        for n in names:
+            try:
+                os.remove(os.path.join(STATIC_DIR, "attachments", n))
+            except OSError:
+                pass
+        if not names or not (cls.is_cloud_enabled() and cls._api and cls._repo_id):
+            return 0
+        wanted = {f"attachments/{n}" for n in names}
+        targets = [f for f in cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset") if f in wanted]
+        if targets:
+            cls._api.delete_files(repo_id=cls._repo_id, repo_type="dataset", delete_patterns=targets,
+                                  commit_message=f"Delete {len(targets)} attachment(s) of a deleted notice")
+        return len(targets)
+
+    @classmethod
     def is_cloud_enabled(cls) -> bool:
         """Returns True if Hugging Face Datasets cloud storage is operational."""
         return cls._init_client()
