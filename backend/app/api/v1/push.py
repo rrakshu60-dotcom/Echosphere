@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_session, get_current_user
 from app.db.database import get_db
 from app.models.user import User
 from app.services import firebase_push_service as push
@@ -20,9 +20,14 @@ class DeviceRegistration(BaseModel):
 
 
 @router.post("/register")
-def register_device(body: DeviceRegistration, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def register_device(
+    body: DeviceRegistration,
+    current_user: User = Depends(get_current_user),
+    current_session=Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
     if push.get_firebase_admin_app() is None:
         raise HTTPException(status_code=503, detail="Push notifications are not set up on the server.")
-    push.register_device(db, current_user, body.token, body.platform)
+    push.register_device(db, current_user, current_session, body.token, body.platform)
     print(f"[PUSH] {body.platform or 'device'} registered", flush=True)
     return {"registered": True}

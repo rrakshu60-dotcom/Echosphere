@@ -49,6 +49,7 @@ try:
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS speaker_voice VARCHAR(20) DEFAULT 'female';"))
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS attachments JSON;"))
             conn.execute(text("ALTER TABLE push_devices ENABLE ROW LEVEL SECURITY;"))
+            conn.execute(text("ALTER TABLE push_devices ADD COLUMN IF NOT EXISTS session_id INTEGER;"))
             conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_node_id INTEGER;"))
             conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN IF NOT EXISTS speaker_confirmed_at TIMESTAMP WITHOUT TIME ZONE;"))
             conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS repeat_mode VARCHAR(20) DEFAULT 'INTERVAL';"))

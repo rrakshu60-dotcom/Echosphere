@@ -14,4 +14,6 @@ class PushDevice(Base):
     token = Column(Text, nullable=False, unique=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     platform = Column(String(20), nullable=True)
+    # The sign-in session that registered the device: pushes stop once that session ends
+    session_id = Column(Integer, nullable=True, index=True)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
