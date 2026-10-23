@@ -57,3 +57,11 @@ def test_event_time_reader_handles_common_phrasings():
     assert read("Convocation on 24 October at 4:30 pm", now) == datetime(2026, 10, 24, 16, 30)
     assert read("Guest lecture tomorrow at 9.15 a.m.", now) == datetime(2026, 10, 24, 9, 15)
     assert read("Guest lecture on Monday", now) is None  # no clock time
+
+
+def test_a_wrong_date_from_the_ai_extractor_is_not_used(monkeypatch):
+    """Live, the AI calendar extractor returned 2024-01-01 10:00 for 'on Friday at 10 AM'."""
+    from app.services.ai_service import AIService
+    monkeypatch.setattr(AIService, "extract_calendar_event",
+                        staticmethod(lambda title, content: {"has_event": True, "start_time": "2024-01-01T10:00:00"}))
+    test_the_event_time_is_read_from_the_notice()

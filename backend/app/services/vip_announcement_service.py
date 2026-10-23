@@ -175,17 +175,21 @@ def event_time_from_text(text: str, now_ist: datetime) -> Optional[datetime]:
 
 
 def _event_time_utc(title: str, description: str, now_utc: datetime) -> Optional[datetime]:
-    """The event's time (UTC, naive) from the notice text, or None."""
+    """The event's time (UTC, naive) from the notice text, or None. The plain reader goes first: the AI calendar
+    extractor once returned 2024-01-01 10:00 for 'on Friday at 10 AM'. An AI time is only used if it is upcoming."""
+    local = event_time_from_text(title + "\n" + description, now_utc + _IST)
+    if local:
+        return local - _IST
     try:
         from app.services.ai_service import AIService
         ev = AIService.extract_calendar_event(title, description) or {}
         if ev.get("has_event") and ev.get("start_time"):
-            start = datetime.fromisoformat(str(ev["start_time"]).replace("Z", ""))
-            return start.replace(tzinfo=None) - _IST  # the extractor gives campus (IST) wall-clock times
+            start = datetime.fromisoformat(str(ev["start_time"]).replace("Z", "")).replace(tzinfo=None) - _IST
+            if now_utc - timedelta(hours=1) <= start <= now_utc + timedelta(days=366):
+                return start
     except Exception as e:
         logger.debug(f"VIP event time via calendar extractor: {e}")
-    local = event_time_from_text(f"{title}\n{description}", now_utc + _IST)
-    return local - _IST if local else None
+    return None
 
 
 def analyze_and_extract_vip(db: Session, announcement_id: int) -> Optional[AnnouncementVipProtocol]:

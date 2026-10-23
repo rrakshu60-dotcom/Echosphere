@@ -19,6 +19,13 @@ from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, s
 IST = timedelta(hours=5, minutes=30)
 
 
+def slow_post(session, path, json=None):
+    """AI calls can take a while on a just-started server."""
+    r = session._http.post(f"{session.base_url}{path}", json=json, timeout=180)
+    assert r.status_code == 200, f"POST {path}: HTTP {r.status_code} {r.text[:200]}"
+    return r.json()
+
+
 def status(session, method, path, **kw):
     return session._http.request(method, f"{session.base_url}{path}", timeout=60, **kw).status_code
 
@@ -63,14 +70,14 @@ def main() -> None:
             d.text((30, y), line, fill="black", font=f)
         buf = io.BytesIO()
         img.save(buf, "PNG")
-        r = s.post("/announcements/ocr-document", json={"file_base64": base64.b64encode(buf.getvalue()).decode(),
+        r = slow_post(s, "/announcements/ocr-document", json={"file_base64": base64.b64encode(buf.getvalue()).decode(),
                                                         "filename": "circular.png", "mime_type": "image/png"})
         text = f"{r['title']} {r['content']}".lower()
         assert "ihdr" not in text and "library" in text and "4" in text, r["title"]
         print(f"PASS OCR read the image: {r['title']!r}")
 
         # 5. AI chat sticks to real notices
-        r = s.post("/ai/chat", json={"prompt": "What time does the hostel mess close on Sunday?", "session_id": f"audit-{time.time()}",
+        r = slow_post(s, "/ai/chat", json={"prompt": "What time does the hostel mess close on Sunday?", "session_id": f"audit-{time.time()}",
                                      "user_role": "Student", "full_name": "Test Student", "department": "CSE", "history": []})
         answer = r["response"].lower()
         assert "verified institutional identity" not in answer
@@ -86,13 +93,13 @@ def main() -> None:
         # 7. dignitary: event time + arrival plays the welcome on the ESP32
         vip = notices.create("Annual Day chief guest", "Dr. Ramesh Kumar, Vice Chancellor, will be the chief guest at the "
                              "Annual Day celebration on Friday at 10 AM in the Main Auditorium.")
-        proto = s.post(f"/announcements/{vip['id']}/vip-protocol/analyze", json={})
+        proto = slow_post(s, f"/announcements/{vip['id']}/vip-protocol/analyze", json={})
         ev = datetime.fromisoformat(proto["event_datetime"].replace("Z", "")).replace(tzinfo=None) + IST
         assert ev.weekday() == 4 and (ev.hour, ev.minute) == (10, 0), ev
         print(f"PASS dignitary event time read from the notice: {ev:%a %d %b %H:%M} IST")
         with Esp32Serial() as esp:
             mark = esp.mark()
-            arr = s.post(f"/announcements/{vip['id']}/vip-protocol/arrival", json={})
+            arr = slow_post(s, f"/announcements/{vip['id']}/vip-protocol/arrival", json={})
             audio = arr["audio_url"].rsplit("/", 1)[-1]
             line, t = esp.wait_for(r"Streaming from URL", timeout=30, since=mark)
             assert audio in line, f"speaker streamed {line.strip()[-120:]!r}, not the welcome recording {audio}"
