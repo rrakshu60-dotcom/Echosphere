@@ -48,3 +48,13 @@ def test_a_notice_keeps_its_attachments():
     nid = res.json()["id"]
     listed = [a for a in client.get("/api/v1/announcements", headers=ADMIN).json() if a["id"] == nid][0]
     assert listed["attachments"] == [attachment]
+
+
+def test_only_links_to_our_attachment_storage_are_accepted():
+    """A notice can't carry a link to any other site (e.g. a phishing page) as an 'attachment'."""
+    for bad in ("https://evil.example/login.pdf", "http://huggingface.co/datasets/x/resolve/main/attachments/a.pdf",
+                "javascript:alert(1)", "https://huggingface.co/datasets/x/resolve/main/audio_streams/a.wav"):
+        res = client.post("/api/v1/announcements", headers=ADMIN, json={
+            "title": "Bad link", "description": "x", "category_id": 1, "target_audience": "Entire College",
+            "deliver_push": False, "deliver_in_app": False, "attachments": [{"name": "a.pdf", "url": bad}]})
+        assert res.status_code == 422, (bad, res.status_code)
