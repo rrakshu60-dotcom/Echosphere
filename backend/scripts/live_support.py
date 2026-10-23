@@ -173,6 +173,16 @@ class Esp32Serial:
                     self._lines.append((time.monotonic(), text))
                     self._cond.notify_all()
 
+    def save_log(self, path: str) -> str:
+        """Write every line received so far (with seconds since the first) to a file, for diagnosis."""
+        with self._cond:
+            lines = list(self._lines)
+        start = lines[0][0] if lines else 0.0
+        with open(path, "w", encoding="utf-8") as f:
+            for t, text in lines:
+                f.write(f"{t - start:8.2f}  {text}" + "\n")
+        return path
+
     def mark(self) -> int:
         """Position in the log; pass it as since= to ignore everything printed before it."""
         with self._cond:

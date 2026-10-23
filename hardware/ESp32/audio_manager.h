@@ -37,6 +37,26 @@ private:
 
 #ifdef ECHOSPHERE_I2S_V5
   i2s_chan_handle_t tx_handle = nullptr;
+  bool txEnabled = false;  // the driver refuses enabling twice or disabling a stopped channel
+
+  void enableTx() {
+    if (tx_handle && !txEnabled && i2s_channel_enable(tx_handle) == ESP_OK) txEnabled = true;
+  }
+
+  void disableTx() {
+    if (tx_handle && txEnabled && i2s_channel_disable(tx_handle) == ESP_OK) txEnabled = false;
+  }
+
+  // Fill the whole stopped DMA ring with silence, so nothing left over from a cut-short notice
+  // can play (or loop) when the channel is enabled again.
+  void clearTxBuffer() {
+    if (!tx_handle || txEnabled) return;
+    static const int16_t zeros[256 * 2] = {0};
+    size_t loaded = 0;
+    for (int i = 0; i < 64; i++) {  // ring = 24 x 512 frames x 4 bytes = 48 KB; stops when full
+      if (i2s_channel_preload_data(tx_handle, zeros, sizeof(zeros), &loaded) != ESP_OK || loaded == 0) break;
+    }
+  }
 #endif
 
 public:
@@ -60,6 +80,7 @@ public:
       i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
       chan_cfg.dma_desc_num = 24;  // 24 descriptors * 512 frames = 12,288 frames = 512ms buffer headroom!
       chan_cfg.dma_frame_num = 512;
+      chan_cfg.auto_clear_after_cb = true;  // play silence when no new audio arrives, never loop old buffers
       esp_err_t err = i2s_new_channel(&chan_cfg, &tx_handle, NULL);
       if (err != ESP_OK) {
         Serial.print(F("❌ [I2S AUDIO] i2s_new_channel failed: "));
@@ -97,6 +118,7 @@ public:
         Serial.println(err);
         return;
       }
+      txEnabled = true;
     }
 #else
     i2s_config_t i2s_config = {
@@ -134,10 +156,13 @@ public:
     if (rate == currentSampleRate || rate < 8000 || rate > 96000) return;
 #ifdef ECHOSPHERE_I2S_V5
     if (tx_handle) {
-      esp_err_t d_err = i2s_channel_disable(tx_handle);
+      disableTx();
+      esp_err_t d_err = txEnabled ? ESP_FAIL : ESP_OK;
       i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(rate);
       esp_err_t c_err = i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg);
-      esp_err_t e_err = i2s_channel_enable(tx_handle);
+      clearTxBuffer();
+      enableTx();
+      esp_err_t e_err = txEnabled ? ESP_OK : ESP_FAIL;
       Serial.print(F("🎛️ [I2S CLOCK] Reconfigured sample rate to "));
       Serial.print(rate);
       Serial.print(F("Hz (d:"));
@@ -187,9 +212,7 @@ public:
     }
 
 #ifdef ECHOSPHERE_I2S_V5
-    if (tx_handle) {
-      i2s_channel_enable(tx_handle);
-    }
+    enableTx();
 #endif
 
     if (currentSampleRate != I2S_SAMPLE_RATE) {
@@ -234,7 +257,7 @@ public:
       if (tx_handle) {
         esp_err_t err = i2s_channel_write(tx_handle, sampleBuffer, samplesThisChunk * 4, &bytesWritten, 100);
         if (err != ESP_OK) {
-          i2s_channel_enable(tx_handle);
+          enableTx();
           i2s_channel_write(tx_handle, sampleBuffer, samplesThisChunk * 4, &bytesWritten, 100);
         }
       }
@@ -277,8 +300,10 @@ public:
       for (int i = 0; i < 4; i++) {
         i2s_channel_write(tx_handle, zeroBuf, sizeof(zeroBuf), &written, 15);
       }
-      // 2. Disable I2S TX channel immediately so hardware DMA stops cycling
-      i2s_channel_disable(tx_handle);
+      // 2. Stop the channel, then fill the whole ring with silence so no leftover audio plays later
+      disableTx();
+      clearTxBuffer();
+      Serial.println(F("🔇 [I2S AUDIO] Output silenced and sound buffer cleared."));
     }
 #else
     int16_t zeroBuf[256 * 2] = {0};
@@ -581,6 +606,9 @@ public:
 
     // Pre-fill I2S DMA buffer with audio chunks before entering the main loop!
     // This creates an unbreakable DMA cushion that eliminates network jitter and absorbs SPI redraw latency!
+#ifdef ECHOSPHERE_I2S_V5
+    enableTx();
+#endif
     Serial.println(F("⚡ [I2S AUDIO] Pre-buffering audio into DMA pipeline..."));
     int prefillChunks = 0;
     while (prefillChunks < 4 && (stream->connected() || stream->available())) {
@@ -700,6 +728,9 @@ public:
     if (currentSampleRate != (uint32_t)sampleRate) {
       setSampleRate(sampleRate);
     }
+#ifdef ECHOSPHERE_I2S_V5
+    enableTx();
+#endif
     isPlaying = true;
     Serial.println(F("🎙️ [I2S AUDIO] Live Mic PA Stream mode armed (16kHz PCM mono -> stereo DMA)"));
   }
