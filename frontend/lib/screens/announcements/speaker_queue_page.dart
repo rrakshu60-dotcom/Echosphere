@@ -1792,10 +1792,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                           Builder(builder: (context) {
                                             final targetNodeId = item['speaker_node_id'] as int?;
                                             final nodeName = (item['node_name'] ?? _queueCtrl.getNodeName(targetNodeId)).toString();
-                                            final isOnline = _queueCtrl.isNodeOnline(targetNodeId);
-                                            return ConstrainedBox(
-                                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width < 360 ? 70 : 130),
-                                              child: Container(
+                                            final isOnline = (item['node_status'] ?? _queueCtrl.getNodeStatus(targetNodeId)).toString().toUpperCase() == 'ONLINE';
+                                            return Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                                 decoration: BoxDecoration(
                                                   color: (isOnline ? context.colors.primary : context.colors.onSurface.opaque(0.3)).opaque(0.12),
@@ -1829,7 +1827,6 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                                     ),
                                                   ],
                                                 ),
-                                              ),
                                             );
                                           }),
                                           if (isCurrentlyPlaying)
