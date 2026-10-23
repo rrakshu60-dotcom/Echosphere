@@ -78,3 +78,22 @@ def test_deleting_a_notice_removes_its_attachment_files(monkeypatch):
         if t.name.startswith("NoticeAttachmentDelete-"):
             t.join(timeout=10)
     assert removed == [up["file_name"]], removed
+
+
+def test_a_file_still_used_by_another_notice_is_not_deleted(monkeypatch):
+    """Copying someone's attachment link into your own notice and deleting it must not delete their file."""
+    import threading
+    from app.services.cloud_storage_service import CloudStorageService
+
+    removed = []
+    monkeypatch.setattr(CloudStorageService, "delete_attachment_files", classmethod(lambda cls, names: removed.extend(names) or len(names)))
+    up = _upload().json()
+    att = [{"name": "circular.pdf", "url": up["file_url"]}]
+    base = {"description": "x", "category_id": 1, "target_audience": "Entire College", "deliver_push": False, "deliver_in_app": False}
+    client.post("/api/v1/announcements", headers=ADMIN, json={"title": "Original", "attachments": att, **base})
+    copy = client.post("/api/v1/announcements", headers=ADMIN, json={"title": "Copy", "attachments": att, **base}).json()["id"]
+    assert client.delete(f"/api/v1/announcements/{copy}", headers=ADMIN).status_code == 200
+    for t in threading.enumerate():
+        if t.name.startswith("NoticeAttachmentDelete-"):
+            t.join(timeout=10)
+    assert removed == [], removed
