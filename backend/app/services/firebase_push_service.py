@@ -189,10 +189,11 @@ class FirebasePushService:
             )
             results.append(res_emerg)
 
-        # 2. The topic follows the notice's audience (not the creator's department): "CSE Department" -> dept_cse;
-        #    year groups, faculty and the whole college -> all_campus (in-app alerts do the finer targeting)
-        dept_match = re.fullmatch(r"\s*([a-z0-9]+)\s+department\s*", target_str or "")
-        topic = f"dept_{dept_match.group(1)}" if dept_match else "all_campus"
+        # 2. The topic of the notice's audience; an audience without a topic gets no push (never the whole campus)
+        topic = audience_topic(target_str)
+        if topic is None:
+            logger.info(f"[FCM] No push topic for audience '{target_audience}'; push skipped.")
+            return results
 
         res = FirebasePushService.send_topic_notification(
             topic=topic,
@@ -209,6 +210,27 @@ class FirebasePushService:
 firebase_push_service = FirebasePushService()
 
 
+STAFF_ROLES = {"dev admin", "developer", "college admin", "principal", "hod", "teacher"}
+
+
+def audience_topic(audience: str) -> Optional[str]:
+    """The push topic of a notice audience. Restricted audiences have their own topic; None = no push."""
+    a = (audience or "").strip().lower()
+    if a in ("", "entire college", "all", "college-wide", "all students and staff"):
+        return "all_campus"
+    m = re.fullmatch(r"([a-z0-9]+)\s+department", a)
+    if m:
+        return f"dept_{m.group(1)}"
+    if a in ("faculty members", "faculty", "staff"):
+        return "faculty"
+    m = re.fullmatch(r"([1-4])(?:st|nd|rd|th)\s+year\s+students", a)
+    if m:
+        return f"year_{m.group(1)}"
+    if a in ("students", "all students"):
+        return "students"
+    return None
+
+
 def device_topics(user) -> list:
     """Topics a signed-in device is subscribed to, worked out from the account (never from the client)."""
     topics = ["all_campus", "emergency_broadcasts"]
@@ -216,15 +238,36 @@ def device_topics(user) -> list:
     code = (getattr(dept, "code", None) or "").strip().lower() if dept else ""
     if code and code.isalnum():
         topics.append(f"dept_{code}")
+    role = (getattr(getattr(user, "role", None), "name", "") or "").strip().lower()
+    if role in STAFF_ROLES:
+        topics.append("faculty")
+    else:
+        topics.append("students")
+        semester = getattr(user, "semester", None)
+        if semester:
+            topics.append(f"year_{min(4, (int(semester) + 1) // 2)}")
     return topics
 
 
-def subscribe_device(token: str, topics: list) -> list:
-    """Subscribes one device token to the topics; returns the topics that succeeded."""
+def all_restricted_topics(db) -> list:
+    """Every department / role / year topic a device could have been on (to drop the ones that no longer apply)."""
+    from app.models.department import Department
+    codes = [(d.code or "").strip().lower() for d in db.query(Department).all()]
+    return [f"dept_{c}" for c in codes if c and c.isalnum()] + ["faculty", "students"] + [f"year_{n}" for n in range(1, 5)]
+
+
+def subscribe_device(token: str, topics: list, drop: Optional[list] = None) -> list:
+    """Subscribes one device token to `topics` and unsubscribes it from `drop` (topics that no longer apply,
+    e.g. after a department change). Returns the topics subscribed."""
     app = get_firebase_admin_app()
     if app is None:
         return []
     from firebase_admin import messaging
+    for topic in drop or []:
+        try:
+            messaging.unsubscribe_from_topic([token], topic, app=app)
+        except Exception as e:
+            logger.warning(f"[FCM] unsubscribe from {topic} failed: {type(e).__name__}")
     done = []
     for topic in topics:
         try:
