@@ -25,6 +25,35 @@ from app.services.ai_text_sanitizer import sanitize_ai_markdown
 logger = logging.getLogger("EchoSphere.SmartIntakeService")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+
+def _gemini_models() -> List[str]:
+    """The configured Gemini model first, then the router's fallbacks (no hard-coded, retired model names)."""
+    from app.services.model_router import GEMINI_FALLBACK_MODELS, GEMINI_PRIMARY_MODEL
+    primary = os.getenv("GEMINI_MODEL", GEMINI_PRIMARY_MODEL).strip()
+    return [primary] + [m for m in GEMINI_FALLBACK_MODELS if m != primary]
+
+
+def _gemini_generate(parts: List[Dict[str, Any]], timeout: int = 30) -> str:
+    """Text of the first Gemini model that answers, or "" when none is configured or reachable."""
+    key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
+    if not key or key == "YOUR_ACTUAL_GEMINI_API_KEY":
+        return ""
+    for model in _gemini_models():
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            resp = requests.post(url, json={"contents": [{"parts": parts}]}, timeout=timeout)
+            if resp.status_code != 200:
+                logger.info(f"[Gemini] {model} answered HTTP {resp.status_code}; trying the next model")
+                continue
+            candidates = resp.json().get("candidates", [])
+            if candidates:
+                text = "".join(p.get("text", "") for p in candidates[0].get("content", {}).get("parts", [])).strip()
+                if text:
+                    return text
+        except Exception as e:
+            logger.info(f"[Gemini] {model} failed: {e}")
+    return ""
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
 
@@ -63,50 +92,16 @@ class SmartIntakeService:
     @classmethod
     def _transcribe_audio(cls, audio_base64: str, audio_format: str) -> str:
         """Transcribes audio using Gemini Multimodal Audio or Cloudflare Whisper."""
-        # Tier 1: Gemini Audio Transcription
-        key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
-        if key and key != "YOUR_ACTUAL_GEMINI_API_KEY":
-            try:
-                mime_map = {
-                    "m4a": "audio/m4a",
-                    "mp3": "audio/mp3",
-                    "wav": "audio/wav",
-                    "aac": "audio/aac",
-                    "ogg": "audio/ogg",
-                    "webm": "audio/webm",
-                }
-                mime = mime_map.get(audio_format.lower(), f"audio/{audio_format}")
-
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {
-                                    "text": "Transcribe this spoken college announcement audio accurately. Return only the verbatim spoken transcription, no commentary."
-                                },
-                                {
-                                    "inline_data": {
-                                        "mime_type": mime,
-                                        "data": audio_base64
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-                resp = requests.post(url, json=payload, timeout=25)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        text = "".join(p.get("text", "") for p in parts).strip()
-                        if text:
-                            logger.info(f"[Voice Intake] Transcribed via Gemini: {text[:60]}...")
-                            return text
-            except Exception as e:
-                logger.debug(f"[Voice Intake] Gemini audio transcription error: {e}")
+        # Tier 1: Gemini audio transcription (configured model, then fallbacks)
+        mime_map = {"m4a": "audio/m4a", "mp3": "audio/mp3", "wav": "audio/wav", "aac": "audio/aac", "ogg": "audio/ogg", "webm": "audio/webm"}
+        mime = mime_map.get(audio_format.lower(), f"audio/{audio_format}")
+        text = _gemini_generate([
+            {"text": "Transcribe this spoken college announcement audio accurately. Return only the verbatim spoken transcription, no commentary."},
+            {"inline_data": {"mime_type": mime, "data": audio_base64}},
+        ], timeout=25)
+        if text:
+            logger.info(f"[Voice Intake] Transcribed via Gemini: {text[:60]}...")
+            return text
 
         # Tier 2: Cloudflare Workers AI Whisper
         cf_account = os.getenv("CLOUDFLARE_ACCOUNT_ID", CLOUDFLARE_ACCOUNT_ID).strip()
@@ -126,7 +121,9 @@ class SmartIntakeService:
             except Exception as e:
                 logger.debug(f"[Voice Intake] Cloudflare Whisper error: {e}")
 
-        return "Announcement voice note recorded."
+        # Nothing understood: never invent a transcript (it became a made-up notice)
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="Couldn't understand the recording. Please try again, closer to the microphone.")
 
     @classmethod
     def _structure_spoken_transcript(cls, transcript: str) -> Dict[str, Any]:
@@ -320,65 +317,44 @@ class SmartIntakeService:
         if not extracted_text and file_bytes:
             extracted_text = cls._extract_text_from_document_bytes(file_bytes, mime_type, filename)
 
-        # Tier 1: Gemini Vision / Multimodal Document Understanding (if valid API key configured)
-        key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY).strip()
-        if key and key != "YOUR_ACTUAL_GEMINI_API_KEY":
-            try:
-                system_instruction = (
-                    "You are EchoSphere's Institutional Circular Document OCR & Digitizer. "
-                    "You are analyzing a scanned paper circular, official notification photo, or PDF circular.\n"
-                    "Instructions:\n"
-                    "1. Read the document text thoroughly, filtering out letterhead noise, decorative borders, and institutional logos.\n"
-                    "2. Extract the official circular Reference Number if visible (e.g. 'Ref: RVCE/CSE/2026/042' or 'Circular No. 14').\n"
-                    "3. Extract the Subject line into a clean, concise 'title'.\n"
-                    "4. Structure the body of the notice into 'content' formatted in clean markdown with bullet points for dates, fees, venues, and requirements.\n"
-                    "5. Assign 'suggested_category' from: ['Academic', 'Examination', 'Placement', 'Event', 'Emergency', 'Sports', 'Administrative'].\n"
-                    "6. Assign 'suggested_priority' from: ['NORMAL', 'HIGH', 'URGENT'].\n"
-                    "7. Assign 'suggested_audience' from: ['Entire College', 'AIML Department', 'CSE Department', 'ECE Department', '1st Year Students', '2nd Year Students', '3rd Year Students', '4th Year Students', 'Faculty Members'].\n"
-                    "8. Extract any calendar event with date, time, venue, and fee.\n"
-                    "Output ONLY a valid JSON object without markdown fences, matching keys:\n"
-                    '{"title", "content", "suggested_category", "suggested_priority", "suggested_audience", "reference_number", "extracted_event", "raw_text"}\n'
-                )
-
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": system_instruction},
-                                {
-                                    "inline_data": {
-                                        "mime_type": mime_type,
-                                        "data": file_base64
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-                resp = requests.post(url, json=payload, timeout=30)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        text = "".join(p.get("text", "") for p in parts).strip()
-                        parsed = cls._parse_json_response(text)
-                        if parsed and "title" in parsed and "content" in parsed:
-                            parsed["content"] = sanitize_ai_markdown(parsed["content"])
-                            if not parsed.get("raw_text") and extracted_text:
-                                parsed["raw_text"] = extracted_text[:3000]
-                            logger.info(f"[Document OCR] Successfully parsed document via Gemini Vision: {parsed.get('title')}")
-                            return parsed
-            except Exception as e:
-                logger.debug(f"[Document OCR] Gemini Vision error: {e}")
+        # Tier 1: Gemini Vision reads the document (configured model, then fallbacks)
+        system_instruction = (
+            "You are EchoSphere's Institutional Circular Document OCR & Digitizer. "
+            "You are analyzing a scanned paper circular, official notification photo, or PDF circular.\n"
+            "Instructions:\n"
+            "1. Read the document text thoroughly, filtering out letterhead noise, decorative borders, and institutional logos.\n"
+            "2. Extract the official circular Reference Number if visible (e.g. 'Ref: RVCE/CSE/2026/042' or 'Circular No. 14').\n"
+            "3. Extract the Subject line into a clean, concise 'title'.\n"
+            "4. Structure the body of the notice into 'content' formatted in clean markdown with bullet points for dates, fees, venues, and requirements.\n"
+            "5. Assign 'suggested_category' from: ['Academic', 'Examination', 'Placement', 'Event', 'Emergency', 'Sports', 'Administrative'].\n"
+            "6. Assign 'suggested_priority' from: ['NORMAL', 'HIGH', 'URGENT'].\n"
+            "7. Assign 'suggested_audience' from: ['Entire College', 'AIML Department', 'CSE Department', 'ECE Department', '1st Year Students', '2nd Year Students', '3rd Year Students', '4th Year Students', 'Faculty Members'].\n"
+            "8. Extract any calendar event with date, time, venue, and fee.\n"
+            "Output ONLY a valid JSON object without markdown fences, matching keys:\n"
+            '{"title", "content", "suggested_category", "suggested_priority", "suggested_audience", "reference_number", "extracted_event", "raw_text"}\n'
+        )
+        text = _gemini_generate([
+            {"text": system_instruction},
+            {"inline_data": {"mime_type": mime_type, "data": file_base64}},
+        ]) if file_bytes else ""
+        parsed = cls._parse_json_response(text) if text else None
+        if parsed and "title" in parsed and "content" in parsed:
+            parsed["content"] = sanitize_ai_markdown(parsed["content"])
+            if not parsed.get("raw_text") and extracted_text:
+                parsed["raw_text"] = extracted_text[:3000]
+            logger.info(f"[Document OCR] Read the document via Gemini Vision: {parsed.get('title')}")
+            return parsed
 
         # Tier 2: 100% Free Local Offline OCR & Heuristic Structurer (No API, No Limits)
         if extracted_text and len(extracted_text) >= 10:
             return cls._structure_extracted_circular_text(extracted_text, filename)
 
-        # Tier 3: Deterministic Document Extraction Fallback
-        return cls._deterministic_ocr_to_notice(file_base64, filename)
+        # Nothing readable: say so instead of inventing a circular from the file's raw bytes
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=422,
+            detail="Couldn't read any text from this document. Try a clearer photo, or a PDF with selectable text.",
+        )
 
     @classmethod
     def _extract_text_from_document_bytes(cls, file_bytes: bytes, mime_type: str, filename: str) -> str:
@@ -434,7 +410,9 @@ class SmartIntakeService:
         except Exception as ocr_err:
             logger.debug(f"[Document OCR] RapidOCR engine note: {ocr_err}")
 
-        # 3. Fallback: string heuristic from raw decoded bytes
+        # 3. Plain-text files only: decoding an image or PDF as text produced garbage like "IHDR..."
+        if not (mime_type or "").lower().startswith("text/"):
+            return ""
         try:
             ascii_text = file_bytes.decode('utf-8', errors='ignore')
             clean_lines = [line.strip() for line in ascii_text.splitlines() if len(line.strip()) > 3]
@@ -623,46 +601,6 @@ class SmartIntakeService:
             "reference_number": ref_no,
             "extracted_event": extracted_event,
             "raw_text": raw_text[:3000],
-        }
-
-    @classmethod
-    def _deterministic_ocr_to_notice(cls, file_base64: str, filename: str) -> Dict[str, Any]:
-        """
-        Deterministic fallback when multimodal LLMs and local OCR extract zero lines.
-        Inspects embedded text or generates institutional template structure.
-        """
-        ref_no = f"CIR/{datetime.date.today().year}/{filename[:8].upper()}"
-        clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
-
-        title = f"Official Circular: {clean_name}" if "circular" not in clean_name.lower() else clean_name
-        category = "Academic"
-        if any(k in clean_name.lower() for k in ["exam", "test", "timetable", "schedule"]):
-            category = "Examination"
-        elif any(k in clean_name.lower() for k in ["placement", "interview", "drive"]):
-            category = "Placement"
-        elif any(k in clean_name.lower() for k in ["sports", "tournament", "athletics"]):
-            category = "Sports"
-
-        content = (
-            f"Reference: {ref_no}\n"
-            f"Date: {datetime.date.today().strftime('%d %B %Y')}\n\n"
-            f"This is to officially notify all concerned students and faculty members regarding {clean_name}.\n\n"
-            f"Key Instructions:\n"
-            f"- Please refer to the attached official institutional document for complete details, schedule, and guidelines.\n"
-            f"- All required forms and submissions must be completed before the specified deadline.\n"
-            f"- Adherence to campus conduct and regulations is strictly mandatory.\n\n"
-            f"By Order,\nOffice of the Principal / Dean Academics"
-        )
-
-        return {
-            "title": title,
-            "content": content,
-            "suggested_category": category,
-            "suggested_priority": "NORMAL",
-            "suggested_audience": "Entire College",
-            "reference_number": ref_no,
-            "extracted_event": None,
-            "raw_text": None,
         }
 
     @staticmethod

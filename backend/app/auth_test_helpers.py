@@ -1,7 +1,14 @@
 """Test-only helper: a bearer header backed by a real session, as login would create it."""
-from app.db.database import SessionLocal
-from app.models.user import User
-from app.services.session_service import create_session
+import os
+
+# Every test file imports this. Outside pytest's conftest (temporary SQLite) the app would use backend/.env,
+# i.e. the production database: a test run that way once published test notices on the live system.
+if not os.environ.get("DATABASE_URL", "").startswith("sqlite"):
+    raise RuntimeError("Tests must run through pytest in backend/ (conftest.py uses a temporary SQLite database).")
+
+from app.db.database import SessionLocal  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.session_service import create_session  # noqa: E402
 
 
 def bearer(username: str, remember_me: bool = False) -> dict:
