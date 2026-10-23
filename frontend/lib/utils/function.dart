@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 extension StringExtensions on String {
   String get getUrlWithoutDomain {
@@ -187,7 +188,7 @@ String calcTime(String timestamp, {String format = "dd-MM-yyyy"}) {
       }
     }
   } else {
-    dateTime = DateTime.tryParse(cleanTimestamp);
+    dateTime = parseServerTime(cleanTimestamp);
   }
 
   if (dateTime == null) {
@@ -207,7 +208,7 @@ String calcTime(String timestamp, {String format = "dd-MM-yyyy"}) {
     return "${difference.inDays} days ago";
   }
 
-  return DateFormat(format).format(dateTime);
+  return formatCampusTime(dateTime, format);
 }
 
 String dateFormatHour(String timestamp) {

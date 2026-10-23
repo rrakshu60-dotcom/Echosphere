@@ -16,6 +16,7 @@ import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 /// Roles allowed into Audit & Logs (the backend enforces the same).
 const auditAdminRoles = {'Dev Admin', 'Developer', 'College Admin', 'Admin'};
@@ -173,8 +174,8 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       if (s.active.contains(f.label)) params.addAll(f.params);
     }
     if (s.range != null) {
-      params['from'] = DateTime(s.range!.start.year, s.range!.start.month, s.range!.start.day).toUtc().toIso8601String();
-      params['to'] = DateTime(s.range!.end.year, s.range!.end.month, s.range!.end.day, 23, 59, 59).toUtc().toIso8601String();
+      params['from'] = DateTime.utc(s.range!.start.year, s.range!.start.month, s.range!.start.day).subtract(campusUtcOffset).toIso8601String();
+      params['to'] = DateTime.utc(s.range!.end.year, s.range!.end.month, s.range!.end.day, 23, 59, 59).subtract(campusUtcOffset).toIso8601String();
     }
     return params;
   }
@@ -255,7 +256,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
         rows.addAll(result.items);
         if (rows.length >= result.total || result.items.isEmpty) break;
       }
-      final stamp = DateFormat('yyyy-MM-dd_HHmm').format(DateTime.now());
+      final stamp = formatCampusTime(DateTime.now(), 'yyyy-MM-dd_HHmm');
       final name = 'echosphere_${auditTabTitles[_tab]!.toLowerCase().replaceAll(RegExp(r'[^a-z]+'), '_')}_$stamp.txt';
       final saved = await saveTextFile(name, auditRowsToText(_tab, rows));
       if (saved) snackBar('Exported ${rows.length} entr${rows.length == 1 ? 'y' : 'ies'}.');

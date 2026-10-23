@@ -11,7 +11,7 @@ import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class ApprovalQueuePage extends StatefulWidget {
   const ApprovalQueuePage({super.key});
@@ -689,7 +689,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Submitted: ${DateFormat("MMM dd, hh:mm a").format(item.createdAt)}',
+                                'Submitted: ${formatCampusTime(item.createdAt, "MMM dd, hh:mm a")}',
                                 style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                               ),
                               EchoSphereButton(
@@ -963,7 +963,7 @@ class _ApprovalQueuePageState extends State<ApprovalQueuePage> {
                                         ),
                                       ),
                                       Text(
-                                        DateFormat('MMM dd, hh:mm a').format(item.createdAt),
+                                        formatCampusTime(item.createdAt, 'MMM dd, hh:mm a'),
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w500,

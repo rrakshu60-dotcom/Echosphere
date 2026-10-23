@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'dart:async';
 import 'dart:math';
+import 'package:echosphere/utils/campus_time.dart';
 
 class GreetingController extends GetxController {
   var currentGreeting = ''.obs;
@@ -29,7 +30,7 @@ class GreetingController extends GetxController {
   }
 
   String _calculateGreeting() {
-    final hour = DateTime.now().hour;
+    final hour = toCampusTime(DateTime.now()).hour;
     final random = Random();
 
     if (hour >= 5 && hour < 12) {

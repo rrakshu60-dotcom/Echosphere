@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class CalendarEventData {
   final bool hasEvent;
@@ -32,11 +33,7 @@ class CalendarEventData {
   factory CalendarEventData.fromJson(Map<String, dynamic> json) {
     DateTime parseDt(dynamic val, DateTime fallback) {
       if (val == null) return fallback;
-      try {
-        return DateTime.parse(val.toString());
-      } catch (_) {
-        return fallback;
-      }
+      return parseServerTime(val) ?? fallback;
     }
 
     final now = DateTime.now();

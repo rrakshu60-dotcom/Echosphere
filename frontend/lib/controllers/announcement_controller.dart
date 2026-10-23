@@ -8,6 +8,7 @@ import 'package:echosphere/services/echosphere_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class AnnouncementModel {
   final int id;
@@ -214,16 +215,16 @@ class AnnouncementModel {
       targetAudience: json['target_audience'] ?? 'Entire College',
       category: json['category_name'] ?? catName,
       createdAt: json['created_at'] != null
-          ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
+          ? (parseServerTime(json['created_at']) ?? DateTime.now())
           : DateTime.now(),
       scheduledAt: json['scheduled_at'] != null
-          ? DateTime.tryParse(json['scheduled_at'].toString())
+          ? parseServerTime(json['scheduled_at'])
           : null,
       aiSummary: json['ai_summary'],
       remarks: json['remarks'],
       approverName: json['approver_name'],
       approvedAt: json['approved_at'] != null
-          ? DateTime.tryParse(json['approved_at'].toString())
+          ? parseServerTime(json['approved_at'])
           : null,
       attachments: json['attachments'] != null
           ? List<String>.from(json['attachments'])
@@ -1603,7 +1604,7 @@ class AnnouncementController extends GetxController {
         category: old.category,
         createdAt: newScheduledTime,
         aiSummary: old.aiSummary,
-        remarks: 'Rescheduled for ${newScheduledTime.toString().substring(0, 16)}',
+        remarks: 'Rescheduled for ${formatCampusTime(newScheduledTime, 'yyyy-MM-dd HH:mm')}',
       );
       _rawAnnouncements.refresh();
     }

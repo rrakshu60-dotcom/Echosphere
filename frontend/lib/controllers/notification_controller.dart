@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:echosphere/utils/campus_time.dart';
 
 class NotificationController extends GetxController {
   final RxSet<int> readIds = <int>{}.obs;
@@ -60,7 +61,7 @@ class NotificationController extends GetxController {
             'message': n['message'] ?? (matchedAnn?.description ?? ''),
             'type': typeStr,
             'time': n['created_at'] != null
-                ? DateTime.tryParse(n['created_at'].toString()) ?? DateTime.now()
+                ? parseServerTime(n['created_at']) ?? DateTime.now()
                 : DateTime.now(),
             'announcement': matchedAnn,
           };
