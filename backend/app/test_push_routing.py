@@ -94,3 +94,9 @@ def test_device_topics_follow_role_and_year(fake_fcm, monkeypatch):
     fake_fcm["subscribed"].clear()
     client.post("/api/v1/push/register", headers=bearer("dbitaimlt022022"), json={"token": token})  # a teacher
     assert "faculty" in {t for _tok, t in fake_fcm["subscribed"]}
+
+
+def test_an_unknown_platform_value_is_refused(fake_fcm):
+    res = client.post("/api/v1/push/register", headers=ADMIN,
+                      json={"token": "tok-3-abcdefghijklmnopqrstuvwxyz", "platform": "web\nFAKE LOG LINE"})
+    assert res.status_code == 422

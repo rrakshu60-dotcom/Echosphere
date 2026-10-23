@@ -1,6 +1,6 @@
 """Push notification device registration: the server subscribes a signed-in device to its account's topics
 (browsers can't subscribe themselves to topics)."""
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/push", tags=["Push Notifications"])
 
 class DeviceRegistration(BaseModel):
     token: str = Field(min_length=20, max_length=4096)
-    platform: Optional[str] = None
+    platform: Optional[Literal["web", "android", "ios", "windows", "macos", "linux"]] = None
 
 
 @router.post("/register")
