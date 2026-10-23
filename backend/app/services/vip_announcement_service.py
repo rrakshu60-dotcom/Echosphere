@@ -130,6 +130,64 @@ def extract_vip_details_heuristic(text: str, event_dt: datetime) -> Dict[str, an
     }
 
 
+_IST = timedelta(hours=5, minutes=30)
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
+           "november", "december"]
+
+
+def event_time_from_text(text: str, now_ist: datetime) -> Optional[datetime]:
+    """Campus (IST) date-time of phrasings like 'on Friday at 10 AM', '24 October at 4 PM', 'tomorrow at 9:30 am'.
+    None when the text has no clock time."""
+    low = text.lower()
+    t = re.search(r"\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])", low)
+    if not t:
+        return None
+    hour, minute = int(t.group(1)) % 12, int(t.group(2) or 0)
+    if t.group(3).startswith("p"):
+        hour += 12
+    day = None
+    m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(" + "|".join(_MONTHS) + r")\b", low) or \
+        re.search(r"\b(" + "|".join(_MONTHS) + r")\s+(\d{1,2})(?:st|nd|rd|th)?\b", low)
+    if m:
+        a, b = m.group(1), m.group(2)
+        d, month = (int(a), b) if a.isdigit() else (int(b), a)
+        try:
+            day = now_ist.replace(month=_MONTHS.index(month) + 1, day=d).date()
+            if day < now_ist.date():
+                day = day.replace(year=day.year + 1)
+        except ValueError:
+            day = None
+    elif "tomorrow" in low:
+        day = (now_ist + timedelta(days=1)).date()
+    else:
+        w = next((i for i, name in enumerate(_WEEKDAYS) if re.search(r"\b" + name + r"\b", low)), None)
+        if w is not None:
+            ahead = (w - now_ist.weekday()) % 7
+            day = (now_ist + timedelta(days=ahead)).date()
+            if ahead == 0 and (hour, minute) <= (now_ist.hour, now_ist.minute):
+                day = (now_ist + timedelta(days=7)).date()
+        elif "today" in low:
+            day = now_ist.date()
+    if day is None:
+        return None
+    return datetime(day.year, day.month, day.day, hour, minute)
+
+
+def _event_time_utc(title: str, description: str, now_utc: datetime) -> Optional[datetime]:
+    """The event's time (UTC, naive) from the notice text, or None."""
+    try:
+        from app.services.ai_service import AIService
+        ev = AIService.extract_calendar_event(title, description) or {}
+        if ev.get("has_event") and ev.get("start_time"):
+            start = datetime.fromisoformat(str(ev["start_time"]).replace("Z", ""))
+            return start.replace(tzinfo=None) - _IST  # the extractor gives campus (IST) wall-clock times
+    except Exception as e:
+        logger.debug(f"VIP event time via calendar extractor: {e}")
+    local = event_time_from_text(f"{title}\n{description}", now_utc + _IST)
+    return local - _IST if local else None
+
+
 def analyze_and_extract_vip(db: Session, announcement_id: int) -> Optional[AnnouncementVipProtocol]:
     """
     Analyzes an announcement using Gemini (or heuristic fallback) to extract dignitary
@@ -145,7 +203,8 @@ def analyze_and_extract_vip(db: Session, announcement_id: int) -> Optional[Annou
         return None
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    event_dt = ann.scheduled_at or (now + timedelta(hours=2))
+    # The event's time is in the notice text ("on Friday at 10 AM"); it used to be the publish time or now + 2 h
+    event_dt = _event_time_utc(ann.title or "", ann.description or "", now) or ann.scheduled_at or (now + timedelta(hours=2))
 
     extracted = None
 
@@ -236,6 +295,7 @@ If this is not an actual dignitary event (e.g. routine guest pass, meme, student
         protocol.event_name = extracted.get("event_name", protocol.event_name)
         protocol.venue = extracted.get("venue", protocol.venue)
         protocol.spoken_script = extracted.get("spoken_script", protocol.spoken_script)
+        protocol.event_datetime = event_dt
         protocol.regional_script = extracted.get("regional_script", protocol.regional_script)
         protocol.audio_url = audio_url or protocol.audio_url
         protocol.confidence_score = float(extracted.get("confidence_score", protocol.confidence_score))
@@ -382,7 +442,13 @@ def dispatch_vip_arrival_fanfare(
     # Form and dispatch hardware control packet
     topic = "echosphere/speakers/vip/arrival"
     payload = {
-        "command": "PLAY_VIP_ANNOUNCEMENT",
+        # The firmware plays PLAY_ANNOUNCEMENT from its audio_url; "PLAY_VIP_ANNOUNCEMENT" was ignored, so the
+        # speaker played the notice itself instead of the welcome.
+        "command": "PLAY_ANNOUNCEMENT",
+        "command_id": f"vip_arrival_{ann.id}_{int(now.timestamp() * 1000)}",
+        "queue_id": q_item.id,
+        "priority": "HIGH",
+        "is_emergency": False,
         "announcement_id": ann.id,
         "guest_name": protocol.guest_name,
         "title": f"VIP Arrival: {protocol.guest_name}",

@@ -226,6 +226,21 @@ class AudienceGuardService:
                 suggested.append(actual_yr)
                 mismatch_type = "wrong_year"
 
+        # Case E: Student notice addressed to Faculty Members (only the reverse was checked before)
+        elif selected_audience == "Faculty Members" and not is_faculty:
+            for_students = detected_years or re.search(
+                r"\b(?:all\s+students|students\s+(?:must|are|should|will|can|need)|dear\s+students|"
+                r"hostel\s+(?:residents|students|inmates)|hostellers?)\b",
+                combined, re.IGNORECASE)
+            if for_students:
+                target = detected_years[0] if detected_years else "Entire College"
+                warning_msg = (
+                    "⚠️ Audience Warning: This notice appears to be for students, "
+                    f"but target audience is set to 'Faculty Members'. Students would not see it."
+                )
+                suggested.append(target)
+                mismatch_type = "students_sent_to_faculty"
+
         primary_detected = suggested[0] if suggested else None
 
         return {

@@ -267,12 +267,17 @@ class AIService:
         is_greeting_or_pleasantry = any(
             w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye"]
         )
-        is_identity_query = predicted_intent == "USER_IDENTITY" or any(
+        # Only an explicit question about the user: the classifier also guessed USER_IDENTITY for questions
+        # like "what is the hostel curfew time?" and answered them with the profile card.
+        is_identity_query = any(
             w in q_lower for w in ["who am i", "what is my name", "what is my designation", "what is my role", "my profile", "my department", "who i am", "whats my name", "what's my name", "whats my designation", "what's my designation"]
         )
         is_educational_query = predicted_intent == "BRANCH_STUDIES" or any(
             w in q_lower for w in ["explain", "what is", "how does", "algorithm", "derive", "circuit", "proof", "concept", "study", "exam", "timetable", "placement", "notes", "tutorial", "machine learning", "dijkstra", "paging"]
         )
+
+        if predicted_intent == "USER_IDENTITY" and not is_identity_query:
+            predicted_intent = "GENERAL"
 
         if is_ai_identity_query:
             return ml_engine.synthesize_response(
@@ -375,6 +380,10 @@ class AIService:
             f"4. USER IDENTITY CONFIRMATION: If the user asks 'who am I' or 'what is my designation', clearly confirm THEIR details: Name: {name}, Designation: {designation}, Department: {dept}.\n\n"
             f"Live Database Announcements Context (Filtered by RBAC):\n"
             f"{live_notices_text if live_notices_text else 'No directly matching active notices in database.'}\n\n"
+            f"CAMPUS FACTS (MANDATORY): Times, dates, venues, fees, deadlines, rules and contacts for this campus must come "
+            f"ONLY from the notices listed above. If no listed notice answers the question, say you couldn't find a notice "
+            f"about it and suggest checking the notices or asking the office. Never guess campus facts, never refer to "
+            f"notices that are not listed above, and never claim to have checked the database for anything not listed.\n\n"
             f"Institutional Knowledge Base Context:\n"
             f"{kb_text if kb_text else 'Standard campus policies apply.'}\n\n"
             f"TOPIC SCOPE & BOUNDARIES (EXPLICIT ALLOWED VS DISALLOWED):\n"

@@ -118,4 +118,9 @@ def _no_real_speech_synthesis(monkeypatch):
     from app.services import tts_service
 
     monkeypatch.setattr(tts_service, "_generate_announcement_audio",
-                        lambda announcement_id, text, **kwargs: {"status": "faked-in-tests", "announcement_id": announcement_id})
+                        lambda announcement_id, text, **kwargs: {
+                            "status": "faked-in-tests", "announcement_id": announcement_id,
+                            # same address fields as the real result (_format_audio_result)
+                            "url_path": f"/static/audio_streams/announcement_{announcement_id}_faked.wav",
+                            "public_url": f"/static/audio_streams/announcement_{announcement_id}_faked.wav",
+                        })
