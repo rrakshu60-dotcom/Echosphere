@@ -14,7 +14,6 @@ from app.services.repeat_schedule_service import (
     calculate_time_window_duration,
     configure_repeat_schedule,
     delete_repeat_schedule,
-    evaluate_and_dispatch_repeat_slots,
     get_repeat_schedule_by_announcement,
 )
 
@@ -133,32 +132,6 @@ def calculate_window_preview(
 
 
 @router.post(
-    "/repeat-schedules/evaluate-dispatch",
-    summary="Evaluate and Dispatch Repeat Broadcasts (PDF Spec)",
-    status_code=status.HTTP_200_OK,
-)
-def evaluate_dispatch_repeat_schedules(
-    simulated_time: Optional[str] = Query(None, description="Simulate specific time in HH:MM format (e.g. 11:05, 13:20, 16:45, 19:40)"),
-    simulated_date: Optional[str] = Query(None, description="Simulate specific date in YYYY-MM-DD format"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Evaluates active repeat schedules against the current timestamp in IST,
-    enqueuing repeat notices into the speaker queue with strict lecture protection TTL.
-    """
-    result = evaluate_and_dispatch_repeat_slots(
-        db=db,
-        simulated_time_str=simulated_time,
-        simulated_date_str=simulated_date,
-    )
-    return {
-        "status": "success",
-        "result": result,
-    }
-
-
-@router.post(
     "/repeat-schedules/{announcement_id}",
     response_model=RepeatScheduleResponse,
     summary="Set or Update Repeat Schedule (PDF Spec)",
@@ -218,31 +191,3 @@ def delete_repeat_schedule_by_id(
             detail=f"No repeat schedule found for Announcement #{announcement_id}.",
         )
     return {"status": "success", "message": f"Repeat schedule for Announcement #{announcement_id} removed."}
-
-
-@router.post(
-    "/repeat-schedule/trigger-check",
-    summary="Trigger Slot Evaluation Cycle (Daemon / Testing)",
-    status_code=status.HTTP_200_OK,
-)
-def trigger_slot_check(
-    simulated_time: Optional[str] = Query(None, description="Simulate specific time in HH:MM format (e.g. 11:05, 13:20, 18:45)"),
-    simulated_date: Optional[str] = Query(None, description="Simulate specific date in YYYY-MM-DD format"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Executes a repeat slot check cycle. Can be invoked automatically by background
-    timers or manually by administrators/tests with simulated timestamps.
-    """
-    result = evaluate_and_dispatch_repeat_slots(
-        db=db,
-        simulated_time_str=simulated_time,
-        simulated_date_str=simulated_date,
-    )
-    return {
-        "status": "success",
-        "result": result,
-    }
-
-

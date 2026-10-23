@@ -183,14 +183,11 @@ class CopilotClient {
   }
 
   Future<bool> _handleSpeakerControl(Map<String, dynamic> params) async {
-    final action = params['action'] as String? ?? 'advance';
+    final action = params['action'] as String?;
     final nodeId = params['node_id'];
-
-    if (nodeId is int) {
-      await EchosphereApiService().controlSpeakerNode(nodeId, command: action.toUpperCase());
-    } else {
-      await EchosphereApiService().advanceSpeakerQueue();
-    }
+    // The queue moves by itself: only commands for a named speaker are allowed (no manual advance)
+    if (nodeId is! int || action == null) return false;
+    await EchosphereApiService().controlSpeakerNode(nodeId, command: action.toUpperCase());
 
     Get.snackbar(
       'Speaker Hardware',

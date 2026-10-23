@@ -1086,34 +1086,6 @@ class SpeakerQueueController extends GetxController {
     }
   }
 
-  /// Skips the current notice, removes it, and advances to the next
-  Future<void> skipCurrent() async {
-    if (queueItems.isEmpty) return;
-    if (!Get.testMode) {
-      if (activeIndex.value >= 0 && activeIndex.value < queueItems.length &&
-          await _sendLiveQueueAction(queueItems[activeIndex.value], 'skip')) {
-        snackBar('Skipped to the next notice.');
-      }
-      return;
-    }
-    _playbackTimer?.cancel();
-    await _onNoticePlaybackCompleted();
-  }
-
-  /// Manually triggers the next scheduled repeat broadcast round immediately
-  Future<void> triggerRepeatNow(int queueId) async {
-    try {
-      isLoading.value = true;
-      await _apiService.triggerQueueRepeatNow(queueId);
-      snackBar('Next repeat broadcast round initiated!');
-      await refreshQueue(silent: false);
-    } catch (e) {
-      errorSnackBar('Failed to trigger repeat round: ${e.toString().replaceAll("Exception: ", "")}');
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
   /// Stops current playback
   Future<void> stopCurrent() async {
     if (queueItems.isEmpty) return;
@@ -1533,17 +1505,6 @@ class SpeakerQueueController extends GetxController {
       snackBar('Volume for $nodeName set to $volume%');
     } catch (e) {
       snackBar('Volume update: ${e.toString()}');
-    }
-  }
-
-  /// Explicitly advances the hardware queue to the next announcement
-  Future<void> advanceHardwareQueue() async {
-    try {
-      await _apiService.advanceSpeakerQueue();
-      snackBar('Queue advanced to next announcement');
-      await refreshQueue();
-    } catch (e) {
-      snackBar('Advance queue: ${e.toString()}');
     }
   }
 

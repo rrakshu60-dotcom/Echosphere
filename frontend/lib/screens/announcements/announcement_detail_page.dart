@@ -202,21 +202,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     }
   }
 
-  Future<void> _triggerRepeatSlotCheck() async {
-    try {
-      final res = await EchosphereApiService().evaluateAndDispatchRepeatSchedules();
-      final resultInfo = res['result'];
-      final dispatched = resultInfo is Map ? (resultInfo['dispatched_count'] ?? 0) : 0;
-      final expired = resultInfo is Map ? (resultInfo['expired_ttl_count'] ?? 0) : 0;
-      final active = resultInfo is Map ? (resultInfo['active_slots'] as List? ?? []) : [];
-      final activeStr = active.isNotEmpty ? active.join(', ') : 'Outside Acoustic Windows';
-      snackBar('Slot check evaluated! Active: $activeStr \u2022 Dispatched: $dispatched \u2022 Expired (TTL): $expired');
-      _fetchRepeatSchedule();
-    } catch (e) {
-      errorSnackBar('Slot check failed: $e');
-    }
-  }
-
   void _showConfigureRepeatScheduleDialog() {
     RepeatScheduleDialog.show(
       context,
@@ -1820,16 +1805,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                     onPressed: () => _showConfigureRepeatScheduleDialog(),
                     icon: const Icon(Icons.edit_calendar_rounded, size: 13),
                     label: const Text('Edit Schedule', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _triggerRepeatSlotCheck(),
-                    icon: const Icon(Icons.play_circle_outline_rounded, size: 13),
-                    label: const Text('Test Slot Check', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),

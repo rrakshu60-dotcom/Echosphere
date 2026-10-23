@@ -40,7 +40,6 @@ def _is_future_time(t: Optional[datetime], ref: datetime) -> bool:
     return t_n is not None and r_n is not None and t_n > r_n
 
 
-import paho.mqtt.client as mqtt
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -63,8 +62,6 @@ from app.services.tts_service import (
 
 logger = logging.getLogger("echosphere.hardware")
 
-MQTT_BROKER_HOST = os.getenv("MQTT_HOST", "localhost")
-MQTT_BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 # Thread-safe in-memory queue for REST polling speaker nodes (e.g. Wokwi / ESP32)
 _PENDING_COMMANDS: Dict[str, List[dict]] = {}
@@ -509,45 +506,6 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
 
 
 
-def publish_mqtt_command(topic: str, payload: dict) -> bool:
-    """
-    Publishes an MQTT control message to speaker nodes.
-    Gracefully handles broker offline mode by logging locally with zero latency socket probe (<40ms).
-    """
-    try:
-        # Fast probe to check if MQTT broker is listening before attempting full connection
-        import socket
-        probe_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        probe_sock.settimeout(0.04)
-        probe_res = probe_sock.connect_ex((MQTT_BROKER_HOST, MQTT_BROKER_PORT))
-        probe_sock.close()
-        if probe_res != 0:
-            logger.info(f"MQTT Broker at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} offline. Simulated MQTT dispatch succeeded.")
-            return False
-
-        def _bg_publish():
-            try:
-                try:
-                    from paho.mqtt.enums import CallbackAPIVersion
-                    client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
-                except (ImportError, AttributeError):
-                    client = mqtt.Client(client_id=f"EchoSphere_Server_{utc_now().timestamp()}")
-
-                client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=5)
-                client.publish(topic, json.dumps(payload), qos=1)
-                client.disconnect()
-                logger.info(f"MQTT command sent to [{topic}]: {payload.get('command')}")
-            except Exception as pe:
-                logger.debug(f"Background MQTT publish note: {pe}")
-
-        import threading
-        threading.Thread(target=_bg_publish, daemon=True, name="MQTTPublishWorker").start()
-        return True
-    except Exception as e:
-        logger.warning(f"MQTT dispatch error at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT} - {e}. Simulated MQTT dispatch succeeded.")
-        return False
-
-
 async def broadcast_announcement_to_speaker(
     db: Session,
     announcement_id: int,
@@ -579,7 +537,6 @@ async def broadcast_announcement_to_speaker(
             "volume": 100,
             "timestamp": utc_now().isoformat(),
         }
-        publish_success = publish_mqtt_command(topic, payload)
         queue_command_for_nodes(payload, target_mac=None, db=db)
 
         # Enforce emergency preemption on SpeakerQueue: pause all non-emergency active items!
@@ -624,7 +581,6 @@ async def broadcast_announcement_to_speaker(
             "topic": topic,
             "audio_url": payload["audio_url"],
             "queue_position": 1,
-            "mqtt_dispatched": publish_success,
         }
 
 
@@ -747,7 +703,6 @@ async def broadcast_announcement_to_speaker(
         "timestamp": utc_now().isoformat(),
     }
 
-    publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=None, db=db)
 
     return {
@@ -756,7 +711,6 @@ async def broadcast_announcement_to_speaker(
         "topic": topic,
         "audio_url": audio_full_url,
         "queue_position": queue_pos,
-        "mqtt_dispatched": publish_success,
     }
 
 
@@ -778,7 +732,6 @@ def send_node_control_command(
         setattr(node, "volume", max(0, min(100, volume)))
         db.commit()
 
-    topic = f"echosphere/node/{node.mac_address}/command"
     payload = {
         "command": command,
         "node_id": int(getattr(node, "id", 0) or 0),
@@ -806,7 +759,6 @@ def send_node_control_command(
             payload["duration_seconds"] = dur_secs
             payload["audio_url"] = f"/api/v1/announcements/{ann.id}/audio/stream?audio_format=wav"
 
-    publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=str(node.mac_address) if getattr(node, "mac_address", None) else None, db=db)
 
     return {
@@ -814,7 +766,6 @@ def send_node_control_command(
         "node_id": int(getattr(node, "id", 0) or 0),
         "mac_address": str(getattr(node, "mac_address", "") or ""),
         "command": command,
-        "mqtt_dispatched": publish_success,
     }
 
 
@@ -994,7 +945,6 @@ def enqueue_and_broadcast_announcement(
                     "queue_position": int(getattr(existing_item, "queue_position", 1) or 1),
                     "queue_status": "Completed",
                     "is_playing": False,
-                    "mqtt_dispatched": False,
                 }
 
         if speaker_node_id:
@@ -1071,7 +1021,6 @@ def enqueue_and_broadcast_announcement(
         "timestamp": utc_now().isoformat(),
     }
 
-    publish_success = False
     if should_play:
         clean_v = (speaker_voice or "female").lower()
         tag = f"american_{clean_v}"
@@ -1100,7 +1049,6 @@ def enqueue_and_broadcast_announcement(
                 logger.warning(f"Failed to launch auto-play audio pre-render: {bg_err}")
 
         queue_command_for_nodes(payload, target_mac=target_mac, db=db)  # speaker first
-        publish_success = publish_mqtt_command(topic, payload)
         normalize_speaker_queue_positions(db)
         logger.info(f"📢 [AUTO-PLAY] Announcement #{announcement_id} ('{title}') -> Immediately playing on {topic} (Node: {target_mac or 'ALL'})")
     else:
@@ -1130,7 +1078,6 @@ def enqueue_and_broadcast_announcement(
         "queue_position": queue_pos,
         "queue_status": current_status,
         "is_playing": should_play,
-        "mqtt_dispatched": publish_success,
     }
 
 
@@ -1296,11 +1243,6 @@ def dispatch_queue_action_to_speakers(
             "timestamp": utc_now().isoformat(),
         }
 
-    if target_mac:
-        topic = f"echosphere/node/{target_mac}/command"
-    else:
-        topic = f"echosphere/dept/{dept_code}/speakers/command"
-    publish_success = publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, target_mac=target_mac, db=db)
 
     logger.info(f"🔊 [QUEUE ACTION DISPATCH] Action: '{action}' for Queue Item #{queue_item.id} -> Dispatched to nodes.")
@@ -1309,7 +1251,6 @@ def dispatch_queue_action_to_speakers(
         "action": action,
         "command": payload.get("command"),
         "queue_id": queue_item.id,
-        "mqtt_dispatched": publish_success,
     }
 
 

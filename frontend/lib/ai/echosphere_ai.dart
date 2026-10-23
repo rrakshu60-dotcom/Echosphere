@@ -4,11 +4,9 @@ import 'package:echosphere/controllers/echosphere_ai_controller.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/services/copilot_client.dart';
-import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
-import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/constants/themes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -135,8 +133,6 @@ class _EchosphereAiState extends State<EchosphereAi> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final user = authController.currentUser.value;
-    final isAdminRole = user != null && (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal');
 
     return Column(
       children: [
@@ -175,12 +171,6 @@ class _EchosphereAiState extends State<EchosphereAi> {
                   ],
                 ),
               ),
-              if (isAdminRole)
-                IconButton(
-                  icon: Icon(Icons.memory_rounded, size: 20, color: theme.colorScheme.primary),
-                  tooltip: 'AI Engine Diagnostics & Retraining',
-                  onPressed: () => _showAiDiagnosticsDialog(context),
-                ),
             ],
           ),
         ),
@@ -746,201 +736,6 @@ class _EchosphereAiState extends State<EchosphereAi> {
     );
   }
 
-  void _showAiDiagnosticsDialog(BuildContext context) {
-    bool isTraining = false;
-    Map<String, dynamic>? aiStatus;
-    Map<String, dynamic>? trainResult;
-    bool isLoading = true;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) {
-          final theme = Theme.of(context);
-          if (isLoading) {
-            EchosphereApiService().getAiStatus().then((val) {
-              if (context.mounted) {
-                setDlgState(() {
-                  aiStatus = val;
-                  isLoading = false;
-                });
-              }
-            }).catchError((e) {
-              if (context.mounted) {
-                setDlgState(() {
-                  isLoading = false;
-                  aiStatus = {
-                    'engine': 'EchoSphere Local ML Engine',
-                    'gemini_model': 'gemini-2.5-flash',
-                    'is_gemini_available': false,
-                    'local_ml_available': true,
-                    'kb_indexed_documents': 48,
-                  };
-                });
-              }
-            });
-          }
-
-          return AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.psychology_rounded, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'AI Diagnostics & Model Health',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: 460,
-              child: isLoading
-                  ? const SizedBox(
-                      height: 180,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.check_circle_outline, color: theme.colorScheme.primary, size: 16),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        'Architecture: ${aiStatus?["engine"] ?? "Tri-Model AI"}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Builder(
-                                  builder: (context) {
-                                    final routerMetrics = aiStatus?["router_metrics"] as Map<String, dynamic>?;
-                                    final providers = routerMetrics?["active_providers"] as Map<String, dynamic>?;
-                                    final gemini = providers?["gemini"] as Map<String, dynamic>?;
-                                    final cf = providers?["cloudflare"] as Map<String, dynamic>?;
-                                    final campusModel = providers?["fine_tuned_gemma"] as Map<String, dynamic>?;
-
-                                    final geminiLatency = (gemini?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 350.0;
-                                    final cfLatency = (cf?["stats"]?["latency_ema_ms"] as num?)?.toDouble() ?? 290.0;
-                                    final racing = routerMetrics?["speculative_racing_enabled"] == true;
-
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '\u2022 High-Speed Cloud Inference: ${cf?["configured"] == true ? "${cfLatency.toStringAsFixed(0)}ms EMA (Active)" : "Unset"}\n'
-                                          '\u2022 Primary Intelligence Tier: ${gemini?["configured"] == true ? "${geminiLatency.toStringAsFixed(0)}ms EMA (Active)" : "Unset"}\n'
-                                          '\u2022 Campus Specialized Model: ${campusModel?["configured"] == true ? "Operational" : "Ready"}\n'
-                                          '\u2022 Speculative Racing: ${racing ? "ENABLED (Concurrent Low-Latency)" : "Adaptive Load-Balanced"}\n'
-                                          '\u2022 Local ML Fallback: Operational (${aiStatus?["kb_indexed_documents"] ?? 0} vectors indexed)',
-                                          style: const TextStyle(fontSize: 11, height: 1.5),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          if (trainResult != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.25)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.verified, color: theme.colorScheme.primary, size: 16),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Campus ML Retraining Complete!',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '\u2022 Intent Accuracy: ${((trainResult!["intent_accuracy"] ?? 0.95) * 100).toStringAsFixed(1)}%\n'
-                                    '\u2022 Emergency Classifier: ${((trainResult!["emergency_f1"] ?? 0.98) * 100).toStringAsFixed(1)}% F1-score\n'
-                                    '\u2022 Training Samples: ${trainResult!["training_samples"] ?? 120}',
-                                    style: const TextStyle(fontSize: 11, height: 1.4),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-                          const Text(
-                            'Administrative Model Calibration:',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Retrain local TF-IDF, Logistic Regression Intent, and Emergency keyword vectorizers against latest institutional circulars.',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-              ElevatedButton.icon(
-                icon: isTraining
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh_rounded, size: 16),
-                label: Text(isTraining ? 'Training...' : 'Retrain Campus ML'),
-                onPressed: isTraining
-                    ? null
-                    : () async {
-                        setDlgState(() => isTraining = true);
-                        try {
-                          final res = await EchosphereApiService().trainAiModels();
-                          setDlgState(() {
-                            trainResult = res;
-                            isTraining = false;
-                          });
-                          snackBar('Campus ML Models successfully calibrated and retrained!');
-                        } catch (e) {
-                          setDlgState(() => isTraining = false);
-                          errorSnackBar('Retraining failed: $e');
-                        }
-                      },
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 }
 
 // Compatibility Alias

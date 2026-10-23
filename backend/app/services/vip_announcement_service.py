@@ -18,7 +18,6 @@ from app.services.ai_service import call_modern_gemini
 from app.services.conflict_service import EXAM_KEYWORDS
 from app.services.hardware_speaker_service import (
     enqueue_and_broadcast_announcement,
-    publish_mqtt_command,
     queue_command_for_nodes,
 )
 from app.services.tts_service import generate_announcement_audio_sync
@@ -394,7 +393,6 @@ def dispatch_vip_arrival_fanfare(
         "timestamp": now.isoformat(),
     }
 
-    publish_mqtt_command(topic, payload)
     queue_command_for_nodes(payload, db=db)
 
     logger.info(f"🎺 [VIP ARRIVAL FANFARE DISPATCHED] {protocol.guest_name} -> Broadcast on {topic}")

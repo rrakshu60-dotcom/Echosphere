@@ -317,34 +317,22 @@ def test_admin_can_end_another_users_session_and_it_is_audited():
     assert body["session_id"] not in [x["id"] for x in active["items"]]
 
 
-# ---------------------------------------------------------------- live microphone
+# ---------------------------------------------------------------- live microphone (removed 2026-10-23)
 
 
-def _mic_socket_refused(params: str) -> bool:
+def test_live_microphone_endpoints_are_gone():
+    """No speaker ever listened to the live microphone, so the feature was removed (owner, 2026-10-23)."""
     from starlette.websockets import WebSocketDisconnect
 
-    try:
-        with client.websocket_connect(f"/api/v1/ws/hardware/mic-stream?zone=College-Wide{params}") as ws:
-            ws.receive_json()
-    except WebSocketDisconnect as closed:
-        return closed.code == 1008
-    return False
-
-
-def test_live_microphone_refuses_callers_without_a_session():
-    assert _mic_socket_refused("")
-    assert _mic_socket_refused("&token=" + create_access_token({"sub": "ESDev01", "role": "Dev Admin"}))
-
-
-def test_live_microphone_refuses_students():
-    student = bearer("1db23ci079")["Authorization"].split()[1]
-    assert _mic_socket_refused("&token=" + student)
-
-
-def test_live_microphone_refuses_an_ended_session():
-    body = _login().json()
-    client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {body['access_token']}"})
-    assert _mic_socket_refused("&token=" + body["access_token"])
+    for path in ("/api/v1/ws/hardware/mic-status", "/api/v1/ws/hardware/mic-stream", "/api/v1/ws/hardware/mic-listen"):
+        assert client.get(path, headers=bearer("ESDev01")).status_code == 404, path
+    for path in ("/api/v1/ws/hardware/mic-stream", "/api/v1/ws/hardware/mic-listen"):
+        try:
+            with client.websocket_connect(path) as ws:
+                ws.receive_json()
+            raise AssertionError(f"{path} still accepts connections")
+        except WebSocketDisconnect:
+            pass
 
 
 def test_without_cloudflare_forwarded_headers_are_not_trusted():
