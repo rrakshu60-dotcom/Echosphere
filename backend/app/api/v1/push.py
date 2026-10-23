@@ -1,5 +1,4 @@
-"""Push notification device registration: the server subscribes a signed-in device to its account's topics
-(browsers can't subscribe themselves to topics)."""
+"""Push notification device registration: the server stores a signed-in device's token so notices of its audience reach it."""
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,9 +23,6 @@ class DeviceRegistration(BaseModel):
 def register_device(body: DeviceRegistration, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if push.get_firebase_admin_app() is None:
         raise HTTPException(status_code=503, detail="Push notifications are not set up on the server.")
-    topics = push.device_topics(current_user)
-    drop = [t for t in push.all_restricted_topics(db) if t not in topics]
-    subscribed = push.subscribe_device(body.token, topics, drop=drop)
-    # Visible in the service log (no token or account details): how many topics this device joined
-    print(f"[PUSH] {body.platform or 'device'} registered: {len(subscribed)}/{len(topics)} topics", flush=True)
-    return {"subscribed": subscribed}
+    push.register_device(db, current_user, body.token, body.platform)
+    print(f"[PUSH] {body.platform or 'device'} registered", flush=True)
+    return {"registered": True}

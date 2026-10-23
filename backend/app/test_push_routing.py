@@ -1,5 +1,5 @@
-"""Push: a signed-in device is subscribed (by the server, from the account) to its topics, and a notice is pushed
-to the topic of its audience (it used the creator's department, so 'Entire College' notices went to one dept)."""
+"""Push: signed-in devices register their token with the server, and a notice is sent straight to the devices of
+its audience (Firebase topic subscription is refused for this project, so topics are not used)."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,93 +7,81 @@ import app.services.firebase_push_service as push
 from app.auth_test_helpers import bearer
 from app.db.database import SessionLocal
 from app.main import app
-from app.models.user import User
+from app.models.push_device import PushDevice
 
 client = TestClient(app)
 ADMIN = bearer("ESDev01")
+STUDENT_TOKEN = "student-token-abcdefghijklmnopqrstuvwxyz"
+TEACHER_TOKEN = "teacher-token-abcdefghijklmnopqrstuvwxyz"
 
 
 @pytest.fixture
 def fake_fcm(monkeypatch):
-    calls = {"subscribed": [], "sent": []}
+    """Records which tokens each push went to; tokens containing 'dead' are reported as no longer registered."""
+    sent = []
     monkeypatch.setattr(push, "get_firebase_admin_app", lambda: object())
-
-    def subscribe(tokens, topic, app=None):
-        calls["subscribed"].append((tuple(tokens), topic))
-        return type("R", (), {"success_count": len(tokens), "failure_count": 0, "errors": []})()
-
-    def send(message, dry_run=False, app=None):
-        calls["sent"].append(message.topic)
-        return "projects/test/messages/1"
-
     from firebase_admin import messaging
-    monkeypatch.setattr(messaging, "subscribe_to_topic", subscribe)
-    monkeypatch.setattr(messaging, "send", send)
-    return calls
 
+    def send_each_for_multicast(message, dry_run=False, app=None):
+        sent.append(sorted(message.tokens))
+        responses = []
+        for t in message.tokens:
+            ok = "dead" not in t
+            exc = None if ok else messaging.UnregisteredError("gone")
+            responses.append(type("R", (), {"success": ok, "exception": exc})())
+        return type("B", (), {"responses": responses, "success_count": sum(r.success for r in responses),
+                              "failure_count": sum(not r.success for r in responses)})()
 
-def test_registering_a_device_subscribes_it_to_the_accounts_topics(fake_fcm):
-    assert client.post("/api/v1/push/register", json={"token": "tok-1-abcdefghijklmnopqrstuvwxyz"}).status_code == 401
-    res = client.post("/api/v1/push/register", headers=bearer("1db23ci079"), json={"token": "tok-1-abcdefghijklmnopqrstuvwxyz", "platform": "web"})
-    assert res.status_code == 200, res.text
+    monkeypatch.setattr(messaging, "send_each_for_multicast", send_each_for_multicast)
     with SessionLocal() as db:
-        student = db.query(User).filter(User.username == "1db23ci079").one()
-        dept = student.department.code.lower() if student.department else None
-    topics = {t for _tok, t in fake_fcm["subscribed"]}
-    assert {"all_campus", "emergency_broadcasts"} <= topics
-    if dept:
-        assert f"dept_{dept}" in topics
-    assert all(tok == ("tok-1-abcdefghijklmnopqrstuvwxyz",) for tok, _t in fake_fcm["subscribed"])
+        db.query(PushDevice).delete()
+        db.commit()
+    return sent
 
 
-def _publish(audience, **fields):
+def _register(user, token):
+    res = client.post("/api/v1/push/register", headers=bearer(user), json={"token": token, "platform": "web"})
+    assert res.status_code == 200, res.text
+
+
+def _publish(audience):
     res = client.post("/api/v1/announcements", headers=ADMIN, json={
         "title": "Push routing", "description": "x", "category_id": 1, "target_audience": audience,
-        "deliver_push": True, "deliver_in_app": False, **fields})
+        "deliver_push": True, "deliver_in_app": False})
     assert res.status_code in (200, 201), res.text
 
 
-def test_an_entire_college_notice_is_pushed_to_everyone(fake_fcm):
-    _publish("Entire College")
-    assert fake_fcm["sent"] == ["all_campus"], fake_fcm["sent"]
-
-
-def test_a_department_notice_is_pushed_to_that_department(fake_fcm):
-    _publish("CSE Department")
-    assert fake_fcm["sent"] == ["dept_cse"], fake_fcm["sent"]
-
-
-
-def test_restricted_audiences_get_their_own_topic_never_the_whole_campus(fake_fcm):
-    """A faculty or year-group notice must not reach every device (with its full text)."""
-    for audience, topic in (("Faculty Members", "faculty"), ("3rd Year Students", "year_3"), ("1st Year Students", "year_1")):
-        fake_fcm["sent"].clear()
-        _publish(audience)
-        assert fake_fcm["sent"] == [topic], (audience, fake_fcm["sent"])
-
-
-def test_an_audience_that_cannot_be_mapped_sends_no_push(fake_fcm):
-    _publish("Alumni Association")
-    assert fake_fcm["sent"] == [], fake_fcm["sent"]
-
-
-def test_device_topics_follow_role_and_year(fake_fcm, monkeypatch):
-    unsubscribed = []
-    from firebase_admin import messaging
-    monkeypatch.setattr(messaging, "unsubscribe_from_topic", lambda tokens, topic, app=None: unsubscribed.append(topic))
-    token = "tok-2-abcdefghijklmnopqrstuvwxyz"
-    client.post("/api/v1/push/register", headers=bearer("1db23ci079"), json={"token": token})
+def test_registering_needs_a_login_and_stores_the_device(fake_fcm):
+    assert client.post("/api/v1/push/register", json={"token": STUDENT_TOKEN}).status_code == 401
+    _register("1db23ci079", STUDENT_TOKEN)
+    _register("1db23ci079", STUDENT_TOKEN)  # registering again doesn't duplicate it
     with SessionLocal() as db:
-        student = db.query(User).filter(User.username == "1db23ci079").one()
-        year = (student.semester + 1) // 2 if student.semester else None
-    topics = {t for _tok, t in fake_fcm["subscribed"]}
-    assert "faculty" not in topics and "students" in topics
-    if year:
-        assert f"year_{year}" in topics
-    assert "faculty" in unsubscribed, "topics that no longer apply are dropped on registration"
-    fake_fcm["subscribed"].clear()
-    client.post("/api/v1/push/register", headers=bearer("dbitaimlt022022"), json={"token": token})  # a teacher
-    assert "faculty" in {t for _tok, t in fake_fcm["subscribed"]}
+        assert db.query(PushDevice).filter(PushDevice.token == STUDENT_TOKEN).count() == 1
+
+
+def test_a_device_moves_to_whoever_signs_in_on_it(fake_fcm):
+    _register("1db23ci079", STUDENT_TOKEN)
+    _register("dbitaimlt022022", STUDENT_TOKEN)
+    _publish("Faculty Members")
+    assert fake_fcm == [[STUDENT_TOKEN]]  # now the teacher's device
+
+
+def test_each_audience_reaches_only_its_devices(fake_fcm):
+    _register("1db23ci079", STUDENT_TOKEN)
+    _register("dbitaimlt022022", TEACHER_TOKEN)
+    for audience, expected in (("Entire College", [STUDENT_TOKEN, TEACHER_TOKEN]),
+                               ("Faculty Members", [TEACHER_TOKEN]),
+                               ("Alumni Association", None)):
+        fake_fcm.clear()
+        _publish(audience)
+        assert fake_fcm == ([sorted(expected)] if expected else []), (audience, fake_fcm)
+
+
+def test_a_dead_device_token_is_forgotten(fake_fcm):
+    _register("1db23ci079", "dead-token-abcdefghijklmnopqrstuvwxyz")
+    _publish("Entire College")
+    with SessionLocal() as db:
+        assert db.query(PushDevice).count() == 0
 
 
 def test_an_unknown_platform_value_is_refused(fake_fcm):

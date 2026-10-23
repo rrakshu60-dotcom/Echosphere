@@ -72,8 +72,8 @@ class FcmPushService {
         debugPrint('ℹ️ [FCM] Token retrieval note: $e');
       }
 
-      // 5. Topics are subscribed by the server after sign-in (syncUserSubscriptions): browsers can't subscribe
-      //    themselves, and the server decides the topics from the account.
+      // 5. The token is registered with the server after sign-in (syncUserSubscriptions); the server sends each
+      //    notice straight to the devices of its audience.
 
       // 6. Foreground message listener (Shows in-app banner alert)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -102,8 +102,7 @@ class FcmPushService {
     }
   }
 
-  /// After sign-in: registers this device's push token with the server, which subscribes it to the account's
-  /// topics (whole campus, emergencies, own department).
+  /// After sign-in: registers this device's push token with the server, so notices for this account reach it.
   Future<void> syncUserSubscriptions({String? departmentCode, String? role}) async {
     if (!isSupported || _messaging == null) return;
     try {
