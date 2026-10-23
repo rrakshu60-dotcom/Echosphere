@@ -37,6 +37,33 @@ String signInResultLabel(Map<String, dynamic> row) {
   return reasons[row['reason']] ?? 'Failed';
 }
 
+/// Plain words for an activity-trail action ("DELETE_ANNOUNCEMENT" -> "Notice deleted").
+String activityActionLabel(String? action) {
+  const labels = {
+    'LOGIN': 'Signed in',
+    'CREATE_ANNOUNCEMENT': 'Notice created',
+    'UPDATE_ANNOUNCEMENT': 'Notice edited',
+    'DELETE_ANNOUNCEMENT': 'Notice deleted',
+    'APPROVE_ANNOUNCEMENT': 'Notice approved',
+    'REJECT_ANNOUNCEMENT': 'Notice rejected',
+    'END_SESSION': 'Session ended',
+    'FORGOT_PASSWORD': 'Password reset requested',
+  };
+  if (action == null) return '-';
+  final known = labels[action];
+  if (known != null) return known;
+  final words = action.toLowerCase().replaceAll('_', ' ');
+  return words.isEmpty ? '-' : words[0].toUpperCase() + words.substring(1);
+}
+
+/// What an activity entry is about ("ANNOUNCEMENT" #7 -> "Notice #7").
+String activitySubject(Map<String, dynamic> r) {
+  const names = {'ANNOUNCEMENT': 'Notice', 'USER': 'User', 'SESSION': 'Session'};
+  final entity = '${r['entity'] ?? ''}';
+  final name = names[entity] ?? (entity.isEmpty ? 'Item' : entity[0] + entity.substring(1).toLowerCase());
+  return '$name #${r['entity_id'] ?? '-'}';
+}
+
 String accessEventLabel(String? event) =>
     const {'launch': 'App opened', 'resume': 'Returned to app', 'refresh': 'Session renewed'}[event] ?? (event ?? '');
 
@@ -150,7 +177,7 @@ String auditRowsToText(AuditTab tab, List<Map<String, dynamic>> rows) {
         b.writeln('  Started ${auditTime(r['started_at'])}  last seen ${auditTime(r['last_seen_at'])}  '
             '${r['ended_at'] != null ? 'ended ${auditTime(r['ended_at'])} (${_v(r['end_reason'])})' : 'expires ${auditTime(r['expires_at'])}'}');
       case AuditTab.activity:
-        b.writeln('${auditTime(r['created_at'])}  ${_v(r['action'])}  ${_v(r['entity'])} #${_v(r['entity_id'])}  '
+        b.writeln('${auditTime(r['created_at'])}  ${activityActionLabel(r['action'] as String?)}  ${activitySubject(r)}  '
             'by ${r['user_name'] ?? 'user #${_v(r['user_id'])}'}');
         b.writeln('  ${_v(r['description'])}');
     }

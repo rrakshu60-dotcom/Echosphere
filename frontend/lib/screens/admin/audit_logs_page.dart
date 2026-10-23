@@ -707,7 +707,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
         children: [
           Row(
             children: [
-              Flexible(child: _badge(theme, '${r['action'] ?? '-'}'.replaceAll('_', ' '))),
+              Flexible(child: _badge(theme, activityActionLabel(r['action'] as String?))),
               const SizedBox(width: 8),
               Expanded(child: _line(theme, auditTime(r['created_at']))),
             ],
@@ -716,7 +716,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
           Text(r['user_name'] ?? 'User #${r['user_id'] ?? '-'}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           Text(r['description'] ?? '-', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-          _line(theme, '${r['entity'] ?? '-'} #${r['entity_id'] ?? '-'}'),
+          _line(theme, activitySubject(r)),
         ],
       ),
     );
