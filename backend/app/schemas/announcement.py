@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -9,6 +9,14 @@ from app.core.enums.announcement import (
     EmergencyLevel,
 )
 from app.schemas.repeat_schedule import RepeatScheduleResponse
+
+
+class NoticeAttachment(BaseModel):
+    """A file attached to a notice; the file itself is in cloud storage at `url`."""
+    name: str
+    url: str
+    size: Optional[int] = None
+    mime: Optional[str] = None
 
 
 class AnnouncementCreate(BaseModel):
@@ -26,6 +34,7 @@ class AnnouncementCreate(BaseModel):
     speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = "female"
     repeat_schedule: Optional[Any] = None
+    attachments: Optional[List[NoticeAttachment]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -79,6 +88,7 @@ class AnnouncementUpdate(BaseModel):
     target_audience: Optional[str] = None
     speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = None
+    attachments: Optional[List[NoticeAttachment]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +158,7 @@ class AnnouncementResponse(BaseModel):
     deliver_push: bool = True
     speaker_voice: Optional[str] = "female"
     repeat_schedule: Optional[RepeatScheduleResponse] = None
+    attachments: Optional[List[NoticeAttachment]] = None
 
 
 class AnnouncementApprovalRequest(BaseModel):

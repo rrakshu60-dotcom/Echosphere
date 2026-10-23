@@ -58,7 +58,7 @@ void main() {
       department: 'College-Wide',
       category: 'Exams',
       createdAt: DateTime.now(),
-      attachments: ['Exam_TimeTable_Final.pdf', 'Lab_Batches_AIML.xlsx'],
+      attachments: const [NoticeAttachment(name: 'Exam_TimeTable_Final.pdf'), NoticeAttachment(name: 'Lab_Batches_AIML.xlsx')],
     );
 
     await tester.pumpWidget(createTestApp(AnnouncementDetailPage(announcement: sampleNotice)));
@@ -101,7 +101,7 @@ void main() {
         department: 'AIML',
         category: 'Events',
         createdAt: DateTime.now().subtract(const Duration(days: 30)),
-        attachments: ['Symposium_Guidelines.pdf'],
+        attachments: const [NoticeAttachment(name: 'Symposium_Guidelines.pdf')],
       ),
     ]);
 

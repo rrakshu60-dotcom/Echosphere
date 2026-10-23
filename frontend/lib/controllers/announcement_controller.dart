@@ -11,6 +11,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echosphere/utils/campus_time.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
+/// A file attached to a notice. The file itself is in cloud storage at [url].
+class NoticeAttachment {
+  final String name;
+  final String url;
+  final int? size;
+  final String? mime;
+
+  const NoticeAttachment({required this.name, this.url = '', this.size, this.mime});
+
+  /// Old notices stored only the file name (the file was never uploaded): they have no [url].
+  factory NoticeAttachment.fromJson(dynamic json) {
+    if (json is Map) {
+      return NoticeAttachment(
+        name: '${json['name'] ?? 'Attachment'}',
+        url: '${json['url'] ?? ''}',
+        size: (json['size'] as num?)?.toInt(),
+        mime: json['mime'] as String?,
+      );
+    }
+    return NoticeAttachment(name: '$json');
+  }
+
+  bool get isUploaded => url.startsWith('http');
+
+  Map<String, dynamic> toJson() => {'name': name, 'url': url, if (size != null) 'size': size, if (mime != null) 'mime': mime};
+}
+
 class AnnouncementModel {
   final int id;
   final String title;
@@ -29,7 +56,7 @@ class AnnouncementModel {
   final String? remarks;
   final String? approverName;
   final DateTime? approvedAt;
-  final List<String> attachments;
+  final List<NoticeAttachment> attachments;
   final bool deliverSpeaker;
   final bool deliverInApp;
   final bool deliverPush;
@@ -111,7 +138,7 @@ class AnnouncementModel {
     String? remarks,
     String? approverName,
     DateTime? approvedAt,
-    List<String>? attachments,
+    List<NoticeAttachment>? attachments,
     bool? deliverSpeaker,
     bool? deliverInApp,
     bool? deliverPush,
@@ -227,8 +254,8 @@ class AnnouncementModel {
       approvedAt: json['approved_at'] != null
           ? parseServerTime(json['approved_at'])
           : null,
-      attachments: json['attachments'] != null
-          ? List<String>.from(json['attachments'])
+      attachments: json['attachments'] is List
+          ? (json['attachments'] as List).map(NoticeAttachment.fromJson).toList()
           : const [],
       deliverSpeaker: delivSpk,
       deliverInApp: delivInApp,
@@ -265,7 +292,7 @@ class AnnouncementModel {
       'remarks': remarks,
       'approver_name': approverName,
       'approved_at': approvedAt?.toIso8601String(),
-      'attachments': attachments,
+      'attachments': attachments.map((a) => a.toJson()).toList(),
       'deliver_speaker': deliverSpeaker,
       'deliver_in_app': deliverInApp,
       'deliver_push': deliverPush,
@@ -1087,7 +1114,7 @@ class AnnouncementController extends GetxController {
     bool deliverPush = true,
     String speakerVoice = 'female',
     int? speakerNodeId,
-    List<String> attachments = const [],
+    List<NoticeAttachment> attachments = const [],
     Map<String, dynamic>? repeatSchedule,
   }) async {
     isLoading.value = true;
@@ -1205,6 +1232,7 @@ class AnnouncementController extends GetxController {
           targetAudience: targetAudience,
           speakerNodeId: speakerNodeId,
           repeatSchedule: repeatSchedule,
+          attachments: attachments.map((a) => a.toJson()).toList(),
         );
         final rawBackendId = res['id'];
         backendId = rawBackendId is int ? rawBackendId : int.tryParse(rawBackendId?.toString() ?? '');
