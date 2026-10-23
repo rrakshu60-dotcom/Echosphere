@@ -8,6 +8,7 @@
 #include "display_manager.h"
 #include "audio_manager.h"
 #include <WebSocketsClient.h>
+#include <esp_mac.h>
 
 class EchoNetworkManager {
 private:
@@ -147,6 +148,23 @@ public:
   void begin() {
     // Initialize WiFi in STA mode first so radio hardware MAC is valid
     WiFi.mode(WIFI_STA);
+
+    // The original board keeps its fixed backend identity; every other board uses its own hardware MAC,
+    // so two boards never claim to be the same speaker (a second board used to register as the first).
+    {
+      // Read from the chip itself: WiFi.macAddress() is all zeros until the radio is up
+      uint8_t macBytes[6] = {0};
+      esp_read_mac(macBytes, ESP_MAC_WIFI_STA);
+      char macText[18];
+      snprintf(macText, sizeof(macText), "%02X:%02X:%02X:%02X:%02X:%02X",
+               macBytes[0], macBytes[1], macBytes[2], macBytes[3], macBytes[4], macBytes[5]);
+      String hw = String(macText);
+      if (hw != "00:00:00:00:00:00" && !hw.equalsIgnoreCase(ORIGINAL_BOARD_MAC)) {
+        nodeMac = hw;
+        nodeName = String(OTHER_BOARD_NAME);
+        nodeZone = String(OTHER_BOARD_ZONE);
+      }
+    }
 
     // Determine MAC address
     if (nodeMac.length() == 0 || nodeMac.equalsIgnoreCase("00:00:00:00:00:00")) {
