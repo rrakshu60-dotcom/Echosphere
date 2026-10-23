@@ -235,6 +235,17 @@ void main() {
     expect(txt, contains('College Admin (College Admin): Deleted before its first broadcast.'));
   });
 
+  test('partial records show unknown delivery and plays as unknown, not as none', () {
+    final r = _notice(55, 'Old notice', deleted: true)
+      ..['partial'] = true
+      ..['channels'] = <String>[]
+      ..['speaker_play_count'] = 0;
+    final txt = noticeRecordToText(r, const []);
+    expect(txt, contains('Delivery: -'));
+    expect(txt, contains('Speaker plays: -'));
+    expect(txt, isNot(contains('Speaker plays: 0')));
+  });
+
   test('list export writes one readable block per entry', () {
     final txt = auditRowsToText(AuditTab.signIns, [
       {'at': '2026-10-22T08:00:00Z', 'identifier': 'esdev01', 'user_name': 'Dev Admin', 'role': 'Dev Admin',
