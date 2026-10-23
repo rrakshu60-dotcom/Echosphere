@@ -496,6 +496,8 @@ public:
     if (preChimeCallback) {
       preChimeCallback();
     }
+    // Read pushed commands now too, so a pause or emergency sent during the chime takes effect at once
+    if (progressCallback) progressCallback(0.0f);
 
     if (sampleRate < 8000 || sampleRate > 96000) sampleRate = 24000;
     Serial.print(F("✅ [I2S AUDIO] Stream Format: "));
@@ -611,7 +613,8 @@ public:
 #endif
     Serial.println(F("⚡ [I2S AUDIO] Pre-buffering audio into DMA pipeline..."));
     int prefillChunks = 0;
-    while (prefillChunks < 4 && (stream->connected() || stream->available())) {
+    while (prefillChunks < 4 && !streamStopRequested && (stream->connected() || stream->available())) {
+      if (progressCallback) progressCallback(0.0f);
       int n = fetchChunk(chunkBytesTarget);
       if (n > 0) {
         pushChunk(n);
