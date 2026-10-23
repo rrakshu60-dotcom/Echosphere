@@ -253,6 +253,18 @@ class EchosphereApiService {
     }
   }
 
+  /// Plain GET returning the decoded JSON body (used by the Audit & Logs page).
+  Future<dynamic> getJson(String path, {Map<String, dynamic>? query}) async {
+    final response = await _dio.get(path, queryParameters: query);
+    return response.data;
+  }
+
+  /// Plain POST returning the decoded JSON body.
+  Future<dynamic> postJson(String path, {Object? data}) async {
+    final response = await _dio.post(path, data: data);
+    return response.data;
+  }
+
   /// Records an app open ("launch" or "resume") in the admin's App Access log.
   Future<void> reportAppAccess(String event) async {
     await _dio.post('/auth/access', data: {
