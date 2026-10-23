@@ -61,3 +61,36 @@ def test_an_entire_college_notice_is_pushed_to_everyone(fake_fcm):
 def test_a_department_notice_is_pushed_to_that_department(fake_fcm):
     _publish("CSE Department")
     assert fake_fcm["sent"] == ["dept_cse"], fake_fcm["sent"]
+
+
+
+def test_restricted_audiences_get_their_own_topic_never_the_whole_campus(fake_fcm):
+    """A faculty or year-group notice must not reach every device (with its full text)."""
+    for audience, topic in (("Faculty Members", "faculty"), ("3rd Year Students", "year_3"), ("1st Year Students", "year_1")):
+        fake_fcm["sent"].clear()
+        _publish(audience)
+        assert fake_fcm["sent"] == [topic], (audience, fake_fcm["sent"])
+
+
+def test_an_audience_that_cannot_be_mapped_sends_no_push(fake_fcm):
+    _publish("Alumni Association")
+    assert fake_fcm["sent"] == [], fake_fcm["sent"]
+
+
+def test_device_topics_follow_role_and_year(fake_fcm, monkeypatch):
+    unsubscribed = []
+    from firebase_admin import messaging
+    monkeypatch.setattr(messaging, "unsubscribe_from_topic", lambda tokens, topic, app=None: unsubscribed.append(topic))
+    token = "tok-2-abcdefghijklmnopqrstuvwxyz"
+    client.post("/api/v1/push/register", headers=bearer("1db23ci079"), json={"token": token})
+    with SessionLocal() as db:
+        student = db.query(User).filter(User.username == "1db23ci079").one()
+        year = (student.semester + 1) // 2 if student.semester else None
+    topics = {t for _tok, t in fake_fcm["subscribed"]}
+    assert "faculty" not in topics and "students" in topics
+    if year:
+        assert f"year_{year}" in topics
+    assert "faculty" in unsubscribed, "topics that no longer apply are dropped on registration"
+    fake_fcm["subscribed"].clear()
+    client.post("/api/v1/push/register", headers=bearer("dbitaimlt022022"), json={"token": token})  # a teacher
+    assert "faculty" in {t for _tok, t in fake_fcm["subscribed"]}
