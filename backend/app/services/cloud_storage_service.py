@@ -159,6 +159,17 @@ class CloudStorageService:
         logger.info(f"[Storage] Manifest rebuilt from dataset: {added} file(s) restorable.")
 
     @classmethod
+    def list_notice_audio_ids(cls, folder: str = "audio_streams") -> set:
+        """IDs of the notices that have audio in the cloud backup. Empty when the cloud isn't configured."""
+        import re
+
+        if not (cls.is_cloud_enabled() and cls._api and cls._repo_id):
+            return set()
+        files = cls._api.list_repo_files(repo_id=cls._repo_id, repo_type="dataset")
+        pattern = re.compile(rf"^{folder}/announcement_(\d+)(_|\.)")
+        return {int(m.group(1)) for f in files for m in [pattern.match(f)] if m}
+
+    @classmethod
     def delete_announcement_audio(cls, announcement_id: int, folder: str = "audio_streams") -> int:
         """Deletes one notice's audio backups. Returns how many files were removed."""
         return cls.delete_audio_for_notices([announcement_id], folder=folder).get(announcement_id, 0)

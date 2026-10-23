@@ -241,10 +241,11 @@ def _maintenance_daemon():
     """
     At startup and every 6 hours:
     - drop app-access entries older than 90 days (free-tier storage; other logs are kept forever);
-    - remove the audio of deleted notices that still have audio stored (records are written first).
+    - remove the audio of deleted notices that still have audio stored (records are written first);
+    - remove audio that belongs to no notice and no record at all (old database, diagnostic IDs).
     """
     from app.db.database import SessionLocal
-    from app.services.notice_record_service import purge_audio_of_deleted_notices
+    from app.services.notice_record_service import purge_audio_of_deleted_notices, purge_orphaned_audio
     from app.services.session_service import purge_old_access_logs
 
     while True:
@@ -261,6 +262,12 @@ def _maintenance_daemon():
                 print(f"[NOTICE RECORDS] Removed audio of {len(cleaned)} deleted notice(s)")
         except Exception as exc:
             print(f"Deleted-notice audio cleanup note: {exc}")
+        try:
+            orphans = purge_orphaned_audio(SessionLocal)
+            if orphans:
+                print(f"[NOTICE RECORDS] Removed audio of {len(orphans)} ID(s) with no notice and no record: {orphans}")
+        except Exception as exc:
+            print(f"Orphaned audio cleanup note: {exc}")
         time.sleep(6 * 3600)
 
 

@@ -27,12 +27,12 @@ class AuditRepository {
     AuditTab.signIns: '/audit/sign-ins',
     AuditTab.access: '/audit/access',
     AuditTab.sessions: '/audit/sessions',
+    AuditTab.activity: '/audit/activity',
   };
 
   /// [params]: q, filters, from/to, sort, order, page, page_size (as the backend names them).
   Future<AuditPage> list(AuditTab tab, Map<String, dynamic> params) async {
     final api = EchosphereApiService();
-    if (tab == AuditTab.activity) return _activity(params);
     final query = Map<String, dynamic>.from(params)..removeWhere((_, v) => v == null || v == '');
     return AuditPage.fromJson(Map<String, dynamic>.from(await api.getJson(_paths[tab]!, query: query) as Map));
   }
@@ -41,28 +41,4 @@ class AuditRepository {
       Map<String, dynamic>.from(await EchosphereApiService().getJson('/audit/notices/$announcementId') as Map);
 
   Future<void> endSession(int sessionId) => EchosphereApiService().postJson('/audit/sessions/$sessionId/end');
-
-  /// The general activity trail has no server-side paging: search, sort and page it here.
-  Future<AuditPage> _activity(Map<String, dynamic> params) async {
-    final raw = await EchosphereApiService().getJson('/audit-logs/') as List;
-    var rows = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    final q = (params['q'] as String? ?? '').trim().toLowerCase();
-    if (q.isNotEmpty) {
-      rows = rows
-          .where((r) => [r['action'], r['entity'], r['entity_id'], r['user_id'], r['description']]
-              .any((v) => '$v'.toLowerCase().contains(q)))
-          .toList();
-    }
-    rows.sort((a, b) => '${a['created_at']}'.compareTo('${b['created_at']}'));
-    if (params['order'] != 'asc') rows = rows.reversed.toList();
-    final page = (params['page'] as int?) ?? 1;
-    final size = (params['page_size'] as int?) ?? 50;
-    final start = (page - 1) * size;
-    return AuditPage(
-      items: start >= rows.length ? [] : rows.sublist(start, (start + size).clamp(0, rows.length)),
-      total: rows.length,
-      page: page,
-      pageSize: size,
-    );
-  }
 }

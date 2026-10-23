@@ -104,6 +104,14 @@ def pytest_unconfigure(config):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_audio_folder(monkeypatch, tmp_path_factory):
+    """Tests never read or delete the real local audio cache (backend/app/static/audio_streams)."""
+    from app.services import tts_service
+
+    monkeypatch.setattr(tts_service, "STATIC_AUDIO_DIR", str(tmp_path_factory.mktemp("audio_streams")))
+
+
+@pytest.fixture(autouse=True)
 def _no_real_speech_synthesis(monkeypatch):
     """Rule 3: speech synthesis is faked in unit tests. Background speech jobs (started when a notice is
     created) would otherwise write audio files at unpredictable times and make tests depend on timing."""

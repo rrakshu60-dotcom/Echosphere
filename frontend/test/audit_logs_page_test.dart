@@ -79,7 +79,7 @@ class FakeAuditRepository implements AuditRepository {
       case AuditTab.activity:
         return AuditPage(items: [
           {'id': 5, 'created_at': '2026-10-22T07:00:00Z', 'action': 'END_SESSION', 'entity': 'SESSION', 'entity_id': 4,
-           'user_id': 1, 'description': 'Dev Admin signed out session #4.'},
+           'user_id': 1, 'user_name': 'Dev Admin', 'description': 'Signed out session #4.'},
         ], total: 1, page: 1, pageSize: 50);
     }
   }
@@ -213,6 +213,24 @@ void main() {
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(repo.endedSessions, [19]);
+  });
+
+  testWidgets('activity can be filtered by action, sorted, and shows who did it', (tester) async {
+    final repo = await _pump(tester, width: 400, tab: AuditTab.activity);
+    expect(find.textContaining('Dev Admin'), findsWidgets); // the person's name, not just "user #1"
+    await tester.tap(find.text('Session ended'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(repo.calls.last['action'], 'END_SESSION');
+    await tester.tap(find.byTooltip('Sort by'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Action').last);
+    await tester.pumpAndSettle();
+    expect(repo.calls.last['sort'], 'action');
+    await tester.enterText(find.byType(TextField).first, '7001');
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(repo.calls.last['q'], '7001');
+    expect(repo.calls.last['page'], 1);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('sign-ins show the result and reason in plain words', (tester) async {

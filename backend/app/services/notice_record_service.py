@@ -340,6 +340,35 @@ def purge_audio_of_deleted_notices(session_factory) -> list:
     return ids
 
 
+def purge_orphaned_audio(session_factory) -> list:
+    """
+    Remove audio that belongs to no notice at all: no announcement and no notice record (e.g. from an
+    older database, or the speech diagnostic's made-up IDs). Audio of notices that exist, and of deleted
+    notices with a record, is never touched here. Returns the removed IDs.
+    """
+    from app.services import tts_service
+    from app.services.cloud_storage_service import CloudStorageService
+
+    candidates = set(CloudStorageService.list_notice_audio_ids())
+    folder = tts_service.STATIC_AUDIO_DIR
+    if os.path.isdir(folder):
+        pattern = re.compile(r"^announcement_(\d+)(_|\.)")
+        candidates |= {int(m.group(1)) for name in os.listdir(folder) for m in [pattern.match(name)] if m}
+    if not candidates:
+        return []
+    with session_factory() as db:
+        known = {r[0] for r in db.execute(text("SELECT id FROM announcements")).all()}
+        known |= {r[0] for r in db.execute(select(_RECORDS.c.announcement_id)).all()}
+    orphans = sorted(candidates - known)
+    if not orphans:
+        return []
+    for nid in orphans:
+        _delete_local_audio(nid)
+    CloudStorageService.delete_audio_for_notices(orphans)
+    logger.info(f"Removed audio of {len(orphans)} ID(s) with no notice and no record: {orphans}")
+    return orphans
+
+
 def notice_was_deleted(announcement_id: int) -> bool:
     from app.db.database import SessionLocal
 

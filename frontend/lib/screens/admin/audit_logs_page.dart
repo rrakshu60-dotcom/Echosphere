@@ -68,7 +68,16 @@ const _filters = {
     _Filter('Android', {'platform': 'android'}),
     _Filter('Windows', {'platform': 'windows'}),
   ],
-  AuditTab.activity: <_Filter>[],
+  AuditTab.activity: [
+    _Filter('Signed in', {'action': 'LOGIN'}),
+    _Filter('Created', {'action': 'CREATE_ANNOUNCEMENT'}),
+    _Filter('Edited', {'action': 'UPDATE_ANNOUNCEMENT'}),
+    _Filter('Deleted', {'action': 'DELETE_ANNOUNCEMENT'}),
+    _Filter('Approved', {'action': 'APPROVE_ANNOUNCEMENT'}),
+    _Filter('Rejected', {'action': 'REJECT_ANNOUNCEMENT'}),
+    _Filter('Session ended', {'action': 'END_SESSION'}),
+    _Filter('Password reset', {'action': 'FORGOT_PASSWORD'}),
+  ],
 };
 
 const _sorts = {
@@ -79,10 +88,20 @@ const _sorts = {
     _SortOption('Deleted', 'deleted'),
     _SortOption('Title', 'title'),
   ],
-  AuditTab.signIns: [_SortOption('Time', 'at'), _SortOption('ID typed', 'identifier'), _SortOption('User', 'user_name'), _SortOption('IP', 'ip')],
-  AuditTab.access: [_SortOption('Time', 'at'), _SortOption('User', 'user_name'), _SortOption('IP', 'ip'), _SortOption('Platform', 'platform')],
+  AuditTab.signIns: [
+    _SortOption('Time', 'at'),
+    _SortOption('ID typed', 'identifier'),
+    _SortOption('User', 'user_name'),
+    _SortOption('IP', 'ip')
+  ],
+  AuditTab.access: [
+    _SortOption('Time', 'at'),
+    _SortOption('User', 'user_name'),
+    _SortOption('IP', 'ip'),
+    _SortOption('Platform', 'platform')
+  ],
   AuditTab.sessions: [_SortOption('Last seen', 'last_seen'), _SortOption('Started', 'started'), _SortOption('User', 'user_name')],
-  AuditTab.activity: [_SortOption('Time', 'at')],
+  AuditTab.activity: [_SortOption('Time', 'at'), _SortOption('Action', 'action'), _SortOption('Person', 'user_name')],
 };
 
 const _searchHints = {
@@ -90,7 +109,7 @@ const _searchHints = {
   AuditTab.signIns: 'Search ID typed, user, IP or reason',
   AuditTab.access: 'Search user, IP or app version',
   AuditTab.sessions: 'Search user, sign-in ID or IP',
-  AuditTab.activity: 'Search action, notice/user ID or description',
+  AuditTab.activity: 'Search person, notice ID, action or description',
 };
 
 class _TabState {
@@ -378,9 +397,8 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
 
   Widget _controls(ThemeData theme) {
     final s = _s;
-    final range = s.range == null
-        ? 'Any date'
-        : '${DateFormat('d MMM').format(s.range!.start)} - ${DateFormat('d MMM yyyy').format(s.range!.end)}';
+    final range =
+        s.range == null ? 'Any date' : '${DateFormat('d MMM').format(s.range!.start)} - ${DateFormat('d MMM yyyy').format(s.range!.end)}';
     final sortLabel = _sorts[_tab]!.firstWhere((o) => o.value == s.sort).label;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
@@ -406,20 +424,19 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             children: [
               for (final f in _filters[_tab]!)
                 EchoSphereChip(label: f.label, isSelected: s.active.contains(f.label), onSelected: (_) => _toggleFilter(f)),
-              if (_tab != AuditTab.activity)
-                EchoSphereChip(
-                  label: range,
-                  icon: Icons.date_range_rounded,
-                  isSelected: s.range != null,
-                  onSelected: (_) {
-                    if (s.range != null) {
-                      setState(() => s.range = null);
-                      _reload();
-                    } else {
-                      _pickRange();
-                    }
-                  },
-                ),
+              EchoSphereChip(
+                label: range,
+                icon: Icons.date_range_rounded,
+                isSelected: s.range != null,
+                onSelected: (_) {
+                  if (s.range != null) {
+                    setState(() => s.range = null);
+                    _reload();
+                  } else {
+                    _pickRange();
+                  }
+                },
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -539,7 +556,8 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: c.withValues(alpha: 0.3), width: 0.8),
       ),
-      child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: c)),
+      child:
+          Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: c)),
     );
   }
 
@@ -564,10 +582,11 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(r['title'] ?? 'Untitled notice', maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          Text(r['title'] ?? 'Untitled notice',
+              maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          _line(theme, '#${r['announcement_id']} · ${r['category'] ?? '-'} · ${r['creator_name'] ?? 'Unknown'} (${r['creator_role'] ?? '-'})'),
+          _line(theme,
+              '#${r['announcement_id']} · ${r['category'] ?? '-'} · ${r['creator_name'] ?? 'Unknown'} (${r['creator_role'] ?? '-'})'),
           _line(theme, 'Created ${auditTime(r['created_at'])}'),
           const SizedBox(height: 6),
           Wrap(
@@ -607,8 +626,8 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             ],
           ),
           const SizedBox(height: 6),
-          Text(r['user_name'] ?? 'No matching account', maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(r['user_name'] ?? 'No matching account',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           _line(theme, 'ID typed: ${r['identifier'] ?? '-'}${r['role'] != null ? ' · ${r['role']}' : ''}'),
           _line(theme, 'IP ${r['ip'] ?? '-'} · ${platformLabel(r['platform'] as String?)}'),
           _line(theme, r['user_agent'] ?? '-'),
@@ -630,8 +649,8 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             ],
           ),
           const SizedBox(height: 6),
-          Text(r['user_name'] ?? 'Not signed in', maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(r['user_name'] ?? 'Not signed in',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           _line(theme, '${platformLabel(r['platform'] as String?)} ${r['app_version'] ?? ''} · IP ${r['ip'] ?? '-'}'),
           if (r['session_id'] != null) _line(theme, 'Session #${r['session_id']}'),
         ],
@@ -650,18 +669,21 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
               _badge(theme, active ? 'Active' : 'Ended', color: active ? null : theme.colorScheme.onSurface.withValues(alpha: 0.6)),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(r['user_name'] ?? 'Unknown user', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                child: Text(r['user_name'] ?? 'Unknown user',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          _line(theme, 'Session #${r['id']} · ${platformLabel(r['platform'] as String?)} · ${r['remember_me'] == true ? 'Remember me' : 'This visit only'}'),
+          _line(theme,
+              'Session #${r['id']} · ${platformLabel(r['platform'] as String?)} · ${r['remember_me'] == true ? 'Remember me' : 'This visit only'}'),
           _line(theme, 'IP ${r['ip'] ?? '-'}${r['last_ip'] != null && r['last_ip'] != r['ip'] ? ' (last ${r['last_ip']})' : ''}'),
           _line(theme, 'Started ${auditTime(r['started_at'])} · last seen ${auditTime(r['last_seen_at'])}'),
-          _line(theme, r['ended_at'] != null
-              ? 'Ended ${auditTime(r['ended_at'])} (${(r['end_reason'] ?? '').toString().replaceAll('_', ' ')})'
-              : 'Expires ${auditTime(r['expires_at'])}'),
+          _line(
+              theme,
+              r['ended_at'] != null
+                  ? 'Ended ${auditTime(r['ended_at'])} (${(r['end_reason'] ?? '').toString().replaceAll('_', ' ')})'
+                  : 'Expires ${auditTime(r['expires_at'])}'),
           if (active) ...[
             const SizedBox(height: 4),
             Align(
@@ -691,8 +713,10 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             ],
           ),
           const SizedBox(height: 6),
+          Text(r['user_name'] ?? 'User #${r['user_id'] ?? '-'}',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           Text(r['description'] ?? '-', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-          _line(theme, '${r['entity'] ?? '-'} #${r['entity_id'] ?? '-'} · user #${r['user_id'] ?? '-'}'),
+          _line(theme, '${r['entity'] ?? '-'} #${r['entity_id'] ?? '-'}'),
         ],
       ),
     );
@@ -850,7 +874,8 @@ class _NoticeRecordPageState extends State<NoticeRecordPage> {
           if (deleted) ...[
             _field(theme, 'Deleted', auditTime(r['deleted_at'])),
             _field(theme, 'Deleted by', '${v(r['deleted_by_name'])} (${v(r['deleted_by_role'])})'),
-            _field(theme, 'Before broadcast', r['deleted_before_broadcast'] == true ? 'Yes' : (r['deleted_before_broadcast'] == false ? 'No' : '-')),
+            _field(theme, 'Before broadcast',
+                r['deleted_before_broadcast'] == true ? 'Yes' : (r['deleted_before_broadcast'] == false ? 'No' : '-')),
             _field(theme, 'Audio deleted', auditTime(r['audio_deleted_at'])),
           ],
         ]),
