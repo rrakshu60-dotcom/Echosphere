@@ -404,11 +404,13 @@ class EchosphereApiService {
     bool? deliverPush,
     String? speakerVoice,
     int? speakerNodeId,
+    DateTime? scheduledAt,
   }) async {
     try {
       final response = await _dio.put(
         '/announcements/$id',
         data: {
+          if (scheduledAt != null) 'scheduled_at': scheduledAt.toUtc().toIso8601String(),
           if (title != null) 'title': title,
           if (description != null) 'description': description,
           if (categoryId != null) 'category_id': categoryId,
@@ -1110,6 +1112,20 @@ class EchosphereApiService {
     } catch (e) {
       debugPrint('Error marking notification read: $e');
     }
+  }
+
+  Future<void> markNotificationUnread(int notificationId) async {
+    try {
+      await _dio.put('/notifications/$notificationId/unread');
+    } catch (e) {
+      debugPrint('Error marking notification unread: $e');
+    }
+  }
+
+  /// Deletes the signed-in user's read alerts on the server; returns how many were removed.
+  Future<int> clearReadNotifications() async {
+    final response = await _dio.delete('/notifications/read');
+    return (response.data?['removed'] as num?)?.toInt() ?? 0;
   }
 
   Future<void> markAllNotificationsRead() async {

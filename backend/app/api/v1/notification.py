@@ -51,3 +51,22 @@ def mark_all_notifications_read(
 ):
     updated = NotificationService.mark_all_read(db=db, user_id=current_user.id)
     return {"message": f"{updated} notifications marked as read"}
+
+@router.put("/{notification_id}/unread")
+def mark_notification_unread(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not NotificationService.mark_as_unread(db=db, notification_id=notification_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
+    return {"message": "Notification marked as unread"}
+
+
+@router.delete("/read")
+def clear_read_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    removed = NotificationService.clear_read(db=db, user_id=current_user.id)
+    return {"message": f"{removed} read notifications cleared", "removed": removed}

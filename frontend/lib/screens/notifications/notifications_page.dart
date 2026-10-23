@@ -538,10 +538,10 @@ class NotificationsPage extends StatelessWidget {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.primary),
-            onPressed: () {
-              controller.clearAllHistory();
+            onPressed: () async {
               Navigator.of(ctx).pop();
-              snackBar('Alerts History cleared successfully');
+              final ok = await controller.clearAllHistory();
+              ok ? snackBar('Alerts History cleared') : errorSnackBar('Could not clear History. Check your connection.');
             },
             child: const Text('Clear All', style: TextStyle(color: Colors.white)),
           ),
