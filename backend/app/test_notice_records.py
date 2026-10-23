@@ -305,6 +305,11 @@ def test_cleanup_removes_audio_of_notices_deleted_before_the_record_system(monke
     import app.services.tts_service as tts
     from app.services.cloud_storage_service import CloudStorageService
 
+    import threading
+    # Let audio deletions started by earlier tests finish, or the clean-up below also picks up their notices
+    for t in threading.enumerate():
+        if t.name.startswith("NoticeAudioDelete-"):
+            t.join(timeout=10)
     monkeypatch.setattr(tts, "STATIC_AUDIO_DIR", str(tmp_path))
     with SessionLocal() as db:
         # two notices deleted in the past (records exist, audio never removed), one live notice, one already cleaned

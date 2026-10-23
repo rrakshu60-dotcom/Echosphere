@@ -873,11 +873,14 @@ def evaluate_and_dispatch_repeat_slots(
     else:
         # If no emergency schedule is active, ensure any notices paused during a previous emergency
         # are safely restored to "Queued" so playback proceeds normally!
-        paused_items = db.query(SpeakerQueue).filter(SpeakerQueue.status == "Paused").all()
-        for p_item in paused_items:
-            p_item.status = "Queued"
-        if paused_items:
-            db.commit()
+        # Not while a one-off emergency is still on the speaker: they resume once it has finished.
+        from app.services.hardware_speaker_service import is_emergency_announcement, restore_paused_queue_items
+        emergency_on_air = any(
+            is_emergency_announcement(q.announcement)
+            for q in db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"])).all()
+        )
+        if not emergency_on_air:
+            restore_paused_queue_items(db)
 
     # 2. Phase 1: Collect & validate candidates matching active acoustic window
     candidates = []
