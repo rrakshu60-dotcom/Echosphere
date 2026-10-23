@@ -150,61 +150,64 @@ class FirebasePushService:
 
     @staticmethod
     def send_announcement_push(
+        db,
         announcement_id: int,
         title: str,
         description: str,
         target_audience: Optional[str] = None,
-        department_code: Optional[str] = None,
         category: Optional[str] = None,
         priority: Optional[str] = "NORMAL",
         audio_url: Optional[str] = None,
+        is_emergency: bool = False,
     ) -> List[Dict[str, Any]]:
-        """
-        Dispatches push notifications for a newly approved/published announcement.
-        Dispatches to college-wide or specific departmental topic channels.
-        """
-        is_emergency = str(priority).upper() in ("URGENT", "EMERGENCY", "HIGH")
-        body_text = description[:160] + ("..." if len(description) > 160 else "")
+        """Pushes a published notice to the signed-in devices of its audience (all devices for an emergency)."""
+        audience = "all_campus" if is_emergency else audience_topic(target_audience or "")
+        if audience is None:
+            logger.info(f"[FCM] No push audience for '{target_audience}'; push skipped.")
+            return [{"status": "no_audience", "topic": target_audience}]
+        app = get_firebase_admin_app()
+        if app is None:
+            return [{"status": "not_configured", "topic": audience}]
 
-        data_payload = {
-            "announcement_id": str(announcement_id),
-            "title": title,
-            "category": category or "General",
-            "priority": str(priority),
-            "audio_url": audio_url or "",
-            "click_action": "FLUTTER_NOTIFICATION_CLICK",
-        }
+        from firebase_admin import messaging
+        from app.models.push_device import PushDevice
+        from app.models.user import User
 
-        results = []
-        target_str = (target_audience or "").strip().lower()
+        devices = [d for d, u in db.query(PushDevice, User).join(User, User.id == PushDevice.user_id)
+                   .filter(User.is_active == True).all() if user_in_audience(u, audience)]
+        if not devices:
+            return [{"status": "no_devices", "topic": audience}]
 
-        # 1. Emergency notices always push to emergency_broadcasts and all_campus
-        if is_emergency:
-            res_emerg = FirebasePushService.send_topic_notification(
-                topic="emergency_broadcasts",
-                title=f"🚨 EMERGENCY: {title}",
-                body=body_text,
-                data=data_payload,
-                is_emergency=True,
+        notice_url = f"https://echosphere-2jf.pages.dev/announcement?id={announcement_id}"
+        data = {"announcement_id": str(announcement_id), "title": title, "category": category or "General",
+                "priority": str(priority), "audio_url": audio_url or "", "click_action": "FLUTTER_NOTIFICATION_CLICK"}
+        shown_title = f"🚨 EMERGENCY: {title}" if is_emergency else f"📢 {title}"
+        body = description[:160] + ("..." if len(description) > 160 else "")
+        sent, dead = 0, []
+        for start in range(0, len(devices), 500):
+            batch = devices[start:start + 500]
+            message = messaging.MulticastMessage(
+                tokens=[d.token for d in batch],
+                notification=messaging.Notification(title=shown_title, body=body),
+                data=data,
+                android=messaging.AndroidConfig(priority="high", notification=messaging.AndroidNotification(
+                    channel_id="emergency_alerts" if is_emergency else "campus_announcements", sound="default")),
+                webpush=messaging.WebpushConfig(fcm_options=messaging.WebpushFCMOptions(link=notice_url)),
             )
-            results.append(res_emerg)
-
-        # 2. The topic of the notice's audience; an audience without a topic gets no push (never the whole campus)
-        topic = audience_topic(target_str)
-        if topic is None:
-            logger.info(f"[FCM] No push topic for audience '{target_audience}'; push skipped.")
-            return results
-
-        res = FirebasePushService.send_topic_notification(
-            topic=topic,
-            title=f"📢 {title}",
-            body=body_text,
-            data=data_payload,
-            is_emergency=is_emergency,
-        )
-        results.append(res)
-
-        return results
+            try:
+                result = messaging.send_each_for_multicast(message, app=app)
+            except Exception as e:
+                logger.error(f"[FCM] push failed: {type(e).__name__}")
+                return [{"status": "error", "topic": audience, "error": type(e).__name__}]
+            sent += result.success_count
+            for device, r in zip(batch, result.responses):
+                if not r.success and isinstance(r.exception, (messaging.UnregisteredError, messaging.SenderIdMismatchError)):
+                    dead.append(device.id)
+        if dead:
+            db.query(PushDevice).filter(PushDevice.id.in_(dead)).delete(synchronize_session=False)
+            db.commit()
+        status = "sent" if sent else "error"
+        return [{"status": status, "topic": f"{sent} device(s) ({audience})", "error": None if sent else "no device accepted it"}]
 
 
 firebase_push_service = FirebasePushService()
@@ -231,52 +234,31 @@ def audience_topic(audience: str) -> Optional[str]:
     return None
 
 
-def device_topics(user) -> list:
-    """Topics a signed-in device is subscribed to, worked out from the account (never from the client)."""
-    topics = ["all_campus", "emergency_broadcasts"]
-    dept = getattr(user, "department", None)
-    code = (getattr(dept, "code", None) or "").strip().lower() if dept else ""
-    if code and code.isalnum():
-        topics.append(f"dept_{code}")
+def user_in_audience(user, audience: str) -> bool:
+    """Whether a user belongs to a push audience from audience_topic()."""
+    if audience == "all_campus":
+        return True
     role = (getattr(getattr(user, "role", None), "name", "") or "").strip().lower()
-    if role in STAFF_ROLES:
-        topics.append("faculty")
-    else:
-        topics.append("students")
+    staff = role in STAFF_ROLES
+    if audience == "faculty":
+        return staff
+    if audience == "students":
+        return not staff
+    if audience.startswith("year_"):
         semester = getattr(user, "semester", None)
-        if semester:
-            topics.append(f"year_{min(4, (int(semester) + 1) // 2)}")
-    return topics
+        return not staff and bool(semester) and str(min(4, (int(semester) + 1) // 2)) == audience[5:]
+    if audience.startswith("dept_"):
+        dept = getattr(user, "department", None)
+        return bool(dept) and (getattr(dept, "code", "") or "").strip().lower() == audience[5:]
+    return False
 
 
-def all_restricted_topics(db) -> list:
-    """Every department / role / year topic a device could have been on (to drop the ones that no longer apply)."""
-    from app.models.department import Department
-    codes = [(d.code or "").strip().lower() for d in db.query(Department).all()]
-    return [f"dept_{c}" for c in codes if c and c.isalnum()] + ["faculty", "students"] + [f"year_{n}" for n in range(1, 5)]
-
-
-def subscribe_device(token: str, topics: list, drop: Optional[list] = None) -> list:
-    """Subscribes one device token to `topics` and unsubscribes it from `drop` (topics that no longer apply,
-    e.g. after a department change). Returns the topics subscribed."""
-    app = get_firebase_admin_app()
-    if app is None:
-        return []
-    from firebase_admin import messaging
-    for topic in drop or []:
-        try:
-            messaging.unsubscribe_from_topic([token], topic, app=app)
-        except Exception as e:
-            logger.warning(f"[FCM] unsubscribe from {topic} failed: {type(e).__name__}")
-    done = []
-    for topic in topics:
-        try:
-            res = messaging.subscribe_to_topic([token], topic, app=app)
-            if res.success_count:
-                done.append(topic)
-            else:
-                reasons = ", ".join(str(getattr(e, "reason", e)) for e in (res.errors or []))
-                logger.warning(f"[FCM] subscribe to {topic} rejected: {reasons or 'unknown reason'}")
-        except Exception as e:
-            logger.warning(f"[FCM] subscribe to {topic} failed: {type(e).__name__}")
-    return done
+def register_device(db, user, token: str, platform: Optional[str]) -> None:
+    """Stores (or moves to this user) a device's push token."""
+    from app.models.push_device import PushDevice
+    device = db.query(PushDevice).filter(PushDevice.token == token).first()
+    if device is None:
+        db.add(PushDevice(token=token, user_id=user.id, platform=platform))
+    else:
+        device.user_id, device.platform = user.id, platform
+    db.commit()

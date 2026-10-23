@@ -148,26 +148,29 @@ def dispatch_announcement_notifications_and_deliveries(
     ):
         try:
             from app.services.firebase_push_service import firebase_push_service
-            dept_code = None
-            if getattr(announcement, "department", None):
-                dept_code = getattr(announcement.department, "code", None)
 
             cat_name = getattr(announcement.category, "name", "General") if getattr(announcement, "category", None) else "General"
 
+            from app.core.emergency_utils import is_emergency_announcement
             push_results = firebase_push_service.send_announcement_push(
+                db,
                 announcement_id=announcement.id,
                 title=announcement.title,
                 description=announcement.description or "",
                 target_audience=target_audience,
-                department_code=dept_code,
                 category=cat_name,
                 priority=str(announcement.priority),
                 audio_url=getattr(announcement, "audio_url", None),
+                is_emergency=is_emergency_announcement(announcement),
             )
             logger.info(f"Dispatched FCM push notifications for announcement #{announcement.id}: {push_results}")
             sent = [r.get("topic") for r in push_results or [] if r.get("status") == "sent"]
             if sent:
                 push_outcome = f"Push notification sent to {', '.join(sent)}."
+            elif any(r.get("status") == "no_devices" for r in push_results or []):
+                push_outcome = "Push notification not sent: no signed-in devices in this audience."
+            elif any(r.get("status") == "no_audience" for r in push_results or []):
+                push_outcome = "Push notification not sent: this audience has no push group."
             elif any(r.get("status") == "not_configured" for r in push_results or []):
                 push_outcome = "Push notification not sent: push notifications are not set up on the server."
             else:
