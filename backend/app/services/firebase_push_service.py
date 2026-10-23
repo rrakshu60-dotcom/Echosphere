@@ -173,8 +173,14 @@ class FirebasePushService:
         from app.models.push_device import PushDevice
         from app.models.user import User
 
-        devices = [d for d, u in db.query(PushDevice, User).join(User, User.id == PushDevice.user_id)
-                   .filter(User.is_active == True).all() if user_in_audience(u, audience)]
+        from app.models.user_session import UserSession
+        from app.services.session_service import is_session_open
+        # Only devices whose sign-in session is still open (sign-out / an admin ending it stops pushes)
+        rows = (db.query(PushDevice, User, UserSession)
+                .join(User, User.id == PushDevice.user_id)
+                .join(UserSession, UserSession.id == PushDevice.session_id)
+                .filter(User.is_active == True).all())
+        devices = [d for d, u, sess in rows if is_session_open(sess) and user_in_audience(u, audience)]
         if not devices:
             return [{"status": "no_devices", "topic": audience}]
 
@@ -253,12 +259,12 @@ def user_in_audience(user, audience: str) -> bool:
     return False
 
 
-def register_device(db, user, token: str, platform: Optional[str]) -> None:
-    """Stores (or moves to this user) a device's push token."""
+def register_device(db, user, session, token: str, platform: Optional[str]) -> None:
+    """Stores (or moves to this user and session) a device's push token."""
     from app.models.push_device import PushDevice
     device = db.query(PushDevice).filter(PushDevice.token == token).first()
     if device is None:
-        db.add(PushDevice(token=token, user_id=user.id, platform=platform))
+        db.add(PushDevice(token=token, user_id=user.id, session_id=session.id, platform=platform))
     else:
-        device.user_id, device.platform = user.id, platform
+        device.user_id, device.session_id, device.platform = user.id, session.id, platform
     db.commit()

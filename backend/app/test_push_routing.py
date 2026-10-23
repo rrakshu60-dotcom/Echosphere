@@ -88,3 +88,12 @@ def test_an_unknown_platform_value_is_refused(fake_fcm):
     res = client.post("/api/v1/push/register", headers=ADMIN,
                       json={"token": "tok-3-abcdefghijklmnopqrstuvwxyz", "platform": "web\nFAKE LOG LINE"})
     assert res.status_code == 422
+
+
+def test_a_device_whose_session_ended_gets_no_push(fake_fcm):
+    """Signing out (or an admin ending the session) stops pushes to that device, even if it kept its token."""
+    headers = bearer("1db23ci079")
+    assert client.post("/api/v1/push/register", headers=headers, json={"token": STUDENT_TOKEN}).status_code == 200
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
+    _publish("Entire College")
+    assert fake_fcm == [], fake_fcm
