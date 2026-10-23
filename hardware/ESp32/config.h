@@ -60,6 +60,12 @@
 #define NODE_DEFAULT_VOL 100
 #endif
 
+// The first board keeps the fixed backend identity above. Any OTHER board uses its own hardware MAC as its
+// identity (so two boards never claim to be the same speaker) and must first be added in the app with that MAC.
+#define ORIGINAL_BOARD_MAC "8C:AA:B5:37:30:B4"
+#define OTHER_BOARD_NAME "ESP32 Speaker 2"
+#define OTHER_BOARD_ZONE "Campus Block 2"
+
 // ----------------------------------------------------------------------------
 // 4. Strict Hardware Pinout for Classic 38-Pin ESP32 NodeMCU
 // ----------------------------------------------------------------------------
