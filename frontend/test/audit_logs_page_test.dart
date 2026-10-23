@@ -170,6 +170,24 @@ void main() {
     expect(find.text('Third notice'), findsOneWidget);
   });
 
+  testWidgets('a deleted notice with unknown delivery is not claimed as delivered', (tester) async {
+    final repo = UnknownDeliveryRepository();
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    Get.find<AuthController>().currentUser.value = EchosphereUser(id: 1, fullName: 'Someone', role: 'Dev Admin');
+    await tester.pumpWidget(ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: GetMaterialApp(home: AuditLogsPage(repository: repo)),
+    ));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Old notice'), findsOneWidget);
+    expect(find.text('Deleted after delivery'), findsNothing);
+    expect(find.text('Deleted before broadcast'), findsNothing);
+    expect(find.text('Deleted'), findsWidgets); // the badge (the filter chip also says "Deleted")
+    expect(find.text('Partial record'), findsOneWidget);
+  });
+
   testWidgets('sorting asks the backend for the chosen order', (tester) async {
     final repo = await _pump(tester, width: 400);
     await tester.tap(find.byTooltip('Oldest first'));
@@ -227,4 +245,13 @@ void main() {
     expect(txt, contains('106.51.203.220'));
     expect(txt, contains('Signed in'));
   });
+}
+
+
+class UnknownDeliveryRepository extends FakeAuditRepository {
+  @override
+  Future<AuditPage> list(AuditTab tab, Map<String, dynamic> params) async {
+    final old = _notice(55, 'Old notice', deleted: true)..['partial'] = true;
+    return AuditPage(items: [old], total: 1, page: 1, pageSize: 50);
+  }
 }
