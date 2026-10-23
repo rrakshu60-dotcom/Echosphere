@@ -37,12 +37,12 @@ def _utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _publish(title) -> int:
+def _publish(title, **fields) -> int:
     with SessionLocal() as db:
         node_id = db.query(SpeakerNode.id).first()[0]
     res = client.post("/api/v1/announcements", headers=ADMIN, json={
         "title": title, "description": f"{title} body text.", "category_id": 1, "target_audience": "Entire College",
-        "deliver_push": False, "deliver_in_app": False, "deliver_speaker": True, "speaker_node_id": node_id})
+        "deliver_push": False, "deliver_in_app": False, "deliver_speaker": True, "speaker_node_id": node_id, **fields})
     assert res.status_code in (200, 201), res.text
     return res.json()["id"]
 
@@ -104,7 +104,7 @@ def _open_window():
     return (ist - timedelta(minutes=2)).strftime("%H:%M"), (ist + timedelta(minutes=20)).strftime("%H:%M")
 
 
-def test_custom_window_keeps_rotating_until_its_cap_then_waits_for_tomorrow():
+def test_custom_window_keeps_rotating_until_its_cap_then_finishes():
     start, end = _open_window()
     nid = _publish("Exam hall change")
     _set_schedule(nid, repeat_mode="BREAK_SLOTS", interval_minutes=0, max_repeats=6, play_on_publish=False,
@@ -127,11 +127,11 @@ def test_custom_window_keeps_rotating_until_its_cap_then_waits_for_tomorrow():
         keys = [k for (k,) in db.query(RepeatSlotExecutionLog.slot_key).filter(RepeatSlotExecutionLog.schedule_id == _sched(nid).id)]
     assert len(keys) == cap and len(set(keys)) == cap, keys
 
-    # Cap reached: nothing more today; the next round (if any) is tomorrow's window
-    waiting = _active(nid)
-    assert all(q.scheduled_time > _utc_now() + timedelta(hours=12) for q in waiting), [q.scheduled_time for q in waiting]
+    # The window's rounds are done: the notice leaves the queue and its schedule ends (nothing waits for tomorrow)
+    assert not _active(nid), [(q.status, q.scheduled_time) for q in _active(nid)]
+    assert _sched(nid).is_active is False
     _daemon_pass()
-    assert not [q for q in _active(nid) if q.status == "Playing"]
+    assert not _active(nid), "the finished notice must not come back"
 
 
 def test_publish_play_counts_once_and_the_window_starts_on_time():
@@ -169,3 +169,18 @@ def test_interval_schedule_sent_without_slots_stays_an_interval():
     waiting = _active(nid)
     assert len(waiting) == 1 and waiting[0].scheduled_time <= _utc_now() + timedelta(minutes=1, seconds=5), \
         [q.scheduled_time for q in waiting]
+
+
+def test_emergency_reaches_the_speaker_as_one_emergency_command():
+    """The speaker picks the siren from the command: a second, unmarked play command made it chime instead."""
+    with SessionLocal() as db:
+        mac = db.query(SpeakerNode).first().mac_address
+    _publish("Library timing")
+    emergency = _publish("Earthquake drill alert", priority="High", emergency_level="Emergency")
+    _daemon_pass()
+    res = client.post("/api/v1/hardware/speakers/heartbeat", json={"mac_address": mac, "status": "ONLINE"})
+    plays = [c for c in res.json().get("pending_commands") or []
+             if c.get("announcement_id") == emergency and str(c.get("command", "")).startswith("PLAY")]
+    assert plays, "no play command for the emergency"
+    assert all(c["command"] == "PLAY_EMERGENCY" and c.get("is_emergency") is True for c in plays), plays
+    assert len(plays) == 1, [c["command"] for c in plays]

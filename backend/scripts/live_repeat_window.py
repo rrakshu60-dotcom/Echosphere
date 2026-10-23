@@ -1,8 +1,8 @@
 """
 Live check: a custom repeat window (set as the app sets it) keeps rotating on the ESP32 by itself: rounds follow
-each other after the normal gap with nobody pressing play, and each round is counted once
-(.agents/rules/testing.md §4-5). The window-end / next-day part is covered by app/test_repeat_rounds.py.
-Takes about 2 minutes.
+each other after the normal gap with nobody pressing play, each round is counted once, and when the window is over
+the notice leaves the queue and its schedule ends (owner, 2026-10-23) (.agents/rules/testing.md §4-5).
+Takes about 4 minutes.
 
     python backend/scripts/live_repeat_window.py      (close any other serial monitor on COM7 first)
 """
@@ -26,7 +26,7 @@ def main() -> None:
         "is_active": True, "repeat_mode": "BREAK_SLOTS", "interval_minutes": 0, "max_repeats": 6,
         "play_on_publish": False, "selected_slots": ["CUSTOM_WINDOW"], "target_scope": "COLLEGE_WIDE",
         "custom_start_time": (ist - timedelta(minutes=1)).strftime("%H:%M"),
-        "custom_end_time": (ist + timedelta(minutes=6)).strftime("%H:%M"),
+        "custom_end_time": (ist + timedelta(minutes=3)).strftime("%H:%M"),
         "start_date": (utc - timedelta(minutes=5)).isoformat(), "end_date": (utc + timedelta(hours=48)).isoformat(),
         "force_enable_speaker": True,
     }
@@ -55,6 +55,20 @@ def main() -> None:
         count = counted()
         assert count == ROUNDS, f"schedule counted {count} rounds, the speaker finished {ROUNDS}"
         print(f"PASS each round counted once ({count})")
+
+        def finished():
+            in_queue = [q for q in session.get("/hardware/queue") if q["announcement_id"] == nid]
+            sched = session.get(f"/announcements/{nid}/repeat-schedule") or {}
+            return not in_queue and sched.get("is_active") is False
+        _, t = wait_until(finished, timeout=240, interval=2, what="notice to leave the queue after its window")
+        print(f"PASS window over: notice left the queue and its schedule ended ({t:.0f}s later)")
+        after = esp.mark()
+        try:
+            esp.wait_for(stream, timeout=20, since=after)
+        except AssertionError:
+            print("PASS no round after the window")
+        else:
+            raise AssertionError("a round played after the window had finished")
     print("PASS cleanup: no test data left")
 
 

@@ -27,7 +27,7 @@ def main() -> None:
     with Esp32Serial() as esp, LiveNotices(session) as notices:
       try:
           mark = esp.mark()
-          normal = notices.create("Emergency check normal notice", LONG_TEXT, speaker_node_id=ESP32_NODE_ID)
+          normal = notices.create("Interrupt check normal notice", LONG_TEXT, speaker_node_id=ESP32_NODE_ID)
           _, t = esp.wait_for(rf"Streaming from URL: .*/announcements/{normal['id']}/audio/stream", timeout=15, since=mark)
           print(f"PASS normal notice #{normal['id']} streaming after {t:.2f}s")
           time.sleep(3)  # let it get into the middle of playback (setup, not a proof step)
@@ -35,7 +35,7 @@ def main() -> None:
           before = esp.mark()
           sent = time.monotonic()
           emergency = notices.create(
-              "Emergency check alert",
+              "Earthquake drill alert",  # no "Emergency" in the title: the speaker must not rely on it for the siren
               "This is a test emergency alert.",
               speaker_node_id=ESP32_NODE_ID,
               priority="High",
@@ -57,6 +57,13 @@ def main() -> None:
 
           _, t = esp.wait_for(rf"Streaming from URL: .*/announcements/{normal['id']}/audio/stream", timeout=30, since=esp.after_last_match())
           print(f"PASS interrupted notice resumed {t:.2f}s after the emergency")
+          import re as _re
+          em_lines = esp.lines_since(before)
+          plays = sum(1 for l in em_lines if _re.search(rf"Streaming from URL: .*/announcements/{emergency['id']}/audio/stream", l))
+          chimes = sum(1 for l in em_lines if "Attention Chime" in l)
+          assert plays == 1, f"the emergency was streamed {plays} times"
+          assert chimes == 0, "the normal attention chime played for the emergency instead of the siren"
+          print("PASS emergency played once, with the siren and never the normal chime")
           _, t = esp.wait_for(r"Notice speech playback completed successfully", timeout=90, since=esp.after_last_match())
           print(f"PASS interrupted notice played to the end after {t:.2f}s")
       finally:

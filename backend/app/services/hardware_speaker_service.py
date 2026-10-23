@@ -467,14 +467,22 @@ def get_pending_commands_for_mac(mac_address: str, db: Optional[Session] = None)
                     if target_mac != mac_key:
                         continue
                 b_id = f"auto_queue_{p_item.id}_{p_item.announcement_id}"
-                if b_id not in delivered_set and b_id not in seen_command_ids:
+                # Only a safety net: never a second play command for a notice this reply already plays
+                already_playing = any(
+                    c.get("announcement_id") == p_item.announcement_id and str(c.get("command", "")).startswith("PLAY")
+                    for c in cmds
+                )
+                if not already_playing and b_id not in delivered_set and b_id not in seen_command_ids:
                     ann = getattr(p_item, "announcement", None)
+                    is_em = is_emergency_announcement(ann)
                     title = getattr(ann, "title", "Announcement") if ann else "Announcement"
                     message = (getattr(ann, "ai_summary", None) or getattr(ann, "description", "")) if ann else ""
                     from app.services.speaker_playback import signed_stream_query
                     audio_url = f"/api/v1/announcements/{p_item.announcement_id}/audio/stream?audio_format=wav&include_chime=false&{signed_stream_query(p_item.id)}"
                     cmds.append({
-                        "command": "PLAY_ANNOUNCEMENT",
+                        "command": "PLAY_EMERGENCY" if is_em else "PLAY_ANNOUNCEMENT",
+                        "priority": "EMERGENCY" if is_em else "NORMAL",
+                        "is_emergency": is_em,
                         "command_id": b_id,
                         "announcement_id": int(getattr(p_item, "announcement_id", 0)),
                         "queue_id": int(p_item.id),
