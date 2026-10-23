@@ -54,11 +54,12 @@ def main() -> None:
           print(f"PASS emergency siren played ({t:.2f}s)")
           _, t = esp.wait_for(r"Notice speech playback completed successfully", timeout=60, since=esp.after_last_match())
           print(f"PASS emergency finished after {t:.2f}s")
+          emergency_lines = esp.lines_since(before)  # from the interrupt until the emergency finished
 
           _, t = esp.wait_for(rf"Streaming from URL: .*/announcements/{normal['id']}/audio/stream", timeout=30, since=esp.after_last_match())
           print(f"PASS interrupted notice resumed {t:.2f}s after the emergency")
           import re as _re
-          em_lines = esp.lines_since(before)
+          em_lines = emergency_lines
           plays = sum(1 for l in em_lines if _re.search(rf"Streaming from URL: .*/announcements/{emergency['id']}/audio/stream", l))
           chimes = sum(1 for l in em_lines if "Attention Chime" in l)
           assert plays == 1, f"the emergency was streamed {plays} times"
