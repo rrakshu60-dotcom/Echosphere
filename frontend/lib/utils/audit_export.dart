@@ -150,7 +150,8 @@ String auditRowsToText(AuditTab tab, List<Map<String, dynamic>> rows) {
         b.writeln('  Started ${auditTime(r['started_at'])}  last seen ${auditTime(r['last_seen_at'])}  '
             '${r['ended_at'] != null ? 'ended ${auditTime(r['ended_at'])} (${_v(r['end_reason'])})' : 'expires ${auditTime(r['expires_at'])}'}');
       case AuditTab.activity:
-        b.writeln('${auditTime(r['created_at'])}  ${_v(r['action'])}  ${_v(r['entity'])} #${_v(r['entity_id'])}  user #${_v(r['user_id'])}');
+        b.writeln('${auditTime(r['created_at'])}  ${_v(r['action'])}  ${_v(r['entity'])} #${_v(r['entity_id'])}  '
+            'by ${r['user_name'] ?? 'user #${_v(r['user_id'])}'}');
         b.writeln('  ${_v(r['description'])}');
     }
     b.writeln('-' * 60);

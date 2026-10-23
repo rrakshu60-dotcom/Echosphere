@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import require_roles
 from app.db.database import get_db
 from app.models.app_access_log import AppAccessLog
+from app.models.audit_log import AuditLog
 from app.models.notice_record import NoticeRecord, NoticeRecordEvent
 from app.models.sign_in_log import SignInLog
 from app.models.user import User
@@ -263,4 +264,51 @@ def get_notice_record(
              "actor_name": e.actor_name, "actor_role": e.actor_role, "detail": e.detail}
             for e in events
         ],
+    }
+
+
+@router.get("/activity")
+def list_activity(
+    q: Optional[str] = None,
+    action: Optional[str] = None,
+    entity: Optional[str] = None,
+    start: Optional[datetime] = Query(None, alias="from"),
+    end: Optional[datetime] = Query(None, alias="to"),
+    sort: Literal["at", "action", "user_name"] = "at",
+    order: Order = "desc",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(audit_admin),
+):
+    """The general activity trail (sign-ins, notice actions, ended sessions...), paged on the server."""
+    query = db.query(AuditLog, User.full_name).outerjoin(User, User.id == AuditLog.user_id)
+    if q and q.strip():
+        term = q.strip().lstrip("#")
+        like = f"%{term}%"
+        matches = [AuditLog.description.ilike(like), AuditLog.action.ilike(like), User.full_name.ilike(like)]
+        if term.isdigit():
+            matches += [AuditLog.entity_id == int(term), AuditLog.user_id == int(term)]
+        query = query.filter(or_(*matches))
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if entity:
+        query = query.filter(AuditLog.entity == entity)
+    if start:
+        query = query.filter(AuditLog.created_at >= start)
+    if end:
+        query = query.filter(AuditLog.created_at <= end)
+    total = query.count()
+    sort_col = {"at": AuditLog.created_at, "action": AuditLog.action, "user_name": User.full_name}[sort]
+    ordering = sort_col.asc() if order == "asc" else sort_col.desc()
+    rows = query.order_by(ordering, AuditLog.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": [
+            {"id": log.id, "created_at": _iso(log.created_at), "action": log.action, "entity": log.entity,
+             "entity_id": log.entity_id, "user_id": log.user_id, "user_name": name, "description": log.description}
+            for log, name in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     }
