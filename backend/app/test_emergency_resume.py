@@ -21,6 +21,15 @@ def _publish(title, **fields) -> int:
     return res.json()["id"]
 
 
+def _daemon_pass():
+    """One pass of the live queue daemon (main.py), which runs after every queue change."""
+    from app.services.hardware_speaker_service import auto_advance_speaker_queue
+    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
+    with SessionLocal() as db:
+        auto_advance_speaker_queue(db)
+        evaluate_and_dispatch_repeat_slots(db)
+
+
 def _item(nid) -> SpeakerQueue:
     with SessionLocal() as db:
         return db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == nid).order_by(SpeakerQueue.id.desc()).first()
@@ -31,12 +40,14 @@ def test_interrupted_notice_plays_again_after_the_emergency():
     assert _item(normal).status == "Playing"
 
     emergency = _publish("Fire drill now", priority="High", emergency_level="Emergency")
+    _daemon_pass()
     assert _item(emergency).status == "Playing"
-    assert _item(normal).status == "Paused"
+    assert _item(normal).status == "Paused", "the interrupted notice must wait until the emergency is over"
 
     # The speaker reports the emergency finished, exactly as the firmware does
     res = client.post(f"/api/v1/hardware/queue/{_item(emergency).id}/action?action=complete")
     assert res.status_code == 200, res.text
 
+    _daemon_pass()
     assert _item(emergency).status == "Completed"
     assert _item(normal).status in ("Playing", "Queued"), f"interrupted notice left as {_item(normal).status}"
