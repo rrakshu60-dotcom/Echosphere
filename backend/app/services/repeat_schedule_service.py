@@ -856,6 +856,10 @@ def finish_repeat_round(db: Session, item: Any, now: datetime) -> Optional[datet
     if not is_interval:
         db.flush()  # the window's round count includes this round
         next_time, _ = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
+        # A round played in a window and nothing more today: the notice is finished (owner, 2026-10-23),
+        # it does not wait in the queue for the next day's window.
+        if matched and next_time is not None and _utc_to_ist_naive(next_time).date() != ist_now.date():
+            next_time = None
 
     if next_time is None:
         sched.is_active = False
