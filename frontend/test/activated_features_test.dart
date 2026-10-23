@@ -131,7 +131,7 @@ void main() {
     // Verify title and moderation shortcut icon
     expect(find.text('User Accounts'), findsOneWidget);
     expect(find.byTooltip('Notice Moderation'), findsOneWidget);
-    expect(find.byTooltip('Security Access Audit Logs'), findsOneWidget);
+    expect(find.byTooltip('Audit & Logs'), findsOneWidget);
 
     // Verify zero overflow on 320px
     expect(tester.takeException(), isNull);

@@ -1,11 +1,9 @@
-import 'dart:convert';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/screens/auth/login_screen.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/services/fcm_push_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:echosphere/utils/usn_parser.dart';
@@ -68,42 +66,6 @@ class EchosphereUser {
   }
 }
 
-class LoginLogEntry {
-  final String timestamp;
-  final String username;
-  final String role;
-  final String location;
-  final String status;
-  final String? employeeId;
-
-  LoginLogEntry({
-    required this.timestamp,
-    required this.username,
-    required this.role,
-    required this.location,
-    required this.status,
-    this.employeeId,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'timestamp': timestamp,
-        'username': username,
-        'role': role,
-        'location': location,
-        'status': status,
-        'employee_id': employeeId,
-      };
-
-  factory LoginLogEntry.fromJson(Map<String, dynamic> json) => LoginLogEntry(
-        timestamp: json['timestamp'] ?? '',
-        username: json['username'] ?? '',
-        role: json['role'] ?? '',
-        location: json['location'] ?? '',
-        status: json['status'] ?? '',
-        employeeId: json['employee_id'],
-      );
-}
-
 class AuthController extends GetxController {
   final Rxn<EchosphereUser> currentUser = Rxn<EchosphereUser>();
   final RxBool isLoggedIn = false.obs;
@@ -111,7 +73,6 @@ class AuthController extends GetxController {
   final RxBool rememberMe = false.obs;
   final RxString token = ''.obs;
 
-  final RxList<LoginLogEntry> auditLogs = <LoginLogEntry>[].obs;
 
   final RxInt annualPasswordResetCount = 0.obs;
 
@@ -131,7 +92,7 @@ class AuthController extends GetxController {
   void onInit() {
     super.onInit();
     sessionRestored = _loadSessionFromDisk();
-    _loadAuditLogsFromDisk();
+    _purgeLegacyDeviceSignInLog();
     loadResetQuotaFromDisk();
     _purgeLegacyLocalPasswords();
   }
@@ -233,12 +194,6 @@ class AuthController extends GetxController {
       await _saveResetQuotaToDisk();
     }
 
-    await addAuditLog(
-      username: user.fullName,
-      role: user.role,
-      status: backendSuccess ? 'SUCCESS (Password Updated)' : 'FAILED (Password Not Updated)',
-      employeeId: user.employeeId,
-    );
 
     return backendSuccess;
   }
@@ -268,68 +223,13 @@ class AuthController extends GetxController {
     Get.snackbar('Signed out', 'Your session has ended. Please sign in again.', snackPosition: SnackPosition.BOTTOM);
   }
 
-  Future<void> _loadAuditLogsFromDisk() async {
+  /// Sign-ins used to be logged only on this device; the backend's sign-in log replaces it.
+  /// Remove the old copy (it held usernames) from devices that still have it.
+  Future<void> _purgeLegacyDeviceSignInLog() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('login_audit_logs');
-      if (raw != null) {
-        final List<dynamic> jsonList = jsonDecode(raw);
-        auditLogs.value = jsonList.map((j) => LoginLogEntry.fromJson(j)).toList();
-      } else {
-        auditLogs.value = [
-          LoginLogEntry(
-            timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 2))),
-            username: 'CAdmin',
-            role: 'College Admin',
-            location: 'Bangalore Campus Node (Main Admin Block \u2022 192.168.1.105)',
-            status: 'SUCCESS (Employee ID Verified)',
-            employeeId: 'DBITADM001',
-          ),
-          LoginLogEntry(
-            timestamp: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now().subtract(const Duration(hours: 5))),
-            username: '1db23ci079',
-            role: 'Student',
-            location: 'Bangalore Campus Wi-Fi (Academic Block B \u2022 192.168.2.14)',
-            status: 'LOGIN SUCCESS',
-          ),
-        ];
-        await _saveAuditLogsToDisk();
-      }
-    } catch (e) {
-      debugPrint('Error loading audit logs: $e');
-    }
-  }
-
-  Future<void> _saveAuditLogsToDisk() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final content = jsonEncode(auditLogs.map((e) => e.toJson()).toList());
-      await prefs.setString('login_audit_logs', content);
-    } catch (e) {
-      debugPrint('Error saving audit logs: $e');
-    }
-  }
-
-  Future<void> addAuditLog({
-    required String username,
-    required String role,
-    required String status,
-    String? employeeId,
-  }) async {
-    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-    const location = 'Bangalore Campus Node (Main Admin Block \u2022 192.168.1.105)';
-
-    final entry = LoginLogEntry(
-      timestamp: now,
-      username: username,
-      role: role,
-      location: location,
-      status: status,
-      employeeId: employeeId,
-    );
-
-    auditLogs.insert(0, entry);
-    await _saveAuditLogsToDisk();
+      await prefs.remove('login_audit_logs');
+    } catch (_) {}
   }
 
   static int getRoleLevel(String role) {
@@ -423,12 +323,6 @@ class AuthController extends GetxController {
             role: user.role,
           );
 
-          await addAuditLog(
-            username: user.fullName,
-            role: user.role,
-            status: 'SUCCESS (API Login)',
-            employeeId: user.employeeId,
-          );
 
           return true;
         }
@@ -436,11 +330,6 @@ class AuthController extends GetxController {
         debugPrint('Live backend login error: $e');
       }
 
-      await addAuditLog(
-        username: identifier,
-        role: 'Unknown',
-        status: 'FAILED (Invalid Credentials)',
-      );
       return false;
     } finally {
       isLoading.value = false;

@@ -19,6 +19,7 @@ import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:echosphere/widgets/header.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:echosphere/widgets/admin_workspace_bar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -299,7 +300,7 @@ class _HomePageState extends State<HomePage> {
 
               // ----------------------------------------------------------------------
               if (isStaffOrAdmin) ...[
-                _buildAdminWorkspaceBar(theme, role),
+                AdminWorkspaceBar(role: role),
                 const SizedBox(height: 18),
               ],
 
@@ -557,143 +558,6 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     });
-  }
-
-  // ----------------------------------------------------------------------
-  // Admin Quick Workspace Bar (For Staff / Admins)
-  // ----------------------------------------------------------------------
-  Widget _buildAdminWorkspaceBar(ThemeData theme, String role) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Admin Workspace',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                'MANAGEMENT CONSOLE',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.6,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildWorkspaceActionTile(
-                theme: theme,
-                title: 'Notice Hub',
-                subtitle: 'Moderate notices',
-                icon: Icons.auto_fix_high_rounded,
-                color: theme.colorScheme.primary,
-                onTap: () => Get.toNamed('/announcement-management'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildWorkspaceActionTile(
-                theme: theme,
-                title: 'User Hub',
-                subtitle: 'Directory & roles',
-                icon: Icons.manage_accounts_rounded,
-                color: theme.colorScheme.primary,
-                onTap: () => Get.toNamed('/user-management'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildWorkspaceActionTile(
-                theme: theme,
-                title: 'Smart Speakers',
-                subtitle: 'Hardware PA & nodes',
-                icon: Icons.podcasts_rounded,
-                color: theme.colorScheme.primary,
-                onTap: () => Get.toNamed('/speaker-queue'),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWorkspaceActionTile({
-    required ThemeData theme,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        decoration: BoxDecoration(
-          color: isDark ? EchoSpherePalette.darkSurface : EchoSpherePalette.lightSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark ? EchoSpherePalette.darkBorder : EchoSpherePalette.lightBorder,
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, size: 16, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                color: isDark ? theme.colorScheme.onSurface.withValues(alpha: 0.6) : const Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ----------------------------------------------------------------------

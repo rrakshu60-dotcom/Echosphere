@@ -150,12 +150,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 errorSnackBar(
                   'Access Denied: Employee ID \'$enteredEmpId\' is not registered to any Teacher, HoD, or Staff in the database.',
                 );
-                await authController.addAuditLog(
-                  username: identifier,
-                  role: 'College Admin',
-                  status: 'FAILED (Unrecognized Staff Employee ID: $enteredEmpId)',
-                  employeeId: enteredEmpId,
-                );
                 return;
               }
 

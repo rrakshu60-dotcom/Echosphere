@@ -35,6 +35,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:echosphere/services/app_access_reporter.dart';
+import 'package:echosphere/screens/admin/audit_logs_page.dart';
+import 'package:echosphere/services/audit_repository.dart';
 
 WebViewEnvironment? webViewEnvironment;
 
@@ -321,6 +323,16 @@ class _MainAppState extends State<MainApp> {
           GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage(), middlewares: [AuthGuard()]),
           GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage(), middlewares: [AuthGuard()]),
           GetPage(name: '/user-management', page: () => const UserManagementPage(), middlewares: [AuthGuard()]),
+          GetPage(
+            name: '/audit-logs',
+            page: () => AuditLogsPage(
+              initialTab: AuditTab.values.firstWhere(
+                (t) => t.name == Get.parameters['tab'],
+                orElse: () => AuditTab.notices,
+              ),
+            ),
+            middlewares: [AuthGuard()],
+          ),
           GetPage(name: '/announcement-management', page: () => const AnnouncementManagementPage(), middlewares: [AuthGuard()]),
           GetPage(name: '/archive', page: () => const ArchivePage(), middlewares: [AuthGuard()]),
           GetPage(name: '/notifications', page: () => const NotificationsPage(), middlewares: [AuthGuard()]),
