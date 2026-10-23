@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echosphere/utils/campus_time.dart';
+import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
 class AnnouncementModel {
   final int id;
@@ -1585,28 +1586,23 @@ class AnnouncementController extends GetxController {
     return true;
   }
 
+  /// Moves a notice to a new time on the server (it was only changed on this device before).
   Future<bool> rescheduleAnnouncement({
     required int id,
     required DateTime newScheduledTime,
   }) async {
+    try {
+      // 'Scheduled' is the server's status value; a speaker notice is re-queued for the new time there
+      await EchosphereApiService().updateAnnouncement(id, scheduledAt: newScheduledTime, status: 'Scheduled');
+    } catch (e) {
+      errorSnackBar('Could not reschedule: ${e.toString().replaceAll('Exception: ', '')}');
+      return false;
+    }
     final idx = _rawAnnouncements.indexWhere((a) => a.id == id);
     if (idx != -1) {
-      final old = _rawAnnouncements[idx];
-      _rawAnnouncements[idx] = AnnouncementModel(
-        id: old.id,
-        title: old.title,
-        description: old.description,
-        priority: old.priority,
-        emergencyLevel: old.emergencyLevel,
-        status: 'SCHEDULED',
-        creatorName: old.creatorName,
-        department: old.department,
-        category: old.category,
-        createdAt: newScheduledTime,
-        aiSummary: old.aiSummary,
-        remarks: 'Rescheduled for ${formatCampusTime(newScheduledTime, 'yyyy-MM-dd HH:mm')}',
-      );
+      _rawAnnouncements[idx] = _rawAnnouncements[idx].copyWith(status: 'SCHEDULED', scheduledAt: newScheduledTime.toUtc());
       _rawAnnouncements.refresh();
+      update();
     }
     return true;
   }

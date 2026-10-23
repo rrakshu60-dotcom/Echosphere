@@ -50,8 +50,11 @@ class NotificationController extends GetxController {
 
           final isReadVal = n['is_read'] == true;
           final notifId = n['id'] as int;
+          // The server keeps read / unread, so it wins over this device's copy
           if (isReadVal) {
             readIds.add(notifId);
+          } else {
+            readIds.remove(notifId);
           }
 
           return {
@@ -197,6 +200,7 @@ class NotificationController extends GetxController {
       readIds.refresh();
       _saveReadStateToDisk();
       update();
+      EchosphereApiService().markNotificationUnread(id).catchError((_) {});
     }
   }
 
@@ -212,11 +216,20 @@ class NotificationController extends GetxController {
     EchosphereApiService().markAllNotificationsRead().catchError((_) {});
   }
 
-  void clearAllHistory() {
+  /// Clears History: deletes the read alerts on the server and removes them here (it used to mark
+  /// everything unread instead). Returns false if the server could not be reached.
+  Future<bool> clearAllHistory() async {
+    try {
+      await EchosphereApiService().clearReadNotifications();
+    } catch (_) {
+      return false;
+    }
+    liveNotifications.removeWhere((n) => readIds.contains(n['id']));
     readIds.clear();
     readIds.refresh();
     _saveReadStateToDisk();
     update();
+    return true;
   }
 
   void toggleFilter(bool onlyUnread) {

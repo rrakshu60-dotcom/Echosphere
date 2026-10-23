@@ -1550,7 +1550,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: announcement.createdAt.isAfter(now) ? announcement.createdAt.toLocal() : now.add(const Duration(hours: 1)),
+      initialDate: (announcement.scheduledAt ?? announcement.createdAt).isAfter(now) ? (announcement.scheduledAt ?? announcement.createdAt).toLocal() : now.add(const Duration(hours: 1)),
       firstDate: now.subtract(const Duration(days: 1)),
       lastDate: now.add(const Duration(days: 365)),
     );
@@ -1558,7 +1558,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     if (pickedDate != null && context.mounted) {
       final pickedTime = await showTimePicker(
         context: context,
-        initialTime: TimeOfDay.fromDateTime(announcement.createdAt.toLocal()),
+        initialTime: TimeOfDay.fromDateTime((announcement.scheduledAt ?? announcement.createdAt).toLocal()),
       );
 
       if (pickedTime != null) {
@@ -1570,10 +1570,11 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
           pickedTime.minute,
         );
 
-        await controller.rescheduleAnnouncement(
+        final ok = await controller.rescheduleAnnouncement(
           id: announcement.id,
           newScheduledTime: newDateTime,
         );
+        if (!ok) return;
 
         snackBar('Announcement rescheduled for ${formatCampusTime(newDateTime, "MMM dd, yyyy \u2022 hh:mm a")}!');
         Get.back();
