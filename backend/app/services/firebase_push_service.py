@@ -32,6 +32,15 @@ def get_firebase_admin_app():
             _firebase_app = firebase_admin.get_app()
             return _firebase_app
 
+        # 0. The key as base64 of the JSON (one line in .env and in Render's settings)
+        raw_b64 = (os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON_B64") or "").strip()
+        if raw_b64:
+            import base64
+            cred = credentials.Certificate(json.loads(base64.b64decode(raw_b64)))
+            _firebase_app = firebase_admin.initialize_app(cred)
+            logger.info(f"🔥 [Firebase FCM] Initialized from FIREBASE_SERVICE_ACCOUNT_JSON_B64 (Project: {_firebase_app.project_id})")
+            return _firebase_app
+
         # 1. Check FIREBASE_SERVICE_ACCOUNT_KEY env var
         key_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
 
@@ -70,7 +79,7 @@ def get_firebase_admin_app():
             logger.info(f"🔥 [Firebase FCM] Initialized from FIREBASE_SERVICE_ACCOUNT_JSON (Project: {_firebase_app.project_id})")
             return _firebase_app
 
-        logger.warning("⚠️ [Firebase FCM] No service account key found; push notifications will run in mock/log mode.")
+        logger.warning("⚠️ [Firebase FCM] No service account key found; push notifications are not sent.")
     except Exception as e:
         logger.warning(f"⚠️ [Firebase FCM] Initialization warning: {e}")
 
@@ -104,7 +113,7 @@ class FirebasePushService:
             logger.info(
                 f"[FCM MOCK DISPATCH] Topic='{clean_topic}', Title='{title}', Body='{body[:80]}...', Emergency={is_emergency}"
             )
-            return {"status": "mock_sent", "topic": clean_topic, "message_id": "mock_id"}
+            return {"status": "not_configured", "topic": clean_topic}
 
         try:
             from firebase_admin import messaging

@@ -18,6 +18,20 @@ class NoticeAttachment(BaseModel):
     size: Optional[int] = None
     mime: Optional[str] = None
 
+    @field_validator("url")
+    @classmethod
+    def only_our_attachment_storage(cls, v: str) -> str:
+        """Only links to files uploaded through /attachments/upload: never another site (e.g. a phishing page)."""
+        import os
+        import re
+        from app.services.cloud_storage_service import CloudStorageService
+
+        repo = os.getenv("HF_DATASET_REPO") or CloudStorageService._repo_id or "RakshiRoxy/echosphere-assets"
+        cdn = f"https://huggingface.co/datasets/{re.escape(repo)}/resolve/main/attachments/[A-Za-z0-9._-]+"
+        if re.fullmatch(cdn, v) or re.fullmatch(r"/static/attachments/[A-Za-z0-9._-]+", v):
+            return v
+        raise ValueError("Attachments must be files uploaded to EchoSphere.")
+
 
 class AnnouncementCreate(BaseModel):
     title: str

@@ -141,35 +141,44 @@ def dispatch_announcement_notifications_and_deliveries(
         except Exception as e:
             logger.warning(f"Error generating notifications for announcement {announcement.id}: {e}")
 
-        # 3. Dispatch native device Push Notifications via Firebase Cloud Messaging (FCM)
-        if deliver_push or str(announcement.priority).upper() in ("URGENT", "EMERGENCY"):
-            try:
-                from app.services.firebase_push_service import firebase_push_service
-                dept_code = None
-                if getattr(announcement, "department", None):
-                    dept_code = getattr(announcement.department, "code", None)
+    # 3. Push notifications (FCM). Independent of in-app alerts: this used to sit inside the in-app block,
+    #    so a notice sent by push only never pushed.
+    if announcement.status == AnnouncementStatus.PUBLISHED and (
+        deliver_push or str(announcement.priority).upper() in ("URGENT", "EMERGENCY")
+    ):
+        try:
+            from app.services.firebase_push_service import firebase_push_service
+            dept_code = None
+            if getattr(announcement, "department", None):
+                dept_code = getattr(announcement.department, "code", None)
 
-                cat_name = getattr(announcement.category, "name", "General") if getattr(announcement, "category", None) else "General"
+            cat_name = getattr(announcement.category, "name", "General") if getattr(announcement, "category", None) else "General"
 
-                push_results = firebase_push_service.send_announcement_push(
-                    announcement_id=announcement.id,
-                    title=announcement.title,
-                    description=announcement.description or "",
-                    target_audience=target_audience,
-                    department_code=dept_code,
-                    category=cat_name,
-                    priority=str(announcement.priority),
-                    audio_url=getattr(announcement, "audio_url", None),
-                )
-                logger.info(f"Dispatched FCM push notifications for announcement #{announcement.id}: {push_results}")
-                push_outcome = f"Push notification sent. Result: {push_results}"
-            except Exception as ex:
-                logger.warning(f"Error dispatching FCM push notifications for announcement #{announcement.id}: {ex}")
-                push_outcome = f"Push notification failed: {ex}"
-            from app.services.notice_record_service import log_notice_event
+            push_results = firebase_push_service.send_announcement_push(
+                announcement_id=announcement.id,
+                title=announcement.title,
+                description=announcement.description or "",
+                target_audience=target_audience,
+                department_code=dept_code,
+                category=cat_name,
+                priority=str(announcement.priority),
+                audio_url=getattr(announcement, "audio_url", None),
+            )
+            logger.info(f"Dispatched FCM push notifications for announcement #{announcement.id}: {push_results}")
+            sent = [r.get("topic") for r in push_results or [] if r.get("status") == "sent"]
+            if sent:
+                push_outcome = f"Push notification sent to {', '.join(sent)}."
+            elif any(r.get("status") == "not_configured" for r in push_results or []):
+                push_outcome = "Push notification not sent: push notifications are not set up on the server."
+            else:
+                push_outcome = f"Push notification not sent: {push_results}"
+        except Exception as ex:
+            logger.warning(f"Error dispatching FCM push notifications for announcement #{announcement.id}: {ex}")
+            push_outcome = f"Push notification failed: {ex}"
+        from app.services.notice_record_service import log_notice_event
 
-            log_notice_event(db, announcement.id, "PUSH_SENT", push_outcome[:1000],
-                             delivered=push_outcome.startswith("Push notification sent"))
+        log_notice_event(db, announcement.id, "PUSH_SENT", push_outcome[:1000],
+                         delivered=push_outcome.startswith("Push notification sent"))
 
 
 
