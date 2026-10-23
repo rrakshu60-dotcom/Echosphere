@@ -827,7 +827,7 @@ class _NoticeRecordPageState extends State<NoticeRecordPage> {
           _field(theme, 'Priority', v(r['priority'])),
           _field(theme, 'Emergency level', v(r['emergency_level'])),
           _field(theme, 'Audience', v(r['target_audience'])),
-          _field(theme, 'Delivery', (r['channels'] as List?)?.join(', ') ?? '-'),
+          _field(theme, 'Delivery', auditChannels(r)),
           _field(theme, 'Status', v(r['status'])),
         ]),
         _section('Content', [
@@ -846,7 +846,7 @@ class _NoticeRecordPageState extends State<NoticeRecordPage> {
           _field(theme, 'Published', auditTime(r['published_at'])),
           _field(theme, 'First delivered', auditTime(r['first_delivered_at'])),
           _field(theme, 'Last delivered', auditTime(r['last_delivered_at'])),
-          _field(theme, 'Speaker plays', v(r['speaker_play_count'])),
+          _field(theme, 'Speaker plays', auditPlays(r)),
           if (deleted) ...[
             _field(theme, 'Deleted', auditTime(r['deleted_at'])),
             _field(theme, 'Deleted by', '${v(r['deleted_by_name'])} (${v(r['deleted_by_role'])})'),

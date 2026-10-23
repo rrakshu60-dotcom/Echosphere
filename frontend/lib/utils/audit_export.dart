@@ -57,6 +57,15 @@ String _v(dynamic value) => (value == null || '$value'.isEmpty) ? '-' : '$value'
 
 String _yesNo(dynamic value) => value == null ? '-' : (value == true ? 'yes' : 'no');
 
+/// Delivery channels, or "-" when none are known.
+String auditChannels(Map<String, dynamic> r) {
+  final channels = (r['channels'] as List?) ?? const [];
+  return channels.isEmpty ? '-' : channels.join(', ');
+}
+
+/// Speaker plays; unknown ("-") on partial records, whose deliveries were never recorded.
+String auditPlays(Map<String, dynamic> r) => r['partial'] == true ? '-' : _v(r['speaker_play_count']);
+
 /// One notice's full record and timeline as readable text.
 String noticeRecordToText(Map<String, dynamic> r, List<Map<String, dynamic>> events) {
   final b = StringBuffer()
@@ -68,7 +77,7 @@ String noticeRecordToText(Map<String, dynamic> r, List<Map<String, dynamic>> eve
   b
     ..writeln('Category: ${_v(r['category'])}   Priority: ${_v(r['priority'])}   Emergency level: ${_v(r['emergency_level'])}')
     ..writeln('Audience: ${_v(r['target_audience'])}')
-    ..writeln('Delivery: ${(r['channels'] as List?)?.join(', ') ?? '-'}')
+    ..writeln('Delivery: ${auditChannels(r)}')
     ..writeln('Status: ${_v(r['status'])}')
     ..writeln('Created by: ${_v(r['creator_name'])} (${_v(r['creator_role'])}, ${_v(r['creator_department'])})')
     ..writeln('Created: ${auditTime(r['created_at'])}')
@@ -76,7 +85,7 @@ String noticeRecordToText(Map<String, dynamic> r, List<Map<String, dynamic>> eve
     ..writeln('Published: ${auditTime(r['published_at'])}')
     ..writeln('First delivered: ${auditTime(r['first_delivered_at'])}')
     ..writeln('Last delivered: ${auditTime(r['last_delivered_at'])}')
-    ..writeln('Speaker plays: ${_v(r['speaker_play_count'])}');
+    ..writeln('Speaker plays: ${auditPlays(r)}');
   if (r['deleted'] == true) {
     b
       ..writeln('Deleted: ${auditTime(r['deleted_at'])}')
@@ -123,7 +132,7 @@ String auditRowsToText(AuditTab tab, List<Map<String, dynamic>> rows) {
       case AuditTab.notices:
         b.writeln('Notice #${r['announcement_id']}: ${_v(r['title'])}');
         b.writeln('  Created ${auditTime(r['created_at'])} by ${_v(r['creator_name'])} (${_v(r['creator_role'])})');
-        b.writeln('  ${_v(r['status'])} | ${(r['channels'] as List?)?.join(', ') ?? '-'} | speaker plays ${_v(r['speaker_play_count'])}');
+        b.writeln('  ${_v(r['status'])} | ${auditChannels(r)} | speaker plays ${auditPlays(r)}');
         if (r['deleted'] == true) {
           b.writeln('  Deleted ${auditTime(r['deleted_at'])} by ${_v(r['deleted_by_name'])}'
               '${r['deleted_before_broadcast'] == true ? ' (before broadcast)' : ''}');
