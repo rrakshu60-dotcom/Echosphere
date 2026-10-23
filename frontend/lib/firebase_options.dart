@@ -41,8 +41,8 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAqfkOcHlgqn74o_P3wx-Lq5GOaILZK3_E',
-    appId: '1:808301080990:web:2bed6554aeca7090c1268f',
+    apiKey: 'AIzaSyBJIPMXz1aEdpMcRJObrQ8ur_VYxrhVvKI',
+    appId: '1:808301080990:web:9e3dbcb7e26f0937c1268f',
     messagingSenderId: '808301080990',
     projectId: 'echosphere-3bcc0',
     authDomain: 'echosphere-3bcc0.firebaseapp.com',

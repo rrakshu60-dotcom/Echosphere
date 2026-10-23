@@ -7,6 +7,7 @@ Supports topic-based fan-out (department, role, campus-wide, emergency).
 """
 
 import os
+import re
 import glob
 import json
 import logging
@@ -188,13 +189,10 @@ class FirebasePushService:
             )
             results.append(res_emerg)
 
-        # 2. Determine target topic
-        if department_code and department_code.strip() and department_code.lower() not in ("all", "college-wide"):
-            topic = f"dept_{department_code.strip().lower()}"
-        elif target_str and not any(k in target_str for k in ["entire", "all", "college"]):
-            topic = f"dept_{target_str.replace(' ', '_')}"
-        else:
-            topic = "all_campus"
+        # 2. The topic follows the notice's audience (not the creator's department): "CSE Department" -> dept_cse;
+        #    year groups, faculty and the whole college -> all_campus (in-app alerts do the finer targeting)
+        dept_match = re.fullmatch(r"\s*([a-z0-9]+)\s+department\s*", target_str or "")
+        topic = f"dept_{dept_match.group(1)}" if dept_match else "all_campus"
 
         res = FirebasePushService.send_topic_notification(
             topic=topic,
@@ -209,3 +207,30 @@ class FirebasePushService:
 
 
 firebase_push_service = FirebasePushService()
+
+
+def device_topics(user) -> list:
+    """Topics a signed-in device is subscribed to, worked out from the account (never from the client)."""
+    topics = ["all_campus", "emergency_broadcasts"]
+    dept = getattr(user, "department", None)
+    code = (getattr(dept, "code", None) or "").strip().lower() if dept else ""
+    if code and code.isalnum():
+        topics.append(f"dept_{code}")
+    return topics
+
+
+def subscribe_device(token: str, topics: list) -> list:
+    """Subscribes one device token to the topics; returns the topics that succeeded."""
+    app = get_firebase_admin_app()
+    if app is None:
+        return []
+    from firebase_admin import messaging
+    done = []
+    for topic in topics:
+        try:
+            res = messaging.subscribe_to_topic([token], topic, app=app)
+            if res.success_count:
+                done.append(topic)
+        except Exception as e:
+            logger.warning(f"[FCM] subscribe to {topic} failed: {type(e).__name__}")
+    return done

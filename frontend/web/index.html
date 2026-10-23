@@ -37,10 +37,12 @@
     if (window.location.hash && (window.location.hash.includes('minified') || window.location.hash.includes('Instance%20of') || window.location.hash.includes('Instance of') || window.location.hash.includes('xp'))) {
       history.replaceState(null, '', window.location.pathname);
     }
-    // Auto-unregister stale service worker and clear cache to guarantee newest build
+    // Remove stale app service workers so the newest build always loads, but keep the push notification one
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(registrations) {
         for(var i = 0; i < registrations.length; i++) {
+          var sw = registrations[i].active || registrations[i].waiting || registrations[i].installing;
+          if (sw && sw.scriptURL.indexOf('firebase-messaging-sw.js') !== -1) continue;
           registrations[i].unregister();
         }
       });

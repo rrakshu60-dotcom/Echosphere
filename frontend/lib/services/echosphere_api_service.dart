@@ -1128,6 +1128,11 @@ class EchosphereApiService {
     }
   }
 
+  /// Registers this device for push notifications; the server subscribes it to the account's topics.
+  Future<void> registerPushDevice(String token, String platform) async {
+    await _dio.post('/push/register', data: {'token': token, 'platform': platform});
+  }
+
   Future<void> markNotificationUnread(int notificationId) async {
     try {
       await _dio.put('/notifications/$notificationId/unread');

@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get/get.dart';
 import 'package:echosphere/firebase_options.dart';
+import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 
 @pragma('vm:entry-point')
@@ -14,6 +15,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
   debugPrint("🔥 [FCM BACKGROUND] Received message: ${message.messageId} - ${message.notification?.title}");
 }
+
+/// Public half of the project's web push key pair (Firebase console > Cloud Messaging > Web Push certificates).
+const _webPushKey = 'BPuxjXbW_edSA2lZ7gV1wF6unLnI0uQ-chY8qNUufRkOe_XMJm4VZa28LaMlyPtMtAZxx5sRgojtWMdOCkYRkyk';
 
 class FcmPushService {
   FcmPushService._();
@@ -62,16 +66,14 @@ class FcmPushService {
 
       // 4. Retrieve FCM device registration token
       try {
-        _fcmToken = await _messaging!.getToken();
+        _fcmToken = await _messaging!.getToken(vapidKey: kIsWeb ? _webPushKey : null);
         debugPrint('🔥 [FCM TOKEN] Device Token: $_fcmToken');
       } catch (e) {
         debugPrint('ℹ️ [FCM] Token retrieval note: $e');
       }
 
-      // 5. Subscribe to baseline campus channels
-      await _messaging!.subscribeToTopic('all_campus');
-      await _messaging!.subscribeToTopic('emergency_broadcasts');
-      debugPrint('🔥 [FCM] Subscribed to default topics: all_campus, emergency_broadcasts');
+      // 5. Topics are subscribed by the server after sign-in (syncUserSubscriptions): browsers can't subscribe
+      //    themselves, and the server decides the topics from the account.
 
       // 6. Foreground message listener (Shows in-app banner alert)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -100,39 +102,28 @@ class FcmPushService {
     }
   }
 
-  /// Subscribes the authenticated user to their department and role channels
+  /// After sign-in: registers this device's push token with the server, which subscribes it to the account's
+  /// topics (whole campus, emergencies, own department).
   Future<void> syncUserSubscriptions({String? departmentCode, String? role}) async {
     if (!isSupported || _messaging == null) return;
     try {
-      if (departmentCode != null && departmentCode.isNotEmpty && departmentCode.toLowerCase() != 'college-wide') {
-        final deptTopic = 'dept_${departmentCode.toLowerCase().trim().replaceAll(' ', '_')}';
-        await _messaging!.subscribeToTopic(deptTopic);
-        debugPrint('🔥 [FCM] Subscribed to department topic: $deptTopic');
-      }
-      if (role != null && role.isNotEmpty) {
-        final roleTopic = 'role_${role.toLowerCase().trim().replaceAll(' ', '_')}';
-        await _messaging!.subscribeToTopic(roleTopic);
-        debugPrint('🔥 [FCM] Subscribed to role topic: $roleTopic');
-      }
+      _fcmToken ??= await _messaging!.getToken(vapidKey: kIsWeb ? _webPushKey : null);
+      final token = _fcmToken;
+      if (token == null || token.isEmpty) return;
+      await EchosphereApiService().registerPushDevice(token, kIsWeb ? 'web' : Platform.operatingSystem);
     } catch (e) {
-      debugPrint('⚠️ [FCM] Subscription sync warning: $e');
+      debugPrint('⚠️ [FCM] Push registration warning: $e');
     }
   }
 
-  /// Unsubscribes user from role/department channels on logout
+  /// On sign-out: deletes this device's push token, so a signed-out device stops receiving campus pushes.
   Future<void> unsubscribeUserSubscriptions({String? departmentCode, String? role}) async {
     if (!isSupported || _messaging == null) return;
     try {
-      if (departmentCode != null && departmentCode.isNotEmpty) {
-        final deptTopic = 'dept_${departmentCode.toLowerCase().trim().replaceAll(' ', '_')}';
-        await _messaging!.unsubscribeFromTopic(deptTopic);
-      }
-      if (role != null && role.isNotEmpty) {
-        final roleTopic = 'role_${role.toLowerCase().trim().replaceAll(' ', '_')}';
-        await _messaging!.unsubscribeFromTopic(roleTopic);
-      }
+      await _messaging!.deleteToken();
+      _fcmToken = null;
     } catch (e) {
-      debugPrint('⚠️ [FCM] Unsubscribe warning: $e');
+      debugPrint('⚠️ [FCM] Token removal warning: $e');
     }
   }
 
@@ -141,7 +132,7 @@ class FcmPushService {
     if (annIdStr != null) {
       final annId = int.tryParse(annIdStr.toString());
       if (annId != null) {
-        Get.toNamed('/announcements/detail', arguments: {'id': annId});
+        Get.toNamed('/announcement?id=$annId');
       }
     }
   }
