@@ -58,3 +58,23 @@ def test_only_links_to_our_attachment_storage_are_accepted():
             "title": "Bad link", "description": "x", "category_id": 1, "target_audience": "Entire College",
             "deliver_push": False, "deliver_in_app": False, "attachments": [{"name": "a.pdf", "url": bad}]})
         assert res.status_code == 422, (bad, res.status_code)
+
+
+def test_deleting_a_notice_removes_its_attachment_files(monkeypatch):
+    """Otherwise every deleted notice's files would stay in cloud storage forever."""
+    import threading
+    from app.services.cloud_storage_service import CloudStorageService
+
+    removed = []
+    monkeypatch.setattr(CloudStorageService, "delete_attachment_files", classmethod(lambda cls, names: removed.extend(names) or len(names)))
+    up = _upload().json()
+    res = client.post("/api/v1/announcements", headers=ADMIN, json={
+        "title": "Temporary circular", "description": "x", "category_id": 1, "target_audience": "Entire College",
+        "deliver_push": False, "deliver_in_app": False,
+        "attachments": [{"name": "circular.pdf", "url": up["file_url"]}]})
+    nid = res.json()["id"]
+    assert client.delete(f"/api/v1/announcements/{nid}", headers=ADMIN).status_code == 200
+    for t in threading.enumerate():
+        if t.name.startswith("NoticeAttachmentDelete-"):
+            t.join(timeout=10)
+    assert removed == [up["file_name"]], removed
