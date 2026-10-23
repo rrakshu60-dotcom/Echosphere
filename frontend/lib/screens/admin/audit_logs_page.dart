@@ -576,8 +576,10 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             children: [
               if (deleted && r['deleted_before_broadcast'] == true)
                 _badge(theme, 'Deleted before broadcast', color: danger)
-              else if (deleted)
+              else if (deleted && r['deleted_before_broadcast'] == false)
                 _badge(theme, 'Deleted after delivery', color: danger)
+              else if (deleted)
+                _badge(theme, 'Deleted', color: danger) // older records: delivery before deletion is unknown
               else
                 _badge(theme, r['status'] ?? 'Unknown'),
               for (final ch in (r['channels'] as List? ?? const [])) _badge(theme, '$ch'),
