@@ -550,12 +550,32 @@ public:
     deferredPushCount = 0;
   }
 
+  // True when the pushed message holds a PLAY_EMERGENCY for a notice other than the one playing
+  // (a repeated push of the emergency that is already playing must not cut it off).
+  bool isOtherNoticeEmergency(const String& msg) {
+    #if defined(ARDUINOJSON_VERSION_MAJOR) && (ARDUINOJSON_VERSION_MAJOR >= 7)
+      JsonDocument doc;
+    #else
+      DynamicJsonDocument doc(4096);
+    #endif
+    if (deserializeJson(doc, msg) || !doc["pending_commands"].is<JsonArray>()) return false;
+    for (JsonObject cmd : doc["pending_commands"].as<JsonArray>()) {
+      const char* c = cmd["command"] | "";
+      if (strcmp(c, "PLAY_EMERGENCY") == 0 && (cmd["announcement_id"] | 0) != activeAnnouncementId) return true;
+    }
+    return false;
+  }
+
   void handlePushMessage(uint8_t* payload, size_t length) {
     if (streamInProgress) {
       // A pause/stop silences the speaker at once; everything else waits until the stream ends
       String msg((const char*)payload, length);
       if (msg.indexOf("\"PAUSE\"") >= 0 || msg.indexOf("\"STOP\"") >= 0 || msg.indexOf("\"CANCEL\"") >= 0 || msg.indexOf("\"SKIP\"") >= 0) {
         Serial.println(F("⚡ [PUSH] Stop received during playback: ending the stream now."));
+        audioMgr.requestStreamStop();
+      } else if (msg.indexOf("\"PLAY_EMERGENCY\"") >= 0 && isOtherNoticeEmergency(msg)) {
+        // An emergency takes over at once instead of waiting for the server to cut this stream
+        Serial.println(F("⚡ [PUSH] Emergency received during playback: ending the stream now."));
         audioMgr.requestStreamStop();
       }
       if (deferredPushCount < MAX_DEFERRED_PUSH) {

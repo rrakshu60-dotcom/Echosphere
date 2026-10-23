@@ -1398,9 +1398,12 @@ def restore_paused_queue_items(db: Session, now: Optional[datetime] = None) -> i
                         setattr(p_item, "status", "Completed")
                         sched.is_active = False
         else:
-            # Non-repeat notice: restore to finish broadcast
+            # Non-repeat notice: restore to finish broadcast. Clear played_at, or the next advance
+            # takes it for an already-played notice and marks it Completed.
             setattr(p_item, "status", "Queued")
             setattr(p_item, "scheduled_time", now)
+            setattr(p_item, "played_at", None)
+            setattr(p_item, "queue_position", 1)
             restored_count += 1
             logger.info(f"▶️ Resumed preempted notice #{ann_id} in speaker queue.")
 
