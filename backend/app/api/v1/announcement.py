@@ -1123,19 +1123,32 @@ def ocr_document_endpoint(
     )
 
 
+ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+ATTACHMENT_TYPES = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "png", "jpg", "jpeg", "webp"}
+
+
 @router.post("/attachments/upload")
 async def upload_attachment_file(
     file: UploadFile = File(...),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
 ):
     """
-    Circular Attachment Cloud Storage Uploader.
-    Uploads institutional circulars, scanned orders, images, or PDFs to Hugging Face Datasets CDN.
-    Guarantees 100% free, unlimited, permanent storage with direct raw Cloudflare CDN URLs.
+    Uploads a notice attachment (staff only, 10 MB max, documents and images) to cloud storage.
+    Each upload gets a unique name, so files with the same name never overwrite each other.
     """
+    import re as _re
+    import uuid
     from app.services.cloud_storage_service import CloudStorageService
 
-    content = await file.read()
-    filename = file.filename or "attachment.bin"
+    original = os.path.basename(file.filename or "attachment")
+    ext = original.rsplit(".", 1)[-1].lower() if "." in original else ""
+    if ext not in ATTACHMENT_TYPES:
+        raise HTTPException(status_code=400, detail="This file type can't be attached. Use a PDF, an image or an Office document.")
+    content = await file.read(ATTACHMENT_MAX_BYTES + 1)
+    if len(content) > ATTACHMENT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Attachments can be at most 10 MB.")
+    safe = _re.sub(r"[^A-Za-z0-9._-]+", "_", original).strip("._") or f"attachment.{ext}"
+    filename = f"{uuid.uuid4().hex[:10]}_{safe}"
     res = CloudStorageService.upload_bytes(content, filename=filename, folder="attachments")
 
     return {
@@ -1158,17 +1171,14 @@ def get_attachment_file(filename: str):
     """
     from app.services.cloud_storage_service import CloudStorageService, STATIC_DIR
 
-    static_file = os.path.join(STATIC_DIR, "attachments", filename)
-    if not os.path.exists(static_file):
-        restored = CloudStorageService.restore_file_from_cdn_if_missing(filename, folder="attachments")
-        if restored and os.path.exists(restored):
-            static_file = restored
-
-    if os.path.exists(static_file):
-        return FileResponse(static_file, filename=filename)
-
+    filename = os.path.basename(filename)
+    # Attachments live in cloud storage: redirect there rather than copying them onto the server's disk
     cdn_url = CloudStorageService.get_public_url("attachments", filename)
     if cdn_url.startswith("http"):
         return RedirectResponse(url=cdn_url)
+
+    static_file = os.path.join(STATIC_DIR, "attachments", filename)
+    if os.path.exists(static_file):
+        return FileResponse(static_file, filename=filename)
 
     raise HTTPException(status_code=404, detail="Attachment not found.")

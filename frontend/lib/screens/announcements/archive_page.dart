@@ -1,13 +1,13 @@
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/widgets/common/glow.dart';
-import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
 import 'package:echosphere/widgets/custom_widgets/notice_sort_button.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:echosphere/utils/campus_time.dart';
+import 'package:echosphere/utils/notice_attachments.dart';
 
 class ArchivePage extends StatefulWidget {
   const ArchivePage({super.key});
@@ -257,7 +257,7 @@ class _ArchivePageState extends State<ArchivePage> {
                                             children: item.attachments.map((file) {
                                               IconData icon = Icons.insert_drive_file_rounded;
                                               final Color iconCol = theme.colorScheme.primary;
-                                              final lower = file.toLowerCase();
+                                              final lower = file.name.toLowerCase();
                                               if (lower.endsWith('.pdf')) {
                                                 icon = Icons.picture_as_pdf_rounded;
                                               } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
@@ -269,12 +269,8 @@ class _ArchivePageState extends State<ArchivePage> {
                                               }
                                               return ActionChip(
                                                 avatar: Icon(icon, color: iconCol, size: 16),
-                                                label: Text(file, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                                onPressed: () => AttachmentViewerDialog.show(
-                                                  context,
-                                                  filename: file,
-                                                  notice: item,
-                                                ),
+                                                label: Text(file.name, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                onPressed: () => openNoticeAttachment(file),
                                               );
                                             }).toList(),
                                           )

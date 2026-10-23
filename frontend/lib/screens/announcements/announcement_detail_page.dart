@@ -5,7 +5,6 @@ import 'package:echosphere/controllers/speaker_queue_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:echosphere/widgets/common/glow.dart';
 import 'package:echosphere/widgets/custom_widgets/calendar_sync_dialog.dart';
-import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
@@ -22,6 +21,7 @@ import 'package:echosphere/widgets/notice_audio_player_bar.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/utils/campus_time.dart';
+import 'package:echosphere/utils/notice_attachments.dart';
 
 class AnnouncementDetailPage extends StatefulWidget {
   final AnnouncementModel announcement;
@@ -974,7 +974,7 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                   children: announcement.attachments.map((file) {
                                     IconData icon = Icons.insert_drive_file_rounded;
                                     final iconCol = theme.colorScheme.primary;
-                                    final lower = file.toLowerCase();
+                                    final lower = file.name.toLowerCase();
                                     if (lower.endsWith('.pdf')) {
                                       icon = Icons.picture_as_pdf_rounded;
                                     } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx') || lower.endsWith('.csv')) {
@@ -988,12 +988,8 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                                       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 80),
                                       child: ActionChip(
                                         avatar: Icon(icon, color: iconCol, size: 18),
-                                        label: Text(file, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        onPressed: () => AttachmentViewerDialog.show(
-                                          context,
-                                          filename: file,
-                                          notice: announcement,
-                                        ),
+                                        label: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        onPressed: () => openNoticeAttachment(file),
                                       ),
                                     );
                                   }).toList(),

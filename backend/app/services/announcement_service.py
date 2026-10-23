@@ -260,6 +260,7 @@ def create_announcement_service(
         status=initial_status,
         created_by=current_user.id,
         speaker_voice=speaker_voice,
+        attachments=[a.model_dump() for a in request.attachments] if request.attachments else None,
     )
 
     created_announcement = create_announcement(

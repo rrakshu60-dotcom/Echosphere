@@ -356,6 +356,12 @@ class CloudStorageService:
                     cls._save_manifest()
 
                 logger.info(f"[Storage] Uploaded bytes to HF CDN: {cdn_url}")
+                if folder == "attachments":
+                    # Served from the CDN: don't keep a copy on the server's small disk
+                    try:
+                        os.remove(local_path)
+                    except OSError:
+                        pass
                 return {
                     "status": "uploaded",
                     "public_url": cdn_url,

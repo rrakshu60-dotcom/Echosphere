@@ -6,7 +6,7 @@ import 'package:echosphere/utils/client_info.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide FormData, MultipartFile;
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ServerConnectionStatus { connected, connecting, offline }
@@ -365,6 +365,7 @@ class EchosphereApiService {
     String? targetAudience,
     int? speakerNodeId,
     Map<String, dynamic>? repeatSchedule,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
     try {
       final response = await _dio.post(
@@ -383,11 +384,24 @@ class EchosphereApiService {
           if (targetAudience != null) 'target_audience': targetAudience,
           if (speakerNodeId != null) 'speaker_node_id': speakerNodeId,
           if (repeatSchedule != null) 'repeat_schedule': repeatSchedule,
+          if (attachments.isNotEmpty) 'attachments': attachments,
         },
       );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(e.response?.data?['detail'] ?? 'Failed to create announcement.');
+    }
+  }
+
+  /// Uploads one notice attachment to cloud storage; returns {name, url, size, mime} for the notice.
+  Future<Map<String, dynamic>> uploadAttachment(String fileName, List<int> bytes) async {
+    try {
+      final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: fileName)});
+      final response = await _dio.post('/announcements/attachments/upload', data: form);
+      final data = response.data as Map<String, dynamic>;
+      return {'name': fileName, 'url': data['file_url'], 'size': data['size_bytes'], 'mime': data['mime_type']};
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['detail'] ?? 'Could not upload "$fileName".');
     }
   }
 

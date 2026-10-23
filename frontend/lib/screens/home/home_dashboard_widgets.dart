@@ -4,7 +4,6 @@ import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
-import 'package:echosphere/widgets/custom_widgets/attachment_viewer_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/calendar_sync_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
@@ -14,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:echosphere/utils/campus_time.dart';
+import 'package:echosphere/utils/notice_attachments.dart';
 
 // ----------------------------------------------------------------------
 // Stat Card -- Animated metric display for the stats panel
@@ -807,15 +807,11 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                     spacing: 6,
                     runSpacing: 6,
                     children: widget.notice.attachments.map((file) {
-                      final lower = file.toLowerCase();
+                      final lower = file.name.toLowerCase();
                       final isPdf = lower.endsWith('.pdf');
                       final isImg = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg');
                       return InkWell(
-                        onTap: () => AttachmentViewerDialog.show(
-                          context,
-                          filename: file,
-                          notice: widget.notice,
-                        ),
+                        onTap: () => openNoticeAttachment(file),
                         borderRadius: BorderRadius.circular(10),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -839,7 +835,7 @@ class _AnnouncementFeedCardState extends State<AnnouncementFeedCard> {
                               ConstrainedBox(
                                 constraints: const BoxConstraints(maxWidth: 160),
                                 child: Text(
-                                  file,
+                                  file.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(

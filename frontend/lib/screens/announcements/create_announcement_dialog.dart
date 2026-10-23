@@ -234,6 +234,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'],
+        withData: true, // the files are uploaded when the notice is published
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -1703,6 +1704,25 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               : 'Notice published successfully to $selectedAudience!';
         }
 
+        // Upload the attached files first: the notice keeps their cloud links (only names were kept before)
+        final uploaded = <NoticeAttachment>[];
+        for (final f in attachedFiles) {
+          if (f.bytes == null) {
+            errorSnackBar('Could not read "${f.name}". Please attach it again.');
+            return;
+          }
+          if (f.size > 10 * 1024 * 1024) {
+            errorSnackBar('"${f.name}" is larger than 10 MB.');
+            return;
+          }
+          try {
+            uploaded.add(NoticeAttachment.fromJson(await EchosphereApiService().uploadAttachment(f.name, f.bytes!)));
+          } catch (e) {
+            errorSnackBar(e.toString().replaceAll('Exception: ', ''));
+            return;
+          }
+        }
+
         final ok = await annController.createAnnouncement(
           title: title,
           description: desc,
@@ -1719,7 +1739,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           deliverPush: deliverPush,
           speakerVoice: speakerVoice,
           speakerNodeId: selectedSpeakerNodeId,
-          attachments: attachedFiles.map((f) => f.name).toList(),
+          attachments: uploaded,
           repeatSchedule: repeatData,
         );
 

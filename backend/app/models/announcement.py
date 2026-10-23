@@ -5,6 +5,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -95,6 +96,12 @@ class Announcement(TimestampMixin, Base):
         String(20),
         nullable=True,
         default="female",
+    )
+
+    # [{"name", "url", "size", "mime"}]: files are kept in cloud storage, not in the database
+    attachments = Column(
+        JSON,
+        nullable=True,
     )
 
     # -------------------------
