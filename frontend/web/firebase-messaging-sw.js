@@ -1,6 +1,8 @@
 // Shows EchoSphere push notifications when the site is in the background or closed (Firebase Cloud Messaging).
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+// Must match the Firebase JS version the app loads (firebase_core_web supportedFirebaseJsSdkVersion), or the
+// worker cannot open the browser storage the app created ("VersionError") and background pushes are lost.
+importScripts('https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.19.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
   "apiKey": "AIzaSyBJIPMXz1aEdpMcRJObrQ8ur_VYxrhVvKI",
