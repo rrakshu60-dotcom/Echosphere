@@ -274,6 +274,9 @@ def subscribe_device(token: str, topics: list, drop: Optional[list] = None) -> l
             res = messaging.subscribe_to_topic([token], topic, app=app)
             if res.success_count:
                 done.append(topic)
+            else:
+                reasons = ", ".join(str(getattr(e, "reason", e)) for e in (res.errors or []))
+                logger.warning(f"[FCM] subscribe to {topic} rejected: {reasons or 'unknown reason'}")
         except Exception as e:
             logger.warning(f"[FCM] subscribe to {topic} failed: {type(e).__name__}")
     return done

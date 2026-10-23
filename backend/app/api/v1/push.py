@@ -27,4 +27,6 @@ def register_device(body: DeviceRegistration, current_user: User = Depends(get_c
     topics = push.device_topics(current_user)
     drop = [t for t in push.all_restricted_topics(db) if t not in topics]
     subscribed = push.subscribe_device(body.token, topics, drop=drop)
+    # Visible in the service log (no token or account details): how many topics this device joined
+    print(f"[PUSH] {body.platform or 'device'} registered: {len(subscribed)}/{len(topics)} topics", flush=True)
     return {"subscribed": subscribed}
