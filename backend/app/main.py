@@ -16,6 +16,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.hardware import router as hardware_router
 from app.api.v1.notification import router as notification_router
 from app.api.v1.password_reset import router as password_reset_router
+from app.api.v1.push import router as push_router
 from app.api.v1.user_management import router as user_management_router
 from app.api.v1.websocket import router as websocket_router
 from app.api.v1.repeat_schedule import router as repeat_schedule_router
@@ -375,6 +376,11 @@ app.include_router(
 
 app.include_router(
     password_reset_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    push_router,
     prefix="/api/v1",
 )
 

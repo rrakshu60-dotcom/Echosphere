@@ -20,3 +20,6 @@
 
 /assets/*
   Cache-Control: public, no-cache
+
+/firebase-messaging-sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
