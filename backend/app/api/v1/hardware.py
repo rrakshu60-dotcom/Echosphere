@@ -989,65 +989,10 @@ def update_queue_action(
             db.commit()
             return {"status": "success", "queue_id": item.id, "action": action, "new_status": "Playing", "message": "Emergency continuous loop"}
 
-        rep_mode = getattr(sched, "repeat_mode", "INTERVAL") if sched else "INTERVAL"
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        has_repeats_left = False
-        next_rep_time = None
-        slot_name = "REPEAT_INTERVAL"
-
-        if sched and sched.is_active:
-            max_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else 3
-            if max_limit <= 0:
-                max_limit = 999999
-
-            sched.total_played_count += 1
-            sched.last_repeat_at = now
-
-            if sched.total_played_count < max_limit:
-                if rep_mode == "INTERVAL":
-                    interval_m = getattr(sched, "interval_minutes", 15) or 15
-                    next_rep_time = now + timedelta(minutes=interval_m)
-                    sched.next_repeat_at = next_rep_time
-                    has_repeats_left = True
-                    slot_name = f"INTERVAL_{interval_m}M"
-                else:
-                    from app.services.repeat_schedule_service import get_next_slot_datetime, _utc_to_ist_naive
-                    next_cand, cand_slot = get_next_slot_datetime(sched, _utc_to_ist_naive(now), db)
-                    if next_cand:
-                        next_rep_time = next_cand
-                        sched.next_repeat_at = next_rep_time
-                        has_repeats_left = True
-                        sched.is_active = True
-                        slot_name = cand_slot or "NEXT_BREAK"
-                    else:
-                        has_repeats_left = False
-                        sched.is_active = False
-            else:
-                has_repeats_left = False
-                sched.is_active = False
-
-            prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-            target_key = f"{prefix_key}:{sched.total_played_count}"
-            existing_log = db.query(RepeatSlotExecutionLog).filter(RepeatSlotExecutionLog.slot_key == target_key).first()
-            if not existing_log:
-                exec_log = RepeatSlotExecutionLog(
-                    schedule_id=sched.id,
-                    slot_key=target_key,
-                    slot_name=slot_name,
-                    played_at=now,
-                )
-                db.add(exec_log)
-
-        if has_repeats_left and next_rep_time:
-            max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
-            item.status = "Queued"
-            item.scheduled_time = next_rep_time
-            item.queue_position = max_pos + 1
-            item.played_at = None
-            new_status = "Queued"
-        else:
-            item.status = "Completed"
-            new_status = "Completed"
+        from app.services.repeat_schedule_service import finish_repeat_round
+        next_rep_time = finish_repeat_round(db, item, now)
+        new_status = item.status
 
         db.commit()
         db.refresh(item)

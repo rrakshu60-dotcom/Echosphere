@@ -180,6 +180,13 @@ def _utc_to_ist_naive(dt_utc: datetime) -> datetime:
     return dt_utc + timedelta(hours=5, minutes=30)
 
 
+def repeat_log_prefix(sched: Any, slot_name: str, date_str: str) -> str:
+    """Key prefix of a schedule's round logs for one slot on one day (rounds are counted by it)."""
+    if slot_name == "CUSTOM_WINDOW":
+        return f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+    return f"{sched.announcement_id}:{slot_name}:{date_str}"
+
+
 def get_next_slot_datetime(
     sched: Any,
     from_ist_dt: Optional[datetime] = None,
@@ -249,9 +256,7 @@ def get_next_slot_datetime(
             times_played_in_slot = 0
             if db and getattr(sched, "id", None):
                 date_str = from_ist_dt.strftime("%Y-%m-%d")
-                prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-                if slot_name == "CUSTOM_WINDOW":
-                    prefix_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+                prefix_key = repeat_log_prefix(sched, slot_name, date_str)
                 slot_logs = (
                     db.query(RepeatSlotExecutionLog)
                     .filter(
@@ -291,10 +296,15 @@ def get_next_slot_datetime(
                         candidates.append((candidate_repeat, slot_name))
                     else:
                         candidates.append((slot_start_today + timedelta(days=1), slot_name))
+                elif interval_m <= 0 and effective_played_in_slot < slot_max_repeats:
+                    # No interval: keep rotating through the open window after the normal broadcast gap
+                    candidate_repeat = from_ist_dt + timedelta(seconds=BROADCAST_GAP_SECONDS)
+                    if candidate_repeat + timedelta(seconds=15) <= slot_end_today:
+                        candidates.append((candidate_repeat, slot_name))
+                    else:
+                        candidates.append((slot_start_today + timedelta(days=1), slot_name))
                 else:
-                    # In standard break slots (or custom window without interval, or after max repeats in this slot):
-                    # The notice has completed its broadcast for this slot window today.
-                    # Its next repetition for this slot is tomorrow.
+                    # This slot's rounds are done for today; it plays again in tomorrow's window
                     candidates.append((slot_start_today + timedelta(days=1), slot_name))
 
         # 2. Slot is upcoming today
@@ -798,6 +808,69 @@ def get_active_emergency_repeat_schedule(
     return None
 
 
+def finish_repeat_round(db: Session, item: Any, now: datetime) -> Optional[datetime]:
+    """
+    A speaker round of a notice has finished (the speaker's complete callback, or the queue when its time is up).
+    Counts the round once under its slot, then re-queues the item for its next round or marks it Completed.
+    Returns the next round's time (UTC, naive) or None. The caller commits.
+    """
+    sched = (
+        db.query(AnnouncementRepeatSchedule)
+        .filter(
+            AnnouncementRepeatSchedule.announcement_id == item.announcement_id,
+            AnnouncementRepeatSchedule.is_active == True,
+        )
+        .first()
+    ) if item.announcement_id else None
+    if sched is None:
+        item.status = "Completed"
+        return None
+
+    ist_now = _utc_to_ist_naive(now)
+    date_str, time_str = ist_now.strftime("%Y-%m-%d"), ist_now.strftime("%H:%M")
+    sched.total_played_count = (sched.total_played_count or 0) + 1
+    sched.last_repeat_at = now
+    is_interval = (getattr(sched, "repeat_mode", None) or "INTERVAL") == "INTERVAL"
+
+    next_time: Optional[datetime] = None
+    if is_interval:
+        interval_m = getattr(sched, "interval_minutes", 15) or 15
+        slot_name = f"INTERVAL_{interval_m}M"
+        _, default_reps, _ = get_notice_priority_info(item.announcement) if item.announcement else (200, 2, "MEDIUM")
+        limit = sched.max_repeats if sched.max_repeats is not None else default_reps
+        if limit <= 0:
+            limit = 999999
+        candidate = now + timedelta(minutes=interval_m)
+        if sched.total_played_count < limit and not (sched.end_date and candidate > _normalize_dt(sched.end_date)):
+            next_time = candidate
+    else:
+        matched = is_slot_active_at_time(sched, time_str, get_active_break_slots(time_str))
+        slot_name = matched[0] if matched else "PUBLISH_NOW"
+
+    db.add(RepeatSlotExecutionLog(
+        schedule_id=sched.id,
+        slot_key=f"{repeat_log_prefix(sched, slot_name, date_str)}:{sched.total_played_count}",
+        slot_name=slot_name,
+        played_at=now,
+    ))
+    if not is_interval:
+        db.flush()  # the window's round count includes this round
+        next_time, _ = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
+
+    if next_time is None:
+        sched.is_active = False
+        item.status = "Completed"
+        return None
+    sched.next_repeat_at = next_time
+    sched.is_active = True
+    waiting = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
+    item.status = "Queued"
+    item.scheduled_time = next_time
+    item.queue_position = waiting + 1
+    item.played_at = None
+    return next_time
+
+
 def evaluate_and_dispatch_repeat_slots(
     db: Session,
     simulated_time_str: Optional[str] = None,
@@ -984,9 +1057,7 @@ def evaluate_and_dispatch_repeat_slots(
         slot_max_repeats = 999999 if is_em else (sched.max_repeats if (sched.max_repeats is not None and sched.max_repeats > 0) else default_reps)
 
         for slot_name in matched_slots:
-            prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-            if slot_name == "CUSTOM_WINDOW":
-                prefix_key = f"{sched.announcement_id}:CUSTOM_WINDOW:{sched.custom_start_time or 'WIN'}:{date_str}"
+            prefix_key = repeat_log_prefix(sched, slot_name, date_str)
 
             # Query existing execution logs for this slot today
             slot_logs = (
@@ -1011,43 +1082,16 @@ def evaluate_and_dispatch_repeat_slots(
                 })
                 continue
 
-            # Check if notice is currently active in the speaker queue for this slot
-            active_q: Any = (
-                db.query(SpeakerQueue)
+            # Already in the speaker queue: the queue plays its rounds (finish_repeat_round plans each next one)
+            if (
+                db.query(SpeakerQueue.id)
                 .filter(
                     SpeakerQueue.announcement_id == sched.announcement_id,
                     SpeakerQueue.status.in_(["Playing", "Next in Queue", "Queued"]),
                 )
                 .first()
-            )
-            if active_q:
-                curr_played_at = getattr(active_q, "played_at", None)
-                curr_dur = getattr(active_q, "duration_seconds", 15) or 15
-                is_currently_speaking = False
-                if getattr(active_q, "status", None) == "Playing" and curr_played_at:
-                    elapsed = (utc_now - curr_played_at).total_seconds()
-                    if elapsed < curr_dur and not simulated_time_str:
-                        is_currently_speaking = True
-
-                if is_currently_speaking:
-                    skipped.append({
-                        "announcement_id": sched.announcement_id,
-                        "slot": slot_name,
-                        "reason": f"Already actively broadcasting in speaker queue (status: {getattr(active_q, 'status', None)})",
-                    })
-                    continue
-
-                if times_played_today > 0:
-                    skipped.append({
-                        "announcement_id": sched.announcement_id,
-                        "slot": slot_name,
-                        "reason": f"Already active in speaker queue rotation (status: {getattr(active_q, 'status', None)})",
-                    })
-                    continue
-                elif getattr(active_q, "status", None) == "Playing":
-                    # Item was left Playing from an earlier broadcast; mark completed so new slot begins fresh
-                    setattr(active_q, "status", "Completed")
-                    db.commit()
+            ):
+                continue
 
             candidates.append({
                 "sched": sched,
@@ -1114,7 +1158,6 @@ def evaluate_and_dispatch_repeat_slots(
         is_em = cand["is_emergency"]
         next_repeat_num = cand["times_played_today"] + 1
 
-        slot_key = f"{cand['prefix_key']}:{next_repeat_num}"
 
         # Resolve audience scope
         dept_code = "ALL"
@@ -1144,20 +1187,9 @@ def evaluate_and_dispatch_repeat_slots(
             base_url=base_url,
         )
 
-        exec_log = RepeatSlotExecutionLog(
-            schedule_id=sched.id,
-            slot_key=slot_key,
-            slot_name=slot_name,
-            played_at=utc_now,
-        )
-        db.add(exec_log)
-        sched.total_played_count += 1
-        sched.last_repeat_at = utc_now
-
         if getattr(sched, "repeat_mode", "INTERVAL") == "INTERVAL":
+            # Not due again until this round has finished and planned the next one
             sched.next_repeat_at = utc_now + timedelta(minutes=sched.interval_minutes)
-            if sched.max_repeats > 0 and sched.total_played_count >= sched.max_repeats:
-                sched.is_active = False
 
         db.commit()
 
