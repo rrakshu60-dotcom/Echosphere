@@ -75,7 +75,7 @@ def call_modern_gemini(
 
         # 2. Try REST API v1beta endpoint
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"  # key goes in a header (URLs end up in logs)
             contents_payload = []
             if history:
                 for turn in history[-6:]:
@@ -90,7 +90,7 @@ def call_modern_gemini(
             if system_instruction:
                 payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=8)
+            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json", "x-goog-api-key": key}, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 candidates = data.get("candidates", [])

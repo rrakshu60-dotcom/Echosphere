@@ -41,8 +41,9 @@ def _gemini_generate(parts: List[Dict[str, Any]], timeout: int = 30) -> str:
         return ""
     for model in _gemini_models():
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            resp = requests.post(url, json={"contents": [{"parts": parts}]}, timeout=timeout)
+            # Key in a header, never in the URL: request errors include the URL and are logged
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            resp = requests.post(url, json={"contents": [{"parts": parts}]}, headers={"x-goog-api-key": key}, timeout=timeout)
             if resp.status_code != 200:
                 logger.info(f"[Gemini] {model} answered HTTP {resp.status_code}; trying the next model")
                 continue
@@ -52,7 +53,7 @@ def _gemini_generate(parts: List[Dict[str, Any]], timeout: int = 30) -> str:
                 if text:
                     return text
         except Exception as e:
-            logger.info(f"[Gemini] {model} failed: {e}")
+            logger.info(f"[Gemini] {model} failed: {type(e).__name__}")
     return ""
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
