@@ -218,7 +218,10 @@ void main() {
   testWidgets('activity can be filtered by action, sorted, and shows who did it', (tester) async {
     final repo = await _pump(tester, width: 400, tab: AuditTab.activity);
     expect(find.textContaining('Dev Admin'), findsWidgets); // the person's name, not just "user #1"
-    await tester.tap(find.text('Session ended'));
+    expect(find.text('Session ended'), findsWidgets); // plain words, not END_SESSION
+    expect(find.textContaining('END_SESSION'), findsNothing);
+    expect(find.text('Session #4'), findsOneWidget);
+    await tester.tap(find.text('Session ended').first); // the filter chip (the card badge says it too)
     await tester.pump(const Duration(milliseconds: 300));
     expect(repo.calls.last['action'], 'END_SESSION');
     await tester.tap(find.byTooltip('Sort by'));
@@ -262,6 +265,14 @@ void main() {
     expect(txt, contains('Delivery: -'));
     expect(txt, contains('Speaker plays: -'));
     expect(txt, isNot(contains('Speaker plays: 0')));
+  });
+
+  test('activity actions and subjects are named in plain words', () {
+    expect(activityActionLabel('DELETE_ANNOUNCEMENT'), 'Notice deleted');
+    expect(activityActionLabel('LOGIN'), 'Signed in');
+    expect(activityActionLabel('SOMETHING_NEW'), 'Something new');
+    expect(activitySubject({'entity': 'ANNOUNCEMENT', 'entity_id': 7}), 'Notice #7');
+    expect(activitySubject({'entity': 'USER', 'entity_id': 2}), 'User #2');
   });
 
   test('list export writes one readable block per entry', () {
