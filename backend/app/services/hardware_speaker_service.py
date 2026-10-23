@@ -1747,112 +1747,13 @@ def auto_advance_speaker_queue(
                 should_advance = True
 
         else:
-            # Normal notice completed audio playback
-            from app.services.repeat_schedule_service import (
-                get_current_ist_datetime,
-                get_active_break_slots,
-                is_slot_active_at_time,
-                get_notice_priority_info,
-            )
-            from app.models.announcement_repeat_schedule import (
-                AnnouncementRepeatSchedule,
-                RepeatSlotExecutionLog,
-            )
-
-            ist_now = get_current_ist_datetime()
-            time_str = ist_now.strftime("%H:%M")
-            date_str = ist_now.strftime("%Y-%m-%d")
-            active_slots = get_active_break_slots(time_str)
-
-            sched = (
-                db.query(AnnouncementRepeatSchedule)
-                .filter(
-                    AnnouncementRepeatSchedule.announcement_id == current_playing.announcement_id,
-                    AnnouncementRepeatSchedule.is_active == True,
-                )
-                .first()
-            ) if current_playing.announcement_id else None
-
-            has_repeats_remaining = False
-            next_repeat_time = None
-            slot_name = "REPEAT_INTERVAL"
-
-            if sched:
-                repeat_mode = getattr(sched, "repeat_mode", "INTERVAL") or "INTERVAL"
-                prio_weight, default_prio_limit, prio_tier = get_notice_priority_info(ann) if ann else (200, 2, "MEDIUM")
-
-                sched.total_played_count += 1
-                sched.last_repeat_at = now
-
-                if repeat_mode == "INTERVAL":
-                    max_reps_limit = sched.max_repeats if getattr(sched, "max_repeats", None) is not None else default_prio_limit
-                    if max_reps_limit <= 0:
-                        max_reps_limit = 999999
-
-                    if sched.total_played_count < max_reps_limit:
-                        interval_m = getattr(sched, "interval_minutes", 15) or 15
-                        next_repeat_time = now + timedelta(minutes=interval_m)
-                        if sched.end_date and next_repeat_time > sched.end_date:
-                            has_repeats_remaining = False
-                            sched.is_active = False
-                        else:
-                            sched.next_repeat_at = next_repeat_time
-                            has_repeats_remaining = True
-                            slot_name = f"INTERVAL_{interval_m}M"
-                    else:
-                        has_repeats_remaining = False
-                        sched.is_active = False
-                else:
-                    # BREAK_SLOTS or CUSTOM mode
-                    matched = is_slot_active_at_time(sched, time_str, active_slots)
-                    if matched:
-                        slot_name = matched[0]
-                    else:
-                        slot_name = "PUBLISH_NOW"
-
-                    from app.services.repeat_schedule_service import get_next_slot_datetime
-                    next_slot_dt, matched_slot_name = get_next_slot_datetime(sched, from_ist_dt=ist_now, db=db)
-                    
-                    if next_slot_dt is not None:
-                        has_repeats_remaining = True
-                        next_repeat_time = next_slot_dt
-                        sched.next_repeat_at = next_repeat_time
-                        sched.is_active = True
-                        slot_name = matched_slot_name or (matched[0] if matched else "CUSTOM_WINDOW")
-                    else:
-                        has_repeats_remaining = False
-                        sched.is_active = False
-
-                prefix_key = f"{sched.announcement_id}:{slot_name}:{date_str}"
-                target_key = f"{prefix_key}:{sched.total_played_count}"
-                existing_log = db.query(RepeatSlotExecutionLog).filter(RepeatSlotExecutionLog.slot_key == target_key).first()
-                if not existing_log:
-                    exec_log = RepeatSlotExecutionLog(
-                        schedule_id=sched.id,
-                        slot_key=target_key,
-                        slot_name=slot_name,
-                        played_at=now,
-                    )
-                    db.add(exec_log)
-
-            if has_repeats_remaining and next_repeat_time:
-                max_pos = db.query(SpeakerQueue).filter(SpeakerQueue.status.in_(["Queued", "Next in Queue"])).count()
-                current_playing.status = "Queued"
-                current_playing.scheduled_time = next_repeat_time
-                current_playing.queue_position = max_pos + 1
-                current_playing.played_at = None
-                if sched:
-                    sched.is_active = True
-                db.commit()
-                logger.info(
-                    f"🔁 Announcement #{current_playing.announcement_id} repeat round scheduled "
-                    f"(Round {sched.total_played_count + 1} at {next_repeat_time.strftime('%H:%M:%S')} UTC)."
-                )
+            # Normal notice completed audio playback: count the round, plan the next or complete it
+            from app.services.repeat_schedule_service import finish_repeat_round
+            next_repeat_time = finish_repeat_round(db, current_playing, now)
+            db.commit()
+            if next_repeat_time:
+                logger.info(f"🔁 Announcement #{current_playing.announcement_id} next repeat round at {next_repeat_time:%H:%M:%S} UTC.")
             else:
-                current_playing.status = "Completed"
-                if sched and not has_repeats_remaining:
-                    sched.is_active = False
-                db.commit()
                 logger.info(f"Speaker queue item #{current_playing.id} completed playback and marked Completed.")
 
             # Restore any notices preempted by this broadcast!
