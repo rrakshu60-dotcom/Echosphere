@@ -91,7 +91,6 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
   bool _isLoading = false;
   bool _isSaving = false;
   bool _isDeleting = false;
-  bool _isTestingSlot = false;
   Map<String, dynamic>? _loadedSchedule;
 
   bool get _isStudent {
@@ -360,29 +359,6 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
       if (mounted) {
         setState(() => _isDeleting = false);
         errorSnackBar('Failed to remove repeat schedule: $e');
-      }
-    }
-  }
-
-  Future<void> _handleTestTrigger() async {
-    if (_isStudent) return;
-    setState(() => _isTestingSlot = true);
-    try {
-      final res = await EchosphereApiService().evaluateAndDispatchRepeatSchedules();
-      if (mounted) {
-        setState(() => _isTestingSlot = false);
-        final resultInfo = res['result'];
-        final enqueuedCount = resultInfo is Map ? (resultInfo['dispatched_count'] ?? 0) : 0;
-        final expiredCount = resultInfo is Map ? (resultInfo['expired_ttl_count'] ?? 0) : 0;
-        final activeSlots = resultInfo is Map ? (resultInfo['active_slots'] as List? ?? []) : [];
-        final slotLabel = activeSlots.isNotEmpty ? activeSlots.join(', ') : 'Outside Acoustic Windows';
-        snackBar('Evaluation complete! Slot: $slotLabel \u2022 Dispatched: $enqueuedCount \u2022 Expired: $expiredCount');
-        _fetchSchedule();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isTestingSlot = false);
-        errorSnackBar('Test evaluation failed: $e');
       }
     }
   }
@@ -891,27 +867,6 @@ class _RepeatScheduleDialogState extends State<RepeatScheduleDialog> {
                               ),
                             ],
 
-                            // Test Trigger Action (Testing & Validation for Faculty/Admin)
-                            if (!_isStudent && widget.announcementId != null) ...[
-                              const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  side: BorderSide(color: context.colors.primary.opaque(0.4)),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: _isTestingSlot ? null : _handleTestTrigger,
-                                icon: _isTestingSlot
-                                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : Icon(Icons.play_circle_outline_rounded, size: 15, color: context.colors.primary),
-                                label: EchoSphereText(
-                                  text: _isTestingSlot ? 'Evaluating Break Slot...' : 'Test Slot Evaluation Now',
-                                  size: 11,
-                                  variant: TextVariant.bold,
-                                  color: context.colors.primary,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),

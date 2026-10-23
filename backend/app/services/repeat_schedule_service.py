@@ -1236,14 +1236,10 @@ def evaluate_and_dispatch_repeat_slots(
 
         sched_time = getattr(item, "scheduled_time", None)
         if sched_time:
-            # Gather potential candidates for scheduled time in HH:MM (raw and IST-converted)
-            sched_time_candidates = [sched_time.strftime("%H:%M")]
-            sched_ist = sched_time
-            try:
-                sched_ist = sched_time + timedelta(hours=5, minutes=30)
-                sched_time_candidates.append(sched_ist.strftime("%H:%M"))
-            except Exception:
-                pass
+            # Queue times are stored in UTC; break windows are campus (IST) times. Comparing the raw UTC
+            # reading too made e.g. 16:35 IST (11:05 UTC) look like a short-break notice and expire it.
+            sched_ist = _utc_to_ist_naive(_normalize_dt(sched_time))
+            sched_time_candidates = [sched_ist.strftime("%H:%M")]
 
             # CRITICAL: Only evaluate slot cutoff TTL expiration if the scheduled date is TODAY or in the past in campus IST!
             # If the item is scheduled for tomorrow or a future date, it must NEVER be marked expired today!

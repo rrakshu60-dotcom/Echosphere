@@ -111,20 +111,9 @@ def main() -> None:
     assert gone.status_code == 401, f"signed-out token still works: HTTP {gone.status_code}"
     print("PASS sign-out ended the session")
 
-    try:
-        import websockets.sync.client as ws_client
-
-        ws_url = API.replace("https://", "wss://") + "/ws/hardware/mic-stream?zone=College-Wide"
-        with ws_client.connect(ws_url, open_timeout=20) as ws:
-            ws.recv(timeout=10)
-        raise AssertionError("live microphone accepted a caller without a session")
-    except AssertionError:
-        raise
-    except Exception as exc:
-        code = getattr(getattr(exc, "rcvd", None), "code", None) or getattr(exc, "code", None)
-        refused = code in (1008, 403) or "1008" in str(exc) or "403" in str(exc)
-        assert refused, f"microphone socket failed for another reason: {exc!r}"
-        print(f"PASS live microphone refused a caller without a session ({type(exc).__name__})")
+    gone_mic = requests.get(f"{API}/ws/hardware/mic-status", timeout=30)
+    assert gone_mic.status_code == 404, f"live microphone endpoint still exists: HTTP {gone_mic.status_code}"
+    print("PASS the removed live microphone endpoint is gone")
 
 
 if __name__ == "__main__":

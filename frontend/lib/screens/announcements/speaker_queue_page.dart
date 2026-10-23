@@ -14,7 +14,6 @@ import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:echosphere/services/tts_audio_service.dart';
 import 'package:echosphere/widgets/custom_widgets/audio_waveform_visualizer.dart';
 import 'package:echosphere/widgets/custom_widgets/repeat_schedule_dialog.dart';
-import 'package:echosphere/widgets/custom_widgets/live_mic_broadcast_sheet.dart';
 import 'package:echosphere/utils/navigation_helper.dart';
 import 'package:echosphere/utils/campus_time.dart';
 
@@ -1240,14 +1239,6 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                   const SizedBox(width: 4),
                   _headerActionButton(
                     context,
-                    color: Colors.deepPurple,
-                    icon: Icons.mic_rounded,
-                    label: 'LIVE MIC PA',
-                    onTap: () => LiveMicBroadcastSheet.show(context),
-                  ),
-                  const SizedBox(width: 4),
-                  _headerActionButton(
-                    context,
                     color: context.colors.primary,
                     icon: Icons.warning_rounded,
                     label: 'EMERGENCY',
@@ -1496,34 +1487,11 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                       runSpacing: 4,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.skip_previous_rounded, size: 20),
-                          tooltip: 'Previous',
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          padding: EdgeInsets.zero,
-                          onPressed: (activeIdx > 0 && hasItems)
-                              ? () => _queueCtrl.togglePlayPause(index: activeIdx - 1)
-                              : null,
-                        ),
-                        IconButton(
                           icon: Icon(Icons.stop_rounded, size: 20, color: context.colors.primary),
                           tooltip: 'Stop Playback',
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           padding: EdgeInsets.zero,
                           onPressed: isPlaying ? () => _queueCtrl.stopCurrent() : null,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.skip_next_rounded, size: 20),
-                          tooltip: 'Skip to Next',
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          padding: EdgeInsets.zero,
-                          onPressed: hasItems ? () => _queueCtrl.skipCurrent() : null,
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.fast_forward_rounded, size: 20, color: context.colors.primary),
-                          tooltip: 'Advance Hardware Queue',
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          padding: EdgeInsets.zero,
-                          onPressed: () => _queueCtrl.advanceHardwareQueue(),
                         ),
                         IconButton(
                           icon: Icon(Icons.volume_up_rounded, size: 20, color: context.colors.primary),
@@ -1705,24 +1673,6 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                                 ? null
                                 : () => _queueCtrl.reorderQueue(i, i + 1),
                           ),
-                          if (!_isStudent &&
-                              (item['has_repeat'] == true ||
-                                  item['is_repeat'] == true ||
-                                  (item['repeat_round'] is int && (item['repeat_round'] as int) > 0)))
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                              padding: EdgeInsets.zero,
-                              icon: Icon(Icons.fast_forward_rounded,
-                                  size: 16, color: context.colors.primary),
-                              tooltip: 'Trigger Next Repeat Round Now',
-                              onPressed: () {
-                                final qId = item['id'] as int?;
-                                if (qId != null) {
-                                  _queueCtrl.triggerRepeatNow(qId);
-                                }
-                              },
-                            ),
                           if (!_isStudent)
                             IconButton(
                               visualDensity: VisualDensity.compact,

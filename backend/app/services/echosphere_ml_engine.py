@@ -74,10 +74,10 @@ INSTITUTIONAL_KNOWLEDGE: List[Dict[str, Any]] = [
         "content": (
             "The EchoSphere Smart Speaker system consists of IoT hardware nodes deployed across departmental corridors, "
             "auditoriums, seminar halls, and campus plazas. When an announcement is approved with speaker delivery, "
-            "high-clarity text-to-speech audio is queued and broadcast via secure MQTT protocols. "
+            "high-clarity text-to-speech audio is queued and sent to the speakers over a secure live connection. "
             "Speaker queue management and hardware controls are strictly restricted to faculty and administrative roles."
         ),
-        "tags": ["speaker", "audio", "hardware", "broadcast", "mqtt", "node", "queue", "corridor", "pa system"]
+        "tags": ["speaker", "audio", "hardware", "broadcast", "node", "queue", "corridor", "pa system"]
     },
     {
         "id": "kb_branch_studies",
@@ -1114,7 +1114,7 @@ class EchoSphereMLEngine:
                     f"### EchoSphere Smart Speaker System\n\n"
                     f"- **Hardware Network:** Smart speaker nodes broadcast critical announcements to assigned campus zones.\n"
                     f"- **Queue System:** Audio files are queued and prioritized by announcement severity (Emergency -> High -> Normal).\n"
-                    f"- **Node Client:** Corridor nodes communicate over secure MQTT with automatic TTS synthesis."
+                    f"- **Node Client:** Corridor nodes receive commands over a secure live connection with automatic TTS synthesis."
                 )
                 suggested_actions = ["View Speaker Queue", "Hardware Node Status", "Test Audio Stream"]
 

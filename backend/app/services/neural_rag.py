@@ -50,10 +50,10 @@ DEFAULT_CAMPUS_KNOWLEDGE: List[Dict[str, Any]] = [
         "content": (
             "The EchoSphere Smart Speaker system consists of IoT hardware nodes deployed across departmental corridors, "
             "seminar halls, auditoriums, and campus plazas. When an announcement is approved with speaker delivery, "
-            "high-clarity text-to-speech audio is queued and broadcast via secure MQTT protocols. "
+            "high-clarity text-to-speech audio is queued and sent to the speakers over a secure live connection. "
             "Speaker queue management and hardware controls are strictly restricted to faculty and administrative roles."
         ),
-        "tags": ["speaker", "audio", "hardware", "broadcast", "mqtt", "node", "queue", "corridor", "pa system"]
+        "tags": ["speaker", "audio", "hardware", "broadcast", "node", "queue", "corridor", "pa system"]
     },
     {
         "id": "rag_kb_exam_guidelines",

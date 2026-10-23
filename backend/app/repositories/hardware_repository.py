@@ -77,9 +77,6 @@ def get_all_speaker_nodes(
     zone: Optional[str] = None,
     status: Optional[str] = None,
 ) -> List[SpeakerNode]:
-    # Ensure canonical node inventory exists
-    sync_canonical_speaker_nodes(db)
-
     query = db.query(SpeakerNode).filter(SpeakerNode.is_active == True)
     if department_id:
         query = query.filter(SpeakerNode.department_id == department_id)
@@ -279,88 +276,24 @@ def clear_speaker_queue(db: Session, status: Optional[str] = None) -> int:
     return deleted_count
 
 
-def sync_canonical_speaker_nodes(db: Session) -> List[SpeakerNode]:
-    """
-    Enforces that canonical speaker nodes exist in EchoSphere:
-    1. Wokwi ESP32 Speaker Node (MAC: 24:0A:C4:00:01:10)
-    2. Hardware Speaker Client (MAC: D4:F3:2D:22:2A:CB)
-    3. Hardware Speaker Client 2 (MAC: D4:F3:2D:22:2A:CC)
-    Prunes stale, inactive test nodes to maintain a clean inventory.
-    """
-    canonical_specs = [
-        {
-            "name": "ESP32 Smart Speaker & Live Display",
-            "mac_address": "D4:F3:2D:22:2A:CD",
-            "ip_address": "192.168.1.100",
-            "zone": "Campus Main Corridor",
-            "volume": 90,
-            "disk_space": 80.0,
-        },
-        {
-            "name": "Hardware Speaker Client",
-            "mac_address": "D4:F3:2D:22:2A:CB",
-            "ip_address": "127.0.0.1",
-            "zone": "Auditorium / Campus",
-            "volume": 85,
-            "disk_space": 65.0,
-        },
-        {
-            "name": "Hardware Speaker Client 2",
-            "mac_address": "D4:F3:2D:22:2A:CC",
-            "ip_address": "127.0.0.1",
-            "zone": "Block B - AI Lab",
-            "volume": 85,
-            "disk_space": 65.0,
-        },
-        {
-            "name": "Wokwi ESP32 Speaker Node",
-            "mac_address": "24:0A:C4:00:01:10",
-            "ip_address": "10.0.1.15",
-            "zone": "Block A - CSE Quad",
-            "volume": 90,
-            "disk_space": 72.5,
-        },
-    ]
-
-    canonical_macs = [str(s["mac_address"]).upper() for s in canonical_specs]
-
-    # Prune any old non-canonical nodes that have never sent a heartbeat or are inactive
-    all_nodes = db.query(SpeakerNode).all()
-    for n in all_nodes:
-        if str(n.mac_address).upper() not in canonical_macs and n.last_heartbeat is None:
-            db.delete(n)
-    db.commit()
-
-    # Ensure all canonical nodes exist
-    for spec in canonical_specs:
-        existing = db.query(SpeakerNode).filter(SpeakerNode.mac_address.ilike(str(spec["mac_address"]))).first()
-        if not existing:
-            new_node = SpeakerNode(
-                name=spec["name"],
-                mac_address=spec["mac_address"],
-                ip_address=spec["ip_address"],
-                zone=spec["zone"],
-                volume=spec["volume"],
-                status="OFFLINE",
-                cpu_usage=0.0,
-                memory_usage=0.0,
-                disk_space=spec["disk_space"],
-                last_heartbeat=None,
-                is_active=True,
-            )
-            db.add(new_node)
-        else:
-            if existing.name != spec["name"]:
-                setattr(existing, "name", spec["name"])
-            if existing.zone != spec["zone"]:
-                setattr(existing, "zone", spec["zone"])
-    db.commit()
-
-    nodes = db.query(SpeakerNode).order_by(SpeakerNode.id.asc()).all()
-    return refresh_node_online_statuses(db, nodes)
-
-
 def seed_default_speaker_nodes_if_empty(db: Session):
-    sync_canonical_speaker_nodes(db)
+    """A brand-new database gets the campus ESP32 speaker. Existing speakers are never added, renamed or
+    deleted here: admins manage the inventory (the old 'canonical' sync re-created test speakers, undid renames
+    and deleted newly added speakers before their first heartbeat)."""
+    if db.query(SpeakerNode.id).first() is not None:
+        return
+    db.add(SpeakerNode(
+        name="ESP32 Smart Speaker & Live Display",
+        mac_address="D4:F3:2D:22:2A:CD",
+        zone="Campus Main Corridor",
+        volume=90,
+        status="OFFLINE",
+        cpu_usage=0.0,
+        memory_usage=0.0,
+        disk_space=80.0,
+        last_heartbeat=None,
+        is_active=True,
+    ))
+    db.commit()
 
 

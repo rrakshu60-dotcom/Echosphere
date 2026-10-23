@@ -533,15 +533,6 @@ class EchosphereApiService {
     return false;
   }
 
-  Future<Map<String, dynamic>> publishAnnouncement(int id) async {
-    try {
-      final response = await _dio.post('/announcements/$id/publish');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to publish announcement.');
-    }
-  }
-
   Future<Map<String, dynamic>> archiveAnnouncement(int id, {String? reason}) async {
     try {
       final response = await _dio.post(
@@ -565,15 +556,6 @@ class EchosphereApiService {
   }
 
   // --- Audit Logs ---
-  Future<List<dynamic>> getAuditLogs() async {
-    try {
-      final response = await _dio.get('/audit-logs/');
-      return response.data as List<dynamic>;
-    } catch (_) {
-      return [];
-    }
-  }
-
   // --- AI Endpoints ---
   Future<Map<String, dynamic>> sendAiChat(
     String prompt, {
@@ -1071,23 +1053,6 @@ class EchosphereApiService {
     return results;
   }
 
-  Future<Map<String, dynamic>> getAiPriorityRecommendation(String title, String content, {String? userRole}) async {
-    try {
-      final response = await _dio.post(
-        '/ai/priority',
-        data: {
-          'title': title,
-          'content': content,
-          'user_role': userRole ?? 'STUDENT',
-        },
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      debugPrint('AI Priority API Error: $e');
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to get priority recommendation.');
-    }
-  }
-
   Future<String> summarizeContent(String content) async {
     try {
       final response = await _dio.post(
@@ -1126,24 +1091,6 @@ class EchosphereApiService {
       return CalendarSyncService.extractEventClientSide(title, content);
     }
     return null;
-  }
-
-  Future<Map<String, dynamic>> getAiStatus() async {
-    try {
-      final response = await _dio.get('/ai/status');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to get AI status.');
-    }
-  }
-
-  Future<Map<String, dynamic>> trainAiModels() async {
-    try {
-      final response = await _dio.post('/ai/train');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to train AI models.');
-    }
   }
 
   // --- Notifications Endpoints ---
@@ -1190,11 +1137,6 @@ class EchosphereApiService {
       debugPrint('Error fetching users: $e');
       rethrow;
     }
-  }
-
-  Future<Map<String, dynamic>> getUserDetail(int userId) async {
-    final response = await _dio.get('/users/$userId');
-    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateUserRole(
@@ -1342,21 +1284,6 @@ class EchosphereApiService {
     }
   }
 
-  Future<Map<String, dynamic>> broadcastAnnouncementToNode(
-    int nodeId,
-    int announcementId,
-  ) async {
-    try {
-      final response = await _dio.post(
-        '/hardware/speakers/$nodeId/broadcast',
-        data: {'announcement_id': announcementId},
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to broadcast announcement to node.');
-    }
-  }
-
   Future<Map<String, dynamic>> triggerEmergencyOverride({
     required String title,
     required String message,
@@ -1477,20 +1404,6 @@ class EchosphereApiService {
       throw Exception(e.response?.data?['detail'] ?? 'Queue action failed.');
     }
   }
-
-  Future<Map<String, dynamic>> advanceSpeakerQueue() async {
-    try {
-      final response = await _dio.post('/hardware/queue/advance');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      debugPrint('Advance speaker queue error: $e');
-      return {'status': 'error', 'detail': e.message};
-    } catch (e) {
-      debugPrint('Advance speaker queue unexpected error: $e');
-      return {'status': 'error', 'detail': e.toString()};
-    }
-  }
-
 
   Future<Map<String, dynamic>> createUser({
     required String fullName,
@@ -1905,48 +1818,6 @@ class EchosphereApiService {
       throw Exception(e.response?.data?['detail'] ?? 'Failed to delete repeat schedule.');
     }
   }
-
-  Future<Map<String, dynamic>> triggerRepeatCheck({String? simulatedTime, String? simulatedDate}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (simulatedTime != null) queryParams['simulated_time'] = simulatedTime;
-      if (simulatedDate != null) queryParams['simulated_date'] = simulatedDate;
-
-      final response = await _dio.post(
-        '/repeat-schedule/trigger-check',
-        queryParameters: queryParams,
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to trigger repeat slot check.');
-    }
-  }
-
-  Future<Map<String, dynamic>> evaluateAndDispatchRepeatSchedules({String? simulatedTime, String? simulatedDate}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (simulatedTime != null) queryParams['simulated_time'] = simulatedTime;
-      if (simulatedDate != null) queryParams['simulated_date'] = simulatedDate;
-
-      final response = await _dio.post(
-        '/repeat-schedules/evaluate-dispatch',
-        queryParameters: queryParams,
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to evaluate repeat schedules.');
-    }
-  }
-
-  Future<Map<String, dynamic>> triggerQueueRepeatNow(int queueId) async {
-    try {
-      final response = await _dio.post('/hardware/queue/$queueId/trigger_repeat_now');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to trigger repeat broadcast round.');
-    }
-  }
-
 
   // --- VIP Dignitary Protocol Endpoints ---
   Future<Map<String, dynamic>?> getVipProtocol(int announcementId) async {

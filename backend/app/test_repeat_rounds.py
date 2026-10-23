@@ -184,3 +184,20 @@ def test_emergency_reaches_the_speaker_as_one_emergency_command():
     assert plays, "no play command for the emergency"
     assert all(c["command"] == "PLAY_EMERGENCY" and c.get("is_emergency") is True for c in plays), plays
     assert len(plays) == 1, [c["command"] for c in plays]
+
+
+def test_a_waiting_notice_is_not_expired_because_its_utc_time_looks_like_a_break():
+    """16:35 IST is 11:05 UTC, inside the 11:00-11:15 short break; checked at 16:20 the notice must stay queued."""
+    from app.services.repeat_schedule_service import evaluate_and_dispatch_repeat_slots
+    nid = _publish("Seminar hall change")
+    _set_schedule(nid, repeat_mode="BREAK_SLOTS", interval_minutes=0, max_repeats=6, play_on_publish=False,
+                  selected_slots=["CUSTOM_WINDOW"], custom_start_time="16:30", custom_end_time="16:40")
+    today_ist = (_utc_now() + IST).date()
+    with SessionLocal() as db:
+        for q in db.query(SpeakerQueue).filter(SpeakerQueue.announcement_id == nid):
+            q.status = "Queued"
+            q.scheduled_time = datetime(today_ist.year, today_ist.month, today_ist.day, 11, 5)  # = 16:35 IST
+            q.played_at = None
+        db.commit()
+        evaluate_and_dispatch_repeat_slots(db, simulated_time_str="16:20", simulated_date_str=f"{today_ist:%Y-%m-%d}")
+    assert [q.status for q in _active(nid)] == ["Queued"]
