@@ -89,7 +89,9 @@ class RepeatScheduleBase(BaseModel):
                 return "0" + val
             return val
 
-        # 1. Mode and Slots defaulting
+        # 1. Mode and Slots defaulting (the default break slot must not turn a requested interval into a daily break)
+        if self.repeat_mode == "INTERVAL" and "selected_slots" not in self.model_fields_set:
+            self.selected_slots = None
         if self.selected_slots and any(s in ["SHORT_BREAK", "LUNCH_BREAK", "EVENING_BREAK", "HOSTEL_WINDOW"] for s in self.selected_slots):
             self.repeat_mode = "BREAK_SLOTS"
         elif self.selected_slots and self.selected_slots == ["CUSTOM_WINDOW"]:

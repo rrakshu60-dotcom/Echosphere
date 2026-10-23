@@ -9,7 +9,7 @@ Takes about 2 minutes.
 import sys
 from datetime import datetime, timedelta, timezone
 
-from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, speaker_busy
+from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, speaker_busy, wait_until
 
 ROUNDS = 3
 DONE = r"Notice speech playback completed successfully"
@@ -48,9 +48,11 @@ def main() -> None:
                 _, t = esp.wait_for(stream, timeout=20, since=esp.after_last_match())
                 print(f"PASS round {n + 1} started by itself {t:.2f}s after round {n} finished")
 
-        sched = session.get(f"/announcements/{nid}/repeat-schedule")
-        count = sched.get("total_played_count")
-        # the next round may already be playing; it is only counted once finished
+        # The speaker reports a round finished just after logging it; a round is counted once finished
+        def counted():
+            return session.get(f"/announcements/{nid}/repeat-schedule").get("total_played_count")
+        _, t = wait_until(lambda: counted() == ROUNDS, timeout=5, what=f"schedule to count {ROUNDS} rounds")
+        count = counted()
         assert count == ROUNDS, f"schedule counted {count} rounds, the speaker finished {ROUNDS}"
         print(f"PASS each round counted once ({count})")
     print("PASS cleanup: no test data left")

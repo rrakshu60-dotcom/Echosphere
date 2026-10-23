@@ -159,3 +159,13 @@ def test_interval_rounds_are_counted_once_each():
         _finish_round(nid)
         assert _sched(nid).total_played_count == round_no
     assert not _active(nid) and _sched(nid).is_active is False
+
+
+def test_interval_schedule_sent_without_slots_stays_an_interval():
+    nid = _publish("Canteen notice")
+    _set_schedule(nid, repeat_mode="INTERVAL", interval_minutes=1, max_repeats=2, play_on_publish=True)
+    assert _sched(nid).repeat_mode == "INTERVAL", "the default break slot must not turn an interval into a daily break"
+    _finish_round(nid)
+    waiting = _active(nid)
+    assert len(waiting) == 1 and waiting[0].scheduled_time <= _utc_now() + timedelta(minutes=1, seconds=5), \
+        [q.scheduled_time for q in waiting]
