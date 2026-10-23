@@ -398,10 +398,17 @@ def discard_audio_if_notice_deleted(announcement_id: int) -> None:
 # ---------------------------------------------------------------- the hook
 
 
-def _delete_attachments(files) -> None:
+def _delete_attachments(files, session_factory) -> None:
+    """Deletes a deleted notice's attachment files, except any another notice still uses (a staff member could
+    copy someone else's attachment link into their own notice and delete it)."""
+    from sqlalchemy import String, cast
     from app.services.cloud_storage_service import CloudStorageService
     try:
-        CloudStorageService.delete_attachment_files(files)
+        with session_factory() as db:
+            files = [f for f in files if not db.query(Announcement.id).filter(
+                cast(Announcement.attachments, String).like(f"%/{f}%")).first()]
+        if files:
+            CloudStorageService.delete_attachment_files(files)
     except Exception as exc:
         logger.warning(f"Could not delete attachments {files}: {exc}")
 
@@ -453,7 +460,7 @@ def install_notice_record_hooks(session_factory) -> None:
                              name=f"NoticeAudioDelete-{nid}").start()
         # A deleted notice's attachments go too (they'd otherwise stay in cloud storage forever)
         for nid, files in (session.info.pop(_PENDING_ATTACHMENTS_KEY, None) or {}).items():
-            threading.Thread(target=_delete_attachments, args=(files,), daemon=True,
+            threading.Thread(target=_delete_attachments, args=(files, session_factory), daemon=True,
                              name=f"NoticeAttachmentDelete-{nid}").start()
 
     @event.listens_for(session_factory, "after_rollback")
