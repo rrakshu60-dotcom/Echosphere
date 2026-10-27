@@ -17,14 +17,14 @@ class SignInRefused(ValueError):
         self.user = user
 
 
-def authenticate_user(
+def check_credentials(
     db: Session,
     identifier: str,
     password: str,
     employee_id: str | None = None,
 ) -> User:
     """
-    Check credentials by USN, Username, Official Email, or Employee ID and return the user.
+    Check credentials by USN, Username, Official Email, or Employee ID (exact match) and return the user.
     Raises SignInRefused. Unknown user and wrong password show the same message so accounts can't be probed.
     """
     cleaned = identifier.strip()
@@ -54,6 +54,17 @@ def authenticate_user(
     if not user.is_active:
         raise SignInRefused("disabled", "This account is disabled. Contact the administrator.", user=user)
 
+    return user
+
+
+def authenticate_user(
+    db: Session,
+    identifier: str,
+    password: str,
+    employee_id: str | None = None,
+) -> User:
+    """Sign-in check: `check_credentials` plus the LOGIN activity entry."""
+    user = check_credentials(db, identifier, password, employee_id)
     role_name = user.role.name if user.role else "Student"
     create_audit_log_service(
         db=db,

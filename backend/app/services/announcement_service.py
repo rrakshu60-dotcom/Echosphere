@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger("echosphere.announcement")
 
 from app.core.enums.announcement import AnnouncementStatus
+from app.core.roles import EXECUTIVE_ROLES
 from app.models.announcement import Announcement
 from app.models.user import User
 from app.repositories.announcement_category_repository import (
@@ -666,6 +667,20 @@ def submit_announcement_service(
     return {"message": "Announcement submitted for approval."}
 
 
+SELF_APPROVAL_REFUSED = "You cannot approve your own notice; it needs Principal or College Admin approval."
+
+
+def _hod_moderation_refusal(announcement, current_user: User) -> str | None:
+    """Why an HoD may not moderate this notice, or None. A missing department never counts as a match."""
+    creator_dept_id = announcement.creator.department_id if announcement.creator else None
+    if not creator_dept_id or not current_user.department_id or creator_dept_id != current_user.department_id:
+        return "HoD can only approve announcements from their own department."
+    target = (announcement.target_audience or "").lower()
+    if "entire" in target or "all" in target or "institution" in target:
+        return "Institution-wide announcements require Principal or College Admin approval."
+    return None
+
+
 def approve_announcement_service(
     db: Session,
     announcement_id: int,
@@ -690,19 +705,12 @@ def approve_announcement_service(
         )
 
     user_role = current_user.role.name if (current_user and current_user.role) else "Student"
+    if user_role not in EXECUTIVE_ROLES and announcement.created_by == current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=SELF_APPROVAL_REFUSED)
     if user_role == "HoD":
-        creator_dept_id = announcement.creator.department_id if announcement.creator else None
-        if creator_dept_id and current_user.department_id and creator_dept_id != current_user.department_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="HoD can only approve announcements from their own department.",
-            )
-        target = (announcement.target_audience or "").lower()
-        if "entire" in target or "all" in target or "institution" in target:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Institution-wide announcements require Principal or College Admin approval.",
-            )
+        refusal = _hod_moderation_refusal(announcement, current_user)
+        if refusal:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=refusal)
 
     approval = AnnouncementApproval(
         announcement_id=announcement.id,
@@ -943,16 +951,18 @@ def batch_moderate_service(
                 failed_ids.append(ann_id)
                 continue
 
+            if (
+                action == "APPROVE"
+                and user_role not in EXECUTIVE_ROLES
+                and announcement.created_by == current_user.id
+            ):
+                failed_ids.append(ann_id)
+                continue
+
             # HoD permission checks
-            if user_role == "HoD":
-                creator_dept_id = announcement.creator.department_id if announcement.creator else None
-                if creator_dept_id and current_user.department_id and creator_dept_id != current_user.department_id:
-                    failed_ids.append(ann_id)
-                    continue
-                target = (announcement.target_audience or "").lower()
-                if "entire" in target or "all" in target or "institution" in target:
-                    failed_ids.append(ann_id)
-                    continue
+            if user_role == "HoD" and _hod_moderation_refusal(announcement, current_user):
+                failed_ids.append(ann_id)
+                continue
 
             if action == "APPROVE":
                 approval = AnnouncementApproval(

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from app.services.speaker_playback import serialized, try_serialized
 
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
+from app.core.roles import STAFF_ROLES, is_staff
 from app.db.database import get_db
 from app.models.user import User
 from app.models.announcement import Announcement
@@ -95,16 +96,18 @@ def list_speaker_nodes(
     zone: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     nodes = get_all_speaker_nodes(db=db, department_id=department_id, zone=zone, status=status)
+    # Students see speaker names and status (notice pages show them), never device addresses.
+    show_addresses = is_staff(current_user)
     res = []
     for n in nodes:
         node_dict = {
             "id": n.id,
             "name": n.name,
-            "mac_address": n.mac_address,
-            "ip_address": n.ip_address,
+            "mac_address": n.mac_address if show_addresses else "",
+            "ip_address": n.ip_address if show_addresses else None,
             "department_id": n.department_id,
             "department_name": n.department.name if n.department else None,
             "zone": n.zone,
@@ -573,7 +576,7 @@ def send_control_command(
     id: int,
     control_in: SpeakerControlRequest,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
 ):
     return send_node_control_command(
         db=db,
@@ -661,7 +664,7 @@ def fetch_speaker_queue(
     request: Request,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
     # Running it here too cost every request ~a dozen extra database round trips.
@@ -713,13 +716,14 @@ def fetch_speaker_queue(
     from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
     from app.services.repeat_schedule_service import get_notice_priority_info
 
+    show_addresses = is_staff(current_user)
     for item in queue_items:
         ann = item.announcement
         target_node = item.speaker_node
         node_name = target_node.name if target_node else "All Nodes (College-Wide)"
         node_status = target_node.status if target_node else None
         node_zone = target_node.zone if target_node else "College-Wide"
-        node_mac = target_node.mac_address if target_node else None
+        node_mac = target_node.mac_address if target_node and show_addresses else None
 
         sched = (
             db.query(AnnouncementRepeatSchedule)

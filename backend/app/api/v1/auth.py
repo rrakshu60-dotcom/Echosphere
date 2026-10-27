@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.rate_limiter import limiter
 from app.core.dependencies import (
     get_current_session,
     get_current_user,
@@ -16,7 +17,7 @@ from app.db.database import get_db
 from app.models.user import User
 from app.models.user_session import UserSession
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.services.auth_service import SignInRefused, authenticate_user
+from app.services.auth_service import SignInRefused, authenticate_user, check_credentials
 from app.services.session_service import (
     client_ip,
     client_user_agent,
@@ -218,37 +219,26 @@ def update_password(
     return {"message": "Password updated successfully."}
 
 @router.post("/reset-password-direct")
+@limiter.limit("5/15minutes")
 def reset_password_direct(
-    request: DirectPasswordResetRequest,
+    request: Request,
+    body: DirectPasswordResetRequest,
     db: Session = Depends(get_db),
 ):
-    from fastapi import HTTPException
-    from app.core.password import verify_password, hash_password
-    from sqlalchemy import or_
+    """Change a password with the current one, without a session (fallback when the token has expired)."""
+    from app.core.password import hash_password
 
-    clean_id = request.identifier.strip().lower()
-    user = (
-        db.query(User)
-        .filter(
-            or_(
-                User.username.ilike(clean_id),
-                User.official_email.ilike(clean_id),
-                User.usn.ilike(clean_id),
-                User.employee_id.ilike(clean_id),
-            )
-        )
-        .first()
-    )
+    ip, ua = client_ip(request), client_user_agent(request)
+    try:
+        user = check_credentials(db, body.identifier, body.current_password)
+    except SignInRefused as refused:
+        log_sign_in(db, body.identifier, False, refused.reason, ip, ua, None, user=refused.user)
+        raise HTTPException(status_code=400, detail=str(refused))
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User account not found.")
-
-    if not verify_password(request.current_password, str(user.password_hash)):
-        raise HTTPException(status_code=400, detail="Incorrect current password.")
-
-    setattr(user, "password_hash", hash_password(request.new_password))
+    setattr(user, "password_hash", hash_password(body.new_password))
     db.commit()
     end_all_user_sessions(db, user.id, "password_changed")
+    log_sign_in(db, body.identifier, True, "password_changed", ip, ua, None, user=user)
     return {"message": "Password updated successfully."}
 
 

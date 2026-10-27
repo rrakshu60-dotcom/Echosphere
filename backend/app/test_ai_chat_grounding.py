@@ -6,10 +6,11 @@ from app.main import app
 
 client = TestClient(app)
 ADMIN = bearer("ESDev01")
+STUDENT = bearer("1db23ci079")  # seeded student "Rakshitha S"
 
 
 def _ask(prompt):
-    res = client.post("/api/v1/ai/chat", json={
+    res = client.post("/api/v1/ai/chat", headers=STUDENT, json={
         "prompt": prompt, "session_id": "t", "user_role": "Student", "full_name": "Test Student", "department": "CSE", "history": []})
     assert res.status_code == 200, res.text
     return res.json()
@@ -21,7 +22,9 @@ def test_a_campus_question_is_not_answered_with_the_profile_card():
 
 
 def test_who_am_i_still_gets_the_profile_card():
-    assert "Test Student" in _ask("who am i")["response"]
+    # The name comes from the signed-in account, not the request body.
+    answer = _ask("who am i")["response"]
+    assert "Rakshitha S" in answer and "Test Student" not in answer
 
 
 def test_the_model_is_told_to_take_campus_facts_only_from_the_listed_notices(monkeypatch):

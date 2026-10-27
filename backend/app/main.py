@@ -454,8 +454,16 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+from fastapi import Depends
+from app.core.dependencies import require_roles
+
+
 @app.get("/api/v1/diagnostic/tts")
-def diagnostic_tts(run_test: bool = False, reset_client: bool = False):
+def diagnostic_tts(
+    run_test: bool = False,
+    reset_client: bool = False,
+    _admin=Depends(require_roles("Dev Admin", "Developer", "College Admin")),
+):
     import traceback
     diag = {}
     from app.services.tts_service import (
