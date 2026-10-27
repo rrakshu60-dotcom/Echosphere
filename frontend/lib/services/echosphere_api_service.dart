@@ -622,35 +622,6 @@ class EchosphereApiService {
     }
   }
 
-  Future<Map<String, dynamic>> expandText(String text, {String? category}) async {
-    try {
-      final response = await _dio.post(
-        '/ai/expand',
-        data: {
-          'text': text,
-          'category': category ?? 'Academics',
-        },
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      debugPrint('AI Expand API Error: $e');
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to expand text.');
-    }
-  }
-
-  Future<Map<String, dynamic>> grammarCheck(String text) async {
-    try {
-      final response = await _dio.post(
-        '/ai/grammar',
-        data: {'text': text},
-      );
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      debugPrint('AI Grammar API Error: $e');
-      throw Exception(e.response?.data?['detail'] ?? 'Failed to check grammar.');
-    }
-  }
-
   Future<Map<String, dynamic>> validateContent(String text, {String? title}) async {
     try {
       final response = await _dio.post(
@@ -1613,32 +1584,6 @@ class EchosphereApiService {
     return _voiceToNoticeFallback(transcript.isNotEmpty ? transcript : 'Spoken announcement regarding campus updates.');
   }
 
-  /// Scans an official paper circular or PDF document and extracts structured circular metadata.
-  Future<Map<String, dynamic>> ocrDocumentToNotice({
-    required List<int> fileBytes,
-    required String mimeType,
-    required String filename,
-    String? rawText,
-  }) async {
-    try {
-      final response = await _dio.post(
-        '/announcements/ocr-document',
-        data: {
-          'file_base64': base64Encode(fileBytes),
-          'mime_type': mimeType,
-          'filename': filename,
-          if (rawText != null && rawText.isNotEmpty) 'raw_text': rawText,
-        },
-      );
-      if (response.statusCode == 200 && response.data != null) {
-        return Map<String, dynamic>.from(response.data);
-      }
-    } catch (e) {
-      debugPrint('Document OCR API error: $e, using local fallback structurer');
-    }
-    return _ocrDocumentFallback(filename, rawText: rawText);
-  }
-
   Map<String, dynamic> _voiceToNoticeFallback(String transcript) {
     final lower = transcript.toLowerCase();
     String category = 'Academic';
@@ -1698,106 +1643,6 @@ class EchosphereApiService {
       'suggested_audience': audience,
       'transcription': transcript,
       'extracted_event': venue != 'Campus Premises' ? {'title': title, 'location': venue} : null,
-    };
-  }
-
-  Map<String, dynamic> _ocrDocumentFallback(String filename, {String? rawText}) {
-    if (rawText != null && rawText.trim().length >= 10) {
-      final text = rawText.trim();
-      final lower = text.toLowerCase();
-
-      // Ref No
-      final refMatch = RegExp(r'\b(Ref(?:erence)?\s*(?:No\.?)?[:\s]*[\w/-]+|Circular\s*No\.?[:\s]*[\w/-]+|No\.\s*[\w/-]+)\b', caseSensitive: false).firstMatch(text);
-      final refNo = refMatch != null ? refMatch.group(0)!.trim() : 'CIR/${DateTime.now().year}/${filename.hashCode.abs().toString().padLeft(6, '0').substring(0, 6)}';
-
-      // Category
-      String category = 'Academic';
-      if (RegExp(r'\b(exam|examination|test|midterm|hall ticket|cie)\b').hasMatch(lower)) {
-        category = 'Examination';
-      } else if (RegExp(r'\b(placement|interview|drive|internship)\b').hasMatch(lower)) {
-        category = 'Placement';
-      } else if (RegExp(r'\b(sport|sports|cricket|tournament|badminton)\b').hasMatch(lower)) {
-        category = 'Sports';
-      } else if (RegExp(r'\b(emergency|evacuate|rain|flood)\b').hasMatch(lower)) {
-        category = 'Emergency';
-      } else if (RegExp(r'\b(workshop|hackathon|seminar|fest)\b').hasMatch(lower)) {
-        category = 'Event';
-      }
-
-      // Priority
-      String priority = 'NORMAL';
-      if (RegExp(r'\b(emergency|evacuate|urgent|immediate)\b').hasMatch(lower)) {
-        priority = 'URGENT';
-      } else if (RegExp(r'\b(mandatory|deadline|hall ticket|fee payment|strict)\b').hasMatch(lower)) {
-        priority = 'HIGH';
-      }
-
-      // Audience
-      String audience = 'Entire College';
-      if (lower.contains('aiml')) {
-        audience = 'AIML Department';
-      } else if (lower.contains('cse')) {
-        audience = 'CSE Department';
-      } else if (lower.contains('ece')) {
-        audience = 'ECE Department';
-      } else if (lower.contains('1st year')) {
-        audience = '1st Year Students';
-      } else if (lower.contains('3rd year')) {
-        audience = '3rd Year Students';
-      } else if (lower.contains('faculty')) {
-        audience = 'Faculty Members';
-      }
-
-      // Title
-      final subMatch = RegExp(r'^(?:Sub(?:ject)?|Regarding|Notice regarding)[:\s]*(.+)$', caseSensitive: false, multiLine: true).firstMatch(text);
-      String title = subMatch != null ? subMatch.group(1)!.trim() : 'Official Circular: ${filename.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').replaceAll(RegExp(r'[_-]'), ' ')}';
-      if (!title.toLowerCase().contains('circular') && !title.toLowerCase().contains('notice')) {
-        title = '$title Circular';
-      }
-
-      return {
-        'title': title,
-        'content': text,
-        'suggested_category': category,
-        'suggested_priority': priority,
-        'suggested_audience': audience,
-        'reference_number': refNo,
-        'extracted_event': null,
-        'raw_text': text,
-      };
-    }
-
-    final cleanName = filename.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').replaceAll(RegExp(r'[_-]'), ' ');
-    final title = 'Official Circular: ${cleanName.capitalizeFirst ?? cleanName}';
-    String category = 'Academic';
-    final lower = cleanName.toLowerCase();
-    if (lower.contains('exam') || lower.contains('timetable')) {
-      category = 'Examination';
-    } else if (lower.contains('placement')) {
-      category = 'Placement';
-    } else if (lower.contains('sport')) {
-      category = 'Sports';
-    }
-
-    final refNo = 'CIR/${DateTime.now().year}/${cleanName.hashCode.abs().toString().padLeft(6, '0').substring(0, 6)}';
-
-    final content = 'Reference: $refNo\n'
-        'Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}\n\n'
-        'This is to officially notify all concerned students and faculty members regarding $cleanName.\n\n'
-        'Key Guidelines:\n'
-        '- Please refer to the attached official institutional document for complete details, schedule, and guidelines.\n'
-        '- All concerned must comply with the stipulated deadlines.\n\n'
-        'Office of the Principal / Dean Academics';
-
-    return {
-      'title': title,
-      'content': content,
-      'suggested_category': category,
-      'suggested_priority': 'NORMAL',
-      'suggested_audience': 'Entire College',
-      'reference_number': refNo,
-      'extracted_event': null,
-      'raw_text': null,
     };
   }
 

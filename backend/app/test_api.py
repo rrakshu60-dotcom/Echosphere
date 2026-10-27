@@ -97,16 +97,7 @@ def test_ai_extended_endpoints():
     r4 = client.post("/api/v1/ai/duplicate", headers=STUDENT, json={"new_title": "Notice A", "new_text": "Notice A content", "department": "CSE"})
     assert r4.status_code == 200 and "is_duplicate" in r4.json()
 
-    r5 = client.post("/api/v1/ai/classify", headers=STUDENT, json={"announcement": "Placement drive for Google tomorrow"})
-    assert r5.status_code == 200 and r5.json()["category"] == "Placements"
-
-    r6 = client.post("/api/v1/ai/expand", headers=STUDENT, json={"text": "Lab exam postponed", "category": "Examinations"})
-    assert r6.status_code == 200 and "expanded_text" in r6.json()
-
-    r7 = client.post("/api/v1/ai/grammar", headers=STUDENT, json={"text": "lab exam starts tomorrow at 9 am"})
-    assert r7.status_code == 200 and r7.json()["corrected_text"].startswith("Lab")
-
-    print("[PASS] Extended AIML Microservice Endpoints (Emergency, Spam, Validation, Duplicate, Classifier, Expand, Grammar) Passed")
+    print("[PASS] Extended AIML Microservice Endpoints (Emergency, Spam, Validation, Duplicate) Passed")
 
 if __name__ == "__main__":
     test_health_check()

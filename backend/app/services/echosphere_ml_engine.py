@@ -275,7 +275,7 @@ INTENT_TRAINING_DATA = [
     ("where is the add notice button", "NOTICE_CREATION"),
     ("approval status of my drafted circular", "NOTICE_CREATION"),
     ("can students post circulars", "NOTICE_CREATION"),
-    ("how to use ai expand for notice drafting", "NOTICE_CREATION"),
+    ("how to use ai draft for notice drafting", "NOTICE_CREATION"),
 
     # APP_NAVIGATION
     ("how to turn on dark mode", "APP_NAVIGATION"),
@@ -418,6 +418,31 @@ PRIORITY_TRAINING_DATA = [
     ("Lost student ID card near admin block", "LOW"),
     ("Routine maintenance notice for water cooler", "LOW"),
 ]
+
+
+# Emergency check. Whole words only: substring matching flagged "training" (contains "rain") and
+# "brain-teaser" as emergencies and missed a fire, a gas leak or an earthquake.
+_EMERGENCY_PATTERNS = [
+    r"\bfires?\b", r"\bsmoke\b", r"\bevacuat\w*", r"\bearthquakes?\b", r"\btremors?\b", r"\bfloods?\b",
+    r"\bflooding\b", r"\bcyclones?\b", r"\btsunami\b", r"\blandslides?\b", r"\bgas leak", r"\bchemical (leak|spill)",
+    r"\bexplosions?\b", r"\bblast\b", r"\bbomb\b", r"\blockdown\b", r"\bshooter\b", r"\bintruders?\b",
+    r"\bstampede\b", r"\bcollaps\w*", r"\bmedical emergency\b", r"\bambulance\b", r"\b(red|orange) alert\b",
+    r"\bheavy rain\w*", r"\bstorm\b", r"\bemergency\b", r"\belectrocut\w*", r"\bshort circuit\b",
+]
+# Words that mark a planned exercise or a talk about safety rather than an incident happening now.
+_EXERCISE_WORDS = r"\b(drills?|mock|awareness|workshops?|training|seminars?|webinars?|preparedness|rehearsals?|lectures?|quiz|competition|week)\b"
+_URGENT_WORDS = r"\b(now|immediately|right away|urgent(ly)?|asap|currently|ongoing|in progress|at once)\b"
+
+
+def detect_emergency(text: str) -> Tuple[bool, str]:
+    """Is this notice about an emergency happening now? Returns (answer, reason)."""
+    lower = (text or "").lower()
+    hits = [m.group(0) for p in _EMERGENCY_PATTERNS for m in [re.search(p, lower)] if m]
+    if not hits:
+        return False, "No emergency words found."
+    if re.search(_EXERCISE_WORDS, lower) and not re.search(_URGENT_WORDS, lower):
+        return False, f"Mentions '{hits[0]}' but reads as a planned drill, training or awareness session."
+    return True, f"Emergency detected: '{hits[0]}'."
 
 
 class EchoSphereMLEngine:
@@ -676,42 +701,57 @@ class EchoSphereMLEngine:
             except Exception:
                 pass
 
-        # High-assurance safety heuristic override
+        # Rule-based override on top of the trained models (whole words, so "latest" is not "test")
+        def has_any(words: List[str]) -> bool:
+            return any(re.search(rf"\b{re.escape(w)}\b", text_lower) for w in words)
+
         text_lower = text.lower()
-        if any(w in text_lower for w in ["rain", "flood", "weather", "cyclone", "emergency", "evacuate", "holiday tomorrow", "earthquake", "fire alert"]):
+        is_emergency, emergency_reason = detect_emergency(text)
+        if is_emergency:
             priority = "EMERGENCY"
             category = "Emergency"
-        elif any(w in text_lower for w in ["exam", "timetable", "hall ticket", "viva", "test", "semester", "sem exam"]):
+        elif has_any(["exam", "exams", "examination", "examinations", "timetable", "hall ticket", "viva", "test", "tests", "semester", "sem exam"]):
             category = "Examinations"
             priority = "HIGH"
-        elif any(w in text_lower for w in ["placement", "interview", "hiring", "package", "ctc", "deadline"]):
+        elif has_any(["placement", "placements", "interview", "interviews", "hiring", "package", "ctc", "recruitment", "deadline"]):
             category = "Placements"
             priority = "HIGH"
-        elif any(w in text_lower for w in ["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing"]):
+        elif has_any(["lost and found", "lost & found", "lost item", "found item", "lost", "found", "canteen", "maintenance", "bus timing"]):
             category = "General"
             priority = "LOW"
-        elif any(w in text_lower for w in ["volley", "volleyball", "cricket", "football", "badminton", "selection", "trials", "sport", "sports", "tournament", "athletics"]):
+        elif has_any(["volley", "volleyball", "cricket", "football", "badminton", "selection", "trials", "sport", "sports", "tournament", "athletics"]):
             category = "Sports"
             priority = "NORMAL"
-        elif any(w in text_lower for w in ["hackathon", "symposium", "workshop", "fest", "cultural", "event"]):
+        elif has_any(["hackathon", "symposium", "workshop", "fest", "cultural", "event"]):
             category = "Events"
             priority = "NORMAL"
+        if not is_emergency:
+            # The trained models learnt "rain" from words like "training"; only detect_emergency may say emergency.
+            if priority == "EMERGENCY":
+                priority = "HIGH"
+            if category == "Emergency":
+                category = "General"
 
         # Authority enforcement: only privileged roles can broadcast EMERGENCY
         allowed_emergency_roles = ["COLLEGE ADMIN", "HOD", "PRINCIPAL", "DEVELOPER", "DEV ADMIN"]
         is_allowed = True
         reasoning = f"Categorized as {category} with {priority} priority based on institutional rules."
 
-        if priority == "EMERGENCY" and role not in allowed_emergency_roles:
+        can_publish_emergency = role in allowed_emergency_roles
+        if is_emergency:
+            reasoning = emergency_reason
+        if priority == "EMERGENCY" and not can_publish_emergency:
             is_allowed = False
             priority = "HIGH"
-            reasoning = f"Urgent notification detected. (Note: Only Authorized HoDs and Admins may publish EMERGENCY broadcasts; assigned HIGH)."
+            reasoning = f"{emergency_reason} Only HoDs and Admins may publish EMERGENCY broadcasts, so it is marked HIGH."
 
         return {
             "category": category,
             "priority": priority,
             "reasoning": reasoning,
-            "is_allowed": is_allowed
+            "is_allowed": is_allowed,
+            "is_emergency": is_emergency,
+            "can_publish_emergency": can_publish_emergency,
         }
 
     def search_knowledge_base(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
@@ -845,14 +885,6 @@ class EchoSphereMLEngine:
         navigation_target: Optional[str] = None
         suggested_actions: List[str] = []
 
-        # Grounded Announcements List Formatting
-        notice_cards = ""
-        if matched_announcements:
-            lines = []
-            for m in matched_announcements[:3]:
-                lines.append(f"- **[{m['category']} | {m['priority']}]** {m['title']} ({m['created_at']})")
-            notice_cards = "\n\n### Live Announcements Matched\n" + "\n".join(lines)
-
         # ─── Intent-Driven Structured Synthesis ─────────────────────────────────
         q_lower = query.lower()
         role_upper = (role or "").upper()
@@ -939,86 +971,18 @@ class EchoSphereMLEngine:
                 )
             suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
 
-        elif predicted_intent == "ANNOUNCEMENT_SEARCH":
-            category_badge = "Announcements"
-            navigation_target = f"nav:notices:filter:{dept}"
-            if matched_announcements:
-                text = (
-                    f"Here are the active announcements relevant to **{dept} Department** ({role.title()}):\n"
-                    f"{notice_cards}\n\n"
-                    f"You can tap on any announcement card below to review the full circular details."
-                )
-            else:
-                text = (
-                    f"There are currently no new circulars matching your search query for **{dept} Department**.\n\n"
-                    f"All official notices are published with verified departmental signatures. "
-                    f"You can browse all college-wide circulars or check back shortly for updates."
-                )
-            suggested_actions = [f"Filter {dept} Notices", "View All Circulars", "Check Emergency Feed"]
-
-        elif predicted_intent == "EXAM_SCHEDULE":
-            category_badge = "Examinations"
-            navigation_target = "nav:notices:filter:Examinations"
-            exam_kb = next((k for k in kb_matches if k.get("id") == "kb_exam_rules"), None)
-            kb_text = f"\n\n**Official Examination Protocol:**\n{exam_kb['content']}" if exam_kb else ""
-
-            text = (
-                f"### Examination Guidelines for {dept} Department\n\n"
-                f"- **Schedules & Batches:** Practical lab and theory schedules are released under the **Examinations** category.\n"
-                f"- **Mandatory Items:** Carry your official **College ID Card** and physical **Hall Ticket** to each session.\n"
-                f"- **Reporting Time:** Students must arrive at exam halls at least 15 minutes prior to scheduled start times.{kb_text}{notice_cards}"
-            )
-            suggested_actions = ["Filter Examination Circulars", "Check Lab Timetable", "View Academic Rules"]
-
-        elif predicted_intent == "PLACEMENT_DRIVE":
-            category_badge = "Placements"
-            navigation_target = "nav:notices:filter:Placements"
-            placement_kb = next((k for k in kb_matches if k.get("id") == "kb_placement_policy"), None)
-            kb_text = f"\n\n**Placement Cell Guidelines:**\n{placement_kb['content']}" if placement_kb else ""
-
-            text = (
-                f"### Campus Placements & Recruitment ({dept})\n\n"
-                f"- **Eligibility Threshold:** Aggregate **CGPA >= 7.0** with zero active backlogs for tier-1 recruitment drives.\n"
-                f"- **Visiting Companies:** Top recruiters include Google, Microsoft, TCS, Infosys, and Accenture.\n"
-                f"- **Preparation Checklist:** Ensure your resume is updated and all pre-placement registrations are submitted on time.{kb_text}{notice_cards}"
-            )
-            suggested_actions = ["View Placement Notices", "Check Eligibility Criteria", "Resume Guidelines"]
-
-        elif predicted_intent == "EMERGENCY_ALERT":
-            category_badge = "Emergency Alert"
-            navigation_target = "nav:notices:filter:Emergency"
-            emergency_kb = next((k for k in kb_matches if k.get("id") == "kb_emergency_weather"), None)
-            kb_text = f"\n\n**Safety Protocol:**\n{emergency_kb['content']}" if emergency_kb else ""
-
-            text = (
-                f"### Campus Safety & Emergency Advisory\n\n"
-                f"- **Alert Status:** Severe weather and safety advisories are broadcasted college-wide with highest priority.\n"
-                f"- **Broadcasting:** When active, alerts play through campus smart speakers and appear pinned at the top of your feed.\n"
-                f"- **Commuting:** Please exercise caution during red alerts and follow official district administration circulars.{kb_text}{notice_cards}"
-            )
-            suggested_actions = ["View Emergency Circulars", "Check Weather Advisory", "Campus Safety Rules"]
-
-        elif predicted_intent == "FACULTY_DEPARTMENT":
-            category_badge = "Department"
-            navigation_target = f"nav:notices:filter:{dept}"
-            text = (
-                f"### {dept} Department Information\n\n"
-                f"- **Department Office:** Academic block working hours are 9:00 AM to 5:00 PM on weekdays.\n"
-                f"- **Inquiries:** Consult your Department Head of Department (HoD) or Department Coordinator for official announcements, academic schedules, and departmental circulars.\n"
-                f"- **Notice Board:** Departmental updates are published regularly under the **{dept}** channel in EchoSphere.{notice_cards}"
-            )
-            suggested_actions = [f"Filter {dept} Notices", "Contact Faculty", "View Academic Calendar"]
-
-        elif predicted_intent == "EVENTS_HACKATHONS":
-            category_badge = "Events & Hackathons"
-            navigation_target = "nav:notices:filter:Events"
-            text = (
-                f"### Campus Events & Technical Hackathons\n\n"
-                f"- **Technical Events:** EchoSphere broadcasts real-time circulars for college hackathons, coding contests, and symposiums.\n"
-                f"- **Registrations:** Event announcements include direct registration links, rules, and coordinator contact info.\n"
-                f"- **Corridor Broadcasts:** Major event schedules and inaugural ceremonies are broadcast via corridor smart speakers.{notice_cards}"
-            )
-            suggested_actions = ["Filter Event Circulars", "Hackathon Updates", "Workshop Notices"]
+        elif predicted_intent in ("ANNOUNCEMENT_SEARCH", "EXAM_SCHEDULE", "PLACEMENT_DRIVE", "EMERGENCY_ALERT",
+                                  "FACULTY_DEPARTMENT", "EVENTS_HACKATHONS"):
+            # Campus facts come only from the notices that matched the question, never from built-in text.
+            category_badge, navigation_target, suggested_actions = {
+                "ANNOUNCEMENT_SEARCH": ("Announcements", f"nav:notices:filter:{dept}", [f"Filter {dept} Notices", "View All Circulars"]),
+                "EXAM_SCHEDULE": ("Examinations", "nav:notices:filter:Examinations", ["Filter Examination Circulars", "Browse Announcements"]),
+                "PLACEMENT_DRIVE": ("Placements", "nav:notices:filter:Placements", ["View Placement Notices", "Browse Announcements"]),
+                "EMERGENCY_ALERT": ("Emergency Alert", "nav:notices:filter:Emergency", ["View Emergency Circulars", "Browse Announcements"]),
+                "FACULTY_DEPARTMENT": ("Department", f"nav:notices:filter:{dept}", [f"Filter {dept} Notices", "Browse Announcements"]),
+                "EVENTS_HACKATHONS": ("Events & Hackathons", "nav:notices:filter:Events", ["Filter Event Circulars", "Browse Announcements"]),
+            }[predicted_intent]
+            text = self._answer_from_notices(matched_announcements)
 
         elif predicted_intent == "NOTICE_CREATION":
             category_badge = "Notice Authoring"
@@ -1035,7 +999,7 @@ class EchoSphereMLEngine:
                     f"You have authoring privileges on EchoSphere:\n\n"
                     f"1. Tap the **+ New Notice** button on your home screen.\n"
                     f"2. Enter title, description, target audience, and delivery channels.\n"
-                    f"3. Use **AI Expand** to instantly format notes into a formal, structured circular.\n"
+                    f"3. Use **AI Draft** or **Voice Dictation** to turn your notes into a formal circular.\n"
                     f"4. Faculty drafts submit to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options."
                 )
                 suggested_actions = ["Create New Notice", "View My Drafts", "Pending Approvals"]
@@ -1119,15 +1083,7 @@ class EchoSphereMLEngine:
                 suggested_actions = ["View Speaker Queue", "Hardware Node Status", "Test Audio Stream"]
 
         else:
-            # Fallback when intent is general campus query
-            first_kb = kb_matches[0] if kb_matches else None
-            kb_summary = f"\n\n**Related Information ({first_kb['title']}):**\n{first_kb['content']}" if first_kb else ""
-
-            text = (
-                f"Here is the guidance for **{name}** ({role.title()} · {dept} Department):\n\n"
-                f"Your query has been processed against EchoSphere's live announcement database and campus knowledge base.{kb_summary}{notice_cards}\n\n"
-                f"Feel free to ask specific questions about examination dates, placement drives, app features, or your branch coursework."
-            )
+            text = self._answer_from_notices(matched_announcements)
             suggested_actions = ["Browse Announcements", "Check Exam Schedule", "View Placements"]
 
         return {
@@ -1140,8 +1096,23 @@ class EchoSphereMLEngine:
             "model_used": "EchoSphere ML Engine (Local)"
         }
 
+    @staticmethod
+    def _answer_from_notices(matched_announcements: List[Dict[str, Any]]) -> str:
+        """Answer from the best matching notice, or say plainly that no notice covers the question."""
+        if not matched_announcements:
+            return (
+                "I couldn't find a notice about that. Please check the notices feed, "
+                "or ask your department office."
+            )
+        top = matched_announcements[0]
+        text = f"From the notice **{top['title']}** ({top.get('created_at', 'recent')}):\n\n{top.get('content', '')}"
+        others = matched_announcements[1:3]
+        if others:
+            text += "\n\nOther related notices:\n" + "\n".join(f"- {m['title']}" for m in others)
+        return text
+
     # ─────────────────────────────────────────────────────────────────────────────
-    # Campus ML Engine Microservices: Summarization, Expansion, Grammar & Drafting
+    # Campus ML Engine Microservices: Summarization & Drafting
     # ─────────────────────────────────────────────────────────────────────────────
 
     def summarize_announcement(self, text: str) -> str:
@@ -1293,122 +1264,6 @@ class EchoSphereMLEngine:
 
         entities = self._extract_notice_entities(clean)
         return clean, intent, entities
-
-    def expand_announcement(self, text: str, category: str = "Academics", department: Optional[str] = None) -> str:
-        """
-        Campus ML circular expansion into structured institutional notice.
-        Strictly adheres to the given information without fabricating fake deadlines,
-        guidelines, or candidate instructions.
-        Attributes authority to College Administration / Principal's Office or Department.
-        """
-        clean, intent, entities = self._clean_and_normalize_notice_text(text)
-        if not clean:
-            return ""
-
-        dept_header = f" - {department.upper()} DEPARTMENT" if department and department != "College-Wide" else ""
-        dept_signoff = f"Department of {department}" if department and department != "College-Wide" else "Office of the Principal / College Administration"
-
-        bullets = []
-        if entities.get("date"):
-            bullets.append(f"- Date / Day: {entities['date']}")
-        if entities.get("time"):
-            bullets.append(f"- Time: {entities['time']}")
-        if entities.get("venue"):
-            bullets.append(f"- Venue / Location: {entities['venue']}")
-        bullet_section = ("\n\nEvent & Schedule Details:\n" + "\n".join(bullets)) if bullets else ""
-
-        if intent == "condolence":
-            clean_subject = re.sub(r'(?i)\s+(has\s+)?(expired|passed\s+away|died|passed\s+on)', '', clean).strip()
-            subject_phrase = f"the sad demise of {clean_subject}" if clean_subject else f"that {clean}"
-            return (
-                f"OFFICIAL CONDOLENCE NOTIFICATION\n\n"
-                f"With profound grief and deep sorrow, this is to inform all faculty members, staff, and students of {subject_phrase}.\n\n"
-                "The college community extends its heartfelt condolences to the bereaved family in this hour of grief. "
-                "Further official notifications regarding memorial tributes and administrative directives will be communicated in due course.\n\n"
-                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
-            )
-
-        if intent == "holiday":
-            return (
-                f"OFFICIAL CIRCULAR: CAMPUS CLOSURE & CLASS SUSPENSION{dept_header}\n\n"
-                f"This is to formally notify all faculty, staff, and students that: {clean}.{bullet_section}\n\n"
-                "All regular academic and laboratory sessions stand suspended for the indicated period. "
-                "Regular classes will resume as per regular timetable upon official reopening.\n\n"
-                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
-            )
-
-        if intent == "exam":
-            return (
-                f"OFFICIAL EXAMINATION CIRCULAR{dept_header}\n\n"
-                f"All concerned students and faculty members are hereby informed that: {clean}.{bullet_section}\n\n"
-                "Candidates are advised to review their schedules carefully and ensure they carry their official College ID Card and Hall Ticket to the examination hall.\n\n"
-                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
-            )
-
-        if intent == "placement":
-            return (
-                f"CAREER GUIDANCE & CAMPUS PLACEMENT CELL{dept_header}\n\n"
-                f"Announcement regarding: {clean}.{bullet_section}\n\n"
-                "Eligible and registered candidates are advised to verify their credentials and report punctually according to the communicated schedule.\n\n"
-                f"Issued By:\nTraining & Placement Officer (TPO)\n(Broadcast via EchoSphere)"
-            )
-
-        if intent == "sports":
-            return (
-                f"DEPARTMENT OF PHYSICAL EDUCATION & SPORTS COUNCIL\n\n"
-                f"Notice regarding: {clean}.{bullet_section}\n\n"
-                "Interested students wishing to participate are requested to report to the venue on time in proper sports attire.\n\n"
-                f"Issued By:\nDepartment of Physical Education\n(Broadcast via EchoSphere)"
-            )
-
-        if intent == "event":
-            return (
-                f"CAMPUS EVENT & WORKSHOP CIRCULAR{dept_header}\n\n"
-                f"We are pleased to inform all students and faculty members regarding: {clean}.{bullet_section}\n\n"
-                "Interested participants are encouraged to register and attend the scheduled sessions.\n\n"
-                f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
-            )
-
-        # Standard / Academic notice
-        cat_clean = category.upper()
-        clean_stmt = clean[0].upper() + clean[1:] if clean else ""
-        if not clean_stmt.endswith(('.', '!', '?')):
-            clean_stmt += '.'
-
-        return (
-            f"OFFICIAL CAMPUS CIRCULAR [{cat_clean}]{dept_header}\n\n"
-            f"This is to officially inform all faculty members and students that: {clean_stmt}{bullet_section}\n\n"
-            "All concerned members are requested to take note of this circular for necessary information and compliance.\n\n"
-            f"Issued By:\n{dept_signoff}\n(Broadcast via EchoSphere)"
-        )
-
-    def polish_grammar_and_tone(self, text: str) -> Dict[str, Any]:
-        """Campus ML institutional grammar, tone, and casing polish."""
-        clean = (text or "").strip()
-        if not clean:
-            return {"original": text, "corrected_text": text, "improvements": []}
-
-        corrected = re.sub(r'\s+', ' ', clean)
-        corrected = re.sub(r'\bthe principle\b', 'the Principal', corrected, flags=re.IGNORECASE)
-        corrected = re.sub(r'\bprinciple\b', 'Principal', corrected, flags=re.IGNORECASE)
-        corrected = re.sub(r'\bhod\b', 'Head of Department', corrected, flags=re.IGNORECASE)
-        corrected = re.sub(r'\s+([,.:;?!])', r'\1', corrected)
-        if corrected:
-            corrected = corrected[0].upper() + corrected[1:]
-        if not corrected.endswith(('.', '!', '?')):
-            corrected += '.'
-
-        improvements = ["Applied standardized institutional casing, spacing, and punctuation."]
-        if "Principal" in corrected and ("principle" in clean or "Principle" in clean):
-            improvements.append("Corrected institutional title 'Principal'.")
-        if "Head of Department" in corrected and "hod" in clean.lower():
-            improvements.append("Expanded acronym 'Head of Department'.")
-
-        return {
-            "original": clean,
-            "corrected_text": corrected,
-            "improvements": improvements
-        }
 
     def draft_announcement(self, topic: str, category: str = "General", audience: str = "Entire College", department: Optional[str] = None) -> str:
         """Campus ML context-aware announcement drafting."""

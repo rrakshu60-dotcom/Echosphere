@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:echosphere/controllers/announcement_controller.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/controllers/echosphere_ai_controller.dart';
@@ -86,10 +85,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   final repeatEndCtrl = TextEditingController(text: '11:00');
 
 
-  bool isAiExpanding = false;
-  bool isAiPolishing = false;
   bool isAiDrafting = false;
-  bool isAiScanningDoc = false;
 
   String? aiValidationWarning;
   String? aiSpamWarning;
@@ -355,77 +351,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     }
   }
 
-  Future<void> _scanAndOcrDocument() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp'],
-        withData: true,
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      final file = result.files.first;
-      setState(() => isAiScanningDoc = true);
-
-      List<int>? bytes = file.bytes;
-      if (bytes == null && file.path != null) {
-        bytes = await File(file.path!).readAsBytes();
-      }
-
-      if (bytes == null || bytes.isEmpty) {
-        errorSnackBar('Could not read document bytes.');
-        return;
-      }
-
-      final ext = file.extension?.toLowerCase() ?? 'jpg';
-      final mimeType = ext == 'pdf' ? 'application/pdf' : 'image/$ext';
-
-      final ocrRes = await EchosphereApiService().ocrDocumentToNotice(
-        fileBytes: bytes,
-        mimeType: mimeType,
-        filename: file.name,
-      );
-
-      if (mounted) {
-        setState(() {
-          // Attach original scanned file so students/faculty can access it
-          if (!attachedFiles.any((f) => f.name == file.name)) {
-            attachedFiles.add(file);
-          }
-
-          if (ocrRes['title'] != null && ocrRes['title'].toString().isNotEmpty) {
-            titleController.text = ocrRes['title'].toString();
-          }
-          if (ocrRes['content'] != null && ocrRes['content'].toString().isNotEmpty) {
-            descController.text = ocrRes['content'].toString();
-          }
-          if (ocrRes['suggested_category'] != null) {
-            aiDetectedCategory = ocrRes['suggested_category'].toString();
-          }
-          if (ocrRes['suggested_priority'] != null) {
-            aiDetectedPriority = ocrRes['suggested_priority'].toString();
-          }
-          if (ocrRes['suggested_audience'] != null) {
-            final aud = ocrRes['suggested_audience'].toString();
-            if (audiences.contains(aud)) {
-              selectedAudience = aud;
-            }
-          }
-          final refNo = ocrRes['reference_number']?.toString();
-          final successMsg = (refNo != null && refNo.isNotEmpty)
-              ? 'Circular ($refNo) auto-digitized & original document attached!'
-              : 'Scanned circular auto-digitized & original document attached!';
-          snackBar(successMsg, title: 'Document OCR Digitizer');
-        });
-      }
-    } catch (e) {
-      errorSnackBar('Document scanning failed: $e');
-    } finally {
-      if (mounted) setState(() => isAiScanningDoc = false);
-    }
-  }
-
   @override
   void dispose() {
     titleController.removeListener(_autoDetectAndValidate);
@@ -506,59 +431,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
         activeConflictReport = conflictRes['has_conflict'] == true ? conflictRes : null;
         activeAudienceWarning = audienceRes['has_mismatch'] == true ? audienceRes : null;
       });
-    }
-  }
-
-  Future<void> _expandWithAi() async {
-    final desc = descController.text.trim();
-    if (desc.isEmpty) {
-      errorSnackBar('Please enter a brief note first.');
-      return;
-    }
-
-    setState(() => isAiExpanding = true);
-
-    try {
-      final res = await EchosphereApiService().expandText(desc, category: aiDetectedCategory);
-      final expandedText = res['expanded_text'] as String?;
-      if (mounted && expandedText != null && expandedText.isNotEmpty) {
-        setState(() {
-          descController.text = expandedText;
-        });
-        snackBar('AI expanded your announcement into an official circular.', title: 'AI Expander');
-      }
-    } catch (_) {
-      final fallbackExpanded =
-          'This is to officially inform all concerned members that $desc. For official inquiries or clarifications, please contact the concerned department office.';
-      if (mounted) {
-        setState(() {
-          descController.text = fallbackExpanded;
-        });
-        snackBar('AI expanded your announcement text.', title: 'AI Expander');
-      }
-    } finally {
-      if (mounted) setState(() => isAiExpanding = false);
-    }
-  }
-
-  Future<void> _polishGrammar() async {
-    final desc = descController.text.trim();
-    if (desc.isEmpty) return;
-
-    setState(() => isAiPolishing = true);
-
-    try {
-      final res = await EchosphereApiService().grammarCheck(desc);
-      final corrected = res['corrected_text'] as String?;
-      if (mounted && corrected != null) {
-        setState(() {
-          descController.text = corrected;
-        });
-        snackBar('Grammar and professional tone refined by AI.', title: 'AI Tone & Grammar');
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => isAiPolishing = false);
     }
   }
 
@@ -653,7 +525,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // AI Fast Intake Studio (Voice Dictation & Document OCR)
+            // AI Fast Intake Studio (Voice Dictation)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               margin: const EdgeInsets.only(bottom: 14),
@@ -692,12 +564,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           ],
                         ),
                       ),
-                      if (isAiScanningDoc)
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
-                        ),
                     ],
                   ),
 
@@ -714,20 +580,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        key: const Key('scan_ocr_button'),
-                        onPressed: isAiScanningDoc ? null : _scanAndOcrDocument,
-                        icon: const Icon(Icons.document_scanner_rounded, size: 14),
-                        label: Text(
-                          isAiScanningDoc ? 'Scanning Doc...' : 'Scan / OCR Notice',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                        style: OutlinedButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -772,27 +624,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
               runSpacing: 6,
               children: [
                 const Text('Announcement Content', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    if (textLength >= 10)
-                      ActionChip(
-                        avatar: Icon(Icons.spellcheck_rounded, size: 14, color: theme.colorScheme.primary),
-                        label: isAiPolishing
-                            ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Grammar', style: TextStyle(fontSize: 11)),
-                        onPressed: isAiPolishing ? null : _polishGrammar,
-                      ),
-                    ActionChip(
-                      avatar: Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
-                      label: isAiExpanding
-                          ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('AI Expand', style: TextStyle(fontSize: 11)),
-                      onPressed: isAiExpanding ? null : _expandWithAi,
-                    ),
-                  ],
-                ),
               ],
             ),
             const SizedBox(height: 6),

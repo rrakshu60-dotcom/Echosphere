@@ -77,22 +77,6 @@ class AiSummarizeResponse(BaseModel):
     summary: str
     model_used: Optional[str] = "Fine-Tuned Qwen 2.5 3B (Local Campus Model)"
 
-class AiExpandRequest(BaseModel):
-    text: str
-    category: Optional[str] = "Academics"
-
-class AiExpandResponse(BaseModel):
-    original: str
-    expanded_text: str
-
-class AiGrammarRequest(BaseModel):
-    text: str
-
-class AiGrammarResponse(BaseModel):
-    original: str
-    corrected_text: str
-    improvements: List[str] = []
-
 class AiEmergencyRequest(BaseModel):
     text: str
     user_role: Optional[str] = "STUDENT"
@@ -130,37 +114,6 @@ class AiDuplicateResponse(BaseModel):
     similarity_score: float
     matched_title: Optional[str] = None
     reason: str
-
-class AiClassifyRequest(BaseModel):
-    announcement: str
-
-class AiClassifyResponse(BaseModel):
-    category: str
-    priority: str
-
-class AiIntentRequest(BaseModel):
-    question: str
-
-class AiIntentResponse(BaseModel):
-    intent: str
-
-class CopilotChatRequest(BaseModel):
-    message: str
-    app_state: Optional[Dict[str, Any]] = None
-    user_role: Optional[str] = "STUDENT"
-    department: Optional[str] = "CSE"
-    full_name: Optional[str] = "Campus Member"
-    history: Optional[List[Dict[str, Any]]] = None
-
-class CopilotChatResponse(BaseModel):
-    response: str
-    copilot_action: Optional[Dict[str, Any]] = None
-    category_badge: Optional[str] = "EchoSphere Copilot"
-    context_badge: Optional[str] = None
-    model_used: Optional[str] = None
-    suggested_actions: List[str] = []
-    navigation_target: Optional[str] = None
-
 
 class ScheduleConflictCheckRequest(BaseModel):
     title: str
@@ -244,22 +197,6 @@ class RelevanceScoreResponse(BaseModel):
     scores: List[RelevanceScoreItem]
 
 
-class AnnouncementTranslationRequest(BaseModel):
-    target_language: str = "kn"
-    title: Optional[str] = None
-    content: Optional[str] = None
-    summary: Optional[str] = None
-
-
-class AnnouncementTranslationResponse(BaseModel):
-    target_language: str
-    language_name: str
-    native_name: str
-    translated_title: str
-    translated_content: str
-    translated_summary: Optional[str] = None
-
-
 class VoiceNoticeRequest(BaseModel):
     audio_base64: Optional[str] = None
     audio_format: Optional[str] = "m4a"
@@ -274,23 +211,3 @@ class VoiceNoticeResponse(BaseModel):
     suggested_audience: str = "Entire College"
     extracted_event: Optional[Dict[str, Any]] = None
     transcription: str
-
-
-class DocumentOcrRequest(BaseModel):
-    file_base64: str
-    mime_type: Optional[str] = "image/jpeg"
-    filename: Optional[str] = "circular.jpg"
-    raw_text: Optional[str] = None
-
-
-class DocumentOcrResponse(BaseModel):
-    title: str
-    content: str
-    suggested_category: str = "Academic"
-    suggested_priority: str = "NORMAL"
-    suggested_audience: str = "Entire College"
-    reference_number: Optional[str] = None
-    extracted_event: Optional[Dict[str, Any]] = None
-    raw_text: Optional[str] = None
-
-
