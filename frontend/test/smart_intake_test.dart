@@ -57,20 +57,6 @@ void main() {
       expect(res['content'], contains('Turing Lab'));
       expect(res['transcription'], contains('Turing Lab'));
     });
-
-    test('ocrDocumentToNotice fallback parses document filename and returns structured circular', () async {
-      final api = EchosphereApiService();
-      final res = await api.ocrDocumentToNotice(
-        fileBytes: [1, 2, 3, 4],
-        mimeType: 'application/pdf',
-        filename: 'campus_placement_drive_guidelines.pdf',
-      );
-
-      expect(res['title'].toString().toLowerCase(), contains('placement'));
-      expect(res['suggested_category'], 'Placement');
-      expect(res['reference_number'], contains('CIR'));
-      expect(res['content'], contains('institutional document'));
-    });
   });
 
   group('VoiceDictationSheet UI & Zero Overflow on 320px', () {
@@ -98,7 +84,7 @@ void main() {
   });
 
   group('CreateAnnouncementDialog AI Fast Intake Studio & Zero Overflow on 320px', () {
-    testWidgets('renders AI Fast Intake Studio with Voice Dictate and Scan OCR buttons on 320px screen without overflow', (tester) async {
+    testWidgets('renders AI Fast Intake Studio with Voice Dictate and without the removed AI tools on 320px screen without overflow', (tester) async {
       tester.view.physicalSize = const Size(320, 720);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -127,9 +113,53 @@ void main() {
       // Verify AI Fast Intake Studio container and buttons exist
       expect(find.text('AI Fast Intake Studio'), findsOneWidget);
       expect(find.byKey(const Key('voice_dictate_button')), findsOneWidget);
-      expect(find.byKey(const Key('scan_ocr_button')), findsOneWidget);
       expect(find.text('Voice Dictate'), findsOneWidget);
-      expect(find.text('Scan / OCR Notice'), findsOneWidget);
+      expect(find.text('AI Auto-Draft'), findsOneWidget);
+      // Removed on the owner's decision (2026-10-27): document OCR, grammar and AI expand.
+      expect(find.byKey(const Key('scan_ocr_button')), findsNothing);
+      expect(find.text('Scan / OCR Notice'), findsNothing);
+      expect(find.text('Grammar'), findsNothing);
+      expect(find.text('AI Expand'), findsNothing);
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('renders AI Fast Intake Studio with Voice Dictate and without the removed AI tools on tablet width without overflow', (tester) async {
+      tester.view.physicalSize = const Size(1024, 768);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const CreateAnnouncementDialog(),
+                  );
+                },
+                child: const Text('Open Create Dialog'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Create Dialog'));
+      await tester.pumpAndSettle();
+
+      // Verify AI Fast Intake Studio container and buttons exist
+      expect(find.text('AI Fast Intake Studio'), findsOneWidget);
+      expect(find.byKey(const Key('voice_dictate_button')), findsOneWidget);
+      expect(find.text('Voice Dictate'), findsOneWidget);
+      expect(find.text('AI Auto-Draft'), findsOneWidget);
+      // Removed on the owner's decision (2026-10-27): document OCR, grammar and AI expand.
+      expect(find.byKey(const Key('scan_ocr_button')), findsNothing);
+      expect(find.text('Scan / OCR Notice'), findsNothing);
+      expect(find.text('Grammar'), findsNothing);
+      expect(find.text('AI Expand'), findsNothing);
 
       expect(tester.takeException(), isNull);
     });

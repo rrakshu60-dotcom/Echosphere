@@ -1,15 +1,17 @@
 """
-EchoSphere Neural RAG (Retrieval-Augmented Generation) Engine
-Combines:
-1. Dense Vector Semantics: 384-dimensional embeddings via all-MiniLM-L6-v2
-2. Lexical Keyword Weighting: Exact matching for circular IDs, dates, and course codes
-3. Dynamic Announcement Synchronization: Ingests live published notices from database
-4. Sub-15ms Hybrid Search: Cosine + Lexical scoring with role and department scoping
+EchoSphere notice search and chat grounding.
+
+Finds the notices (and built-in app / coursework knowledge) that answer a question:
+- Words are normalised first (plurals, "mid-sem" = "mid semester", "time table" = "timetable"), stop words dropped.
+- Notices are read from the database on every search, filtered by what the asking role may see,
+  so a notice is searchable the moment it is published.
+- Ranking is TF-IDF cosine over those words. A notice must share enough of the question's words to count,
+  so an unrelated notice is never returned just because it is recent or high priority.
+- Dense embeddings (all-MiniLM-L6-v2) are added on top only if sentence-transformers is installed.
 """
 
-import os
+import math
 import re
-import time
 import logging
 from typing import List, Dict, Any, Optional
 import numpy as np
@@ -61,9 +63,7 @@ DEFAULT_CAMPUS_KNOWLEDGE: List[Dict[str, Any]] = [
         "title": "University Examination Timetable & Hall Ticket Protocols",
         "content": (
             "Semester examination circulars, Internal Assessment (IA) test timetables, and lab practical schedules "
-            "are published under the Examinations category. Students must carry their physical institutional ID card "
-            "and official hall ticket. Mobile phones and unauthorized smart devices are strictly prohibited in exam halls. "
-            "Students should report 15 minutes prior to the commencement of each session."
+            "are published under the Examinations category. Dates, venues and exam rules come from those notices."
         ),
         "tags": ["exam", "examinations", "timetable", "ia", "internal assessment", "hall ticket", "schedule", "rules"]
     },
@@ -72,9 +72,8 @@ DEFAULT_CAMPUS_KNOWLEDGE: List[Dict[str, Any]] = [
         "category": "Placements",
         "title": "Campus Placement Drives, Corporate Eligibility & CTC Guidelines",
         "content": (
-            "The Department of Training & Placement posts visiting enterprise recruiters, eligibility CGPA criteria, "
-            "online assessment links, and interview schedules. Tier-1 and product companies mandate a minimum CGPA of 7.0 "
-            "with zero active backlogs. Registered candidates must attend corporate pre-placement talks (PPT) in formal attire."
+            "The Department of Training & Placement posts visiting recruiters, eligibility criteria, "
+            "online assessment links, and interview schedules as notices under the Placements category."
         ),
         "tags": ["placement", "placements", "recruitment", "job", "internship", "cgpa", "interview", "drive", "package"]
     },
@@ -120,17 +119,73 @@ DEFAULT_CAMPUS_KNOWLEDGE: List[Dict[str, Any]] = [
 ]
 
 
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "am", "do", "does", "did", "will", "shall", "can",
+    "could", "would", "should", "may", "might", "must", "has", "have", "had", "i", "me", "my", "we", "our", "you",
+    "your", "it", "its", "this", "that", "these", "those", "there", "here", "what", "when", "where", "which", "who",
+    "whom", "why", "how", "of", "in", "on", "at", "to", "for", "from", "by", "with", "about", "into", "and", "or",
+    "but", "not", "no", "any", "all", "some", "please", "tell", "know", "show", "give", "get", "let", "us", "any",
+    "notice", "notices", "circular", "circulars", "announcement", "announcements", "college", "campus", "so", "if",
+    "than", "then", "also", "just", "up", "out", "being", "going", "happening", "regarding", "today's", "anything",
+}
+
+# Phrases that mean the same thing are rewritten to one form before splitting into words.
+_PHRASES = [
+    (r"\bmid[\s-]*sem(ester)?s?\b", " midsemester "),
+    (r"\bend[\s-]*sem(ester)?s?\b", " endsemester "),
+    (r"\btime[\s-]+tables?\b", " timetable "),
+    (r"\bhall[\s-]+tickets?\b", " hallticket "),
+    (r"\bi\.?a\.?\b", " internal "),
+]
+
+# Single words that mean the same thing.
+_SYNONYMS = {
+    "sem": "semester", "exams": "exam", "examination": "exam", "examinations": "exam", "test": "exam",
+    "tests": "exam", "recruitment": "placement", "recruiter": "placement", "recruiters": "placement",
+    "hiring": "placement", "drive": "placement", "drives": "placement", "fees": "fee", "lib": "library",
+    "dept": "department", "hackathons": "hackathon", "fests": "fest", "lab": "lab", "labs": "lab",
+    "timings": "time", "timing": "time", "hrs": "hours", "hour": "hours",
+}
+
+
+def _stem(word: str) -> str:
+    if word in _SYNONYMS:
+        return _SYNONYMS[word]
+    if len(word) > 4 and word.endswith("ies"):
+        word = word[:-3] + "y"
+    elif len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        word = word[:-1]
+    return _SYNONYMS.get(word, word)
+
+
+def normalize_words(text: str) -> List[str]:
+    """Lower-case content words of a text, with plurals and common campus synonyms unified."""
+    clean = (text or "").lower()
+    for pattern, replacement in _PHRASES:
+        clean = re.sub(pattern, replacement, clean)
+    words = re.findall(r"[a-z0-9]+", clean)
+    return [_stem(w) for w in words if w not in _STOPWORDS and len(w) > 1]
+
+
+def _enum_text(value: Any) -> str:
+    return str(getattr(value, "value", value) or "")
+
+
 class NeuralRAG:
-    """Production-grade Hybrid Dense-Lexical RAG Engine for EchoSphere."""
+    """Notice search and grounding context for the campus chatbot."""
     _instance: Optional["NeuralRAG"] = None
+
+    # How much of the question a notice must cover to count as an answer.
+    MIN_QUERY_COVERAGE = 0.4
+    MAX_NOTICES_SCANNED = 500
 
     def __init__(self):
         self._embedder = None
-        self._documents: List[Dict[str, Any]] = []
-        self._doc_embeddings: Optional[np.ndarray] = None
-        self._last_db_sync_time: float = 0.0
+        self._static_docs: List[Dict[str, Any]] = [
+            {**item, "words": normalize_words(f"{item['title']} {item['content']} {' '.join(item.get('tags', []))}")}
+            for item in DEFAULT_CAMPUS_KNOWLEDGE
+        ]
         self._initialize_model()
-        self._index_static_knowledge()
 
     @classmethod
     def get_instance(cls) -> "NeuralRAG":
@@ -145,173 +200,127 @@ class NeuralRAG:
                 self._embedder = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
             except Exception:
                 self._embedder = SentenceTransformer("all-MiniLM-L6-v2")
-            logger.info("NeuralRAG: all-MiniLM-L6-v2 embedding model loaded successfully.")
+            logger.info("NeuralRAG: all-MiniLM-L6-v2 embedding model loaded.")
         except Exception as e:
-            logger.warning(f"NeuralRAG: Could not load SentenceTransformer ({e}). Falling back to TF-IDF lexical search.")
+            logger.info(f"NeuralRAG: sentence-transformers not available ({e}); using word search only.")
             self._embedder = None
 
-    def _index_static_knowledge(self):
-        """Index default institutional knowledge items."""
-        for item in DEFAULT_CAMPUS_KNOWLEDGE:
-            self._add_document(item, is_static=True)
-        self._recompute_embeddings()
+    # ------------------------------------------------------------------ ranking
 
-    def _add_document(self, item: Dict[str, Any], is_static: bool = False):
-        text_for_embedding = f"{item.get('title', '')}. {item.get('content', '')} {' '.join(item.get('tags', []))}"
-        doc_entry = {
-            "id": item.get("id", f"doc_{len(self._documents)}"),
-            "title": item.get("title", "Notice"),
-            "content": item.get("content", ""),
-            "category": item.get("category", "General"),
-            "department": item.get("department", "ALL"),
-            "tags": item.get("tags", []),
-            "search_text": text_for_embedding.lower(),
-            "is_static": is_static,
-            "created_at": item.get("created_at", time.time())
-        }
-        self._documents.append(doc_entry)
-
-    def _recompute_embeddings(self):
-        """Recompute dense vector matrix for all documents."""
-        if not self._documents or self._embedder is None:
-            return
-        texts = [doc["search_text"] for doc in self._documents]
-        try:
-            embs = self._embedder.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
-            self._doc_embeddings = embs
-            logger.info(f"NeuralRAG: Indexed {len(self._documents)} documents with dense embeddings.")
-        except Exception as e:
-            logger.error(f"NeuralRAG: Failed to compute embeddings: {e}")
-
-    def sync_database_announcements(self, db_session):
-        """Synchronize active published notices from database into the vector index."""
-        if not db_session:
-            return
-        # Throttle DB sync to at most once every 30 seconds
-        if time.time() - self._last_db_sync_time < 30.0:
-            return
-
-        try:
-            # Import Announcement model dynamically to avoid circular dependencies
-            from app.models.announcement import Announcement
-            active_notices = db_session.query(Announcement).filter(
-                Announcement.status == "APPROVED"
-            ).order_by(Announcement.created_at.desc()).limit(100).all()
-
-            if not active_notices:
-                return
-
-            # Retain static docs and re-ingest active notices
-            self._documents = [d for d in self._documents if d.get("is_static", False)]
-            for notice in active_notices:
-                dept_code = notice.department.code if (hasattr(notice, "department") and notice.department) else "ALL"
-                self._add_document({
-                    "id": f"notice_{notice.id}",
-                    "title": notice.title,
-                    "content": notice.content,
-                    "category": notice.category.name if (hasattr(notice, "category") and notice.category) else "General",
-                    "department": dept_code,
-                    "tags": [notice.priority.value if hasattr(notice, "priority") else "Normal", dept_code],
-                    "created_at": notice.created_at.timestamp() if hasattr(notice.created_at, "timestamp") else time.time()
-                }, is_static=False)
-
-            self._recompute_embeddings()
-            self._last_db_sync_time = time.time()
-            logger.info(f"NeuralRAG: Synced {len(active_notices)} active announcements from DB.")
-        except Exception as e:
-            logger.debug(f"NeuralRAG: Database sync skipped or failed: {e}")
-
-    def hybrid_search(
-        self,
-        query: str,
-        department: Optional[str] = None,
-        top_k: int = 3,
-        min_score: float = 0.30
-    ) -> List[Dict[str, Any]]:
-        """
-        Executes sub-15ms Hybrid Dense + Lexical search.
-        Returns top relevant documents scored by cosine similarity and keyword overlap.
-        """
-        if not query or not self._documents:
+    def _rank(self, query: str, docs: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+        """Rank docs (each with a "words" list and a "text" string) against the query."""
+        q_words = list(dict.fromkeys(normalize_words(query)))
+        if not q_words or not docs:
             return []
 
-        clean_q = query.strip().lower()
-        q_words = set(re.findall(r'[a-zA-Z0-9]+', clean_q))
+        n_docs = len(docs)
+        doc_freq: Dict[str, int] = {}
+        for doc in docs:
+            for w in set(doc["words"]):
+                doc_freq[w] = doc_freq.get(w, 0) + 1
+        idf = {w: math.log((1 + n_docs) / (1 + doc_freq.get(w, 0))) + 1.0 for w in q_words}
 
-        # 1. Dense Semantic Scoring
-        dense_scores = np.zeros(len(self._documents))
-        if self._embedder is not None and self._doc_embeddings is not None:
-            try:
-                q_emb = self._embedder.encode([clean_q], convert_to_numpy=True, normalize_embeddings=True)[0]
-                dense_scores = np.dot(self._doc_embeddings, q_emb)
-            except Exception as e:
-                logger.debug(f"NeuralRAG: Dense scoring error: {e}")
+        required = max(1, math.ceil(len(q_words) * self.MIN_QUERY_COVERAGE))
+        q_norm = math.sqrt(sum(idf[w] ** 2 for w in q_words))
 
-        # 2. Lexical Keyword Scoring
-        lexical_scores = np.zeros(len(self._documents))
-        for idx, doc in enumerate(self._documents):
-            doc_words = set(re.findall(r'[a-zA-Z0-9]+', doc["search_text"]))
-            if q_words:
-                overlap = len(q_words & doc_words)
-                lexical_scores[idx] = overlap / len(q_words)
-
-        # 3. Hybrid Combination (0.75 Dense + 0.25 Lexical)
+        dense = None
         if self._embedder is not None:
-            hybrid_scores = (0.75 * dense_scores) + (0.25 * lexical_scores)
-        else:
-            hybrid_scores = lexical_scores
+            try:
+                q_emb = self._embedder.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+                d_emb = self._embedder.encode([d["text"] for d in docs], convert_to_numpy=True, normalize_embeddings=True)
+                dense = np.dot(d_emb, q_emb)
+            except Exception as e:
+                logger.debug(f"NeuralRAG: dense scoring skipped: {e}")
 
-        # 4. Department & Role Scope Filtering
-        dept_filter = department.upper() if department else None
-        ranked_results = []
-
-        for idx, score in enumerate(hybrid_scores):
-            if score < min_score:
+        ranked = []
+        for idx, doc in enumerate(docs):
+            counts: Dict[str, int] = {}
+            for w in doc["words"]:
+                counts[w] = counts.get(w, 0) + 1
+            matched = [w for w in q_words if w in counts]
+            if len(matched) < required:
                 continue
-            doc = self._documents[idx]
-            doc_dept = doc.get("department", "ALL")
+            dot = sum(idf[w] * (1 + math.log(counts[w])) * idf[w] for w in matched)
+            d_norm = math.sqrt(sum(((1 + math.log(c)) * idf.get(w, 1.0)) ** 2 for w, c in counts.items()))
+            score = dot / (q_norm * d_norm) if d_norm else 0.0
+            # Covering more of the question matters more than repeating one word.
+            score = 0.5 * score + 0.5 * (len(matched) / len(q_words))
+            if dense is not None:
+                score = 0.6 * score + 0.4 * float(dense[idx])
+            ranked.append((score, idx))
 
-            # Match institutional department scope (ALL notices are public; dept notices prioritize branch)
-            if dept_filter and doc_dept not in ["ALL", dept_filter, "CAMPUS", "GENERAL"]:
-                score *= 0.7
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [{**docs[idx], "score": round(score, 3)} for score, idx in ranked[:top_k]]
 
-            ranked_results.append({
-                "id": doc["id"],
-                "title": doc["title"],
-                "content": doc["content"],
-                "category": doc["category"],
-                "department": doc_dept,
-                "similarity": float(score),
-                "is_announcement": not doc.get("is_static", False)
-            })
+    # ------------------------------------------------------------------ notices
 
-        # Sort descending by hybrid similarity
-        ranked_results.sort(key=lambda x: x["similarity"], reverse=True)
-        return ranked_results[:top_k]
+    @staticmethod
+    def visible_notices(db, role: str = "STUDENT", limit: int = MAX_NOTICES_SCANNED) -> List[Any]:
+        """Notices the asking role may read: students only published ones, teachers also drafts and pending."""
+        from app.core.enums.announcement import AnnouncementStatus
+        from app.models.announcement import Announcement
+
+        role_upper = (role or "STUDENT").upper()
+        query = db.query(Announcement)
+        if role_upper in ("STUDENT", "STUDENTS", "GUEST", "USER"):
+            query = query.filter(Announcement.status == AnnouncementStatus.PUBLISHED)
+        elif role_upper == "TEACHER":
+            query = query.filter(Announcement.status.in_([
+                AnnouncementStatus.PUBLISHED, AnnouncementStatus.PENDING_APPROVAL, AnnouncementStatus.DRAFT,
+            ]))
+        return query.order_by(Announcement.created_at.desc()).limit(limit).all()
+
+    @staticmethod
+    def _notice_doc(notice: Any) -> Dict[str, Any]:
+        category = getattr(notice, "category", None)
+        category_name = getattr(category, "name", None) or "General"
+        title = str(getattr(notice, "title", "") or "")
+        description = str(getattr(notice, "description", "") or "")
+        created = getattr(notice, "created_at", None)
+        emergency = _enum_text(getattr(notice, "emergency_level", "")).upper()
+        priority = "EMERGENCY" if emergency and emergency != "NORMAL" else _enum_text(getattr(notice, "priority", "")).upper() or "NORMAL"
+        return {
+            "id": getattr(notice, "id", 0),
+            "title": title,
+            "content": description,
+            "category": str(category_name),
+            "priority": priority,
+            "department": str(getattr(notice, "target_audience", None) or "Entire College"),
+            "created_at": created.strftime("%b %d, %I:%M %p") if created else "Recent",
+            # Title words count twice: a notice is usually about what its title says.
+            "words": normalize_words(f"{title} {title} {description} {category_name}"),
+            "text": f"{title}. {description}",
+        }
+
+    def search_notices(self, db, query: str, role: str = "STUDENT", top_k: int = 4) -> List[Dict[str, Any]]:
+        """Notices that answer the question, best first. Empty when no notice is about it."""
+        if db is None or not (query or "").strip():
+            return []
+        docs = [self._notice_doc(n) for n in self.visible_notices(db, role)]
+        hits = self._rank(query, docs, top_k)
+        for hit in hits:
+            hit.pop("words", None)
+            hit.pop("text", None)
+        return hits
+
+    # ------------------------------------------------------------------ built-in knowledge
+
+    def search_knowledge(self, query: str, top_k: int = 2) -> List[Dict[str, Any]]:
+        docs = [{**d, "text": f"{d['title']}. {d['content']}"} for d in self._static_docs]
+        return [{k: v for k, v in hit.items() if k not in ("words", "text")} for hit in self._rank(query, docs, top_k)]
 
     def build_grounding_context(
         self,
         query: str,
         db_session=None,
         department: Optional[str] = None,
-        top_k: int = 3
+        top_k: int = 3,
+        role: str = "STUDENT",
     ) -> str:
-        """
-        Produces clean, concise Markdown context grounding for LLM prompt injection.
-        Guarantees zero prompt bloat and prevents hallucination.
-        """
-        if db_session:
-            self.sync_database_announcements(db_session)
-
-        matches = self.hybrid_search(query, department=department, top_k=top_k)
-        if not matches:
-            return ""
-
-        context_blocks = []
-        for m in matches:
-            source_tag = "Live Campus Notice" if m["is_announcement"] else "Institutional Knowledge"
-            context_blocks.append(
-                f"[{m['category']} | {source_tag}] {m['title']}:\n{m['content']}"
-            )
-
-        return "\n\n".join(context_blocks)
+        """Matching notices and built-in knowledge, as plain text for the model prompt."""
+        blocks = []
+        for m in self.search_notices(db_session, query, role=role, top_k=top_k):
+            blocks.append(f"[{m['category']} | Live Campus Notice] {m['title']}:\n{m['content']}")
+        for k in self.search_knowledge(query, top_k=2):
+            blocks.append(f"[{k['category']} | Institutional Knowledge] {k['title']}:\n{k['content']}")
+        return "\n\n".join(blocks)

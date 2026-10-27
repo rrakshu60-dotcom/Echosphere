@@ -292,71 +292,53 @@ class EchosphereAiController extends GetxController {
     return sub.toLowerCase().startsWith('summary:') ? sub.substring(8).trim() : '$sub...';
   }
 
+  // Emergency check (kept in step with detect_emergency in the backend). Whole words only: matching parts of
+  // words flagged "training" (contains "rain") and "closed" as emergencies and missed a fire or a gas leak.
+  static final List<RegExp> _emergencyPatterns = [
+    r'\bfires?\b', r'\bsmoke\b', r'\bevacuat\w*', r'\bearthquakes?\b', r'\btremors?\b', r'\bfloods?\b',
+    r'\bflooding\b', r'\bcyclones?\b', r'\btsunami\b', r'\blandslides?\b', r'\bgas leak', r'\bchemical (leak|spill)',
+    r'\bexplosions?\b', r'\bblast\b', r'\bbomb\b', r'\blockdown\b', r'\bshooter\b', r'\bintruders?\b',
+    r'\bstampede\b', r'\bcollaps\w*', r'\bmedical emergency\b', r'\bambulance\b', r'\b(red|orange) alert\b',
+    r'\bheavy rain\w*', r'\bstorm\b', r'\bemergency\b', r'\belectrocut\w*', r'\bshort circuit\b',
+  ].map(RegExp.new).toList();
+  static final RegExp _exerciseWords = RegExp(
+      r'\b(drills?|mock|awareness|workshops?|training|seminars?|webinars?|preparedness|rehearsals?|lectures?|quiz|competition|week)\b');
+  static final RegExp _urgentWords = RegExp(r'\b(now|immediately|right away|urgent(ly)?|asap|currently|ongoing|in progress|at once)\b');
+
+  /// Is this text about an emergency happening now (not a drill, training or awareness session)?
+  static bool isEmergencyText(String text) {
+    final lower = text.toLowerCase();
+    if (!_emergencyPatterns.any((p) => p.hasMatch(lower))) return false;
+    return !(_exerciseWords.hasMatch(lower) && !_urgentWords.hasMatch(lower));
+  }
+
+  static bool _hasAny(String text, List<String> words) =>
+      words.any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(text));
+
   Map<String, String> recommendPriorityAndCategory(String title, String description, {String? userRole}) {
     final combined = '$title $description'.toLowerCase();
     final role = (userRole ?? 'Student').toUpperCase();
+    const emergencyRoles = ['HOD', 'COLLEGE ADMIN', 'PRINCIPAL', 'DEVELOPER', 'DEV ADMIN'];
 
     String priority = 'NORMAL';
     String category = 'Academics';
 
-    if (combined.contains('rain') ||
-        combined.contains('flood') ||
-        combined.contains('closed') ||
-        combined.contains('urgent') ||
-        combined.contains('emergency') ||
-        combined.contains('evacuat') ||
-        combined.contains('earthquake') ||
-        combined.contains('fire alert') ||
-        combined.contains('suspended')) {
-      priority = (role == 'HOD' || role == 'COLLEGE ADMIN' || role == 'PRINCIPAL' || role == 'DEVELOPER' || role == 'DEV ADMIN') ? 'EMERGENCY' : 'HIGH';
+    if (isEmergencyText(combined)) {
+      priority = emergencyRoles.contains(role) ? 'EMERGENCY' : 'HIGH';
       category = 'Emergency';
-    } else if (combined.contains('exam') ||
-        combined.contains('timetable') ||
-        combined.contains('test') ||
-        combined.contains('viva') ||
-        combined.contains('semester') ||
-        combined.contains('sem exam') ||
-        combined.contains('hall ticket')) {
+    } else if (_hasAny(combined, ['exam', 'exams', 'examination', 'examinations', 'timetable', 'test', 'tests', 'viva', 'semester', 'sem exam', 'hall ticket'])) {
       priority = 'HIGH';
       category = 'Examinations';
-    } else if (combined.contains('placement') ||
-        combined.contains('drive') ||
-        combined.contains('google') ||
-        combined.contains('microsoft') ||
-        combined.contains('interview') ||
-        combined.contains('deadline') ||
-        combined.contains('fee payment')) {
+    } else if (_hasAny(combined, ['placement', 'placements', 'drive', 'interview', 'interviews', 'recruitment', 'deadline', 'fee payment'])) {
       priority = 'HIGH';
       category = 'Placements';
-    } else if (combined.contains('lost and found') ||
-        combined.contains('lost & found') ||
-        combined.contains('lost item') ||
-        combined.contains('found item') ||
-        combined.contains('lost') ||
-        combined.contains('found') ||
-        combined.contains('canteen') ||
-        combined.contains('maintenance') ||
-        combined.contains('reminder')) {
+    } else if (_hasAny(combined, ['lost and found', 'lost & found', 'lost item', 'found item', 'lost', 'found', 'canteen', 'maintenance', 'reminder'])) {
       priority = 'LOW';
       category = 'General';
-    } else if (combined.contains('volley') ||
-        combined.contains('volleyball') ||
-        combined.contains('selection') ||
-        combined.contains('trials') ||
-        combined.contains('sports') ||
-        combined.contains('cricket') ||
-        combined.contains('football') ||
-        combined.contains('match') ||
-        combined.contains('tournament') ||
-        combined.contains('athletics')) {
+    } else if (_hasAny(combined, ['volley', 'volleyball', 'selection', 'trials', 'sports', 'cricket', 'football', 'match', 'tournament', 'athletics'])) {
       priority = 'NORMAL';
       category = 'Sports';
-    } else if (combined.contains('hackathon') ||
-        combined.contains('symposium') ||
-        combined.contains('event') ||
-        combined.contains('workshop') ||
-        combined.contains('seminar') ||
-        combined.contains('fest')) {
+    } else if (_hasAny(combined, ['hackathon', 'symposium', 'event', 'events', 'workshop', 'seminar', 'fest'])) {
       priority = 'NORMAL';
       category = 'Events';
     }
@@ -389,48 +371,6 @@ class EchosphereAiController extends GetxController {
       return 'You are very welcome, $name! I am always here to keep you informed on **$dept Department** circulars and campus events.';
     }
 
-    if (q.contains('exam') || q.contains('timetable') || q.contains('test') || q.contains('viva') || q.contains('hall ticket')) {
-      return '### Examination Guidelines for $dept Department\n\n'
-          '- **Timetables & Batches:** Practical lab and theory schedules are released under the **Examinations** category.\n'
-          '- **Mandatory Requirements:** You must carry your physical **College ID Card** and official **Hall Ticket** to all exam rooms.\n'
-          '- **Reporting Time:** Arrive at least 15 minutes prior to scheduled exam and viva slots.';
-    }
-
-    if (q.contains('placement') || q.contains('job') || q.contains('drive') || q.contains('company') || q.contains('interview') || q.contains('cgpa')) {
-      return '### Campus Placements & Recruitment ($dept)\n\n'
-          '- **Eligibility Threshold:** Aggregate **CGPA >= 7.0** with zero active backlogs for tier-1 recruitment drives.\n'
-          '- **Top Recruiters:** Google, Microsoft, TCS, Infosys, and Accenture.\n'
-          '- **Checklist:** Register with the Training & Placement Cell, keep your resume updated, and attend all pre-placement talks.';
-    }
-
-    if (q.contains('attendance') || q.contains('shortage') || q.contains('condonation') || q.contains('75%')) {
-      return '### Academic Regulations & Attendance Policy\n\n'
-          '- **Mandatory Rule:** A minimum of **75% attendance** in each subject is required to be eligible for semester examinations.\n'
-          '- **Medical Exemption:** Attendance between 65% and 74% may be condoned with verified medical documentation submitted to the HoD.\n'
-          '- **Below 65%:** Strictly not permitted to sit for exams as per university regulations.';
-    }
-
-    if (q.contains('rain') || q.contains('weather') || q.contains('holiday') || q.contains('closed') || q.contains('flood')) {
-      return '### Campus Safety & Emergency Advisory\n\n'
-          '- **Emergency Status:** During severe weather or red alerts, closure circulars are issued with EMERGENCY priority.\n'
-          '- **Broadcast Delivery:** Critical announcements play over campus smart speaker nodes and pin to the top of your feed.\n'
-          '- Please adhere to official district administration advisories.';
-    }
-
-    if (q.contains('library') || q.contains('book') || q.contains('borrow')) {
-      return '### Central Library Guidelines\n\n'
-          '- **Timings:** Monday through Saturday from **8:00 AM to 8:00 PM** (extended during exam weeks).\n'
-          '- **Circulation:** Undergraduate students may borrow up to 4 books for 14 days.\n'
-          '- **Digital Access:** IEEE, ACM, and Springer journals are accessible on the campus Wi-Fi network.';
-    }
-
-    if (q.contains('hostel') || q.contains('curfew') || q.contains('mess')) {
-      return '### Hostel Guidelines\n\n'
-          '- **Curfew Timings:** Strictly **9:00 PM** on weekdays and **9:30 PM** on weekends.\n'
-          '- **Out-Passes:** Must be requested through the Hostel Warden at least 24 hours in advance.\n'
-          '- **Mess Timings:** Breakfast (7:30 - 9:00 AM), Lunch (12:30 - 2:00 PM), Dinner (7:30 - 9:00 PM).';
-    }
-
     if (q.contains('setting') || q.contains('theme') || q.contains('dark mode') || q.contains('appearance')) {
       return '### Application Customization\n\n'
           '1. Navigate to the **Profile** tab in the main navigation bar.\n'
@@ -457,7 +397,7 @@ class EchosphereAiController extends GetxController {
       return '### EchoSphere Smart Speaker System\n\n'
           '- **Hardware Network:** Smart speaker nodes broadcast critical announcements to assigned campus zones.\n'
           '- **Queue System:** Audio files are queued and prioritized by announcement severity.\n'
-          '- **Node Client:** Corridor nodes communicate over secure MQTT with automatic TTS synthesis.';
+          '- **Node Client:** Corridor nodes fetch queued audio from the server over HTTPS.';
     }
 
     if (q.contains('create') || q.contains('submit') || q.contains('post notice') || q.contains('publish')) {
@@ -466,13 +406,13 @@ class EchosphereAiController extends GetxController {
       }
       return '### Publishing an Announcement ($role)\n\n'
           '1. Tap the **+ New Notice** button on your home dashboard.\n'
-          '2. Enter circular details and use **AI Expand** to format into an official circular.\n'
+          '2. Enter circular details, or use **AI Auto-Draft** or **Voice Dictate** to start from your notes.\n'
           '3. Faculty notices route to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options.';
     }
 
-    return '### Guidance for $name ($role \u2022 $dept Department)\n\n'
-        'Your question has been matched against EchoSphere institutional knowledge.\n\n'
-        '- **Recent Circulars:** View the latest department updates under the **Notices** tab.\n'
-        '- **Support:** Consult your Class Teacher or Department HoD for official academic signatures and approvals.';
+    // Campus facts (dates, timings, rules, recruiters) come only from the notices on the server. Without it,
+    // say so instead of guessing.
+    return "I can't reach the campus notices right now, so I can't answer that reliably. "
+        'Please check the notices feed when you are back online, or ask your department office.';
   }
 }

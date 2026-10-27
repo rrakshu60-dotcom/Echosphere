@@ -24,12 +24,8 @@ from app.schemas.announcement import (
     BatchModerateResponse,
 )
 from app.schemas.ai_schema import (
-    AnnouncementTranslationRequest,
-    AnnouncementTranslationResponse,
     AudienceCheckRequest,
     AudienceCheckResponse,
-    DocumentOcrRequest,
-    DocumentOcrResponse,
     RelevanceScoreRequest,
     RelevanceScoreResponse,
     ScheduleConflictCheckRequest,
@@ -209,7 +205,6 @@ def delete_announcement(
         announcement_id=announcement_id,
         current_user=current_user,
     )
-
 
 
 @router.post(
@@ -716,7 +711,6 @@ def stream_announcement_audio_endpoint(
     is_summary: bool = False,
     include_chime: bool = True,
     chime: str | None = None,
-    lang: str = "en",
     audio_format: str = Query("wav", description="Audio format: 'wav' (lossless PCM for ESP32/speakers) or 'mp3'"),
     regenerate: bool = False,
     queue_id: int | None = None,
@@ -725,7 +719,7 @@ def stream_announcement_audio_endpoint(
 ):
     """
     Directly streams the audio file (WAV or MP3) for an announcement with contextual intro chime.
-    Supports 16-bit PCM WAV for ESP32 I2S hardware streaming and regional languages.
+    Supports 16-bit PCM WAV for ESP32 I2S hardware streaming.
     """
     from app.services.speaker_playback import is_valid_stream_signature, mark_stream_pending
     # Only a URL the backend issued to a speaker (signed) may confirm playback
@@ -737,15 +731,11 @@ def stream_announcement_audio_endpoint(
     from app.services.tts_service import generate_announcement_audio_sync
     from app.services.chime_service import resolve_contextual_chime
     from app.services.ai_service import AIService
-    from app.services.translation_service import TranslationService
-    clean_lang = TranslationService.normalize_language_code(lang) if lang else "en"
     clean_accent = (accent or "american").lower()
     clean_gender = (gender or "female").lower()
     tag = f"{clean_accent}_{clean_gender}"
     if is_summary:
         tag += "_summary"
-    if clean_lang != "en":
-        tag += f"_{clean_lang}"
 
     fname, fpath, mtype = (None, None, None) if regenerate else _find_cached_audio_file(
         announcement_id,
@@ -818,9 +808,6 @@ def stream_announcement_audio_endpoint(
         notice_priority = "NORMAL"
         notice_category = "General"
         notice_emergency = "NORMAL"
-
-    if clean_lang != "en":
-        speech_text = TranslationService.translate_text(speech_text, clean_lang)
 
     try:
         res = generate_announcement_audio_sync(
@@ -911,7 +898,6 @@ def get_announcement_chime(
     )
     wav_path = get_or_create_chime_wav(chime_type, sample_rate=24000)
     return FileResponse(wav_path, media_type="audio/wav", filename=f"chime_{chime_type}.wav")
-
 
 
 @router.get("/{announcement_id}/summary")
@@ -1048,56 +1034,6 @@ def calculate_relevance_scores_endpoint(
     return {"scores": results}
 
 
-@router.post("/{announcement_id}/translate", response_model=AnnouncementTranslationResponse)
-def translate_announcement_endpoint(
-    announcement_id: int,
-    request: AnnouncementTranslationRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Translates an announcement (title, description, and AI summary) into
-    Kannada (kn), Hindi (hi), Telugu (te), or Tamil (ta).
-    """
-    from app.repositories.announcement_repository import get_announcement_by_id
-    from app.services.translation_service import TranslationService
-
-    notice = get_announcement_by_id(db, announcement_id)
-    if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found")
-
-    title = str(request.title or getattr(notice, "title", "") or "")
-    content = str(request.content or getattr(notice, "description", "") or "")
-    raw_summary = request.summary or getattr(notice, "ai_summary", None)
-    summary = str(raw_summary) if raw_summary else None
-
-    return TranslationService.translate_announcement(
-        title=title,
-        content=content,
-        summary=summary,
-        target_language=request.target_language,
-    )
-
-
-@router.post("/translate", response_model=AnnouncementTranslationResponse)
-def translate_generic_endpoint(
-    request: AnnouncementTranslationRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Direct translation of circular draft text or announcements into
-    Kannada, Hindi, Telugu, or Tamil.
-    """
-    from app.services.translation_service import TranslationService
-
-    return TranslationService.translate_announcement(
-        title=request.title or "",
-        content=request.content or "",
-        summary=request.summary,
-        target_language=request.target_language,
-    )
-
-
 @router.post("/voice-to-notice", response_model=VoiceNoticeResponse)
 def voice_to_notice_endpoint(
     request: VoiceNoticeRequest,
@@ -1113,26 +1049,6 @@ def voice_to_notice_endpoint(
         audio_base64=request.audio_base64,
         audio_format=request.audio_format or "m4a",
         raw_transcript=request.raw_transcript,
-    )
-
-
-@router.post("/ocr-document", response_model=DocumentOcrResponse)
-def ocr_document_endpoint(
-    request: DocumentOcrRequest,
-    current_user: User = Depends(require_roles(*STAFF_ROLES)),
-):
-    """
-    Circular Document OCR & Auto-Digitizer.
-    Reads official scanned paper circulars, images, or PDF documents, extracts clean text,
-    and returns a structured institutional circular.
-    """
-    from app.services.smart_intake_service import SmartIntakeService
-
-    return SmartIntakeService.ocr_document_to_notice(
-        file_base64=request.file_base64,
-        mime_type=request.mime_type or "image/jpeg",
-        filename=request.filename or "circular.jpg",
-        raw_text=request.raw_text,
     )
 
 

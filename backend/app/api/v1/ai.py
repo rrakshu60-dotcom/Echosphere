@@ -7,22 +7,16 @@ from app.schemas.ai_schema import (
     AiDraftRequest, AiDraftResponse,
     AiPriorityRequest, AiPriorityResponse,
     AiSummarizeRequest, AiSummarizeResponse,
-    AiExpandRequest, AiExpandResponse,
-    AiGrammarRequest, AiGrammarResponse,
     AiEmergencyRequest, AiEmergencyResponse,
     AiSpamRequest, AiSpamResponse,
     AiValidateRequest, AiValidateResponse,
     AiDuplicateRequest, AiDuplicateResponse,
-    AiClassifyRequest, AiClassifyResponse,
-    AiIntentRequest, AiIntentResponse,
     AiStatusResponse, AiTrainResponse,
-    CopilotChatRequest, CopilotChatResponse
 )
 from app.core.dependencies import get_current_user, require_roles
 from app.core.roles import role_name
 from app.models.user import User
 from app.services.ai_service import AIService
-from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 
 # Every AI route needs a signed-in user: they call paid-quota models and can read campus data.
 router = APIRouter(prefix="/ai", tags=["EchoSphere AI"], dependencies=[Depends(get_current_user)])
@@ -92,34 +86,6 @@ def ai_chat(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/copilot/chat", response_model=CopilotChatResponse)
-def ai_copilot_chat(req: CopilotChatRequest, current_user: User = Depends(get_current_user)):
-    """
-    CopilotKit Agent Protocol Endpoint.
-    Processes conversational instructions with active app state and dispatches in-app actions.
-    """
-    from app.services.copilot_runtime import CopilotRuntime
-    try:
-        caller = _caller_profile(current_user)
-        res = CopilotRuntime.process_copilot_request(
-            message=req.message,
-            app_state=req.app_state or {},
-            user_role=caller["user_role"],
-            department=caller["department"] or "General",
-            full_name=caller["full_name"] or "Campus Member",
-            history=req.history
-        )
-        return CopilotChatResponse(
-            response=res["response"],
-            copilot_action=res.get("copilot_action"),
-            category_badge=res.get("category_badge", "EchoSphere Copilot"),
-            context_badge=res.get("context_badge"),
-            model_used=res.get("model_used"),
-            suggested_actions=res.get("suggested_actions", []),
-            navigation_target=res.get("navigation_target")
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/draft", response_model=AiDraftResponse)
 def ai_draft(req: AiDraftRequest):
@@ -167,35 +133,16 @@ def ai_summarize(req: AiSummarizeRequest):
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/expand", response_model=AiExpandResponse)
-def ai_expand(req: AiExpandRequest):
-    try:
-        expanded = AIService.expand_text(text=req.text, category=req.category or "Academics")
-        return AiExpandResponse(original=req.text, expanded_text=expanded)
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-@router.post("/grammar", response_model=AiGrammarResponse)
-def ai_grammar(req: AiGrammarRequest):
-    try:
-        res = AIService.check_grammar(text=req.text)
-        return AiGrammarResponse(
-            original=res["original"],
-            corrected_text=res["corrected_text"],
-            improvements=res.get("improvements", [])
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/emergency", response_model=AiEmergencyResponse)
 def ai_emergency(req: AiEmergencyRequest, current_user: User = Depends(get_current_user)):
     try:
-        res = AIService.recommend_priority("Check Emergency", req.text, user_role=role_name(current_user))
-        is_em = res["priority"] == "EMERGENCY"
+        # Whether it is an emergency does not depend on who asks; whether they may publish one does.
+        res = AIService.recommend_priority("", req.text, user_role=role_name(current_user))
         return AiEmergencyResponse(
-            is_emergency=is_em,
+            is_emergency=res["is_emergency"],
             reason=res["reasoning"],
-            can_publish_emergency=res.get("is_allowed", False)
+            can_publish_emergency=res["can_publish_emergency"]
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -242,16 +189,6 @@ def ai_duplicate(req: AiDuplicateRequest, db: Session = Depends(get_db)):
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-@router.post("/classify", response_model=AiClassifyResponse)
-def ai_classify(req: AiClassifyRequest):
-    res = AIService.recommend_priority("Notice", req.announcement)
-    return AiClassifyResponse(category=res["category"], priority=res["priority"])
-
-@router.post("/intent", response_model=AiIntentResponse)
-def ai_intent(req: AiIntentRequest):
-    intent, _ = CampusMLEngine.get_instance().predict_intent(req.question)
-    return AiIntentResponse(intent=intent.lower())
 
 
 @router.post("/synthesize")

@@ -1,18 +1,15 @@
 """
 Live check of the 2026-10-23 feature clean-up (.agents/rules/testing.md §4-5): removed features stay removed, and
-reschedule, alerts, OCR, AI chat grounding, audience check, dignitary arrival (on the ESP32) and attachments work
+reschedule, alerts, OCR removal, AI chat grounding, audience check, dignitary arrival (on the ESP32) and attachments work
 on the live system. Everything it creates is tagged and deleted afterwards.
 
     python backend/scripts/live_feature_audit.py      (close any other serial monitor on COM7 first)
 """
-import base64
-import io
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
 
 from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, speaker_busy, wait_until
 
@@ -58,23 +55,9 @@ def main() -> None:
         assert status(s, "DELETE", "/notifications/read") == 200
         print("PASS 'restore to unread' and 'clear history' exist on the server")
 
-        # 4. OCR of a real image
-        img = Image.new("RGB", (900, 300), "white")
-        d = ImageDraw.Draw(img)
-        try:
-            f = ImageFont.truetype("arial.ttf", 34)
-        except Exception:
-            f = ImageFont.load_default()
-        for y, line in ((40, "CIRCULAR No. 42"), (110, "The central library will be closed on"),
-                        (160, "Friday after 4 PM for maintenance."), (230, "- Chief Librarian")):
-            d.text((30, y), line, fill="black", font=f)
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        r = slow_post(s, "/announcements/ocr-document", json={"file_base64": base64.b64encode(buf.getvalue()).decode(),
-                                                        "filename": "circular.png", "mime_type": "image/png"})
-        text = f"{r['title']} {r['content']}".lower()
-        assert "ihdr" not in text and "library" in text and "4" in text, r["title"]
-        print(f"PASS OCR read the image: {r['title']!r}")
+        # 4. document OCR was removed on the owner's decision (2026-10-27)
+        assert status(s, "POST", "/announcements/ocr-document") in (404, 405)
+        print("PASS document OCR is gone")
 
         # 5. AI chat sticks to real notices
         r = slow_post(s, "/ai/chat", json={"prompt": "What time does the hostel mess close on Sunday?", "session_id": f"audit-{time.time()}",

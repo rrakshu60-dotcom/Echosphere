@@ -199,54 +199,49 @@ class GemmaActionEngine:
                 "model_used": "Gemma Action Engine (Local)"
             }
 
-        # 5. Notice Filters Navigation
-        if any(w in q for w in ["exam", "timetable", "test schedule", "viva schedule", "hall ticket"]):
+        # 5. Notice Filters Navigation: only an explicit "show / open / filter ..." request. A question such as
+        # "when are the exams?" must be answered from the notices, not with a canned filter message.
+        wants_filter = bool(re.match(r"^(please\s+)?(show|open|filter|list|view|go to|take me to|display|browse)\b", q))
+        if wants_filter and any(w in q for w in ["exam", "timetable", "test schedule", "viva schedule", "hall ticket"]):
             return {
                 "matched": True,
                 "action": "filter",
                 "navigation_target": "nav:notices:filter:Examinations",
                 "category_badge": "Examinations",
                 "response": (
-                    f"Filtering active circulars for **Examinations** ({dept} Department).\n\n"
-                    "- Review lab practical slots, viva batches, and theory exam dates.\n"
-                    "- Ensure you carry your official Hall Ticket and College ID Card."
+                    f"Showing circulars for **Examinations** ({dept} Department)."
                 ),
                 "suggested_actions": ["Filter Examinations", "Check Lab Timetable", "View Exam Rules"],
                 "model_used": "Gemma Action Engine (Local)"
             }
 
-        if any(w in q for w in ["placement", "recruitment", "internship", "job drive", "tier-1"]):
+        if wants_filter and any(w in q for w in ["placement", "recruitment", "internship", "job drive", "tier-1"]):
             return {
                 "matched": True,
                 "action": "filter",
                 "navigation_target": "nav:notices:filter:Placements",
                 "category_badge": "Placements",
                 "response": (
-                    "Filtering circulars for **Placements & Recruitment**.\n\n"
-                    "- Minimum threshold for tier-1 companies: CGPA >= 7.0 with zero active backlogs.\n"
-                    "- Review upcoming interview timelines and corporate visits."
+                    "Showing circulars for **Placements & Recruitment**."
                 ),
                 "suggested_actions": ["Filter Placements", "Check Eligibility Criteria", "Resume Guidelines"],
                 "model_used": "Gemma Action Engine (Local)"
             }
 
-        if any(w in q for w in ["emergency", "weather alert", "holiday circular", "red alert", "flood", "heavy rain"]):
+        if wants_filter and any(w in q for w in ["emergency", "weather alert", "holiday circular", "red alert", "flood", "heavy rain"]):
             return {
                 "matched": True,
                 "action": "filter",
                 "navigation_target": "nav:notices:filter:Emergency",
                 "category_badge": "Emergency Alert",
                 "response": (
-                    "Filtering **Emergency & Safety Advisories**.\n\n"
-                    "- High-priority weather updates and campus closures.\n"
-                    "- Broadcasted automatically across campus smart speakers."
+                    "Showing **Emergency & Safety Advisories**."
                 ),
                 "suggested_actions": ["Filter Emergency", "Weather Advisory", "Safety Protocol"],
                 "model_used": "Gemma Action Engine (Local)"
             }
 
         # 6. Speaker Volume Adjustment (RBAC Protected)
-        import re
         vol_m = re.search(r'(?:set\s+(?:the\s+)?(?:volume\s+of\s+)?([a-zA-Z0-9\s_-]+?)\s+(?:volume\s+)?to\s+(\d{1,3})%?|set\s+volume\s+to\s+(\d{1,3})%?|volume\s+(\d{1,3})%?)', q)
         mute_m = re.search(r'mute\s+(?:the\s+)?([a-zA-Z0-9\s_-]+)', q)
         if mute_m:
@@ -1037,7 +1032,7 @@ class ModelRouter:
         # TIER 1.5: Fine-Tuned Gemma 2 Campus Model (Local GPU or HuggingFace weights)
         if USE_FINE_TUNED_GEMMA and self.fine_tuned_gemma.is_configured():
             start_gemma = time.time()
-            gemma_reply = self.fine_tuned_gemma.generate(query)
+            gemma_reply = self.fine_tuned_gemma.generate(query, system_instruction=system_instruction)
             if gemma_reply:
                 self.stats["fine_tuned_gemma"].record_success((time.time() - start_gemma) * 1000.0)
                 return self._build_response(

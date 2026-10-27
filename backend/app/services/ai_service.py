@@ -166,41 +166,26 @@ class AIService:
 
         # Step 1: Predict Campus Intent with calibrated local ML model
         predicted_intent, intent_conf = ml_engine.predict_intent(query)
+        # The classifier guesses one of its intents for every question (e.g. "what is the bus fee?" came back as
+        # app navigation and was answered with theme settings). Keep an app intent only when the question is about the app.
+        intent_words = {
+            "APP_NAVIGATION": r"\b(settings?|theme|dark mode|light mode|password|profile|app|notifications?|bookmarks?|log ?out|sign ?out)\b",
+            "SPEAKER_HARDWARE": r"\b(speakers?|queue|hardware|esp32|node|pa system|broadcast)\b",
+            "NOTICE_CREATION": r"\b(create|post|publish|write|submit|draft|author)\b",
+        }
+        if predicted_intent in intent_words and not re.search(intent_words[predicted_intent], query.lower()):
+            predicted_intent = "GENERAL"
 
         # Step 2: Semantic search across Institutional Knowledge Base
         kb_matches = ml_engine.search_knowledge_base(query, top_k=3)
 
-        # Step 3: Database Announcements Retrieval & Grounding (Strict RBAC Enforced)
+        # Step 3: Notices that answer the question, limited to what this role may read
         matched_announcements: List[Dict[str, Any]] = []
-        live_announcements_raw = []
         if db:
             try:
-                from app.core.enums.announcement import AnnouncementStatus
-                ann_query = db.query(Announcement)
-
-                # RBAC Data Privacy Filter
-                if role == "STUDENT":
-                    # Students strictly see only PUBLISHED notices (never drafts or unapproved items)
-                    ann_query = ann_query.filter(Announcement.status == AnnouncementStatus.PUBLISHED)
-                elif role == "TEACHER":
-                    # Teachers see published circulars, their department pending approvals, and drafts
-                    ann_query = ann_query.filter(Announcement.status.in_([
-                        AnnouncementStatus.PUBLISHED,
-                        AnnouncementStatus.PENDING_APPROVAL,
-                        AnnouncementStatus.DRAFT
-                    ]))
-                # HoD, Principal, College Admin, and DevAdmin have administrative oversight
-
-                live_announcements_raw = ann_query.order_by(Announcement.created_at.desc()).limit(25).all()
-                matched_announcements = ml_engine.search_live_announcements(
-                    query=query,
-                    announcements=live_announcements_raw,
-                    user_dept=dept,
-                    user_role=role,
-                    top_k=4
-                )
+                matched_announcements = NeuralRAG.get_instance().search_notices(db, query, role=role, top_k=4)
             except Exception as e:
-                logger.warning(f"Live database announcement retrieval warning: {e}")
+                logger.warning(f"Notice search failed: {e}")
 
         # Step 4: Determine navigation target and action suggestions
         category_badge = "EchoSphere AI"
@@ -264,9 +249,10 @@ class AIService:
                 "identify yourself"
             ]
         )
-        is_greeting_or_pleasantry = any(
-            w in q_lower for w in ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "how are you", "thank", "thanks", "bye", "goodbye"]
-        )
+        # Whole words only: "this" and "which" contain "hi" and used to turn questions into a greeting.
+        is_greeting_or_pleasantry = bool(re.search(
+            r"\b(hi|hello|hey|good morning|good afternoon|good evening|how are you|thank you|thanks|bye|goodbye)\b", q_lower
+        ))
         # Only an explicit question about the user: the classifier also guessed USER_IDENTITY for questions
         # like "what is the hostel curfew time?" and answered them with the profile card.
         is_identity_query = any(
@@ -347,7 +333,8 @@ class AIService:
                 query=query,
                 db_session=db,
                 department=dept,
-                top_k=3
+                top_k=3,
+                role=role,
             )
         except Exception as e:
             logger.debug(f"NeuralRAG retrieval exception: {e}")
@@ -355,7 +342,7 @@ class AIService:
 
         kb_text = rag_context if rag_context else "\n".join([f"- [{k['category']}] {k['title']}: {k['content'][:140]}" for k in kb_matches])
         live_notices_text = "\n".join([
-            f"- [{m['category']} | {m['priority']}] {m['title']} ({m['department']}): {m['content'][:120]}"
+            f"- [{m['category']} | {m['priority']}] {m['title']} ({m['department']}): {m['content'][:600]}"
             for m in matched_announcements
         ])
 
@@ -574,145 +561,6 @@ class AIService:
             }
 
         return None
-
-    @staticmethod
-    def expand_text(text: str, category: str = "Academics", department: Optional[str] = None) -> str:
-        """
-        Expand a brief memo into an official institutional circular using the multi-tier AI engine.
-        Tier 1 (Priority 1): Local/Cloud Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5 via ModelRouter).
-        Tier 2 (Alternates): Cloudflare LLaMA 3.1 8B, Google Gemini Flash.
-        Tier 3 (Local Offline Fallback): Campus ML Engine (Grounded, zero hallucination).
-        """
-        clean = text.strip()
-        if not clean:
-            return ""
-
-        ml_engine = CampusMLEngine.get_instance()
-        router = ModelRouter.get_instance()
-
-        prompt = (
-            f"Expand this brief note into a formal official college announcement circular without adding superficial or fake data:\n\n"
-            f"'{clean}'\n\n"
-            f"RULES:\n"
-            f"1. Expand ONLY the facts given. DO NOT invent fake deadlines, venues, or candidate instructions.\n"
-            f"2. EchoSphere is the campus mobile app, not the college. The issuing authority is the College Administration.\n"
-            f"3. Correct typos (e.g. 'principle' -> 'Principal'). Refine the language into professional, dignified institutional English."
-        )
-        sys_inst = (
-            "You are an AI for official college circulars. "
-            "Expand the note into a clear, formal announcement based strictly on the provided text. "
-            "Do NOT add fake deadlines, candidate requirements, or fabricated instructions. Output only the circular text."
-        )
-
-        expanded: Optional[str] = None
-
-        # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
-        if router.fine_tuned_gemma.is_configured():
-            try:
-                gemma_timeout = float(os.getenv("AI_EXPAND_TIMEOUT", "3.8" if router.fine_tuned_gemma.is_remote else "8.0"))
-                expanded = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=180)
-            except Exception as e:
-                logger.debug(f"[Gemma expand attempt]: {e}")
-
-        if not expanded and router.fine_tuned_qwen.is_configured():
-            try:
-                expanded = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=8.0, max_new_tokens=180)
-            except Exception as e:
-                logger.debug(f"[Qwen expand attempt]: {e}")
-
-        # TIER 2 (Alternates): Cloudflare LLaMA & Google Gemini
-        if not expanded and router.cloudflare_provider.is_configured():
-            try:
-                expanded = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
-            except Exception as e:
-                logger.debug(f"[Cloudflare expand attempt]: {e}")
-
-        if not expanded:
-            try:
-                expanded, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
-            except Exception as e:
-                logger.debug(f"[Gemini expand attempt]: {e}")
-
-        if expanded and len(expanded.strip()) >= 30:
-            return sanitize_ai_markdown(expanded.strip())
-
-        # TIER 3: Local Campus ML Engine Fallback (Grounded, Context-Aware)
-        return ml_engine.expand_announcement(clean, category=category, department=department)
-
-    @staticmethod
-    def check_grammar(text: str) -> Dict[str, Any]:
-        """
-        Check grammar, spelling, and institutional tone using the multi-tier AI engine.
-        Tier 1 (Priority 1): Local/Cloud Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5 via ModelRouter).
-        Tier 2 (Alternates): Cloudflare LLaMA 3.1 8B, Google Gemini Flash.
-        Tier 3 (Local Offline Fallback): Campus ML Engine Grammar & Tone Polisher.
-        """
-        clean = text.strip()
-        if not clean:
-            return {"original": text, "corrected_text": text, "improvements": []}
-
-        prompt = (
-            f"Correct grammar, spelling, and institutional tone for this circular:\n\n'{clean}'\n\n"
-            f"Return strictly valid JSON with keys: 'corrected_text' (string) and 'improvements' (list of strings)."
-        )
-        sys_inst = "You are a professional university editor. Return strictly valid JSON: {\"corrected_text\": \"...\", \"improvements\": [\"...\"]}"
-
-        router = ModelRouter.get_instance()
-        raw_res: Optional[str] = None
-
-        # TIER 1 (Priority 1): Fine-Tuned Campus LLM (Gemma 2B / Qwen 2.5)
-        if router.fine_tuned_gemma.is_configured():
-            try:
-                gemma_timeout = float(os.getenv("AI_GRAMMAR_TIMEOUT", "3.5" if router.fine_tuned_gemma.is_remote else "8.0"))
-                raw_res = router.fine_tuned_gemma.generate(prompt, system_instruction=sys_inst, timeout=gemma_timeout, max_new_tokens=160)
-            except Exception as e:
-                logger.debug(f"[Gemma grammar attempt]: {e}")
-
-        if not raw_res and router.fine_tuned_qwen.is_configured():
-            try:
-                raw_res = router.fine_tuned_qwen.generate(prompt, system_instruction=sys_inst, timeout=8.0, max_new_tokens=160)
-            except Exception as e:
-                logger.debug(f"[Qwen grammar attempt]: {e}")
-
-        # TIER 2 (Alternates): Cloudflare & Gemini
-        if not raw_res and router.cloudflare_provider.is_configured():
-            try:
-                raw_res = router.cloudflare_provider.generate(prompt, system_instruction=sys_inst, timeout=5.0)
-            except Exception as e:
-                logger.debug(f"[Cloudflare grammar attempt]: {e}")
-
-        if not raw_res:
-            try:
-                raw_res, _ = call_modern_gemini(prompt, system_instruction=sys_inst)
-            except Exception as e:
-                logger.debug(f"[Gemini grammar attempt]: {e}")
-
-        if raw_res:
-            try:
-                cleaned_raw = re.sub(r'^```(?:json)?\s*', '', raw_res.strip(), flags=re.MULTILINE)
-                cleaned_raw = re.sub(r'```$', '', cleaned_raw.strip())
-                json_match = re.search(r'\{[\s\S]*\}', cleaned_raw)
-                if json_match:
-                    parsed = json.loads(json_match.group(), strict=False)
-                    corrected = parsed.get("corrected_text", clean)
-                    improvs = parsed.get("improvements", ["Corrected syntax and institutional tone."])
-                    if corrected:
-                        return {
-                            "original": text,
-                            "corrected_text": sanitize_ai_markdown(corrected),
-                            "improvements": improvs
-                        }
-            except Exception as e:
-                logger.debug(f"Failed parsing LLM grammar JSON: {e}")
-
-        # TIER 3: Local Campus ML Engine Fallback
-        from app.services.echosphere_ml_engine import CampusMLEngine
-        campus_res = CampusMLEngine.get_instance().polish_grammar_and_tone(clean)
-        return {
-            "original": text,
-            "corrected_text": sanitize_ai_markdown(campus_res.get("corrected_text", clean)),
-            "improvements": campus_res.get("improvements", ["Applied standardized institutional casing and punctuation."])
-        }
 
     @staticmethod
     def recommend_priority(title: str, content: str, user_role: str = "STUDENT") -> Dict[str, Any]:

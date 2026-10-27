@@ -47,7 +47,6 @@ def test_formerly_open_endpoints_refuse_anonymous_callers():
     assert client.get("/api/v1/diagnostic/tts").status_code == 401
     assert client.get("/api/v1/hardware/queue").status_code == 401
     assert client.get("/api/v1/hardware/speakers").status_code == 401
-    assert client.post("/api/v1/announcements/translate", json={"target_language": "hi", "content": "x"}).status_code == 401
 
 
 def test_students_cannot_control_speakers_or_run_diagnostics():
