@@ -11,6 +11,8 @@ from app.core.dependencies import (
     get_current_user,
     require_roles,
 )
+from app.core.enums.announcement import AnnouncementStatus
+from app.core.roles import STAFF_ROLES, is_staff
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.announcement import (
@@ -89,7 +91,11 @@ def get_announcements(
     skip: int = 0,
     limit: int | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if not is_staff(current_user):
+        # Students only ever see published notices, whatever status they ask for.
+        status = AnnouncementStatus.PUBLISHED.value
     return get_all_announcements_service(
         db=db,
         status=status,
@@ -913,6 +919,7 @@ def get_announcement_chime(
 def get_announcement_summary_endpoint(
     announcement_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Returns an institutional text summary for an announcement using the fine-tuned Qwen 2.5 3B model / AI router.
@@ -947,6 +954,7 @@ def get_announcement_summary_endpoint(
 def get_announcement_calendar_event_endpoint(
     announcement_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Extracts dates, deadlines, and actionable calendar items from the announcement text using AI.
@@ -1020,6 +1028,7 @@ def check_audience_endpoint(
 @router.post("/relevance-scores", response_model=RelevanceScoreResponse)
 def calculate_relevance_scores_endpoint(
     request: RelevanceScoreRequest,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Contextual Relevance & Feed Scoring.
@@ -1044,6 +1053,7 @@ def translate_announcement_endpoint(
     announcement_id: int,
     request: AnnouncementTranslationRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Translates an announcement (title, description, and AI summary) into
@@ -1072,6 +1082,7 @@ def translate_announcement_endpoint(
 @router.post("/translate", response_model=AnnouncementTranslationResponse)
 def translate_generic_endpoint(
     request: AnnouncementTranslationRequest,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Direct translation of circular draft text or announcements into
@@ -1090,6 +1101,7 @@ def translate_generic_endpoint(
 @router.post("/voice-to-notice", response_model=VoiceNoticeResponse)
 def voice_to_notice_endpoint(
     request: VoiceNoticeRequest,
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
 ):
     """
     Smart Voice Notice Dictation (Speech-to-Circular AI).
@@ -1107,6 +1119,7 @@ def voice_to_notice_endpoint(
 @router.post("/ocr-document", response_model=DocumentOcrResponse)
 def ocr_document_endpoint(
     request: DocumentOcrRequest,
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
 ):
     """
     Circular Document OCR & Auto-Digitizer.

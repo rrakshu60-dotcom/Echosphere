@@ -56,6 +56,15 @@ class _UserManagementPageState extends State<UserManagementPage> {
     return result;
   }
 
+  /// Roles this user may give: those below their own level (Dev Admin may give any). The server enforces the same rule.
+  List<String> get _assignableRoles {
+    final myLevel = AuthController.getRoleLevel(authController.currentUser.value?.role ?? 'Student');
+    final isDevAdmin = myLevel >= AuthController.getRoleLevel('Dev Admin');
+    return AuthController.availableRoles
+        .where((r) => isDevAdmin || AuthController.getRoleLevel(r) < myLevel)
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -142,7 +151,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   label: 'Role',
                   icon: Icons.badge,
                   selectedItem: DropdownItem(value: roleVal, text: roleVal),
-                  items: AuthController.availableRoles
+                  items: _assignableRoles
                       .map((r) => DropdownItem(value: r, text: r))
                       .toList(),
                   onChanged: (item) => setDlgState(() => roleVal = item.value),
@@ -290,9 +299,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
   void _showRoleChangeDialog(Map<String, dynamic> u) {
-    final roles = ['Student', 'Teacher', 'HoD', 'Principal', 'College Admin', 'Dev Admin'];
+    final roles = _assignableRoles;
+    if (roles.isEmpty) return;
     String currentRole = u['role'] ?? 'Student';
-    if (!roles.contains(currentRole)) currentRole = 'Student';
+    if (!roles.contains(currentRole)) currentRole = roles.first;
 
     showDialog(
       context: context,

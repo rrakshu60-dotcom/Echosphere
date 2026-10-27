@@ -3,11 +3,41 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.core.dependencies import get_current_user, require_roles
+from app.core.roles import is_dev_admin, role_level, role_name
+from app.models.role import Role
 from app.models.user import User
 from app.schemas.user_management import UserCreate, UserResponse, UserUpdateRole
 from app.services.user_management_service import UserManagementService
 
 router = APIRouter(prefix="/users", tags=["User Management Module"])
+
+
+def _check_can_assign_role(current_user: User, new_role: str) -> None:
+    """A role can only be given if it is below the caller's own (Dev Admin may give any)."""
+    if is_dev_admin(current_user):
+        return
+    if role_level(new_role) >= role_level(role_name(current_user)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You can only assign roles below your own; {new_role} is not allowed.",
+        )
+
+
+def _check_can_manage(current_user: User, target: User) -> None:
+    """Accounts can only be changed or removed by someone of a higher role, never by their owner."""
+    if target.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot change the role or status of your own account, or delete it.",
+        )
+    if is_dev_admin(current_user):
+        return
+    if role_level(role_name(target)) >= role_level(role_name(current_user)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You can only manage accounts below your own role; this account is {role_name(target)}.",
+        )
+
 
 @router.get("/", response_model=List[UserResponse])
 def list_users(
@@ -53,6 +83,7 @@ def create_user(
     current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
     db: Session = Depends(get_db),
 ):
+    _check_can_assign_role(current_user, req.role_name or "Student")
     user = UserManagementService.create_user(
         db=db,
         full_name=req.full_name,
@@ -104,6 +135,17 @@ def update_user_role(
     current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
     db: Session = Depends(get_db),
 ):
+    target = UserManagementService.get_user_by_id(db=db, user_id=user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    _check_can_manage(current_user, target)
+    if req.role_name:
+        _check_can_assign_role(current_user, req.role_name)
+    elif req.role_id is not None:
+        new_role = db.query(Role).filter(Role.id == req.role_id).first()
+        if not new_role:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role.")
+        _check_can_assign_role(current_user, new_role.name)
     updated = UserManagementService.update_user(
         db=db,
         user_id=user_id,
@@ -131,8 +173,10 @@ def delete_user(
     current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
     db: Session = Depends(get_db),
 ):
-    if current_user.id == user_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own active session account.")
+    target = UserManagementService.get_user_by_id(db=db, user_id=user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    _check_can_manage(current_user, target)
     success = UserManagementService.delete_user(db=db, user_id=user_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")

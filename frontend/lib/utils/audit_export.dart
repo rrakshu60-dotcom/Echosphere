@@ -27,7 +27,9 @@ String auditEventLabel(String? event) {
 
 /// Plain-language result of a sign-in attempt.
 String signInResultLabel(Map<String, dynamic> row) {
-  if (row['success'] == true) return 'Signed in';
+  if (row['success'] == true) {
+    return row['reason'] == 'password_changed' ? 'Password changed' : 'Signed in';
+  }
   const reasons = {
     'unknown_user': 'Unknown ID',
     'wrong_password': 'Wrong password',

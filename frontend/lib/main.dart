@@ -40,14 +40,6 @@ import 'package:echosphere/services/audit_repository.dart';
 
 WebViewEnvironment? webViewEnvironment;
 
-class MyHttpoverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (cert, String host, int port) => true;
-  }
-}
-
 class MyCustomScrollBehavior extends MaterialScrollBehavior {
   @override
   Set<PointerDeviceKind> get dragDevices => {
@@ -106,10 +98,6 @@ void main(List<String> args) async {
         errorMessage: 'Failed to load external fonts');
 
     await Logger.init();
-
-    if (!kIsWeb) {
-      HttpOverrides.global = MyHttpoverrides();
-    }
 
     _initializeGetxController();
 

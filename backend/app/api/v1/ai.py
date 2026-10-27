@@ -18,12 +18,26 @@ from app.schemas.ai_schema import (
     AiStatusResponse, AiTrainResponse,
     CopilotChatRequest, CopilotChatResponse
 )
-from app.core.dependencies import require_roles
+from app.core.dependencies import get_current_user, require_roles
+from app.core.roles import role_name
 from app.models.user import User
 from app.services.ai_service import AIService
 from app.services.echosphere_ml_engine import EchoSphereMLEngine, CampusMLEngine
 
-router = APIRouter(prefix="/ai", tags=["EchoSphere AI"])
+# Every AI route needs a signed-in user: they call paid-quota models and can read campus data.
+router = APIRouter(prefix="/ai", tags=["EchoSphere AI"], dependencies=[Depends(get_current_user)])
+
+
+def _caller_profile(user: User) -> Dict[str, Optional[str]]:
+    """Who is asking, taken from the sign-in token only (never from the request body)."""
+    dept = user.department
+    return {
+        "full_name": user.full_name,
+        "user_role": role_name(user),
+        "department": (dept.code or dept.name) if dept else None,
+        "usn_or_emp_id": user.usn or user.employee_id,
+    }
+
 
 @router.get("/status", response_model=AiStatusResponse)
 def ai_status():
@@ -47,41 +61,19 @@ def ai_router_status():
     return ModelRouter.get_instance().get_router_status()
 
 @router.post("/chat", response_model=AiChatResponse)
-def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
+def ai_chat(
+    req: AiChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
-        user_name = req.full_name
-        user_role = req.user_role or "STUDENT"
-        user_dept = req.department
-        usn_id = req.usn_or_emp_id
-
-        if db and (not user_name or user_name in ["Student", "User", "Faculty Member", "Campus Member"]):
-            db_user = None
-            if req.user_id:
-                db_user = db.query(User).filter(User.id == req.user_id).first()
-            if not db_user and usn_id:
-                db_user = db.query(User).filter((User.usn == usn_id) | (User.employee_id == usn_id) | (User.official_email == usn_id)).first()
-            if db_user is not None:
-                full_name_val = getattr(db_user, "full_name", None)
-                if full_name_val:
-                    user_name = str(full_name_val)
-                role_obj = getattr(db_user, "role", None)
-                if role_obj and getattr(role_obj, "name", None):
-                    user_role = str(getattr(role_obj, "name"))
-                dept_obj = getattr(db_user, "department", None)
-                if dept_obj:
-                    dept_code = getattr(dept_obj, "code", None) or getattr(dept_obj, "name", None)
-                    if dept_code:
-                        user_dept = str(dept_code)
-                db_usn = getattr(db_user, "usn", None) or getattr(db_user, "employee_id", None)
-                if db_usn:
-                    usn_id = str(db_usn)
-
+        caller = _caller_profile(current_user)
         res = AIService.process_chat(
             prompt=req.prompt,
-            user_role=user_role,
-            department=user_dept,
-            full_name=user_name,
-            usn_or_emp_id=usn_id,
+            user_role=caller["user_role"],
+            department=caller["department"],
+            full_name=caller["full_name"],
+            usn_or_emp_id=caller["usn_or_emp_id"],
             db=db,
             history=req.history,
             session_id=req.session_id
@@ -101,19 +93,20 @@ def ai_chat(req: AiChatRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/copilot/chat", response_model=CopilotChatResponse)
-def ai_copilot_chat(req: CopilotChatRequest):
+def ai_copilot_chat(req: CopilotChatRequest, current_user: User = Depends(get_current_user)):
     """
     CopilotKit Agent Protocol Endpoint.
     Processes conversational instructions with active app state and dispatches in-app actions.
     """
     from app.services.copilot_runtime import CopilotRuntime
     try:
+        caller = _caller_profile(current_user)
         res = CopilotRuntime.process_copilot_request(
             message=req.message,
             app_state=req.app_state or {},
-            user_role=req.user_role or "STUDENT",
-            department=req.department or "CSE",
-            full_name=req.full_name or "Campus Member",
+            user_role=caller["user_role"],
+            department=caller["department"] or "General",
+            full_name=caller["full_name"] or "Campus Member",
             history=req.history
         )
         return CopilotChatResponse(
@@ -147,12 +140,12 @@ def ai_draft(req: AiDraftRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/priority", response_model=AiPriorityResponse)
-def ai_priority(req: AiPriorityRequest):
+def ai_priority(req: AiPriorityRequest, current_user: User = Depends(get_current_user)):
     try:
         res = AIService.recommend_priority(
             title=req.title,
             content=req.content,
-            user_role=req.user_role or "STUDENT"
+            user_role=role_name(current_user)
         )
         return AiPriorityResponse(
             priority=res["priority"],
@@ -195,9 +188,9 @@ def ai_grammar(req: AiGrammarRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/emergency", response_model=AiEmergencyResponse)
-def ai_emergency(req: AiEmergencyRequest):
+def ai_emergency(req: AiEmergencyRequest, current_user: User = Depends(get_current_user)):
     try:
-        res = AIService.recommend_priority("Check Emergency", req.text, user_role=req.user_role or "STUDENT")
+        res = AIService.recommend_priority("Check Emergency", req.text, user_role=role_name(current_user))
         is_em = res["priority"] == "EMERGENCY"
         return AiEmergencyResponse(
             is_emergency=is_em,
