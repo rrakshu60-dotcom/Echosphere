@@ -1,9 +1,9 @@
 """
-Live check of the 2026-10-23 feature clean-up (.agents/rules/testing.md §4-5): removed features stay removed, and
-reschedule, alerts, OCR removal, AI chat grounding, audience check, dignitary arrival (on the ESP32) and attachments work
-on the live system. Everything it creates is tagged and deleted afterwards.
+Live check of the 2026-10-23 feature clean-up (.agents/rules/testing.md §4-5): removed features (including the VIP
+dignitary protocol) stay removed, and reschedule, alerts, OCR removal, AI chat grounding, audience check and attachments
+work on the live system. Everything it creates is tagged and deleted afterwards.
 
-    python backend/scripts/live_feature_audit.py      (close any other serial monitor on COM7 first)
+    python backend/scripts/live_feature_audit.py
 """
 import sys
 import time
@@ -11,9 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from live_support import ESP32_NODE_ID, Esp32Serial, LiveNotices, LiveSession, speaker_busy, wait_until
-
-IST = timedelta(hours=5, minutes=30)
+from live_support import ESP32_NODE_ID, LiveNotices, LiveSession, speaker_busy, wait_until
 
 
 def slow_post(session, path, json=None):
@@ -73,22 +71,12 @@ def main() -> None:
         assert r["has_mismatch"] and r["suggested_audiences"][0] == "4th Year Students", r
         print("PASS a student notice addressed to Faculty is flagged")
 
-        # 7. dignitary: event time + arrival plays the welcome on the ESP32
-        vip = notices.create("Annual Day chief guest", "Dr. Ramesh Kumar, Vice Chancellor, will be the chief guest at the "
-                             "Annual Day celebration on Friday at 10 AM in the Main Auditorium.")
-        proto = slow_post(s, f"/announcements/{vip['id']}/vip-protocol/analyze", json={})
-        ev = datetime.fromisoformat(proto["event_datetime"].replace("Z", "")).replace(tzinfo=None) + IST
-        assert ev.weekday() == 4 and (ev.hour, ev.minute) == (10, 0), ev
-        print(f"PASS dignitary event time read from the notice: {ev:%a %d %b %H:%M} IST")
-        with Esp32Serial() as esp:
-            mark = esp.mark()
-            arr = slow_post(s, f"/announcements/{vip['id']}/vip-protocol/arrival", json={})
-            audio = arr["audio_url"].rsplit("/", 1)[-1]
-            line, t = esp.wait_for(r"Streaming from URL", timeout=30, since=mark)
-            assert audio in line, f"speaker streamed {line.strip()[-120:]!r}, not the welcome recording {audio}"
-            print(f"PASS the ESP32 streamed the welcome recording after {t:.1f}s")
-            _, t = esp.wait_for(r"completed successfully", timeout=90, since=esp.after_last_match())
-            print(f"PASS welcome finished playing after {t:.1f}s")
+        # 7. the VIP dignitary protocol was removed on the owner's decision (2026-10-28)
+        for method, path in (("GET", "/announcements/1/vip-protocol"), ("POST", "/announcements/1/vip-protocol/analyze"),
+                             ("POST", "/announcements/1/vip-protocol/arrival")):
+            code = status(s, method, path)
+            assert code in (404, 405), f"{method} {path} still answers {code}"
+        print("PASS the VIP dignitary protocol is gone")
 
         # 8. attachments
         files = {"file": ("audit-circular.pdf", b"%PDF-1.4\n% EchoSphere live check\n", "application/pdf")}

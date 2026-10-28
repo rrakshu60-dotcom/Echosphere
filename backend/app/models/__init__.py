@@ -17,7 +17,6 @@ from .announcement_repeat_schedule import (
     AnnouncementRepeatSchedule as AnnouncementRepeatSchedule,
     RepeatSlotExecutionLog as RepeatSlotExecutionLog,
 )
-from .announcement_vip_protocol import AnnouncementVipProtocol as AnnouncementVipProtocol
 from .user_session import UserSession as UserSession
 from .sign_in_log import SignInLog as SignInLog
 from .app_access_log import AppAccessLog as AppAccessLog

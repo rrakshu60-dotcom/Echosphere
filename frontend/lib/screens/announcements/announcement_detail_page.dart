@@ -51,10 +51,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
   CalendarEventData? _calendarEvent;
   Map<String, dynamic>? _repeatSchedule;
   bool _isLoadingRepeatSchedule = false;
-  Map<String, dynamic>? _vipProtocol;
-  bool _isLoadingVipProtocol = false;
-  bool _isAnalyzingVip = false;
-  bool _isTriggeringFanfare = false;
 
   @override
   void initState() {
@@ -65,7 +61,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     final isStudent = (auth?.currentUser.value?.role ?? 'Student').toLowerCase() == 'student';
     if (!isStudent) {
       _fetchRepeatSchedule();
-      _fetchVipProtocol();
     }
     // Pre-warm speech synthesis in background for zero-latency instant playback
     TtsAudioService.instance.prewarmAnnouncement(
@@ -123,73 +118,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
     }
   }
 
-  Future<void> _fetchVipProtocol() async {
-    if (widget.announcement.id <= 0) return;
-    setState(() => _isLoadingVipProtocol = true);
-    try {
-      final protocol = await EchosphereApiService()
-          .getVipProtocol(widget.announcement.id)
-          .timeout(const Duration(seconds: 4), onTimeout: () => null);
-      if (mounted) {
-        setState(() {
-          _vipProtocol = protocol;
-          _isLoadingVipProtocol = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _vipProtocol = null;
-          _isLoadingVipProtocol = false;
-        });
-      }
-    } finally {
-      if (mounted && _isLoadingVipProtocol) {
-        setState(() => _isLoadingVipProtocol = false);
-      }
-    }
-  }
-
-  Future<void> _analyzeVipProtocol() async {
-    setState(() => _isAnalyzingVip = true);
-    try {
-      final protocol = await EchosphereApiService().analyzeVipProtocol(widget.announcement.id);
-      if (mounted) {
-        setState(() {
-          _vipProtocol = protocol;
-          _isAnalyzingVip = false;
-        });
-        snackBar('VIP Protocol analyzed and ceremonial script generated.');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isAnalyzingVip = false);
-        errorSnackBar('VIP Analysis: ${e.toString().replaceAll("Exception: ", "")}');
-      }
-    }
-  }
-
-  Future<void> _triggerArrivalFanfare() async {
-    setState(() => _isTriggeringFanfare = true);
-    try {
-      final res = await EchosphereApiService().triggerVipArrival(
-        widget.announcement.id,
-        targetZone: 'Portico-Auditorium',
-        customWelcomeNote: 'Chief Guest has arrived at campus portico.',
-      );
-      if (mounted) {
-        setState(() => _isTriggeringFanfare = false);
-        final statusMsg = res['message'] ?? 'Arrival Fanfare broadcast dispatched at priority Position #2.';
-        snackBar(statusMsg.toString());
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isTriggeringFanfare = false);
-        errorSnackBar('Arrival Fanfare failed: ${e.toString().replaceAll("Exception: ", "")}');
-      }
-    }
-  }
-
   Future<void> _deleteRepeatSchedule() async {
     try {
       final ok = await EchosphereApiService().deleteRepeatSchedule(widget.announcement.id);
@@ -214,113 +142,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
       onScheduleDeleted: () {
         if (mounted) setState(() => _repeatSchedule = null);
       },
-    );
-  }
-
-  void _showEditVipProtocolDialog() {
-    if (_vipProtocol == null) return;
-    final nameCtrl = TextEditingController(text: _vipProtocol!['guest_name'] ?? '');
-    final titleCtrl = TextEditingController(text: _vipProtocol!['guest_title'] ?? '');
-    final venueCtrl = TextEditingController(text: _vipProtocol!['venue'] ?? '');
-    final scriptCtrl = TextEditingController(text: _vipProtocol!['spoken_script'] ?? '');
-    String voiceProfile = _vipProtocol!['voice_profile'] ?? 'FEMALE_EXECUTIVE';
-    bool examSuppression = _vipProtocol!['exam_suppression_active'] == true;
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDlgState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.stars_rounded, size: 20),
-              SizedBox(width: 8),
-              Text('Edit VIP Protocol & Script', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Guest Name', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Guest Title / Designation', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: venueCtrl,
-                  decoration: const InputDecoration(labelText: 'Reception Venue', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: scriptCtrl,
-                  maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'Spoken Broadcast Script', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: voiceProfile,
-                  items: const [
-                    DropdownMenuItem(value: 'FEMALE_EXECUTIVE', child: Text('Female Executive (Clear / Formal)', style: TextStyle(fontSize: 12))),
-                    DropdownMenuItem(value: 'MALE_AUTHORITATIVE', child: Text('Male Authoritative (Formal Announcement)', style: TextStyle(fontSize: 12))),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDlgState(() => voiceProfile = val);
-                  },
-                  decoration: const InputDecoration(labelText: 'Voice Profile', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                SwitchListTile(
-                  title: const Text('Exam Suppression Active', style: TextStyle(fontSize: 12)),
-                  subtitle: const Text('Suppress broadcast in quiet / exam rooms', style: TextStyle(fontSize: 10)),
-                  value: examSuppression,
-                  onChanged: (val) => setDlgState(() => examSuppression = val),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSaving ? null : () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      setDlgState(() => isSaving = true);
-                      try {
-                        final data = {
-                          'guest_name': nameCtrl.text.trim(),
-                          'guest_title': titleCtrl.text.trim(),
-                          'venue': venueCtrl.text.trim(),
-                          'spoken_script': scriptCtrl.text.trim(),
-                          'voice_profile': voiceProfile,
-                          'exam_suppression_active': examSuppression,
-                        };
-                        final res = await EchosphereApiService().updateVipProtocol(widget.announcement.id, data);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (mounted) setState(() => _vipProtocol = res);
-                        snackBar('VIP Protocol updated successfully.');
-                      } catch (e) {
-                        setDlgState(() => isSaving = false);
-                        errorSnackBar('Update failed: ${e.toString().replaceAll("Exception: ", "")}');
-                      }
-                    },
-              child: isSaving
-                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save Changes'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1011,12 +832,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                         // Automated Repeat Broadcast Schedule Section (Non-Student Only)
                         if (userRole != 'Student') ...[
                           _buildRepeatScheduleCard(theme),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // VIP Dignitary Protocol Section (Non-Student Only)
-                        if (userRole != 'Student') ...[
-                          _buildVipProtocolCard(theme),
                           const SizedBox(height: 20),
                         ],
 
@@ -1838,178 +1653,6 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                 ),
               ),
             ],
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVipProtocolCard(ThemeData theme) {
-    final isStudent = (Get.isRegistered<AuthController>() ? Get.find<AuthController>().currentUser.value?.role ?? 'Student' : 'Student').toLowerCase() == 'student';
-    if (isStudent) return const SizedBox.shrink();
-    final hasVip = _vipProtocol != null;
-    final guestName = hasVip ? (_vipProtocol!['guest_name'] ?? '') : '';
-    final guestTitle = hasVip ? (_vipProtocol!['guest_title'] ?? '') : '';
-    final venue = hasVip ? (_vipProtocol!['venue'] ?? '') : '';
-    final spokenScript = hasVip ? (_vipProtocol!['spoken_script'] ?? '') : '';
-    final voiceProfile = hasVip ? (_vipProtocol!['voice_profile'] ?? 'FEMALE_EXECUTIVE') : 'FEMALE_EXECUTIVE';
-    final examSuppression = hasVip && (_vipProtocol!['exam_suppression_active'] == true);
-    final confidenceScore = hasVip ? ((_vipProtocol!['confidence_score'] as num? ?? 0.95) * 100).toInt() : 0;
-
-    return EchoSphereContainer(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.stars_rounded, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Guest Arrival Broadcast',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-              ),
-              if (_isLoadingVipProtocol || _isAnalyzingVip)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (hasVip)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    '$confidenceScore% MATCH',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (hasVip) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.person_pin_rounded, size: 16, color: theme.colorScheme.primary),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '$guestName${guestTitle.isNotEmpty ? ' — $guestTitle' : ''}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (venue.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Designated Reception Venue: $venue',
-                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.7)),
-                    ),
-                  ],
-                  const Divider(height: 16),
-                  Text(
-                    'Ceremonial Radio Broadcast Script ($voiceProfile):',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '"$spokenScript"',
-                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, height: 1.4),
-                  ),
-                  if (examSuppression) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.volume_off_rounded, size: 12, color: theme.colorScheme.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Exam Zone Suppression Active (Quiet Zone respected)',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _isTriggeringFanfare ? null : () => _triggerArrivalFanfare(),
-                  icon: _isTriggeringFanfare
-                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.campaign_rounded, size: 14),
-                  label: Text(
-                    _isTriggeringFanfare ? 'Broadcasting Fanfare...' : 'Trigger Arrival Fanfare',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 0,
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _showEditVipProtocolDialog(),
-                  icon: const Icon(Icons.edit_note_rounded, size: 14),
-                  label: const Text('Edit Protocol Script', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ],
-            ),
-          ] else ...[
-            Text(
-              'Automated entity extraction and ceremonial fanfare protocol for Chief Guests, resource persons, and visiting dignitaries.',
-              style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurface.withOpacity(0.65)),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _isAnalyzingVip ? null : () => _analyzeVipProtocol(),
-              icon: _isAnalyzingVip
-                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.auto_awesome_rounded, size: 14),
-              label: Text(
-                _isAnalyzingVip ? 'Analyzing Dignitary Details...' : 'Analyze for VIP Dignitary',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
           ],
         ],
       ),

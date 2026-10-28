@@ -20,7 +20,6 @@ from app.api.v1.push import router as push_router
 from app.api.v1.user_management import router as user_management_router
 from app.api.v1.websocket import router as websocket_router
 from app.api.v1.repeat_schedule import router as repeat_schedule_router
-from app.api.v1.vip_protocol import router as vip_protocol_router
 from app.api.v1.audit_access import router as audit_access_router
 import app.models
 from app.models.speaker_command import SpeakerCommand
@@ -43,6 +42,8 @@ SpeakerCommand.__table__.create(bind=engine, checkfirst=True)
 # Safe Schema Migration Check (Supports both PostgreSQL & SQLite)
 try:
     with engine.connect() as conn:
+        # The VIP dignitary protocol feature was removed; drop its table from existing databases.
+        conn.execute(text("DROP TABLE IF EXISTS announcement_vip_protocols;"))
         if engine.dialect.name == "postgresql":
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS target_audience VARCHAR(255) DEFAULT 'Entire College';"))
             conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS ai_summary TEXT;"))
@@ -417,11 +418,6 @@ app.include_router(
 
 app.include_router(
     repeat_schedule_router,
-    prefix="/api/v1",
-)
-
-app.include_router(
-    vip_protocol_router,
     prefix="/api/v1",
 )
 

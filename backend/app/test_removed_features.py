@@ -62,3 +62,15 @@ def test_speaker_commands_do_not_probe_a_message_broker(monkeypatch):
         "target_audience": "Entire College", "deliver_push": False, "deliver_in_app": False, "deliver_speaker": True})
     assert res.status_code in (200, 201), res.text
     assert not [a for a in probes if isinstance(a, tuple) and a[1] == 1883], probes
+
+
+def test_vip_dignitary_protocol_is_gone():
+    """Removed on the owner's decision (2026-10-28): no endpoints, no model, no table."""
+    from sqlalchemy import inspect
+
+    from app.db.database import engine
+
+    paths = [getattr(r, "path", "") for r in app.routes]
+    assert not [p for p in paths if "vip" in p.lower()], [p for p in paths if "vip" in p.lower()]
+    assert client.post("/api/v1/announcements/1/vip-protocol/arrival", headers=ADMIN, json={}).status_code in (404, 405)
+    assert "announcement_vip_protocols" not in inspect(engine).get_table_names()
