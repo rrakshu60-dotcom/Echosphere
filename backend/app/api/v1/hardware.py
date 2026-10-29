@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 from app.services.speaker_playback import serialized, try_serialized
 
 from app.core.dependencies import get_current_user, get_optional_current_user, require_roles
-from app.core.roles import STAFF_ROLES, is_staff
+from app.core.roles import STAFF_ROLES, is_staff, role_name
+from app.core.speaker_auth import SPEAKER_KEY_HEADER, device_key_for, is_valid_device_key, require_device_key
 from app.db.database import get_db
 from app.models.user import User
 from app.models.announcement import Announcement
@@ -128,11 +129,15 @@ def list_speaker_nodes(
 @router.post("/speakers/register", response_model=SpeakerNodeResponse, status_code=status.HTTP_201_CREATED)
 def register_speaker_node(
     node_in: SpeakerNodeCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     existing = get_speaker_node_by_mac(db, node_in.mac_address)
     if existing:
+        # A known speaker reconnects with its device key; an admin may also update it from the app.
+        if not is_valid_device_key(node_in.mac_address, request.headers.get(SPEAKER_KEY_HEADER)):
+            require_roles("Dev Admin", "Developer", "College Admin")(current_user)
         # Idempotent registration / reconnect for hardware nodes
         if node_in.name:
             setattr(existing, "name", node_in.name)
@@ -149,7 +154,7 @@ def register_speaker_node(
         db.commit()
         db.refresh(existing)
         return existing
-    # Only admins may add a new speaker; known speakers above reconnect without a login.
+    # Only admins may add a new speaker; known speakers above reconnect with their device key.
     require_roles("Dev Admin", "Developer", "College Admin")(current_user)
     return create_speaker_node(db=db, node_in=node_in)
 
@@ -361,13 +366,18 @@ def get_display_feed_data(db: Session, mac_address: Optional[str] = None) -> dic
 
 @router.get("/speakers/display-feed", summary="Get Live Display Feed for ESP32 Screens & LEDs")
 def get_speaker_display_feed(
+    request: Request,
     mac_address: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Returns active playing notice (when speaker is broadcasting) and important daily notices (when idle)
-    for connected ESP32 OLED/LED displays and campus ticker boards.
+    for connected ESP32 OLED/LED displays and campus ticker boards. Needs a signed-in user or the
+    speaker's own device key.
     """
+    if current_user is None:
+        require_device_key(mac_address, request.headers.get(SPEAKER_KEY_HEADER))
     return get_display_feed_data(db, mac_address)
 
 
@@ -400,6 +410,23 @@ def get_speaker_node_details(
         "created_at": node.created_at,
         "updated_at": node.updated_at,
     }
+
+
+@router.get("/speakers/{id}/device-key", summary="Device key to flash into a speaker")
+def get_speaker_device_key(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin")),
+):
+    node = get_speaker_node_by_id(db, id)
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Speaker node not found.")
+    try:
+        key = device_key_for(str(node.mac_address))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Speaker has no valid MAC address.")
+    logger.warning(f"Device key for speaker #{node.id} read by user #{current_user.id}")
+    return {"speaker_id": node.id, "mac_address": node.mac_address, "device_key": key}
 
 
 @router.put("/speakers/{id}", response_model=SpeakerNodeResponse)
@@ -531,6 +558,21 @@ async def trigger_emergency_override(
 
 
 
+        # Every override is written to the audit log with who triggered it, since it bypasses approval
+        try:
+            from app.services.audit_log_service import create_audit_log_service
+            create_audit_log_service(
+                db=db,
+                user_id=current_user.id,
+                action="EMERGENCY_OVERRIDE",
+                entity="ANNOUNCEMENT",
+                entity_id=emergency_ann.id,
+                description=f"Emergency override by {current_user.full_name} ({role_name(current_user)}): {override_in.title}",
+            )
+        except Exception as audit_err:
+            logger.warning(f"Failed to audit emergency override: {audit_err}")
+        logger.warning(f"EMERGENCY OVERRIDE by user #{current_user.id} ({role_name(current_user)}): {override_in.title}")
+
         # Dispatch emergency notifications to all campus users
         try:
             from app.services.announcement_service import dispatch_announcement_notifications_and_deliveries
@@ -567,7 +609,7 @@ async def trigger_emergency_override(
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Emergency override error: {str(e)}"
+            detail="Emergency override failed. Please try again."
         )
 
 
@@ -594,8 +636,10 @@ _HEARTBEAT_WRITE_INTERVAL = 3.0
 @router.post("/speakers/heartbeat")
 def receive_node_heartbeat(
     heartbeat_in: SpeakerNodeHeartbeat,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    require_device_key(heartbeat_in.mac_address, request.headers.get(SPEAKER_KEY_HEADER))
     # Heartbeats arrive every 0.8s and each DB write is several round trips to the database.
     # Persist last_heartbeat at most every 3s (online checks use >=12s windows) unless the status
     # changed, so the speaker gets its pending commands back as fast as possible.
@@ -632,11 +676,13 @@ def receive_node_heartbeat(
 @router.get("/speakers/poll/{mac_address}", summary="Poll Pending Node Commands")
 def poll_pending_node_commands(
     mac_address: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
     Allows simulated speaker nodes to poll for pending control and audio commands over REST.
     """
+    require_device_key(mac_address, request.headers.get(SPEAKER_KEY_HEADER))
     from app.services.hardware_speaker_service import get_pending_commands_for_mac
     # Queue advancing / repeat dispatch is the event-driven daemon's job (instant on every change).
     # Running it here too cost every request ~a dozen extra database round trips.
@@ -933,7 +979,9 @@ def update_queue_action(
     base_url = str(request.base_url).rstrip("/")
     act_clean = action.lower().strip()
 
-    # Only the speaker's own 'complete' callback is anonymous; every user command needs staff login
+    # A speaker's 'complete' callback carries its MAC and device key; every user command needs staff login
+    if act_clean == "complete" and current_user is None:
+        require_device_key(request.headers.get("X-Speaker-Mac"), request.headers.get(SPEAKER_KEY_HEADER))
     if act_clean != "complete":
         staff_roles = {"dev admin", "developer", "college admin", "admin", "principal", "hod", "teacher"}
         role_name = str(getattr(getattr(current_user, "role", None), "name", "") or "").lower()

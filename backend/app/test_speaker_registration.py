@@ -3,7 +3,7 @@ import secrets
 
 from fastapi.testclient import TestClient
 
-from app.auth_test_helpers import bearer
+from app.auth_test_helpers import bearer, speaker_headers
 from app.main import app
 
 client = TestClient(app)
@@ -35,11 +35,16 @@ def test_admin_registers_a_new_speaker():
     assert r.json()["mac_address"] == node["mac_address"]
 
 
-def test_known_speaker_reconnects_without_login():
+def test_known_speaker_reconnects_with_its_device_key():
     node = _new_node()
     assert client.post("/api/v1/hardware/speakers/register", json=node, headers=_auth("ESDev01")).status_code == 201
 
-    r = client.post("/api/v1/hardware/speakers/register", json={**node, "ip_address": "10.0.0.42"})
+    # Without its device key a known MAC is refused, so knowing a speaker's address is not enough
+    r = client.post("/api/v1/hardware/speakers/register", json={**node, "ip_address": "10.0.0.66"})
+    assert r.status_code == 401, r.text
+
+    r = client.post("/api/v1/hardware/speakers/register", json={**node, "ip_address": "10.0.0.42"},
+                    headers=speaker_headers(node["mac_address"]))
     assert r.status_code == 201, r.text
     assert r.json()["ip_address"] == "10.0.0.42"
     assert r.json()["status"] == "ONLINE"

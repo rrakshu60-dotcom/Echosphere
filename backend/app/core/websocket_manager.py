@@ -7,6 +7,21 @@ from fastapi import WebSocket
 logger = logging.getLogger("echosphere.websocket")
 
 
+# Students only ever see published notices, so they are not told about drafts, pending or rejected ones.
+_STAFF_ONLY_EVENTS = {"ANNOUNCEMENT_REJECTED"}
+
+
+def _visible_to_role(message: Dict[str, Any], role: str | None) -> bool:
+    if (role or "Student") != "Student":
+        return True
+    event = str(message.get("event", ""))
+    if event in _STAFF_ONLY_EVENTS:
+        return False
+    if event == "ANNOUNCEMENT_CREATED":
+        return str(message.get("status", "")).strip().lower() == "published"
+    return True
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -45,6 +60,8 @@ class ConnectionManager:
                 client_role = meta.get("role")
                 if client_role not in target_roles:
                     continue
+            if not _visible_to_role(message, meta.get("role")):
+                continue
 
             try:
                 await connection.send_text(payload_str)

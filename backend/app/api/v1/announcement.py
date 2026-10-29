@@ -1043,7 +1043,10 @@ def voice_to_notice_endpoint(
     Smart Voice Notice Dictation (Speech-to-Circular AI).
     Transcribes spoken voice memos or converts raw conversational dictation into a structured institutional circular.
     """
+    from app.core.throttle import check_ai_quota
     from app.services.smart_intake_service import SmartIntakeService
+
+    check_ai_quota(int(current_user.id), heavy=True)
 
     return SmartIntakeService.voice_to_notice(
         audio_base64=request.audio_base64,

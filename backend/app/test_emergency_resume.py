@@ -1,7 +1,7 @@
 """An emergency interrupts the notice on the speaker; once the emergency finishes, the interrupted notice plays again."""
 from fastapi.testclient import TestClient
 
-from app.auth_test_helpers import bearer
+from app.auth_test_helpers import bearer, speaker_headers
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.speaker_node import SpeakerNode
@@ -45,7 +45,7 @@ def test_interrupted_notice_plays_again_after_the_emergency():
     assert _item(normal).status == "Paused", "the interrupted notice must wait until the emergency is over"
 
     # The speaker reports the emergency finished, exactly as the firmware does
-    res = client.post(f"/api/v1/hardware/queue/{_item(emergency).id}/action?action=complete")
+    res = client.post(f"/api/v1/hardware/queue/{_item(emergency).id}/action?action=complete", headers=speaker_headers())
     assert res.status_code == 200, res.text
 
     _daemon_pass()

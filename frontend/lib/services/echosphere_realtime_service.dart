@@ -100,9 +100,16 @@ class EchosphereRealtimeService extends GetxService {
     if (_isTestEnvironment) return;
     if (isConnected.value && _channel != null) return;
 
+    // The server only accepts signed-in listeners; wait for a session instead of being refused.
+    final token = EchosphereApiService().authToken;
+    if (token == null || token.isEmpty) {
+      _scheduleReconnect();
+      return;
+    }
+
     final url = _wsUrl;
     try {
-      debugPrint('[WebSocket] Connecting to EchoSphere Live Sync WebSocket (Web & Native): $url');
+      debugPrint('[WebSocket] Connecting to EchoSphere Live Sync WebSocket (Web & Native).');
       _channelSubscription?.cancel();
       _channel = WebSocketChannel.connect(Uri.parse(url));
 

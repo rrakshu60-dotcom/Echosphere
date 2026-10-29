@@ -14,12 +14,23 @@ from app.schemas.ai_schema import (
     AiStatusResponse, AiTrainResponse,
 )
 from app.core.dependencies import get_current_user, require_roles
+from app.core.throttle import check_ai_quota
 from app.core.roles import role_name
 from app.models.user import User
 from app.services.ai_service import AIService
 
 # Every AI route needs a signed-in user: they call paid-quota models and can read campus data.
-router = APIRouter(prefix="/ai", tags=["EchoSphere AI"], dependencies=[Depends(get_current_user)])
+_HEAVY_AI_PATHS = ("/ai/chat", "/ai/draft", "/ai/synthesize")
+
+
+def _ai_caller(request: Request, current_user: User = Depends(get_current_user)) -> User:
+    """Every AI route needs a signed-in user, and POSTs count towards that user's AI quota."""
+    if request.method == "POST":
+        check_ai_quota(int(current_user.id), heavy=request.url.path.endswith(_HEAVY_AI_PATHS))
+    return current_user
+
+
+router = APIRouter(prefix="/ai", tags=["EchoSphere AI"], dependencies=[Depends(_ai_caller)])
 
 
 def _caller_profile(user: User) -> Dict[str, Optional[str]]:

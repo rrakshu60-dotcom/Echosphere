@@ -12,6 +12,8 @@
 // Target Backend     : Live Render Backend
 // ============================================================================
 const char* SERVER_URL = "https://echosphere-backend-9lv8.onrender.com";
+// Device key for this simulated speaker's MAC (GET /api/v1/hardware/speakers/{id}/device-key as a platform admin)
+const char* SPEAKER_DEVICE_KEY = "";
 
 // ============================================================================
 // Wi-Fi Configuration
@@ -196,6 +198,7 @@ void registerNodeWithBackend() {
         http.begin(secureClient, url);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("Connection", "close");
+        http.addHeader("X-Speaker-Key", SPEAKER_DEVICE_KEY);
 
         JsonDocument doc;
         doc["name"] = deviceName;
@@ -263,12 +266,13 @@ void sendHeartbeat() {
         String url = String(SERVER_URL) + "/api/v1/hardware/speakers/heartbeat";
         
         if (!httpInitialized) {
-            secureClient.setInsecure();
+            secureClient.setInsecure();  // Wokwi simulator only; the real firmware verifies certificates
             http.setReuse(true);
             http.setTimeout(3500);
             http.begin(secureClient, url);
             http.addHeader("Content-Type", "application/json");
             http.addHeader("Connection", "keep-alive");
+            http.addHeader("X-Speaker-Key", SPEAKER_DEVICE_KEY);
             httpInitialized = true;
         }
 

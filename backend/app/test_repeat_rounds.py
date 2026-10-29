@@ -10,7 +10,7 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from app.auth_test_helpers import bearer
+from app.auth_test_helpers import bearer, speaker_headers
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule, RepeatSlotExecutionLog
@@ -82,7 +82,7 @@ def _finish_round(nid):
     """The speaker reports the playing round finished, then the daemon reacts."""
     items = _active(nid)
     assert len(items) == 1 and items[0].status == "Playing", [(i.id, i.status) for i in items]
-    res = client.post(f"/api/v1/hardware/queue/{items[0].id}/action?action=complete")
+    res = client.post(f"/api/v1/hardware/queue/{items[0].id}/action?action=complete", headers=speaker_headers())
     assert res.status_code == 200, res.text
     _daemon_pass()
 
@@ -178,7 +178,7 @@ def test_emergency_reaches_the_speaker_as_one_emergency_command():
     _publish("Library timing")
     emergency = _publish("Earthquake drill alert", priority="High", emergency_level="Emergency")
     _daemon_pass()
-    res = client.post("/api/v1/hardware/speakers/heartbeat", json={"mac_address": mac, "status": "ONLINE"})
+    res = client.post("/api/v1/hardware/speakers/heartbeat", json={"mac_address": mac, "status": "ONLINE"}, headers=speaker_headers(mac))
     plays = [c for c in res.json().get("pending_commands") or []
              if c.get("announcement_id") == emergency and str(c.get("command", "")).startswith("PLAY")]
     assert plays, "no play command for the emergency"

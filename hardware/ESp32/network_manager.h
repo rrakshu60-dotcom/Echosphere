@@ -8,6 +8,7 @@
 #include "display_manager.h"
 #include "audio_manager.h"
 #include <WebSocketsClient.h>
+#include "ca_bundle.h"
 #include <esp_mac.h>
 
 class EchoNetworkManager {
@@ -31,10 +32,38 @@ private:
 
   WiFiClientSecure& sharedTlsClient() {
     if (!backendClientConfigured) {
-      backendClient.setInsecure();
+      useEchoCaBundle(backendClient);  // verify the server certificate
       backendClientConfigured = true;
     }
     return backendClient;
+  }
+
+  // This speaker's device key (wifi_secrets.h), sent as X-Speaker-Key on every backend call.
+  // The backend refuses speaker calls whose key does not match the MAC.
+  String deviceKey;
+  String pushHeaders;
+
+  void loadDeviceKey() {
+    struct SpeakerKeyEntry { const char* mac; const char* key; };
+    static const SpeakerKeyEntry keys[] = { SPEAKER_DEVICE_KEYS };
+    deviceKey = "";
+    for (const auto& entry : keys) {
+      if (nodeMac.equalsIgnoreCase(entry.mac)) {
+        deviceKey = String(entry.key);
+        break;
+      }
+    }
+    if (deviceKey.length() == 0) {
+      Serial.print(F("❌ [AUTH] No device key for "));
+      Serial.print(nodeMac);
+      Serial.println(F(" in wifi_secrets.h (SPEAKER_DEVICE_KEYS). The backend will refuse this speaker."));
+    }
+    pushHeaders = "X-Speaker-Key: " + deviceKey;
+  }
+
+  void addSpeakerAuthHeaders(HTTPClient& http) {
+    http.addHeader("X-Speaker-Mac", nodeMac);
+    http.addHeader("X-Speaker-Key", deviceKey);
   }
 
   // Push channel: the backend sends commands down this socket the moment they are queued,
@@ -176,6 +205,7 @@ public:
       }
     }
 
+    loadDeviceKey();
     printBanner();
     connectWiFi();
     registerNode();
@@ -354,13 +384,14 @@ public:
 
     bool isHttps = serverUrl.startsWith("https://");
     if (isHttps) {
-      secureClient.setInsecure();
+      useEchoCaBundle(secureClient);
       http.begin(secureClient, url);
     } else {
       http.begin(plainClient, url);
     }
 
     http.addHeader("Content-Type", "application/json");
+    addSpeakerAuthHeaders(http);
     http.setTimeout(8000);
 
     int httpCode = http.POST(requestBody);
@@ -530,10 +561,15 @@ public:
     }
     String path = "/api/v1/ws/speaker/" + nodeMac;
     if (secure) {
-      pushSocket.beginSSL(host.c_str(), port, path.c_str());
+#ifdef ECHO_CA_BUNDLE_TAKES_SIZE
+      pushSocket.beginSslWithBundle(host.c_str(), port, path.c_str(), kEchoCaBundle, kEchoCaBundleLen, "arduino");
+#else
+      pushSocket.beginSslWithBundle(host.c_str(), port, path.c_str(), kEchoCaBundle, "arduino");
+#endif
     } else {
       pushSocket.begin(host.c_str(), port, path.c_str());
     }
+    pushSocket.setExtraHeaders(pushHeaders.c_str());
     pushSocket.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
       if (type == WStype_CONNECTED) {
         pushConnected = true;
@@ -670,6 +706,7 @@ public:
     }
 
     http.addHeader("Content-Type", "application/json");
+    addSpeakerAuthHeaders(http);
     http.setTimeout(4000);
 
     // Extraction variables to hold incoming playback/control instructions
@@ -1005,6 +1042,7 @@ public:
 
     http.setTimeout(8000);
     http.addHeader("Content-Type", "application/json");
+    addSpeakerAuthHeaders(http);
     int httpCode = http.POST("{}");
     Serial.print(F("⏩ [QUEUE AUTO-ADVANCE] Server HTTP code: "));
     Serial.println(httpCode);

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.rate_limiter import limiter
+from app.core.throttle import check_sign_in_allowed, record_sign_in_failure, record_sign_in_success
 from app.core.dependencies import (
     get_current_session,
     get_current_user,
@@ -26,6 +27,7 @@ from app.services.session_service import (
     end_session,
     log_app_access,
     log_sign_in,
+    mask_identifier,
     refresh_session,
 )
 
@@ -59,10 +61,17 @@ def _sign_in(
 ) -> TokenResponse:
     ip, ua = client_ip(http), client_user_agent(http)
     try:
+        check_sign_in_allowed(identifier, ip)
+    except HTTPException:
+        log_sign_in(db, mask_identifier(identifier), False, "rate_limited", ip, ua, platform)
+        raise
+    try:
         user = authenticate_user(db=db, identifier=identifier, password=password, employee_id=employee_id)
     except SignInRefused as refused:
+        record_sign_in_failure(identifier, ip)
         log_sign_in(db, identifier, False, refused.reason, ip, ua, platform, user=refused.user)
         raise HTTPException(status_code=400, detail=str(refused))
+    record_sign_in_success(identifier, ip)
 
     access_token, refresh_token, session = create_session(
         db, user, remember_me=remember_me, ip=ip, user_agent=ua, platform=platform
@@ -229,9 +238,11 @@ def reset_password_direct(
     from app.core.password import hash_password
 
     ip, ua = client_ip(request), client_user_agent(request)
+    check_sign_in_allowed(body.identifier, ip)
     try:
         user = check_credentials(db, body.identifier, body.current_password)
     except SignInRefused as refused:
+        record_sign_in_failure(body.identifier, ip)
         log_sign_in(db, body.identifier, False, refused.reason, ip, ua, None, user=refused.user)
         raise HTTPException(status_code=400, detail=str(refused))
 

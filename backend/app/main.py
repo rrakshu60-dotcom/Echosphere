@@ -323,12 +323,17 @@ async def _record_actor(request, call_next):
 # CORS Middleware
 # -------------------------
 
+# Only the EchoSphere web app (production and its Cloudflare preview builds) and local development
+# servers may call the API from a browser. The Android and Windows apps and the speakers send no
+# Origin header and are not affected. Extra origins: CORS_ORIGINS="https://a.example,https://b.example".
+_EXTRA_CORS_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["https://echosphere-2jf.pages.dev", *_EXTRA_CORS_ORIGINS],
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?echosphere-2jf\.pages\.dev|http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-App-Version", "X-Platform", "Range"],
 )
 
 app.add_middleware(

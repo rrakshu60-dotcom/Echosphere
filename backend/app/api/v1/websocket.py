@@ -44,14 +44,15 @@ async def websocket_live_endpoint(websocket: WebSocket, token: str | None = None
     - Notice approval & rejection events
     - New notice creation
     - Notice updates and deletions
-    Supports optional JWT token for authenticated role-targeted channels.
+    Requires ?token=<access token> naming an open session.
     """
-    role = None
-    user_id = None
+    # Only signed-in users with an open session may listen; notice titles are not public.
     signed_in = _session_user(token)
-    if signed_in is not None:
-        role = signed_in.role.name if signed_in.role else "Student"
-        user_id = signed_in.official_email or signed_in.usn or signed_in.username
+    if signed_in is None:
+        await websocket.close(code=4401)
+        return
+    role = signed_in.role.name if signed_in.role else "Student"
+    user_id = signed_in.official_email or signed_in.usn or signed_in.username
 
     await ws_manager.connect(websocket, role=role, user_id=user_id)
     try:
@@ -98,7 +99,11 @@ async def websocket_speaker_push_endpoint(websocket: WebSocket, mac: str):
     """
     from starlette.concurrency import run_in_threadpool
     from app.core import speaker_push
+    from app.core.speaker_auth import SPEAKER_KEY_HEADER, is_valid_device_key
 
+    if not is_valid_device_key(mac, websocket.headers.get(SPEAKER_KEY_HEADER)):
+        await websocket.close(code=4401)
+        return
     if not await run_in_threadpool(_is_registered_speaker, mac):
         await websocket.close(code=4404)
         return

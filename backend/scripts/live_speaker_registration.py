@@ -1,6 +1,6 @@
 """
 Live check of speaker registration on the production backend (.agents/rules/testing.md §4):
-anonymous callers cannot add a new speaker; an admin can.
+anonymous callers cannot add a new speaker; an admin can; a known speaker needs its device key.
 
 Registers a tagged throw-away speaker as admin, asserts it was created and listed, and always deletes it,
 then fails if any speaker tagged with this run's id is left behind.
@@ -59,6 +59,29 @@ def main() -> None:
         nodes = requests.get(f"{BASE_URL}/hardware/speakers", headers=headers, timeout=30).json()
         assert any(n["id"] == created_id for n in nodes), "new speaker missing from /hardware/speakers"
         print("PASS new speaker is listed")
+
+        known_anon = requests.post(
+            f"{BASE_URL}/hardware/speakers/register",
+            json={"name": f"{TAG} speaker", "mac_address": mac, "zone": TAG},
+            timeout=30,
+        )
+        assert known_anon.status_code == 401, f"known MAC without device key: expected 401, got {known_anon.status_code}"
+        print("PASS a known MAC without its device key is refused -> 401")
+
+        key = requests.get(f"{BASE_URL}/hardware/speakers/{created_id}/device-key", headers=headers, timeout=30)
+        assert key.status_code == 200, f"device key: expected 200, got {key.status_code}"
+        speaker = {"X-Speaker-Mac": mac, "X-Speaker-Key": key.json()["device_key"]}
+        again = requests.post(
+            f"{BASE_URL}/hardware/speakers/register",
+            json={"name": f"{TAG} speaker", "mac_address": mac, "zone": TAG},
+            headers=speaker,
+            timeout=30,
+        )
+        assert again.status_code == 201, f"reconnect with device key: expected 201, got {again.status_code}"
+        beat = requests.post(f"{BASE_URL}/hardware/speakers/heartbeat", json={"mac_address": mac, "status": "ONLINE"},
+                             headers=speaker, timeout=30)
+        assert beat.status_code == 200, f"heartbeat with device key: expected 200, got {beat.status_code}"
+        print("PASS the speaker reconnects and sends heartbeats with its device key")
     finally:
         if created_id is not None:
             requests.delete(f"{BASE_URL}/hardware/speakers/{created_id}", headers=headers, timeout=30)

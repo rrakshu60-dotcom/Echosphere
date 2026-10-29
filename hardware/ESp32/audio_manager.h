@@ -4,6 +4,7 @@
 #include <esp_task_wdt.h>
 #include "config.h"
 #include "arduino_compat.h"
+#include "ca_bundle.h"
 
 #include <math.h>
 #include <functional>
@@ -345,7 +346,7 @@ public:
     // Reuse the caller's already-open TLS session when given (saves a ~1s handshake)
     WiFiClientSecure& tls = (isHttps && reuseClient) ? *reuseClient : secureClient;
     if (isHttps) {
-      tls.setInsecure(); // Skip certificate verification for low memory overhead
+      useEchoCaBundle(tls); // verify the server certificate
       tls.setTimeout(25000); // 25s socket timeout (in milliseconds!)
       clientPtr = &tls;
     } else {

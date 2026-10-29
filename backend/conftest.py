@@ -124,3 +124,12 @@ def _no_real_speech_synthesis(monkeypatch):
                             "url_path": f"/static/audio_streams/announcement_{announcement_id}_faked.wav",
                             "public_url": f"/static/audio_streams/announcement_{announcement_id}_faked.wav",
                         })
+
+
+@pytest.fixture(autouse=True)
+def _reset_request_throttles():
+    """Sign-in and AI counters live in process memory; start every test with a clean slate."""
+    from app.core.throttle import reset_all
+
+    reset_all()
+    yield

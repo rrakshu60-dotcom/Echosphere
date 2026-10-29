@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger("echosphere.announcement")
 
+from app.core.audience import audience_words, is_institution_wide, mentions_department
 from app.core.enums.announcement import AnnouncementStatus
 from app.core.roles import EXECUTIVE_ROLES
 from app.models.announcement import Announcement
@@ -103,11 +104,11 @@ def dispatch_announcement_notifications_and_deliveries(
             target_str = (target_audience or "").strip().lower()
             users_query = db.query(User)
 
-            if target_str and not any(k in target_str for k in ["entire", "all", "college"]):
+            if target_str and not is_institution_wide(target_str) and "college" not in audience_words(target_str):
                 depts = db.query(Department).all()
                 target_dept_id = None
                 for d in depts:
-                    if d.code.lower() in target_str or d.name.lower() in target_str:
+                    if mentions_department(target_str, d.code, d.name):
                         target_dept_id = d.id
                         break
                 if target_dept_id:
@@ -226,9 +227,12 @@ def create_announcement_service(
         initial_status = AnnouncementStatus.PENDING_APPROVAL
     elif user_role == "HoD":
         # HoD auto-approves for own department; cross-dept / institution-wide notices require approval
-        target = (request.target_audience or "").lower()
-        dept_name = (current_user.department.code if current_user.department else "").lower() if hasattr(current_user, 'department') and current_user.department else ""
-        is_own_dept = dept_name in target and "entire" not in target and "all" not in target
+        own_dept = getattr(current_user, "department", None)
+        is_own_dept = (
+            own_dept is not None
+            and mentions_department(request.target_audience, own_dept.code, own_dept.name)
+            and not is_institution_wide(request.target_audience)
+        )
         if not is_own_dept:
             initial_status = AnnouncementStatus.PENDING_APPROVAL
         elif request.scheduled_at and request.scheduled_at > datetime.now(timezone.utc).replace(tzinfo=None):
@@ -597,9 +601,18 @@ def delete_announcement_service(
         )
 
     user_role = current_user.role.name if (current_user and current_user.role) else "Student"
-    is_admin = user_role in ["Dev Admin", "Developer", "College Admin", "Principal", "HoD"]
+    is_executive = user_role in ["Dev Admin", "Developer", "College Admin", "Principal"]
+    is_own = bool(current_user) and announcement.created_by == current_user.id
 
-    if not is_admin and current_user and announcement.created_by != current_user.id:
+    if user_role == "HoD" and not is_own:
+        # An HoD's delete scope matches their approval scope: notices written in their own department.
+        creator_dept_id = announcement.creator.department_id if announcement.creator else None
+        if not creator_dept_id or not current_user.department_id or creator_dept_id != current_user.department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="HoD can only delete announcements from their own department.",
+            )
+    elif not is_executive and not is_own:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own announcements.",
@@ -675,8 +688,7 @@ def _hod_moderation_refusal(announcement, current_user: User) -> str | None:
     creator_dept_id = announcement.creator.department_id if announcement.creator else None
     if not creator_dept_id or not current_user.department_id or creator_dept_id != current_user.department_id:
         return "HoD can only approve announcements from their own department."
-    target = (announcement.target_audience or "").lower()
-    if "entire" in target or "all" in target or "institution" in target:
+    if is_institution_wide(announcement.target_audience):
         return "Institution-wide announcements require Principal or College Admin approval."
     return None
 

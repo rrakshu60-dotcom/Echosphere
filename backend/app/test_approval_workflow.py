@@ -146,7 +146,13 @@ def test_full_approval_workflow():
     print(f"  [PASS] Notice #{notice2_id} rejected with status: {notice2_updated['status']} and remarks preserved.")
 
     print("\n--- [6/6] Testing WebSocket Live Realtime Endpoint ---")
-    with client.websocket_connect("/api/v1/ws/live") as websocket:
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+    # Without a session token the socket is refused
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/api/v1/ws/live") as websocket:
+            websocket.receive_json()
+    with client.websocket_connect(f"/api/v1/ws/live?token={student_token}") as websocket:
         init_data = websocket.receive_json()
         assert init_data["event"] == "CONNECTED"
         websocket.send_text("ping")

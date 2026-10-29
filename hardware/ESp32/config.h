@@ -22,6 +22,9 @@
 #else
 #error "Copy wifi_secrets.h.example to wifi_secrets.h and fill in your Wi-Fi details"
 #endif
+#ifndef SPEAKER_DEVICE_KEYS
+#error "Add SPEAKER_DEVICE_KEYS (this speaker's device key) to wifi_secrets.h; see wifi_secrets.h.example"
+#endif
 #define WIFI_TIMEOUT_MS 6000                    // Wi-Fi connection timeout in ms per SSID attempt
 
 // ----------------------------------------------------------------------------

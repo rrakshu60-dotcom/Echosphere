@@ -158,7 +158,22 @@ This firmware replaces the Python edge speaker clients (`speaker_node_client.py`
      - `2` for **Node 2: Hardware Speaker Client 2** (`D4:F3:2D:22:2A:CC`, Block B - AI Lab)
      - `0` for **Auto-Detect** (Uses the ESP32's hardware Wi-Fi MAC)
 
-4. **Upload to ESP32**:
+4. **Add the speaker's device key** (required): the backend refuses speaker calls without the key
+   that matches the board's MAC address, so knowing a speaker's MAC is not enough to pose as it.
+   - Get the key as a platform admin from `GET /api/v1/hardware/speakers/{id}/device-key`, or run
+     `python backend/scripts/speaker_device_key.py <MAC>` with the backend's `SPEAKER_KEY_SECRET`
+     (or `JWT_SECRET_KEY` when that is not set).
+   - Add it to `wifi_secrets.h` (see `wifi_secrets.h.example`):
+     ```cpp
+     #define SPEAKER_DEVICE_KEYS \
+       {"D4:F3:2D:22:2A:CB", "<key for this MAC>"}, \
+       {"<second board MAC>", "<key for that MAC>"}
+     ```
+   - Changing `SPEAKER_KEY_SECRET` (or `JWT_SECRET_KEY` when it is the fallback) changes every key,
+     so re-flash the speakers with their new keys afterwards.
+   - The firmware verifies the backend's HTTPS certificate against the root CAs in `ca_bundle.h`.
+
+5. **Upload to ESP32**:
    - Select board: **ESP32 Dev Module** (or **NodeMCU-32S**).
    - Select COM port.
    - Click **Upload**.

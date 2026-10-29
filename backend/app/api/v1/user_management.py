@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import require_roles
 from app.core.roles import is_dev_admin, role_level, role_name
 from app.models.role import Role
 from app.models.user import User
@@ -39,6 +39,16 @@ def _check_can_manage(current_user: User, target: User) -> None:
         )
 
 
+_DEPARTMENT_SCOPED_ROLES = {"HoD", "Teacher"}
+
+
+def _department_scope(current_user: User) -> Optional[int]:
+    """HoDs and Teachers see only accounts in their own department (-1: no department, so no one)."""
+    if role_name(current_user) not in _DEPARTMENT_SCOPED_ROLES:
+        return None
+    return current_user.department_id or -1
+
+
 @router.get("/", response_model=List[UserResponse])
 def list_users(
     department_id: Optional[int] = None,
@@ -49,6 +59,11 @@ def list_users(
     current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
     db: Session = Depends(get_db),
 ):
+    scope = _department_scope(current_user)
+    if scope is not None:
+        if department_id is not None and department_id != scope:
+            return []
+        department_id = scope
     users = UserManagementService.list_users(
         db=db,
         department_id=department_id,
@@ -115,7 +130,8 @@ def get_user_detail(
     db: Session = Depends(get_db),
 ):
     user = UserManagementService.get_user_by_id(db=db, user_id=user_id)
-    if not user:
+    scope = _department_scope(current_user)
+    if not user or (scope is not None and user.id != current_user.id and user.department_id != scope):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return UserResponse(
         id=user.id,

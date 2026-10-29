@@ -436,6 +436,11 @@ class SpeakerNode1Client:
         self.server_url = server_url.rstrip("/")
         self.name = NODE_NAME
         self.mac_address = MAC_ADDRESS
+        # Device key for this MAC (GET /api/v1/hardware/speakers/{id}/device-key as a platform admin)
+        self.auth_headers = {
+            "X-Speaker-Mac": MAC_ADDRESS,
+            "X-Speaker-Key": os.environ.get("SPEAKER_DEVICE_KEY", "").strip(),
+        }
         self.ip_address = get_local_ip()
         self.zone = ZONE_NAME
         self.department = DEPT_CODE
@@ -479,7 +484,7 @@ class SpeakerNode1Client:
             "volume": self.volume,
         }
         try:
-            resp = requests.post(url, json=payload, timeout=6.0)
+            resp = requests.post(url, json=payload, headers=self.auth_headers, timeout=6.0)
             if resp.status_code in (200, 201):
                 data = resp.json()
                 self.node_id = data.get("id")
@@ -501,7 +506,7 @@ class SpeakerNode1Client:
                 "memory_usage": 0.0,
                 "disk_space": 0.0,
             }
-            requests.post(url, json=payload, timeout=3.0)
+            requests.post(url, json=payload, headers=self.auth_headers, timeout=3.0)
             logger.info("🛑 Reported OFFLINE status to backend.")
         except Exception:
             pass
@@ -518,7 +523,7 @@ class SpeakerNode1Client:
             "disk_space": 72.0,
         }
         try:
-            resp = requests.post(url, json=payload, timeout=4.0)
+            resp = requests.post(url, json=payload, headers=self.auth_headers, timeout=4.0)
             if resp.status_code in (200, 201):
                 data = resp.json()
                 cmds = data.get("pending_commands", [])
@@ -534,7 +539,7 @@ class SpeakerNode1Client:
         """
         url = f"{self.server_url}/api/v1/hardware/queue"
         try:
-            resp = requests.get(url, timeout=4.0)
+            resp = requests.get(url, headers=self.auth_headers, timeout=4.0)
             if resp.status_code != 200:
                 return
 
@@ -726,7 +731,7 @@ class SpeakerNode1Client:
                 if queue_id:
                     try:
                         complete_url = f"{self.server_url}/api/v1/hardware/queue/{queue_id}/action?action=complete"
-                        requests.post(complete_url, timeout=4.0)
+                        requests.post(complete_url, headers=self.auth_headers, timeout=4.0)
                         logger.info(f"⏩ [QUEUE ADVANCED] Notified backend of item #{queue_id} completion.")
                     except Exception as e:
                         logger.debug(f"Complete notification note: {e}")

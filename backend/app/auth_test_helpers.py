@@ -18,3 +18,13 @@ def bearer(username: str, remember_me: bool = False) -> dict:
             db, user, remember_me=remember_me, ip="127.0.0.1", user_agent="pytest", platform="test"
         )
     return {"Authorization": f"Bearer {access_token}"}
+
+
+TEST_SPEAKER_MAC = "AA:BB:CC:00:11:22"
+
+
+def speaker_headers(mac: str = TEST_SPEAKER_MAC) -> dict:
+    """Headers a speaker sends: its MAC and its device key."""
+    from app.core.speaker_auth import SPEAKER_KEY_HEADER, device_key_for
+
+    return {"X-Speaker-Mac": mac, SPEAKER_KEY_HEADER: device_key_for(mac)}

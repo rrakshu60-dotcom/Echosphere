@@ -441,7 +441,7 @@
     void setTimeout(unsigned long) {}
     void stop() {}
   };
-  class WiFiClientSecure : public WiFiClient { public: void setInsecure() {} };
+  class WiFiClientSecure : public WiFiClient { public: void setInsecure() {} void setCACertBundle(const uint8_t*, size_t) {} void setCACertBundle(const uint8_t*) {} };
 
   #define HTTPC_STRICT_FOLLOW_REDIRECTS 1
   #define HTTPC_FORCE_FOLLOW_REDIRECTS 2
