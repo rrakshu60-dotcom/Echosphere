@@ -157,8 +157,10 @@ def _speaker_and_repeat_daemon():
     from app.core.queue_signal import DAEMON_SESSION_FLAG, wait_for_queue_change
 
     # Upper bound on sleep, only as a safety net for changes made outside this process
-    # (e.g. maintenance scripts writing directly to Supabase). In-process changes wake instantly.
-    safety_poll = float(os.getenv("QUEUE_DAEMON_SAFETY_POLL_SEC", "1.0"))
+    # (e.g. maintenance scripts writing directly to Supabase). In-process changes wake instantly,
+    # and get_next_queue_wake_seconds() still wakes at every due time and IST minute boundary.
+    # A 1s poll sent ~12 queries a second to Supabase (~1 GB/day of outbound bandwidth) while idle.
+    safety_poll = float(os.getenv("QUEUE_DAEMON_SAFETY_POLL_SEC", "300"))
     max_chained_passes = 8
 
     while True:
