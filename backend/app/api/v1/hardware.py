@@ -1099,10 +1099,10 @@ def update_queue_action(
     dispatch_res = None
 
     if act_clean in ("pause", "hold"):
-        # Pause holds the whole queue. The notice restarts from the beginning on resume:
-        # a streamed notice cannot continue mid-sentence on the speaker.
+        # Pause holds only this notice; the rest of the queue keeps playing. The notice restarts
+        # from the beginning on resume: a streamed notice cannot continue mid-sentence on the speaker.
         if getattr(item, "status", None) not in ("Playing", "Queued", "Next in Queue", HELD_STATUS):
-            # Never revive a finished / removed notice as 'Held' (it would hold the whole queue)
+            # Never revive a finished / removed notice as 'Held'
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Notice is not in the queue (status: {item.status}).")
         item.status = HELD_STATUS
         db.commit()
@@ -1114,10 +1114,10 @@ def update_queue_action(
         new_status = HELD_STATUS
 
     elif act_clean in ("play", "resume"):
-        # Playing something releases any hold; whatever was playing goes back to the queue.
+        # Whatever was playing goes back to the queue; other paused notices stay paused.
         for other in db.query(SpeakerQueue).filter(
             SpeakerQueue.id != item.id,
-            SpeakerQueue.status.in_(["Playing", HELD_STATUS]),
+            SpeakerQueue.status == "Playing",
         ).all():
             other.status = "Queued"
             other.played_at = None

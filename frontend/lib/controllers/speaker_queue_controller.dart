@@ -715,7 +715,8 @@ class SpeakerQueueController extends GetxController {
     if (!Get.testMode) {
       final item = queueItems[targetIdx];
       final pausing = (item['status']?.toString().toLowerCase() == 'playing');
-      // Pause stops the speaker and holds the queue; play/resume restarts the notice from the beginning
+      // Pause stops the speaker and holds this notice (the rest of the queue keeps playing);
+      // play/resume restarts the notice from the beginning
       if (await _sendLiveQueueAction(item, pausing ? 'pause' : 'play')) {
         snackBar(pausing ? 'Speaker playback paused.' : 'Broadcasting: "${item['title'] ?? 'Announcement'}"');
       }

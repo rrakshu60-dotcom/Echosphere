@@ -888,8 +888,7 @@ def enqueue_and_broadcast_announcement(
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
 
     # Audio should play immediately ONLY if queue is idle or this notice is emergency / already playing
-    queue_held = (not is_emergency) and is_queue_held(db)
-    should_play = (not is_future_scheduled) and (not queue_held) and (
+    should_play = (not is_future_scheduled) and (
         is_emergency
         or (active_playing is None)
         or (existing_status == "Playing")
@@ -1081,11 +1080,56 @@ def enqueue_and_broadcast_announcement(
     }
 
 
-HELD_STATUS = "Held"  # user pressed pause: the whole queue holds until resumed (emergencies still play)
+HELD_STATUS = "Held"  # user pressed pause: this notice waits until resumed, the rest of the queue keeps playing
+
+# A waiting notice that no speaker has started this long after it was due leaves the queue as 'Failed',
+# so a notice stranded while the speakers were offline (or left on pause) never lingers in the queue.
+STALE_NOTICE_MINUTES = 15
 
 
-def is_queue_held(db: Session) -> bool:
-    return db.query(SpeakerQueue.id).filter(SpeakerQueue.status == HELD_STATUS).first() is not None
+def expire_stale_queue_items(db: Session, now: Optional[datetime] = None) -> int:
+    """
+    Marks waiting notices 'Failed' when no speaker has started them STALE_NOTICE_MINUTES after they were due.
+    Emergency and repeat-scheduled notices are left alone (they have their own windows), and so are
+    notices waiting behind one that is playing now: a long queue is not a stale one.
+    """
+    now = now or utc_now()
+    candidates = (
+        db.query(SpeakerQueue)
+        .filter(
+            SpeakerQueue.status.in_(["Queued", "Next in Queue", HELD_STATUS]),
+            SpeakerQueue.speaker_confirmed_at.is_(None),
+            SpeakerQueue.scheduled_time <= now - timedelta(minutes=STALE_NOTICE_MINUTES),
+        )
+        .all()
+    )
+    if not candidates:
+        return 0
+
+    from app.core.emergency_utils import is_emergency_announcement
+    from app.models.announcement_repeat_schedule import AnnouncementRepeatSchedule
+
+    something_playing = db.query(SpeakerQueue.id).filter(SpeakerQueue.status == "Playing").first() is not None
+    expired = []
+    for item in candidates:
+        if item.status != HELD_STATUS and something_playing:
+            continue
+        if is_emergency_announcement(item.announcement):
+            continue
+        has_schedule = item.announcement_id and db.query(AnnouncementRepeatSchedule.id).filter(
+            AnnouncementRepeatSchedule.announcement_id == item.announcement_id,
+            AnnouncementRepeatSchedule.is_active == True,
+        ).first()
+        if has_schedule:
+            continue
+        item.status = "Failed"
+        item.failure_reason = f"No speaker played it within {STALE_NOTICE_MINUTES} minutes of its time."
+        item.error_count = (item.error_count or 0) + 1
+        expired.append(item.announcement_id)
+    if expired:
+        db.commit()
+        logger.warning(f"Speaker queue: notices {expired} were never played by a speaker and left the queue as Failed.")
+    return len(expired)
 
 
 def restore_paused_queue_items(db: Session, now: datetime):
@@ -1565,6 +1609,8 @@ def auto_advance_speaker_queue(
                 "dispatch": dispatch_res,
             }
 
+    expire_stale_queue_items(db, now)
+
     should_advance = False
 
     # Handle Currently Playing Item
@@ -1769,9 +1815,6 @@ def auto_advance_speaker_queue(
         (q for q in queued_all if is_emergency_announcement(q.announcement)),
         None
     )
-
-    if not next_item and is_queue_held(db):
-        return None
 
     # Priority 2: Deterministic First Come First Serve
     # Prefer ready items that are due now (within the small event-scheduler tolerance).
