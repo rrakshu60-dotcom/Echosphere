@@ -406,7 +406,7 @@ class EchosphereAiController extends GetxController {
       }
       return '### Publishing an Announcement ($role)\n\n'
           '1. Tap the **+ New Notice** button on your home dashboard.\n'
-          '2. Enter circular details, or use **AI Auto-Draft** or **Voice Dictate** to start from your notes.\n'
+          '2. Enter circular details, or use **AI Auto-Draft** to start from your notes.\n'
           '3. Faculty notices route to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options.';
     }
 

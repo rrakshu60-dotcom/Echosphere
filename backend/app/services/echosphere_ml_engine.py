@@ -999,7 +999,7 @@ class EchoSphereMLEngine:
                     f"You have authoring privileges on EchoSphere:\n\n"
                     f"1. Tap the **+ New Notice** button on your home screen.\n"
                     f"2. Enter title, description, target audience, and delivery channels.\n"
-                    f"3. Use **AI Draft** or **Voice Dictation** to turn your notes into a formal circular.\n"
+                    f"3. Use **AI Draft** to turn your notes into a formal circular.\n"
                     f"4. Faculty drafts submit to HoD for approval; HoDs and Admins publish immediately with smart speaker broadcast options."
                 )
                 suggested_actions = ["Create New Notice", "View My Drafts", "Pending Approvals"]
