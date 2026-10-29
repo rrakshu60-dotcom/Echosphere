@@ -1189,6 +1189,7 @@ def evaluate_and_dispatch_repeat_slots(
             speaker_node_id=target_node_id,
             speaker_voice=ann.speaker_voice or "female",
             base_url=base_url,
+            release_hold=False,
         )
 
         if getattr(sched, "repeat_mode", "INTERVAL") == "INTERVAL":

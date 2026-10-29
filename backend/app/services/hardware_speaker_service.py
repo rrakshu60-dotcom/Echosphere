@@ -784,6 +784,7 @@ def enqueue_and_broadcast_announcement(
     speaker_voice: Optional[Any] = "female",
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
     force_requeue: bool = False,
+    release_hold: bool = True,
 ) -> dict:
     """
     Enqueues an announcement into SpeakerQueue and broadcasts to targeted or all active speaker nodes.
@@ -886,6 +887,10 @@ def enqueue_and_broadcast_announcement(
     active_status = getattr(active_playing, "status", None) if active_playing else None
     existing_status = getattr(existing_item, "status", None) if existing_item else None
     active_ann_id = getattr(active_playing, "announcement_id", None) if active_playing else None
+
+    # Publishing a notice ends a pause (repeat rounds pass release_hold=False and keep waiting)
+    if release_hold and not is_future_scheduled:
+        release_queue_hold(db, now)
 
     # Audio should play immediately ONLY if queue is idle or this notice is emergency / already playing
     queue_held = (not is_emergency) and is_queue_held(db)
@@ -1082,9 +1087,41 @@ def enqueue_and_broadcast_announcement(
 
 
 HELD_STATUS = "Held"  # user pressed pause: the whole queue holds until resumed (emergencies still play)
+# A forgotten pause must not silence every speaker for the rest of the day.
+HOLD_MAX_MINUTES = int(os.getenv("SPEAKER_HOLD_MAX_MINUTES", "15"))
+
+
+def expire_stale_holds(db: Session, now: Optional[datetime] = None) -> int:
+    """Cancels holds older than HOLD_MAX_MINUTES (updated_at is when the pause was pressed)."""
+    cutoff = (now or utc_now()) - timedelta(minutes=HOLD_MAX_MINUTES)
+    stale = (
+        db.query(SpeakerQueue)
+        .filter(SpeakerQueue.status == HELD_STATUS, SpeakerQueue.updated_at < cutoff)
+        .all()
+    )
+    for item in stale:
+        item.status = "Cancelled"
+        item.failure_reason = f"Hold expired after {HOLD_MAX_MINUTES} min"
+        logger.info(f"Speaker queue item #{item.id} hold expired; the queue continues.")
+    if stale:
+        db.commit()
+    return len(stale)
+
+
+def release_queue_hold(db: Session, now: datetime) -> int:
+    """A newly published notice ends any pause: held notices go back in the queue behind it."""
+    held = db.query(SpeakerQueue).filter(SpeakerQueue.status == HELD_STATUS).all()
+    for item in held:
+        item.status = "Queued"
+        item.played_at = None
+        item.scheduled_time = now
+    if held:
+        db.commit()
+    return len(held)
 
 
 def is_queue_held(db: Session) -> bool:
+    expire_stale_holds(db)
     return db.query(SpeakerQueue.id).filter(SpeakerQueue.status == HELD_STATUS).first() is not None
 
 
