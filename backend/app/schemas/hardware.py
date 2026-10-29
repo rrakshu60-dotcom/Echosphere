@@ -97,7 +97,7 @@ class ReorderQueueRequest(BaseModel):
 class EnqueueAnnouncementRequest(BaseModel):
     announcement_id: int
     scheduled_time: Optional[datetime] = None
-    speaker_node_id: Optional[int] = None
+    speaker_node_id: Optional[int] = None  # None: the speaker it was sent to before; 0: every speaker
     title: Optional[str] = None
     content: Optional[str] = None
     description: Optional[str] = None

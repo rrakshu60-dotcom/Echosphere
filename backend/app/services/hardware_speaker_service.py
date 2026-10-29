@@ -784,12 +784,16 @@ def enqueue_and_broadcast_announcement(
     speaker_voice: Optional[Any] = "female",
     base_url: str = "https://echosphere-backend-9lv8.onrender.com",
     force_requeue: bool = False,
+    keep_previous_node: bool = True,
 ) -> dict:
     """
     Enqueues an announcement into SpeakerQueue and broadcasts to targeted or all active speaker nodes.
     Automatically starts playing if the queue is empty / idle.
     """
-    # 0. Resolve targeted speaker node if provided
+    # 0. Resolve targeted speaker node. A notice sent again without a node keeps the speaker it was sent to.
+    if keep_previous_node and not speaker_node_id and not target_mac:
+        previous = db.query(SpeakerQueue.speaker_node_id).filter(SpeakerQueue.announcement_id == announcement_id).first()
+        speaker_node_id = previous[0] if previous else None
     if speaker_node_id and not target_mac:
         target_node = get_speaker_node_by_id(db, speaker_node_id)
         if not target_node:
@@ -946,8 +950,7 @@ def enqueue_and_broadcast_announcement(
                     "is_playing": False,
                 }
 
-        if speaker_node_id:
-            setattr(existing_item, "speaker_node_id", speaker_node_id)
+        setattr(existing_item, "speaker_node_id", speaker_node_id)
         if should_play:
             setattr(existing_item, "status", "Playing")
             setattr(existing_item, "played_at", now)
@@ -1168,11 +1171,9 @@ def dispatch_queue_action_to_speakers(
     dept_code = "ALL"
     if ann and getattr(ann, 'creator', None) and getattr(ann.creator, 'department', None):
         dept_code = ann.creator.department.code or "ALL"
-    target_aud = str(getattr(ann, 'target_audience', '') or '').lower()
-    is_college_wide = "entire" in target_aud or "all" in target_aud or "college" in target_aud or not queue_item.speaker_node
-    target_mac = None if is_college_wide else (queue_item.speaker_node.mac_address if queue_item.speaker_node else None)
-
-
+    # The speaker chosen for the notice; no speaker means every speaker. (The audience is who should
+    # hear it, not where it plays: "Entire College" used to send a notice meant for one speaker to all.)
+    target_mac = queue_item.speaker_node.mac_address if queue_item.speaker_node else None
 
     action_lower = action.lower()
     ann_id = int(getattr(queue_item, "announcement_id", 0) or 0)

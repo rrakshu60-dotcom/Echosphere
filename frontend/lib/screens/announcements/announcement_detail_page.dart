@@ -866,14 +866,18 @@ class _AnnouncementDetailPageState extends State<AnnouncementDetailPage> {
                               _buildAuditRow(
                                 icon: Icons.groups_outlined,
                                 label: 'Target Audience',
-                                value: 'Entire College & Department',
+                                value: announcement.targetAudience,
                                 theme: theme,
                               ),
                               const SizedBox(height: 10),
                               _buildAuditRow(
                                 icon: Icons.cell_tower_rounded,
                                 label: 'Delivery Channels',
-                                value: 'In-App Feed, Push Notification',
+                                value: [
+                                  if (announcement.deliverInApp) 'In-App Feed',
+                                  if (announcement.deliverPush) 'Push Notification',
+                                  if (announcement.deliverSpeaker) 'Speaker',
+                                ].join(', '),
                                 theme: theme,
                               ),
                               const SizedBox(height: 10),

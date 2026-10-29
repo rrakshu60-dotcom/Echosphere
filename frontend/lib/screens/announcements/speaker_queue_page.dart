@@ -462,7 +462,8 @@ class _SpeakerQueuePageState extends State<SpeakerQueuePage>
                           await _queueCtrl.enqueueNotice(
                             announcementId: selectedAnnouncementId!,
                             audioType: selectedAudioType,
-                            speakerNodeId: selectedSpeakerNodeId,
+                            // 0 asks for every speaker; no node would keep the speaker the notice was sent to
+                            speakerNodeId: selectedSpeakerNodeId ?? 0,
                           );
                         },
                   child: const EchoSphereText(

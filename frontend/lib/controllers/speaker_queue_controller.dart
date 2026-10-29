@@ -454,7 +454,7 @@ class SpeakerQueueController extends GetxController {
   }
 
   String _getNodeName(int? nodeId) {
-    if (nodeId == null) return 'All Nodes (College-Wide)';
+    if (nodeId == null || nodeId == 0) return 'All Nodes (College-Wide)';
     final match = speakerNodes.firstWhereOrNull((n) =>
         n['id'] == nodeId ||
         ((nodeId == 10 || nodeId == 13 || nodeId == 14) && ((n['name'] ?? '').toString().contains('ESP32') || (n['mac_address'] ?? '').toString().contains('2A:CD'))) ||

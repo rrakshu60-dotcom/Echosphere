@@ -922,6 +922,7 @@ def enqueue_speaker_announcement(
         zone="College-Wide",
         is_emergency=is_emerg,
         speaker_node_id=target_node_id,
+        keep_previous_node=enqueue_in.speaker_node_id is None,
         scheduled_time=scheduled_time,
         speaker_voice=getattr(ann, 'speaker_voice', 'female') or 'female',
         base_url=base_url,

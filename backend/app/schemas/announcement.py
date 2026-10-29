@@ -170,6 +170,7 @@ class AnnouncementResponse(BaseModel):
     deliver_speaker: bool = False
     deliver_in_app: bool = True
     deliver_push: bool = True
+    speaker_node_id: Optional[int] = None
     speaker_voice: Optional[str] = "female"
     repeat_schedule: Optional[RepeatScheduleResponse] = None
     attachments: Optional[List[NoticeAttachment]] = None

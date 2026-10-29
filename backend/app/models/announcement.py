@@ -242,6 +242,7 @@ class Announcement(TimestampMixin, Base):
                 name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
                 if "in-app" in name or "feed" in name or "alert" in name or "popup" in name:
                     return True
+            return False
         return True
 
     @property
@@ -251,5 +252,11 @@ class Announcement(TimestampMixin, Base):
                 name = (d.delivery_type.name if d.delivery_type and d.delivery_type.name else "").lower()
                 if "push" in name:
                     return True
+            return False
         return True
+
+    @property
+    def speaker_node_id(self) -> int | None:
+        """The speaker this notice was sent to; None means every speaker."""
+        return self.speaker_queue.speaker_node_id if self.speaker_queue else None
 
