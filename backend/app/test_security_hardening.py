@@ -110,6 +110,8 @@ def test_students_are_not_told_about_unpublished_notices():
     assert _visible_to_role(published, "Student")
     assert _visible_to_role(pending, "Teacher")
     assert _visible_to_role({"event": "QUEUE_SYNC_START"}, "Student")
+    assert not _visible_to_role({"event": "ANNOUNCEMENT_DELETED", "status": "Draft", "title": "x"}, "Student")
+    assert _visible_to_role({"event": "ANNOUNCEMENT_DELETED", "status": "Published", "title": "x"}, "Student")
 
 
 # ---------------------------------------------------------------- sign-in and AI limits

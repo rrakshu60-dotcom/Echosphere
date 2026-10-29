@@ -620,6 +620,7 @@ def delete_announcement_service(
 
     # Store details before deleting
     announcement_title = announcement.title
+    announcement_status = announcement.status.value if hasattr(announcement.status, "value") else str(announcement.status)
     created_by = announcement.created_by
     announcement_id_value = announcement.id
 
@@ -642,6 +643,7 @@ def delete_announcement_service(
             "event": "ANNOUNCEMENT_DELETED",
             "announcement_id": announcement_id_value,
             "title": announcement_title,
+            "status": announcement_status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:

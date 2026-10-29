@@ -17,8 +17,8 @@ def _visible_to_role(message: Dict[str, Any], role: str | None) -> bool:
     event = str(message.get("event", ""))
     if event in _STAFF_ONLY_EVENTS:
         return False
-    if event == "ANNOUNCEMENT_CREATED":
-        return str(message.get("status", "")).strip().lower() == "published"
+    if event in ("ANNOUNCEMENT_CREATED", "ANNOUNCEMENT_DELETED"):
+        return str(message.get("status", "")).strip().lower() in ("published", "archived")
     return True
 
 
