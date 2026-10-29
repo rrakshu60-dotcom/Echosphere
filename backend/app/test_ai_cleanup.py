@@ -42,6 +42,7 @@ def _ask(prompt, headers=STUDENT):
     "/api/v1/ai/expand", "/api/v1/ai/grammar", "/api/v1/ai/copilot/chat", "/api/v1/ai/classify",
     "/api/v1/ai/intent", "/api/v1/announcements/translate", "/api/v1/announcements/1/translate",
     "/api/v1/announcements/ocr-document",
+    "/api/v1/announcements/voice-to-notice",  # voice dictation, removed on the owner's decision (2026-10-29)
 ])
 def test_removed_ai_endpoints_are_gone(path):
     routes = {getattr(r, "path", "").replace("{announcement_id}", "1") for r in app.routes}
@@ -199,28 +200,3 @@ def test_priority_suggestion_does_not_mistake_training_for_rain():
         "title": "Placement training", "content": "Aptitude training for final years on Monday."})
     assert res.status_code == 200, res.text
     assert res.json()["priority"] != "EMERGENCY" and res.json()["category"] != "Emergency", res.json()
-
-
-# ---------------------------------------------------------------- voice dictation (kept, offline path)
-
-def _dictate(transcript):
-    res = client.post("/api/v1/announcements/voice-to-notice", headers=ADMIN, json={"raw_transcript": transcript})
-    assert res.status_code == 200, res.text
-    return res.json()
-
-
-def test_dictated_notice_gets_a_clean_title_and_text():
-    notice = _dictate("um guys tomorrow placement talk at 2pm in auditorium for final years")
-    title, content = notice["title"], notice["content"]
-    for filler in ("Um", "Guys", "guys"):
-        assert filler not in title and f" {filler} " not in content, (title, content)
-    assert "Placement Talk" in title and "2 PM" in title, title
-    assert "Auditorium" in content and "2 PM" in content, content
-    assert notice["suggested_category"] == "Placement"
-    assert notice["suggested_audience"] == "4th Year Students"
-
-
-def test_dictated_drill_is_not_an_emergency_but_a_real_fire_is():
-    assert _dictate("mock fire drill on friday at 11am in the ground")["suggested_category"] != "Emergency"
-    fire = _dictate("fire in block b everyone evacuate now")
-    assert fire["suggested_category"] == "Emergency" and fire["suggested_priority"] == "URGENT", fire

@@ -6,7 +6,6 @@ import 'package:echosphere/services/echosphere_api_service.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_dialog.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_dropdown.dart';
-import 'package:echosphere/widgets/custom_widgets/voice_dictation_sheet.dart';
 import 'package:echosphere/widgets/non_widgets/snackbar.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -324,33 +323,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
     }
   }
 
-  Future<void> _startVoiceDictation() async {
-    final result = await VoiceDictationSheet.show(context);
-    if (result != null && mounted) {
-      setState(() {
-        if (result['title'] != null && result['title'].toString().isNotEmpty) {
-          titleController.text = result['title'].toString();
-        }
-        if (result['content'] != null && result['content'].toString().isNotEmpty) {
-          descController.text = result['content'].toString();
-        }
-        if (result['suggested_category'] != null) {
-          aiDetectedCategory = result['suggested_category'].toString();
-        }
-        if (result['suggested_priority'] != null) {
-          aiDetectedPriority = result['suggested_priority'].toString();
-        }
-        if (result['suggested_audience'] != null) {
-          final aud = result['suggested_audience'].toString();
-          if (audiences.contains(aud)) {
-            selectedAudience = aud;
-          }
-        }
-      });
-      snackBar('Voice note transformed into official institutional circular!', title: 'Voice Notice Dictation');
-    }
-  }
-
   @override
   void dispose() {
     titleController.removeListener(_autoDetectAndValidate);
@@ -525,71 +497,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // AI Fast Intake Studio (Voice Dictation)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.primary.withOpacity(0.12),
-                    theme.colorScheme.primary.withOpacity(0.06),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withOpacity(0.25),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                'AI Fast Intake Studio',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      ElevatedButton.icon(
-                        key: const Key('voice_dictate_button'),
-                        onPressed: _startVoiceDictation,
-                        icon: const Icon(Icons.mic_rounded, size: 14),
-                        label: const Text('Voice Dictate', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,

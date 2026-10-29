@@ -53,7 +53,6 @@ def test_students_cannot_control_speakers_or_run_diagnostics():
     assert client.post("/api/v1/hardware/speakers/1/control", headers=STUDENT, json={"command": "PAUSE"}).status_code == 403
     assert client.get("/api/v1/diagnostic/tts", headers=STUDENT).status_code == 403
     assert client.get("/api/v1/diagnostic/tts", headers=HOD).status_code == 403
-    assert client.post("/api/v1/announcements/voice-to-notice", headers=STUDENT, json={"raw_transcript": "x"}).status_code == 403
 
 
 def test_student_only_sees_published_notices_whatever_status_is_asked_for():

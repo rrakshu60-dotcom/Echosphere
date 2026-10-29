@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/calendar_sync_service.dart';
 import 'package:echosphere/services/session_manager.dart';
@@ -1558,93 +1557,6 @@ class EchosphereApiService {
   }
 
 
-
-  /// Converts spoken voice dictation or audio memos into a structured campus circular.
-  Future<Map<String, dynamic>> voiceToNotice({
-    List<int>? audioBytes,
-    String? audioFormat,
-    String? rawTranscript,
-  }) async {
-    final transcript = rawTranscript ?? '';
-    try {
-      final response = await _dio.post(
-        '/announcements/voice-to-notice',
-        data: {
-          if (audioBytes != null) 'audio_base64': base64Encode(audioBytes),
-          'audio_format': audioFormat ?? 'm4a',
-          if (transcript.isNotEmpty) 'raw_transcript': transcript,
-        },
-      );
-      if (response.statusCode == 200 && response.data != null) {
-        return Map<String, dynamic>.from(response.data);
-      }
-    } catch (e) {
-      debugPrint('Voice intake API error: $e, using local fallback structurer');
-    }
-    return _voiceToNoticeFallback(transcript.isNotEmpty ? transcript : 'Spoken announcement regarding campus updates.');
-  }
-
-  Map<String, dynamic> _voiceToNoticeFallback(String transcript) {
-    final lower = transcript.toLowerCase();
-    String category = 'Academic';
-    if (RegExp(r'\b(emergency|fire|drill|evacuate|danger)\b').hasMatch(lower)) {
-      category = 'Emergency';
-    } else if (RegExp(r'\b(exam|examination|test|ia|midterm|hall ticket|reval)\b').hasMatch(lower)) {
-      category = 'Examination';
-    } else if (RegExp(r'\b(placement|interview|drive|package|internship)\b').hasMatch(lower)) {
-      category = 'Placement';
-    } else if (RegExp(r'\b(sport|sports|cricket|football|tournament)\b').hasMatch(lower)) {
-      category = 'Sports';
-    } else if (RegExp(r'\b(workshop|hackathon|seminar|event|fest)\b').hasMatch(lower)) {
-      category = 'Event';
-    }
-
-    String priority = 'NORMAL';
-    if (RegExp(r'\b(emergency|evacuate|immediate|urgent)\b').hasMatch(lower)) {
-      priority = 'URGENT';
-    } else if (RegExp(r'\b(postpone|reschedule|mandatory|deadline|fee)\b').hasMatch(lower)) {
-      priority = 'HIGH';
-    }
-
-    String audience = 'Entire College';
-    if (lower.contains('aiml')) {
-      audience = 'AIML Department';
-    } else if (lower.contains('cse')) {
-      audience = 'CSE Department';
-    } else if (lower.contains('ece')) {
-      audience = 'ECE Department';
-    } else if (lower.contains('1st year') || lower.contains('first year')) {
-      audience = '1st Year Students';
-    } else if (lower.contains('3rd year') || lower.contains('third year') || lower.contains('5th sem')) {
-      audience = '3rd Year Students';
-    } else if (lower.contains('faculty') || lower.contains('teachers')) {
-      audience = 'Faculty Members';
-    }
-
-    final venueMatch = RegExp(r'\b(room\s*\d+|auditorium|seminar hall|turing lab|lab\s*\d*)\b', caseSensitive: false).firstMatch(lower);
-    final venue = venueMatch != null ? venueMatch.group(0)! : 'Campus Premises';
-
-    final cleanText = transcript.replaceAll(RegExp(r'^(um|uh|please note that|hey guys|listen|attention)\s*', caseSensitive: false), '').trim();
-    final words = cleanText.split(RegExp(r'\s+'));
-    final shortSubject = words.take(6).join(' ');
-    final title = '$category: $shortSubject Notice';
-
-    final content = 'This is an official circular regarding ${cleanText.endsWith('.') ? cleanText.substring(0, cleanText.length - 1) : cleanText}.\n\n'
-        'Key Details:\n'
-        '- Location / Venue: $venue\n'
-        '- Instructions: All concerned students are advised to report on time and carry requisite ID cards.\n\n'
-        'Issued by Academic Administration.';
-
-    return {
-      'title': title,
-      'content': content,
-      'suggested_category': category,
-      'suggested_priority': priority,
-      'suggested_audience': audience,
-      'transcription': transcript,
-      'extracted_event': venue != 'Campus Premises' ? {'title': title, 'location': venue} : null,
-    };
-  }
 
   // --- Repeat Schedule Endpoints ---
   Future<Map<String, dynamic>?> getRepeatSchedule(int announcementId) async {

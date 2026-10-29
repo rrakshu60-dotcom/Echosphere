@@ -30,8 +30,6 @@ from app.schemas.ai_schema import (
     RelevanceScoreResponse,
     ScheduleConflictCheckRequest,
     ScheduleConflictCheckResponse,
-    VoiceNoticeRequest,
-    VoiceNoticeResponse,
 )
 from app.services.announcement_service import (
     approve_announcement_service,
@@ -1032,27 +1030,6 @@ def calculate_relevance_scores_endpoint(
     )
 
     return {"scores": results}
-
-
-@router.post("/voice-to-notice", response_model=VoiceNoticeResponse)
-def voice_to_notice_endpoint(
-    request: VoiceNoticeRequest,
-    current_user: User = Depends(require_roles(*STAFF_ROLES)),
-):
-    """
-    Smart Voice Notice Dictation (Speech-to-Circular AI).
-    Transcribes spoken voice memos or converts raw conversational dictation into a structured institutional circular.
-    """
-    from app.core.throttle import check_ai_quota
-    from app.services.smart_intake_service import SmartIntakeService
-
-    check_ai_quota(int(current_user.id), heavy=True)
-
-    return SmartIntakeService.voice_to_notice(
-        audio_base64=request.audio_base64,
-        audio_format=request.audio_format or "m4a",
-        raw_transcript=request.raw_transcript,
-    )
 
 
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024

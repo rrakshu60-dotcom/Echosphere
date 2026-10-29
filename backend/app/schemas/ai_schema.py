@@ -195,19 +195,3 @@ class RelevanceScoreItem(BaseModel):
 
 class RelevanceScoreResponse(BaseModel):
     scores: List[RelevanceScoreItem]
-
-
-class VoiceNoticeRequest(BaseModel):
-    audio_base64: Optional[str] = None
-    audio_format: Optional[str] = "m4a"
-    raw_transcript: Optional[str] = None
-
-
-class VoiceNoticeResponse(BaseModel):
-    title: str
-    content: str
-    suggested_category: str = "Academic"
-    suggested_priority: str = "NORMAL"
-    suggested_audience: str = "Entire College"
-    extracted_event: Optional[Dict[str, Any]] = None
-    transcription: str
