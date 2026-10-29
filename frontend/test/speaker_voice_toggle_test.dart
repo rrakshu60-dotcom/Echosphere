@@ -79,7 +79,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AnnouncementDetailPage Modify dialog allows toggling Speaker Notice and Male/Female voice on 320px screen', (WidgetTester tester) async {
+  testWidgets('AnnouncementDetailPage Modify dialog allows toggling Speaker Notice and offers only the female voice on 320px screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -136,20 +136,10 @@ void main() {
     await tester.tap(speakerNoticeChip);
     await tester.pumpAndSettle();
 
-    // Now voice selection chips should appear
-    final femaleChipFinder = find.text('Female Voice');
-    final maleChipFinder = find.text('Male Voice');
-    expect(femaleChipFinder, findsOneWidget);
-    expect(maleChipFinder, findsOneWidget);
-
-    // Scroll to and toggle to Male Voice
-    await tester.ensureVisible(maleChipFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(maleChipFinder);
-    await tester.pumpAndSettle();
-
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
-    expect(maleChip.selected, isTrue);
+    // Only the female voice is offered, and it is selected
+    expect(find.text('Male Voice'), findsNothing);
+    final femaleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Female Voice'));
+    expect(femaleChip.selected, isTrue);
 
     // Confirm update
     await tester.tap(find.text('Confirm'));
@@ -158,7 +148,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AnnouncementManagementPage Modify dialog includes Speaker Notice & Male/Female voice toggle on 320px screen', (WidgetTester tester) async {
+  testWidgets('AnnouncementManagementPage Modify dialog includes Speaker Notice and only the female voice on 320px screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -184,7 +174,7 @@ void main() {
       category: 'Events',
       createdAt: DateTime.now(),
       deliverSpeaker: true,
-      speakerVoice: 'female',
+      speakerVoice: 'male', // an older male-voice notice opens with the female voice,
     );
     annController.setAnnouncements([sampleNotice]);
 
@@ -200,20 +190,10 @@ void main() {
     // Check dialog opens
     expect(find.text('Modify Announcement'), findsOneWidget);
 
-    // Since deliverSpeaker is already true, voice chips should be visible immediately
-    final femaleChipFinder = find.text('Female Voice');
-    final maleChipFinder = find.text('Male Voice');
-    expect(femaleChipFinder, findsOneWidget);
-    expect(maleChipFinder, findsOneWidget);
-
-    // Scroll to and toggle to Male Voice
-    await tester.ensureVisible(maleChipFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(maleChipFinder);
-    await tester.pumpAndSettle();
-
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
-    expect(maleChip.selected, isTrue);
+    // Since deliverSpeaker is already true, the voice is shown immediately: only the female voice, selected
+    expect(find.text('Male Voice'), findsNothing);
+    final femaleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Female Voice'));
+    expect(femaleChip.selected, isTrue);
 
     // Tap confirm
     await tester.tap(find.text('Confirm'));

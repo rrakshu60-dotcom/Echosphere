@@ -39,7 +39,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool deliverInApp = true;
   bool deliverPush = true;
   bool deliverSpeaker = false;
-  // Notices created here always use the female voice; a notice's voice can still be changed under Modify
+  // Speaker notices only use the female voice
   String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];

@@ -342,7 +342,8 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
     String catVal = item.category;
     String prioVal = item.priority;
     bool deliverSpeakerVal = item.deliverSpeaker;
-    String speakerVoiceVal = item.speakerVoice;
+    // Speaker notices only use the female voice; saving moves an older male-voice notice to it
+    String speakerVoiceVal = 'female';
 
     showDialog(
       context: context,
@@ -504,14 +505,6 @@ class _AnnouncementManagementPageState extends State<AnnouncementManagementPage>
                             selected: speakerVoiceVal == 'female',
                             onSelected: (val) {
                               if (val) setDlgState(() => speakerVoiceVal = 'female');
-                            },
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.male_rounded, size: 14),
-                            label: const Text('Male Voice', style: TextStyle(fontSize: 11)),
-                            selected: speakerVoiceVal == 'male',
-                            onSelected: (val) {
-                              if (val) setDlgState(() => speakerVoiceVal = 'male');
                             },
                           ),
                         ],
