@@ -35,7 +35,7 @@ void main() {
     Get.reset();
   });
 
-  testWidgets('CreateAnnouncementDialog displays Male/Female voice toggle when Speaker Announcement is selected on 320px screen', (WidgetTester tester) async {
+  testWidgets('CreateAnnouncementDialog offers only the female voice when Speaker Announcement is selected on 320px screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -70,26 +70,8 @@ void main() {
     await tester.tap(speakerChipFinder);
     await tester.pumpAndSettle();
 
-    // Voice options should now be visible
-    expect(find.text('Female Voice'), findsOneWidget);
-    expect(find.text('Male Voice'), findsOneWidget);
-
-    // Tap 'Male Voice'
-    await tester.ensureVisible(find.text('Male Voice'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Male Voice'));
-    await tester.pumpAndSettle();
-
-    // Verify Male chip is selected
-    final maleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Male Voice'));
-    expect(maleChip.selected, isTrue);
-
-    // Tap back to 'Female Voice'
-    await tester.ensureVisible(find.text('Female Voice'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Female Voice'));
-    await tester.pumpAndSettle();
-
+    // Only the female voice is offered, and it is selected
+    expect(find.text('Male Voice'), findsNothing);
     final femaleChip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Female Voice'));
     expect(femaleChip.selected, isTrue);
 

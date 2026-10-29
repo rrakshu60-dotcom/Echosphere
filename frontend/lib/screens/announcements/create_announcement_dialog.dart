@@ -39,6 +39,7 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
   bool deliverInApp = true;
   bool deliverPush = true;
   bool deliverSpeaker = false;
+  // Notices created here always use the female voice; a notice's voice can still be changed under Modify
   String speakerVoice = 'female';
   int? selectedSpeakerNodeId;
   List<Map<String, dynamic>> availableSpeakerNodes = [];
@@ -838,14 +839,6 @@ class _CreateAnnouncementDialogState extends State<CreateAnnouncementDialog> {
                           selected: speakerVoice == 'female',
                           onSelected: (val) {
                             if (val) setState(() => speakerVoice = 'female');
-                          },
-                        ),
-                        ChoiceChip(
-                          avatar: const Icon(Icons.male_rounded, size: 14),
-                          label: const Text('Male Voice', style: TextStyle(fontSize: 11)),
-                          selected: speakerVoice == 'male',
-                          onSelected: (val) {
-                            if (val) setState(() => speakerVoice = 'male');
                           },
                         ),
                       ],
