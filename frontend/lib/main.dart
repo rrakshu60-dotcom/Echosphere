@@ -310,7 +310,7 @@ class _MainAppState extends State<MainApp> {
           GetPage(name: '/login', page: () => const LoginScreen()),
           GetPage(name: '/speaker-queue', page: () => const SpeakerQueuePage(), middlewares: [AuthGuard()]),
           GetPage(name: '/approval-queue', page: () => const ApprovalQueuePage(), middlewares: [AuthGuard()]),
-          GetPage(name: '/user-management', page: () => const UserManagementPage(), middlewares: [AuthGuard()]),
+          GetPage(name: '/user-management', page: () => const UserManagementPage(), middlewares: [AuthGuard(), StaffGuard()]),
           GetPage(
             name: '/audit-logs',
             page: () => AuditLogsPage(
@@ -380,5 +380,14 @@ class AuthGuard extends GetMiddleware {
   RouteSettings? redirect(String? route) {
     final loggedIn = Get.isRegistered<AuthController>() && Get.find<AuthController>().isLoggedIn.value;
     return loggedIn ? null : const RouteSettings(name: '/');
+  }
+}
+
+/// Staff-only pages: students are sent home without being told the page exists.
+class StaffGuard extends GetMiddleware {
+  @override
+  RouteSettings? redirect(String? route) {
+    final auth = Get.isRegistered<AuthController>() ? Get.find<AuthController>() : null;
+    return auth != null && auth.isStaffOrFaculty ? null : const RouteSettings(name: '/home');
   }
 }

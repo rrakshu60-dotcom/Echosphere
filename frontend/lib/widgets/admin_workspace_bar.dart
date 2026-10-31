@@ -20,12 +20,13 @@ class AdminWorkspaceBar extends StatelessWidget {
         icon: Icons.auto_fix_high_rounded,
         onTap: () => Get.toNamed('/announcement-management'),
       ),
-      _WorkspaceActionTile(
-        title: 'User Hub',
-        subtitle: 'Directory & roles',
-        icon: Icons.manage_accounts_rounded,
-        onTap: () => Get.toNamed('/user-management'),
-      ),
+      if (role.trim().toLowerCase() != 'student')
+        _WorkspaceActionTile(
+          title: 'User Hub',
+          subtitle: 'Directory & roles',
+          icon: Icons.manage_accounts_rounded,
+          onTap: () => Get.toNamed('/user-management'),
+        ),
       _WorkspaceActionTile(
         title: 'Smart Speakers',
         subtitle: 'Hardware PA & nodes',

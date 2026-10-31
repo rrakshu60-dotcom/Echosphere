@@ -279,7 +279,7 @@ class _HomePageState extends State<HomePage> {
 
       final user = authController.currentUser.value;
       final role = user?.role ?? 'Student';
-      final isStaffOrAdmin = role != 'Student';
+      final isStaffOrAdmin = authController.isStaffOrFaculty;
 
       return RefreshIndicator(
         onRefresh: () async {

@@ -1,7 +1,6 @@
 import 'package:echosphere/constants/themes.dart';
 import 'package:echosphere/controllers/auth_controller.dart';
 import 'package:echosphere/services/echosphere_api_service.dart';
-import 'package:echosphere/widgets/custom_widgets/custom_text.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_button.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_chip.dart';
 import 'package:echosphere/widgets/custom_widgets/echosphere_container.dart';
@@ -387,78 +386,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final isStudent = authController.isStudent;
 
     if (isStudent || user == null) {
-      final canPop = ModalRoute.of(context)?.canPop ?? false;
-      return SubPagePopScope(
-        fallbackRoute: '/home',
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: canPop ? const EchoSphereBackButton(fallbackRoute: '/home') : null,
-            title: const EchoSphereText(
-              text: 'Access Restricted',
-              size: 16,
-              variant: TextVariant.bold,
-            ),
-          ),
-          body: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: EchoSphereContainer(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.gpp_bad_rounded,
-                        size: 48,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const EchoSphereText(
-                      text: 'User Directory & Account Management',
-                      size: 16,
-                      variant: TextVariant.bold,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "I don't have the authority to display the administrative user directory and role management console. Please consult your college administrator.",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    EchoSphereButton(
-                      onTap: () {
-                        if (canPop) {
-                          Navigator.of(context).pop();
-                        } else {
-                          Get.offAllNamed('/home');
-                        }
-                      },
-                      child: const EchoSphereText(
-                        text: 'Return to Dashboard',
-                        size: 12,
-                        variant: TextVariant.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
+      // Students are never shown that this page exists; send them home.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Get.offAllNamed('/home');
+      });
+      return const Scaffold(body: SizedBox.shrink());
     }
 
     final canCreate = _assignableRoles.isNotEmpty;
