@@ -229,16 +229,17 @@ def test_hod_deletes_only_notices_from_their_own_department():
     assert client.delete(f"/api/v1/announcements/{foreign}", headers=bearer("principal")).status_code == 200
 
 
-def test_hod_and_teacher_list_only_their_own_department():
+def test_hod_and_teacher_see_every_department_but_change_only_their_own():
+    """Owner decision 2026-10-31: the directory is visible to all staff; changes stay department-limited."""
     _other_department_teacher()
+    with SessionLocal() as db:
+        cse = db.query(Department).filter(Department.code == "CSE").one().id
+        other_id = db.query(User).filter(User.username == "cse_teacher_sec").one().id
     for headers in (HOD, TEACHER):
         res = client.get("/api/v1/users/", headers=headers)
         assert res.status_code == 200, res.text
-        names = {u["full_name"] for u in res.json()}
-        assert "CSE Teacher" not in names
-        with SessionLocal() as db:
-            cse = db.query(Department).filter(Department.code == "CSE").one().id
-            other_id = db.query(User).filter(User.username == "cse_teacher_sec").one().id
-        assert client.get(f"/api/v1/users/?department_id={cse}", headers=headers).json() == []
-        assert client.get(f"/api/v1/users/{other_id}", headers=headers).status_code == 404
-    assert "CSE Teacher" in {u["full_name"] for u in client.get("/api/v1/users/", headers=DEV).json()}
+        assert "CSE Teacher" in {u["full_name"] for u in res.json()}
+        assert other_id in {u["id"] for u in client.get(f"/api/v1/users/?department_id={cse}", headers=headers).json()}
+        assert client.get(f"/api/v1/users/{other_id}", headers=headers).status_code == 200
+        assert client.put(f"/api/v1/users/{other_id}", json={"is_active": False}, headers=headers).status_code == 403
+        assert client.delete(f"/api/v1/users/{other_id}", headers=headers).status_code == 403

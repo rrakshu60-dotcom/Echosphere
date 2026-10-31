@@ -56,13 +56,45 @@ class _UserManagementPageState extends State<UserManagementPage> {
     return result;
   }
 
-  /// Roles this user may give: those below their own level (Dev Admin may give any). The server enforces the same rule.
+  // Who may create, change or delete which accounts; the server enforces the same rules.
+  // Every staff role can view the whole directory. HoDs and Teachers only change their own department.
+  static const Map<String, List<String>> _manageableByRole = {
+    'College Admin': ['Student', 'Teacher', 'HoD'],
+    'Admin': ['Student', 'Teacher', 'HoD'],
+    'Principal': ['Student', 'Teacher', 'HoD'],
+    'HoD': ['Student', 'Teacher'],
+    'Teacher': ['Student'],
+  };
+  static const Set<String> _departmentScopedRoles = {'HoD', 'Teacher'};
+
+  String get _myRole => authController.currentUser.value?.role ?? 'Student';
+
+  bool get _isDepartmentScoped => _departmentScopedRoles.contains(_myRole);
+
+  /// Roles this user may create, give or manage.
   List<String> get _assignableRoles {
-    final myLevel = AuthController.getRoleLevel(authController.currentUser.value?.role ?? 'Student');
-    final isDevAdmin = myLevel >= AuthController.getRoleLevel('Dev Admin');
-    return AuthController.availableRoles
-        .where((r) => isDevAdmin || AuthController.getRoleLevel(r) < myLevel)
-        .toList();
+    if (AuthController.getRoleLevel(_myRole) >= AuthController.getRoleLevel('Dev Admin')) {
+      return AuthController.availableRoles;
+    }
+    final allowed = _manageableByRole[_myRole] ?? const <String>[];
+    if (_isDepartmentScoped && authController.currentUser.value?.departmentId == null) return const [];
+    return AuthController.availableRoles.where(allowed.contains).toList();
+  }
+
+  /// Whether this user may change or delete the given account (never their own).
+  bool _canManageUser(Map<String, dynamic> u) {
+    final me = authController.currentUser.value;
+    if (me == null || u['id'] == me.id) return false;
+    if (!_assignableRoles.contains((u['role'] ?? 'Student').toString())) return false;
+    return !_isDepartmentScoped || u['department_id'] == me.departmentId;
+  }
+
+  String _apiError(Object e) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map && data['detail'] != null) return data['detail'].toString();
+    }
+    return e.toString().replaceFirst('Exception: ', '');
   }
 
   @override
@@ -131,8 +163,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
     final idCtrl = TextEditingController();
     final sectionCtrl = TextEditingController(text: 'A');
     final passwordCtrl = TextEditingController(text: 'EchoSphere@123');
-    String roleVal = 'Student';
-    String deptVal = 'CSE';
+    final roles = _assignableRoles;
+    if (roles.isEmpty) return;
+    String roleVal = roles.contains('Student') ? 'Student' : roles.first;
+    final ownDept = authController.currentUser.value?.department;
+    String deptVal = _isDepartmentScoped ? (ownDept ?? 'CSE') : 'CSE';
     int semesterVal = 5;
 
     showDialog(
@@ -151,7 +186,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   label: 'Role',
                   icon: Icons.badge,
                   selectedItem: DropdownItem(value: roleVal, text: roleVal),
-                  items: _assignableRoles
+                  items: roles
                       .map((r) => DropdownItem(value: r, text: r))
                       .toList(),
                   onChanged: (item) => setDlgState(() => roleVal = item.value),
@@ -180,9 +215,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
                   decoration: InputDecoration(
                     hintText: roleVal == 'Student' ? 'e.g. 1DB23IS045 or 1DB23EC088' : 'e.g. teacher@echosphere.edu',
                     border: const OutlineInputBorder(),
-                    helperText: roleVal == 'Student' && idCtrl.text.isNotEmpty
-                        ? 'Auto-Detected Department: ${detectDepartmentFromUsn(idCtrl.text)}'
-                        : null,
+                    helperText: _isDepartmentScoped
+                        ? 'Department: ${ownDept ?? "your department"} (you can only add accounts to your own department)'
+                        : roleVal == 'Student' && idCtrl.text.isNotEmpty
+                            ? 'Auto-Detected Department: ${detectDepartmentFromUsn(idCtrl.text)}'
+                            : null,
                     helperStyle: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -257,7 +294,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
 
             final email = idText.contains('@') ? idText : '$idText@echosphere.edu';
             final pass = pwdText.isNotEmpty ? pwdText : 'EchoSphere@2026';
-            final assignedDept = roleVal == 'Student' ? detectDepartmentFromUsn(idText) : deptVal;
+            final assignedDept = roleVal == 'Student' && !_isDepartmentScoped ? detectDepartmentFromUsn(idText) : deptVal;
             final chosenSection = sectionText.isNotEmpty ? sectionText : 'A';
 
             try {
@@ -275,22 +312,10 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 users.add(created);
               });
               snackBar('Account created successfully for $name ($roleVal - $assignedDept, Sec $chosenSection)!');
+              _fetchUsers();
             } catch (e) {
-              debugPrint('Offline fallback user creation: $e');
-              setState(() {
-                users.add({
-                  'id': users.length + 100,
-                  'full_name': name,
-                  'role': roleVal,
-                  'official_email': email,
-                  if (roleVal == 'Student') 'usn': idText else 'employee_id': idText,
-                  'department': assignedDept,
-                  if (roleVal == 'Student') 'section': chosenSection,
-                  if (roleVal == 'Student') 'semester': semesterVal,
-                  'is_active': true,
-                });
-              });
-              snackBar('Account created locally for $name ($roleVal - $assignedDept, Sec $chosenSection)!');
+              debugPrint('Create user error: $e');
+              errorSnackBar('Could not create the account: ${_apiError(e)}');
             }
           },
         ),
@@ -346,7 +371,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                 });
                 snackBar('User role updated to $currentRole.');
               } catch (e) {
-                errorSnackBar('Failed to update role: $e');
+                errorSnackBar('Failed to update role: ${_apiError(e)}');
               }
             }
           },
@@ -436,7 +461,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
       );
     }
 
-    final canManage = user.role != 'Student';
+    final canCreate = _assignableRoles.isNotEmpty;
     final isAdminRole = (user.role == 'Dev Admin' || user.role == 'Developer' || user.role == 'College Admin' || user.role == 'Principal' || user.role == 'HoD');
 
     return SubPagePopScope(
@@ -490,7 +515,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         tooltip: 'Refresh directory',
                         onPressed: isLoading ? null : _fetchUsers,
                       ),
-                      if (canManage) ...[
+                      if (canCreate) ...[
                         const SizedBox(width: 6),
                         EchoSphereButton(
                           height: 34,
@@ -757,6 +782,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
                             itemCount: filteredUsers.length,
                             itemBuilder: (ctx, i) {
                               final u = filteredUsers[i];
+                              final canManage = _canManageUser(u);
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8.0),
@@ -765,17 +791,18 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                   canManage: canManage,
                                   onRoleTap: () => _showRoleChangeDialog(u),
                                   onActiveChanged: (val) async {
-                                    setState(() {
-                                      u['is_active'] = val;
-                                    });
                                     try {
                                       await EchosphereApiService().updateUserRole(u['id'] as int, isActive: val);
+                                      setState(() {
+                                        u['is_active'] = val;
+                                      });
+                                      snackBar(
+                                        'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
+                                      );
                                     } catch (e) {
                                       debugPrint('Update user active status: $e');
+                                      errorSnackBar('Could not update the account: ${_apiError(e)}');
                                     }
-                                    snackBar(
-                                      'User ${u['full_name']} ${val ? "Activated" : "Disabled"}.',
-                                    );
                                   },
                                   onDelete: () {
                                     showDialog(
@@ -786,12 +813,13 @@ class _UserManagementPageState extends State<UserManagementPage> {
                                         message: 'Are you sure you want to delete user account for ${u['full_name']}? This action cannot be undone.',
                                         onConfirm: () async {
                                           final userId = u['id'];
-                                          if (userId != null && userId is int) {
-                                            try {
-                                              await EchosphereApiService().deleteUser(userId);
-                                            } catch (e) {
-                                              debugPrint('Delete user error: $e');
-                                            }
+                                          if (userId is! int) return;
+                                          try {
+                                            await EchosphereApiService().deleteUser(userId);
+                                          } catch (e) {
+                                            debugPrint('Delete user error: $e');
+                                            errorSnackBar('Could not delete the account: ${_apiError(e)}');
+                                            return;
                                           }
                                           setState(() {
                                             users.removeWhere((item) => item['id'] == u['id']);

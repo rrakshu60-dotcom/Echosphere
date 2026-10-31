@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.core.dependencies import require_roles
-from app.core.roles import is_dev_admin, role_level, role_name
+from app.core.roles import ROLE_LEVELS, STAFF_ROLES, is_dev_admin, role_name
 from app.models.role import Role
 from app.models.user import User
 from app.schemas.user_management import UserCreate, UserResponse, UserUpdateRole
@@ -12,41 +12,66 @@ from app.services.user_management_service import UserManagementService
 router = APIRouter(prefix="/users", tags=["User Management Module"])
 
 
-def _check_can_assign_role(current_user: User, new_role: str) -> None:
-    """A role can only be given if it is below the caller's own (Dev Admin may give any)."""
+# Who may create, change or delete which accounts. Viewing the directory is open to every staff role;
+# these rules only apply to changes. HoDs and Teachers are further limited to their own department.
+_MANAGEABLE_ROLES = {
+    "College Admin": {"HoD", "Teacher", "Student"},
+    "Admin": {"HoD", "Teacher", "Student"},
+    "Principal": {"HoD", "Teacher", "Student"},
+    "HoD": {"Teacher", "Student"},
+    "Teacher": {"Student"},
+}
+_DEPARTMENT_SCOPED_ROLES = {"HoD", "Teacher"}
+
+
+def _manageable_roles(current_user: User) -> set:
     if is_dev_admin(current_user):
-        return
-    if role_level(new_role) >= role_level(role_name(current_user)):
+        return set(ROLE_LEVELS)
+    return _MANAGEABLE_ROLES.get(role_name(current_user), set())
+
+
+def _own_department(current_user: User) -> Optional[int]:
+    """The department a HoD or Teacher is limited to (None: not department-limited)."""
+    if role_name(current_user) not in _DEPARTMENT_SCOPED_ROLES:
+        return None
+    if not current_user.department_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You can only assign roles below your own; {new_role} is not allowed.",
+            detail="Your account has no department, so you cannot manage accounts. Ask an administrator to set it.",
+        )
+    return current_user.department_id
+
+
+def _check_can_assign_role(current_user: User, new_role: str) -> None:
+    if new_role not in _manageable_roles(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You are not allowed to give the {new_role} role.",
+        )
+
+
+def _check_department(current_user: User, department_id: Optional[int]) -> None:
+    own = _own_department(current_user)
+    if own is not None and department_id != own:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage accounts in your own department.",
         )
 
 
 def _check_can_manage(current_user: User, target: User) -> None:
-    """Accounts can only be changed or removed by someone of a higher role, never by their owner."""
+    """Accounts can only be changed or removed by a role allowed to manage them, never by their owner."""
     if target.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You cannot change the role or status of your own account, or delete it.",
         )
-    if is_dev_admin(current_user):
-        return
-    if role_level(role_name(target)) >= role_level(role_name(current_user)):
+    if role_name(target) not in _manageable_roles(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You can only manage accounts below your own role; this account is {role_name(target)}.",
+            detail=f"You are not allowed to manage {role_name(target)} accounts.",
         )
-
-
-_DEPARTMENT_SCOPED_ROLES = {"HoD", "Teacher"}
-
-
-def _department_scope(current_user: User) -> Optional[int]:
-    """HoDs and Teachers see only accounts in their own department (-1: no department, so no one)."""
-    if role_name(current_user) not in _DEPARTMENT_SCOPED_ROLES:
-        return None
-    return current_user.department_id or -1
+    _check_department(current_user, target.department_id)
 
 
 @router.get("/", response_model=List[UserResponse])
@@ -56,14 +81,9 @@ def list_users(
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 250,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
     db: Session = Depends(get_db),
 ):
-    scope = _department_scope(current_user)
-    if scope is not None:
-        if department_id is not None and department_id != scope:
-            return []
-        department_id = scope
     users = UserManagementService.list_users(
         db=db,
         department_id=department_id,
@@ -95,10 +115,16 @@ def list_users(
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     req: UserCreate,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
     db: Session = Depends(get_db),
 ):
     _check_can_assign_role(current_user, req.role_name or "Student")
+    department_id = req.department_id
+    own = _own_department(current_user)
+    if own is not None:
+        if department_id is None:
+            department_id = own
+        _check_department(current_user, department_id)
     user = UserManagementService.create_user(
         db=db,
         full_name=req.full_name,
@@ -106,7 +132,7 @@ def create_user(
         password=req.password,
         role_name=req.role_name or "Student",
         username=req.username,
-        department_id=req.department_id,
+        department_id=department_id,
         usn=req.usn,
         employee_id=req.employee_id,
         semester=req.semester,
@@ -126,12 +152,11 @@ def create_user(
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_detail(
     user_id: int,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal", "HoD", "Teacher")),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
     db: Session = Depends(get_db),
 ):
     user = UserManagementService.get_user_by_id(db=db, user_id=user_id)
-    scope = _department_scope(current_user)
-    if not user or (scope is not None and user.id != current_user.id and user.department_id != scope):
+    if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return UserResponse(
         id=user.id,
@@ -148,7 +173,7 @@ def get_user_detail(
 def update_user_role(
     user_id: int,
     req: UserUpdateRole,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
     db: Session = Depends(get_db),
 ):
     target = UserManagementService.get_user_by_id(db=db, user_id=user_id)
@@ -162,6 +187,8 @@ def update_user_role(
         if not new_role:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role.")
         _check_can_assign_role(current_user, new_role.name)
+    if req.department_id is not None:
+        _check_department(current_user, req.department_id)
     updated = UserManagementService.update_user(
         db=db,
         user_id=user_id,
@@ -186,7 +213,7 @@ def update_user_role(
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user(
     user_id: int,
-    current_user: User = Depends(require_roles("Dev Admin", "Developer", "College Admin", "Principal")),
+    current_user: User = Depends(require_roles(*STAFF_ROLES)),
     db: Session = Depends(get_db),
 ):
     target = UserManagementService.get_user_by_id(db=db, user_id=user_id)
