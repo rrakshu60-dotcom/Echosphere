@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
@@ -29,11 +29,26 @@ class AuditLog(TimestampMixin, Base):
     # User Reference
     # -------------------------
 
+    # Plain id, no foreign key: audit history outlives the account.
     user_id = Column(
         Integer,
-        ForeignKey("users.id"),
         nullable=False,
+        index=True,
     )
+
+    # -------------------------
+    # Who it was, copied when the entry is written
+    # -------------------------
+
+    user_name = Column(String(150), nullable=True)
+    user_username = Column(String(50), nullable=True)
+    user_email = Column(String(150), nullable=True)
+    user_role = Column(String(50), nullable=True)
+    user_department = Column(String(100), nullable=True)
+    user_employee_id = Column(String(30), nullable=True)
+    user_usn = Column(String(30), nullable=True)
+    user_semester = Column(Integer, nullable=True)
+    user_section = Column(String(10), nullable=True)
 
     # -------------------------
     # Audit Information
@@ -65,5 +80,19 @@ class AuditLog(TimestampMixin, Base):
 
     user = relationship(
         "User",
+        primaryjoin="foreign(AuditLog.user_id) == User.id",
         back_populates="audit_logs",
+        viewonly=True,
     )
+
+    def copy_user_details(self, user) -> None:
+        """Store who the user is, so the entry still reads right after the account is gone."""
+        self.user_name = user.full_name
+        self.user_username = user.username
+        self.user_email = user.official_email
+        self.user_role = user.role.name if user.role else None
+        self.user_department = user.department.name if user.department else None
+        self.user_employee_id = user.employee_id
+        self.user_usn = user.usn
+        self.user_semester = user.semester
+        self.user_section = user.section

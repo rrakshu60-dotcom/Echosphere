@@ -33,9 +33,9 @@ class AnnouncementApproval(Base):
         nullable=False,
     )
 
+    # Plain id, no foreign key: it outlives the approver's account.
     approver_id = Column(
         Integer,
-        ForeignKey("users.id"),
         nullable=False,
     )
 
@@ -75,5 +75,7 @@ class AnnouncementApproval(Base):
 
     approver = relationship(
         "User",
+        primaryjoin="foreign(AnnouncementApproval.approver_id) == User.id",
         back_populates="approvals",
+        viewonly=True,
     )

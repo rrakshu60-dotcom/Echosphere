@@ -56,9 +56,9 @@ class AnnouncementArchive(TimestampMixin, Base):
         nullable=False,
     )
 
+    # Plain id, no foreign key: it outlives the author's account.
     created_by = Column(
         Integer,
-        ForeignKey("users.id"),
         nullable=False,
     )
 
@@ -68,4 +68,8 @@ class AnnouncementArchive(TimestampMixin, Base):
 
     announcement = relationship("Announcement")
 
-    creator = relationship("User")
+    creator = relationship(
+        "User",
+        primaryjoin="foreign(AnnouncementArchive.created_by) == User.id",
+        viewonly=True,
+    )

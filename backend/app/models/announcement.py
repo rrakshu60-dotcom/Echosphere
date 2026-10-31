@@ -108,9 +108,9 @@ class Announcement(TimestampMixin, Base):
     # Foreign Keys
     # -------------------------
 
+    # Plain id, no foreign key: it outlives the author's account.
     created_by = Column(
         Integer,
-        ForeignKey("users.id"),
         nullable=False,
     )
 
@@ -127,7 +127,9 @@ class Announcement(TimestampMixin, Base):
 
     creator = relationship(
         "User",
+        primaryjoin="foreign(Announcement.created_by) == User.id",
         back_populates="announcements",
+        viewonly=True,
     )
 
     category = relationship(
@@ -171,22 +173,34 @@ class Announcement(TimestampMixin, Base):
     # Computed Model Properties
     # -------------------------
 
+    def _saved_creator(self, field: str):
+        """The author's details as recorded when the notice was made (used once the account is deleted)."""
+        from sqlalchemy.orm import object_session
+        from app.models.notice_record import NoticeRecord
+
+        session = object_session(self)
+        if session is None or self.id is None:
+            return None
+        return session.query(getattr(NoticeRecord, field)).filter(NoticeRecord.announcement_id == self.id).scalar()
+
     @property
     def creator_name(self) -> str:
         if self.creator and self.creator.full_name:
             return self.creator.full_name
-        return "Faculty / Official"
+        return self._saved_creator("creator_name") or "Faculty / Official"
 
     @property
     def creator_role(self) -> str:
         if self.creator and self.creator.role:
             return self.creator.role.name
-        return "Faculty / Official"
+        return self._saved_creator("creator_role") or "Faculty / Official"
 
     @property
     def department_name(self) -> str:
         if self.creator and self.creator.department:
             return self.creator.department.code or self.creator.department.name
+        if self.creator is None:
+            return self._saved_creator("creator_department") or "College-Wide"
         return "College-Wide"
 
     @property

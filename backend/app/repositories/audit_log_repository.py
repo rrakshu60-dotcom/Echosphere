@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.user import User
 
 
 from typing import Any, Optional
@@ -24,6 +25,9 @@ def create_audit_log(
         entity_id=entity_id,
         description=description,
     )
+    user = db.get(User, user_id) if user_id is not None else None
+    if user is not None:
+        audit_log.copy_user_details(user)
 
     db.add(audit_log)
     db.commit()

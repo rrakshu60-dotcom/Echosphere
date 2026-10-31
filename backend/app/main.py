@@ -39,6 +39,19 @@ install_notice_record_hooks(_QueueSessionFactory)
 Base.metadata.create_all(bind=engine)
 SpeakerCommand.__table__.create(bind=engine, checkfirst=True)
 
+# Who an audit entry belongs to, copied onto the entry so it survives the account's deletion.
+_AUDIT_USER_COLUMNS = {
+    "user_name": "VARCHAR(150)",
+    "user_username": "VARCHAR(50)",
+    "user_email": "VARCHAR(150)",
+    "user_role": "VARCHAR(50)",
+    "user_department": "VARCHAR(100)",
+    "user_employee_id": "VARCHAR(30)",
+    "user_usn": "VARCHAR(30)",
+    "user_semester": "INTEGER",
+    "user_section": "VARCHAR(10)",
+}
+
 # Safe Schema Migration Check (Supports both PostgreSQL & SQLite)
 try:
     with engine.connect() as conn:
@@ -61,6 +74,8 @@ try:
             conn.execute(text("ALTER TABLE announcement_repeat_schedules ADD COLUMN IF NOT EXISTS last_repeat_at TIMESTAMP WITHOUT TIME ZONE;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
+            for col, col_type in _AUDIT_USER_COLUMNS.items():
+                conn.execute(text(f"ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS {col} {col_type};"))
             conn.commit()
         else:
             res = conn.execute(text("PRAGMA table_info(announcements);")).fetchall()
@@ -74,6 +89,10 @@ try:
             sq_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(speaker_queue);")).fetchall()]
             if sq_cols and "speaker_confirmed_at" not in sq_cols:
                 conn.execute(text("ALTER TABLE speaker_queue ADD COLUMN speaker_confirmed_at DATETIME;"))
+            audit_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(audit_logs);")).fetchall()]
+            for col, col_type in _AUDIT_USER_COLUMNS.items():
+                if audit_cols and col not in audit_cols:
+                    conn.execute(text(f"ALTER TABLE audit_logs ADD COLUMN {col} {col_type};"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status ON announcements(status);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_announcements_status_created_at ON announcements(status, created_at);"))
 

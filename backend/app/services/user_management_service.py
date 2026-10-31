@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 
 from app.core.password import hash_password
+from app.models.audit_log import AuditLog
 from app.models.role import Role
+from app.services.audit_log_service import create_audit_log_service
+from app.services.session_service import end_all_user_sessions
 
 class UserManagementService:
     @staticmethod
@@ -128,11 +131,33 @@ class UserManagementService:
         return user
 
     @staticmethod
-    def delete_user(db: Session, user_id: int) -> bool:
+    def delete_user(db: Session, user_id: int, deleted_by: Optional[User] = None) -> bool:
+        """Remove the account. Audit history, announcements and approvals keep the user's id,
+        and every audit entry keeps their name, role and department."""
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return False
+
+        # Entries written before details were copied on each write get them now.
+        for log in db.query(AuditLog).filter(AuditLog.user_id == user.id, AuditLog.user_name.is_(None)):
+            log.copy_user_details(user)
+
+        role = user.role.name if user.role else "User"
+        dept = f", {user.department.name}" if user.department else ""
+        removed = f"{user.full_name} ({role}{dept}, ID {user.id}, {user.username})"
+        end_all_user_sessions(db, user.id, "account_deleted")
+
         db.delete(user)
         db.commit()
+
+        if deleted_by is not None:
+            create_audit_log_service(
+                db=db,
+                user_id=deleted_by.id,
+                action="DELETE_USER",
+                entity="USER",
+                entity_id=user_id,
+                description=f"Deleted account {removed}.",
+            )
         return True
 

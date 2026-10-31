@@ -220,7 +220,7 @@ def delete_user(
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     _check_can_manage(current_user, target)
-    success = UserManagementService.delete_user(db=db, user_id=user_id)
+    success = UserManagementService.delete_user(db=db, user_id=user_id, deleted_by=current_user)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     return {"message": "User deleted successfully", "id": user_id}

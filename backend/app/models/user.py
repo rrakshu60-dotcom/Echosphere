@@ -83,27 +83,38 @@ class User(TimestampMixin, Base):
         lazy="joined",
     )
 
+    # Announcements, approvals and audit entries keep this user's id after the
+    # account is deleted, so these are read-only views. A user's own inbox and
+    # reset tokens go with the account.
     announcements = relationship(
         "Announcement",
+        primaryjoin="foreign(Announcement.created_by) == User.id",
         back_populates="creator",
+        viewonly=True,
     )
 
     approvals = relationship(
         "AnnouncementApproval",
+        primaryjoin="foreign(AnnouncementApproval.approver_id) == User.id",
         back_populates="approver",
+        viewonly=True,
     )
 
     notifications = relationship(
         "Notification",
         back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     audit_logs = relationship(
         "AuditLog",
+        primaryjoin="foreign(AuditLog.user_id) == User.id",
         back_populates="user",
+        viewonly=True,
     )
 
     password_reset_tokens = relationship(
         "PasswordResetToken",
         back_populates="user",
+        cascade="all, delete-orphan",
     )

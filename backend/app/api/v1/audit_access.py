@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_roles
@@ -282,11 +282,13 @@ def list_activity(
     _admin: User = Depends(audit_admin),
 ):
     """The general activity trail (sign-ins, notice actions, ended sessions...), paged on the server."""
-    query = db.query(AuditLog, User.full_name).outerjoin(User, User.id == AuditLog.user_id)
+    # A deleted account's name lives on in the entry itself.
+    user_name = func.coalesce(User.full_name, AuditLog.user_name)
+    query = db.query(AuditLog, user_name, User.id).outerjoin(User, User.id == AuditLog.user_id)
     if q and q.strip():
         term = q.strip().lstrip("#")
         like = f"%{term}%"
-        matches = [AuditLog.description.ilike(like), AuditLog.action.ilike(like), User.full_name.ilike(like)]
+        matches = [AuditLog.description.ilike(like), AuditLog.action.ilike(like), user_name.ilike(like)]
         if term.isdigit():
             matches += [AuditLog.entity_id == int(term), AuditLog.user_id == int(term)]
         query = query.filter(or_(*matches))
@@ -299,14 +301,16 @@ def list_activity(
     if end:
         query = query.filter(AuditLog.created_at <= end)
     total = query.count()
-    sort_col = {"at": AuditLog.created_at, "action": AuditLog.action, "user_name": User.full_name}[sort]
+    sort_col = {"at": AuditLog.created_at, "action": AuditLog.action, "user_name": user_name}[sort]
     ordering = sort_col.asc() if order == "asc" else sort_col.desc()
     rows = query.order_by(ordering, AuditLog.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [
             {"id": log.id, "created_at": _iso(log.created_at), "action": log.action, "entity": log.entity,
-             "entity_id": log.entity_id, "user_id": log.user_id, "user_name": name, "description": log.description}
-            for log, name in rows
+             "entity_id": log.entity_id, "user_id": log.user_id, "user_name": name, "description": log.description,
+             "user_role": log.user_role, "user_department": log.user_department,
+             "user_deleted": live_id is None}
+            for log, name, live_id in rows
         ],
         "total": total,
         "page": page,
